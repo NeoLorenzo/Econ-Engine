@@ -14,6 +14,8 @@ The benchmark follows from homogeneous 1,000-cent household balances and one-uni
 
 Runtime checks additionally require integer money, ten households, price and step of at least one cent, zero to ten daily sales, an empty firm after tax, and an empty government after redistribution.
 
+The dashboard keeps total money as a headline invariant rather than a dedicated flat chart. Its fourth research chart shows the recorded daily search-step history as the learner narrows toward one cent. Display-grouping tests verify that repeated household events become concise market summaries without mutating or removing the underlying raw events.
+
 Run all checks with:
 
 ```bash

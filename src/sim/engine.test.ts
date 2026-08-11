@@ -55,4 +55,31 @@ describe('Econ-Engine MVP 0', () => {
     expect(held.firm.postedPriceCents).toBe(1_000)
     expect(held.pricing.converged).toBe(true)
   })
+
+  it('snapshots the actual historical pricing step each day', () => {
+    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100 }), 20)
+    const steps = state.metrics.map((metric) => metric.priceStepSizeCents)
+    expect(steps[0]).toBe(100)
+    expect(steps).toContain(50)
+    expect(steps).toContain(25)
+    expect(steps.every(Number.isInteger)).toBe(true)
+  })
+
+  it('exposes structured pricing actions without changing decisions', () => {
+    const increasing = stepSimulation(createSimulation({ startingPriceCents: 200, initialStepCents: 100 }))
+    const decreasing = stepSimulation(createSimulation({ startingPriceCents: 2_000, initialStepCents: 100 }))
+    const refining = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100 }), 10)
+
+    expect(increasing.latestDecisionAction).toBe('increase')
+    expect(increasing.firm.postedPriceCents).toBe(300)
+    expect(decreasing.latestDecisionAction).toBe('decrease')
+    expect(decreasing.firm.postedPriceCents).toBe(1_900)
+    expect(refining.latestDecisionAction).toBe('refine')
+    expect(refining.pricing.stepSizeCents).toBe(50)
+
+    let converging = createSimulation({ startingPriceCents: 200, initialStepCents: 100 })
+    while (!converging.pricing.converged) converging = stepSimulation(converging)
+    expect(converging.latestDecisionAction).toBe('converged')
+    expect(converging.firm.postedPriceCents).toBe(1_000)
+  })
 })

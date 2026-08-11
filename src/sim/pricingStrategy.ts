@@ -27,7 +27,7 @@ export function decideTomorrowPrice(
 ): PriceDecision {
   const next = { ...state }
   if (next.converged) {
-    return { nextPriceCents: next.bestPriceCents, state: next, justConverged: false, reason: 'Price discovery is complete. Holding the best-known price.' }
+    return { nextPriceCents: next.bestPriceCents, state: next, action: 'hold', justConverged: false, reason: 'Price discovery is complete. Holding the best-known price.' }
   }
 
   if (!next.foundPositiveProfit && currentProfitCents === 0 && unitsSold === 0) {
@@ -36,6 +36,7 @@ export function decideTomorrowPrice(
     return {
       nextPriceCents: candidate,
       state: next,
+      action: 'decrease',
       justConverged: false,
       reason: `No sale has been found yet. Lowering the experimental price by ${next.stepSizeCents}¢ to search for demand.`,
     }
@@ -51,6 +52,7 @@ export function decideTomorrowPrice(
     return {
       nextPriceCents: move(next.bestPriceCents, next.direction, next.stepSizeCents),
       state: next,
+      action: next.direction === 'up' ? 'increase' : 'decrease',
       justConverged: false,
       reason: `This experiment improved realized profit. Continuing ${next.direction} by ${next.stepSizeCents}¢ from the new best price.`,
     }
@@ -62,6 +64,7 @@ export function decideTomorrowPrice(
     return {
       nextPriceCents: move(next.bestPriceCents, next.direction, next.stepSizeCents),
       state: next,
+      action: 'refine',
       justConverged: false,
       reason: `The experiment did not beat the best realized profit. Returning around the best price, reversing direction, and narrowing the step to ${next.stepSizeCents}¢.`,
     }
@@ -75,6 +78,7 @@ export function decideTomorrowPrice(
     return {
       nextPriceCents: next.bestPriceCents,
       state: next,
+      action: 'converged',
       justConverged: true,
       reason: 'Both adjacent one-cent prices failed to improve realized profit. Holding the best-known price.',
     }
@@ -85,6 +89,7 @@ export function decideTomorrowPrice(
   return {
     nextPriceCents: move(next.bestPriceCents, direction, 1),
     state: next,
+    action: 'refine',
     justConverged: false,
     reason: `Testing the remaining one-cent neighbor ${direction} from the best-known price.`,
   }

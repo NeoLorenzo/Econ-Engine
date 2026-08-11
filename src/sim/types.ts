@@ -1,4 +1,5 @@
 export type Direction = 'up' | 'down'
+export type PriceDecisionAction = 'increase' | 'decrease' | 'refine' | 'hold' | 'converged'
 
 export interface SimulationConfig {
   startingPriceCents: number
@@ -42,6 +43,7 @@ export interface PricingState {
 export interface PriceDecision {
   nextPriceCents: number
   reason: string
+  action: PriceDecisionAction
   state: PricingState
   justConverged: boolean
 }
@@ -99,5 +101,6 @@ export interface SimulationState {
   metrics: DayMetrics[]
   events: SimulationEvent[]
   latestDecisionReason: string
+  latestDecisionAction: PriceDecisionAction
   nextEventId: number
 }

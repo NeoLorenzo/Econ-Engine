@@ -30,6 +30,7 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
     metrics: [],
     events: [],
     latestDecisionReason: 'The first price is set by the run configuration.',
+    latestDecisionAction: 'hold',
     nextEventId: 1,
   }
   validateState(state)
@@ -72,6 +73,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
   const decision = decideTomorrowPrice(state.pricing, price, state.firm.unitsSoldToday, revenue)
   state.pricing = decision.state
   state.latestDecisionReason = decision.reason
+  state.latestDecisionAction = decision.action
   state.firm.postedPriceCents = decision.nextPriceCents
   pushEvent(state, 'FIRM_PRICE_DECISION', `Firm will post ${dollars(decision.nextPriceCents)} tomorrow. ${decision.reason}`, { actorId: state.firm.id, priceCents: decision.nextPriceCents })
   if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `Price discovery converged at ${dollars(state.pricing.bestPriceCents)}.`, { actorId: state.firm.id, priceCents: state.pricing.bestPriceCents })
