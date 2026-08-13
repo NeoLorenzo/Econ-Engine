@@ -33,4 +33,18 @@ describe('multi-market event display grouping', () => {
     expect(group?.description).toBe('Government redistributed $500.00 across 10 households.')
     expect(state.events).toEqual(original)
   })
+
+  it('groups competitive Entertainment purchases while preserving actual firm counterparties', () => {
+    const state = stepSimulation(createSimulation({
+      startingPriceCents: 200,
+      initialStepCents: 100,
+      dailySupplyPerIndustry: 10,
+      firmStartingPricesCents: { 'firm-entertainment-a': 400, 'firm-entertainment-b': 400 },
+    }))
+    const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'market-1-entertainment')
+    expect(group?.details).toHaveLength(10)
+    expect(group?.description).toBe('10 purchased · 0 affordability · 0 stockout failures · $40.00 spent.')
+    expect(group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-a')).toHaveLength(5)
+    expect(group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-b')).toHaveLength(5)
+  })
 })

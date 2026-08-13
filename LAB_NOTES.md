@@ -6,6 +6,139 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP3-Entertainment_Competition-005.1] - (2026-08-13)
+
+### Motivation and research question
+
+The default equal-start UI path showed a $5/$5 learner endpoint, while the earlier $1/$8 controlled experiment produced $4/$4. That contrast suggested competitive learner endpoints may depend on initial prices even though the market, households, and pricing code are unchanged.
+
+> How sensitive are the two Entertainment firms' learner convergence endpoints to their initial prices?
+
+### Method
+
+The experiment runs the full Cartesian product of Entertainment A and B starts at $1, $2, $3, $4, $5, $6, $8, and $10: 64 deterministic configurations. The horizon is 300 days. Every run holds ten households, the $5 Entertainment budget, ten units per firm, the unchanged learner and tie rule, full taxation/redistribution, and the existing control starts fixed. It records A/B endpoints and convergence days, whether both converged, final market shares/profits, private final learner states, and control endpoints.
+
+Each `(A=X, B=Y)` result was compared with `(A=Y, B=X)` after exchanging firm labels. No observer result enters pricing strategy.
+
+### Results
+
+Cells show `A endpoint / B endpoint`:
+
+| A \ B | $1 | $2 | $3 | $4 | $5 | $6 | $8 | $10 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **$1** | 5/5 | 1/1 | 2/1.98 | 2/2 | 3/2.98 | 3/3 | 4/4 | 5/5 |
+| **$2** | 1/1 | 5/5 | 2/2 | 3/2.98 | 3/3 | 4/3.98 | 5/4.98 | 5/4.99 |
+| **$3** | 1.98/2 | 2/2 | 5/5 | 3/3 | 4/3.98 | 4/4 | 5/5 | 5/5 |
+| **$4** | 2/2 | 2.98/3 | 3/3 | 5/5 | 4/4 | 5/4.98 | 5/4.99 | 5/4.99 |
+| **$5** | 2.98/3 | 3/3 | 3.98/4 | 4/4 | 5/5 | 5/5 | 5/5 | 5/5 |
+| **$6** | 3/3 | 3.98/4 | 4/4 | 4.98/5 | 5/5 | 5/5 | 5/4.99 | 5/4.99 |
+| **$8** | 4/4 | 4.98/5 | 5/5 | 4.99/5 | 5/5 | 4.99/5 | 5/5 | 5/4.99 |
+| **$10** | 5/5 | 4.99/5 | 5/5 | 4.99/5 | 5/5 | 4.99/5 | 4.99/5 | 5/5 |
+
+All 64 cases converged within the horizon. There were no cycles or horizon non-convergence cases. The most frequent endpoint was $5/$5 (20 cases), but the grid also produced $1/$1, $2/$2, $3/$3, $4/$4, and adjacent or near-adjacent asymmetric endpoints such as $2/$1.98 and $5/$4.99. Every equal-start diagonal case converged to $5/$5, while asymmetric starts could land substantially below the $5 demand boundary.
+
+Swapped-start symmetry held exactly across all 64 runs after exchanging A/B labels: endpoints, convergence days, and final market shares matched. No material array-order or state-mutation asymmetry was found.
+
+#### Symmetric starts
+
+Every equal-start configuration—$1/$1, $2/$2, $3/$3, $4/$4, $5/$5, $6/$6, $8/$8, and $10/$10—converged to $5/$5. The observed mechanism is synchronized learning:
+
+```text
+same starting price
+→ equal-price demand split
+→ similar sales and realised profit
+→ identical learner updates
+→ continued synchronized price movement
+→ $5 household affordability boundary
+```
+
+At $5/$5, deterministic ties give each firm approximately five sales, so each earns $25 daily revenue. This is a learner convergence endpoint, not evidence of competitive optimality. Under the current household-choice rule, a unilateral $4.99 price could capture substantially more demand; ten sales would yield $49.90 rather than $25. The synchronized learners do not explicitly test that deviation conditional on the competitor remaining at $5 after their private convergence criteria are satisfied.
+
+#### Asymmetric starts
+
+Different starts break synchronization because the cheaper firm initially captures more or all demand. The firms consequently accumulate different realised-profit histories and may stop at different deterministic endpoint regions. Representative results include $1/$3 → $2/$1.98, $1/$5 → $3/$2.98, $2/$6 → $4/$3.98, $1/$8 → $4/$4, $4/$6 → $5/$4.98, and $2/$10 → $5/$4.99.
+
+One- and two-cent differences such as $2.98/$3, $3.98/$4, and $4.99/$5 align with the current integer-cent refinement and adjacent-price stopping behavior. They should not be over-interpreted as distinct economic optima. Swapping A/B starts produced the same results with labels exchanged, including these small differences; no material tie-order asymmetry appeared.
+
+### Why $5/$5 is notable
+
+The $5/$5 endpoint demonstrates that the learner's convergence flag means its own historical adjacent-price search is finished. It does not establish that no profitable competitive deviation exists. The learner was developed in a monopoly environment where realised profit could be treated approximately as a function of the firm's own tested price. Under competition:
+
+```text
+my realised profit = function(
+  my price,
+  competitor price,
+  competitor learning path,
+  relative timing of experiments
+)
+```
+
+The optimization environment is no longer stationary, and the firm receives no competitor state with which to reason about conditional deviations.
+
+### Interpretation
+
+The grid characterizes synchronized learning under symmetric starts, divergent histories under asymmetric starts, and multiple path-dependent learner convergence endpoints. A firm's convergence signal can identify its private learning process as locally finished even when a profitable unilateral deviation may exist against the competitor's current price. This is a limitation of the current bounded learner, not an accounting failure. None of the deterministic endpoints are labelled equilibria.
+
+### Stability
+
+Across the experiment, total money remained conserved, household balances remained equal, Gini remained zero, per-firm stock flows remained exact, and deterministic execution remained intact. Food, Utilities, Transport, and Healthcare reached $15/$12/$8/$10 in every grid run. The finding therefore concerns behavioral and learning dynamics, not system or accounting instability.
+
+### Scope
+
+No pricing logic, competitive heuristic, competitor observation, best-response rule, firm information, tie behavior, or economic institution changed. This update only characterizes the existing learner.
+
+### Validation
+
+- 43 tests passed across five files.
+- Typecheck, build, and aggregate check passed.
+- Desktop and 390px populated matrix checks passed with contained scrolling and no console warnings/errors.
+- No deployment was performed.
+
+## [MVP3-Entertainment_Competition-005] - (2026-08-13)
+
+### Context and research question
+
+MVP 2.1 established stable industry-specific demand boundaries without disturbing household equality. Competition is the next controlled asymmetry because it makes realised firm profit mutually dependent while leaving household budgets, supply, taxation, and the pricing heuristic unchanged.
+
+> What behavior emerges when two independently adapting firms compete for the same homogeneous household demand using only their own realised market outcomes?
+
+Competition exists only in Entertainment. Food, Utilities, Transport, and Healthcare remain monopoly controls so unintended cross-market coupling is visible.
+
+### Design and information boundaries
+
+Entertainment has two firms, each with ten daily exogenous units and independent state. A household buys at most one Entertainment unit from the cheapest affordable firm with stock. If that firm is empty, the next-cheapest affordable supplier is considered. Equal prices alternate tied priority by household attempt and rotate the first firm by day, producing a reproducible balanced split without permanent array priority.
+
+Each firm still receives only its own tested price, sales, realised profit, and private learner history. Competitor prices, profits, sales, state, and observer market share are not strategy inputs. No undercut rule or competitive convergence target was added.
+
+System/accounting stability is required; competitive price convergence is an empirical outcome.
+
+### Findings
+
+The controlled experiment started Entertainment A at $1 and B at $8. A initially won all ten sales while moving upward and B moved downward through zero-sale experiments. As their prices crossed, full-market leadership alternated. Both learners identified $4 as their private best-known price: A reported convergence on day 12 and B on day 13. From day 14 onward both posted $4, tied demand split 5/5, each realised $20 daily profit, and observer market share was 50% each.
+
+This endpoint is not the $5 affordability ceiling and is not described as a Bertrand equilibrium. It follows from the existing hill-climbers retaining earlier $40 monopoly-like best profit while later equal-price sharing produces $20. The learners nevertheless stop after their adjacent-price tests under their unchanged private rules.
+
+### Controls and stability
+
+| Control | Endpoint | Day |
+|---|---:|---:|
+| Food | $15.00 | 23 |
+| Utilities | $12.00 | 19 |
+| Transport | $8.00 | 12 |
+| Healthcare | $10.00 | 14 |
+
+The joint experiment ended on day 23 with every household at $50, Gini 0, and total money $500. A 1,000-day run remained invariant-safe: six non-negative firms, exact per-firm supply/sales/expiration, at most ten Entertainment purchases, zero institutional end balances, bounded histories, equal household cash, zero Gini, and deterministic repetition.
+
+### Validation and limits
+
+- `npm run test:run`: 38 tests passed across four files.
+- `npm run typecheck`: passed.
+- `npm run build`: passed with the non-failing bundle-size advisory.
+- `npm run check`: passed.
+- `npm run dev`: served successfully. Desktop and 390px checks confirmed the six-firm market table, populated control/competition results, separate competitor chart series, contained horizontal table scrolling, no page-level or chart overflow, and no console warnings/errors. No deployment was performed.
+
+The market has no differentiation, costs, loyalty, geography, switching, competitor awareness, entry/exit, or stochastic behavior. Competition in additional industries is intentionally excluded.
+
 ## [MVP2-Industry_Demand_Boundaries-004.1] - (2026-08-13)
 
 ### Context and decision

@@ -4,23 +4,23 @@ Econ-Engine separates environment rules, agent strategies, state, events, observ
 
 ## Simulation core
 
-`types.ts` defines configurable industries, including their fixed household budget, plus firms, industry-keyed household outcomes, government, generic market events, per-market metrics, and economy-wide metrics. `config.ts` contains the five default industries and stable monetary assumptions. `engine.ts` creates and iterates the collections through one reusable deterministic market lifecycle.
+`types.ts` defines configurable industries, firms, industry-keyed household outcomes, government, generic market events, per-firm metrics, and economy-wide metrics. `config.ts` maps every industry to one-or-more firm IDs: Entertainment has two and the controls have one. `engine.ts` iterates each industry's firm collection through one reusable deterministic market lifecycle.
 
 Each `Firm` owns its `PricingState`; there is no shared singleton learner. Each `Household` owns one real cash stock plus an `industryOutcomes` record containing behavioral budget, daily cause, and cumulative counters for every industry. Budget fields never enter `totalMoney`.
 
-The engine accepts one common supply setting, applied independently to each market. Every firm receives explicit exogenous units, sells only available stock, and expires the remainder. Industry processing order is stored in configuration primarily to support regression testing.
+The engine accepts one common supply setting, applied independently to every firm. Households choose the cheapest affordable available firm within an industry, with deterministic rotating tie priority. Every firm receives explicit exogenous units, sells only available stock, and expires the remainder. Industry processing order is stored in configuration primarily to support regression testing.
 
-After all markets close, the one government taxes each firm, pools receipts, and redistributes the entire pool. `invariants.ts` validates 50,000 conserved cents, one firm per industry, complete household outcomes, independent stock flows, sales caps, and cleared institutional balances.
+After all markets close, the one government taxes all six firms, pools receipts, and redistributes the entire pool. `invariants.ts` validates 50,000 conserved cents, configured firm membership, complete household outcomes, independent per-firm stock flows, total industry demand caps, and cleared institutional balances.
 
 ## Strategy boundary
 
-`pricingStrategy.ts` is unchanged in substance. Each call receives one firm's current price, units sold, realised zero-cost profit, and private pricing state. The engine does not pass household balances or budgets, other firms' state, causal failure counts, aggregate affordability, Gini, or future information.
+`pricingStrategy.ts` remains unchanged. Each call receives one firm's current price, units sold, realised zero-cost profit, and private pricing state. The engine does not pass competitor price, sales, profit, market share, household balances or budgets, causal failure counts, aggregate affordability, Gini, or future information.
 
 ## Observer analytics and experiments
 
 `analytics.ts` measures household cash distributions and affordability without mutating simulation or strategy state. Each `DayMetrics` holds five `MarketMetrics` records plus economy-wide wealth and monetary fields. Raw events carry industry, firm, and household identity; display grouping keeps the source events underneath summaries.
 
-`scarcityExperiment.ts` runs one deterministic five-firm world with deliberately varied starting prices and records independent convergence endpoints/days. Lower common supply remains supported through the same public engine.
+`scarcityExperiment.ts` now runs one deterministic six-firm world with deliberately varied control starts and Entertainment starts of $1/$8. It records price, sales, profit, market-share trajectories, convergence, and final learner state through the public engine.
 
 ## Interface boundary
 

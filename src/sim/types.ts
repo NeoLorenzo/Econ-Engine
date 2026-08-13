@@ -14,6 +14,7 @@ export interface SimulationConfig {
   initialStepCents: number
   dailySupplyPerIndustry: number
   industryStartingPricesCents?: Partial<Record<IndustryId, number>>
+  firmStartingPricesCents?: Record<string, number>
   industryProcessingOrder?: IndustryId[]
 }
 
@@ -125,6 +126,9 @@ export interface MarketMetrics {
   revenueCents: number
   preTaxProfitCents: number
   converged: boolean
+  marketShare: number
+  totalIndustryUnitsSold: number
+  transactionPricesCents: number[]
 }
 
 export interface DayMetrics {

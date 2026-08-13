@@ -15,6 +15,14 @@ export const DEFAULT_INDUSTRIES: Industry[] = [
   { id: 'entertainment', name: 'Entertainment', householdBudgetCents: 500 },
 ]
 
+export const DEFAULT_FIRM_IDS_BY_INDUSTRY: Record<Industry['id'], string[]> = {
+  food: ['firm-food'],
+  utilities: ['firm-utilities'],
+  transport: ['firm-transport'],
+  healthcare: ['firm-healthcare'],
+  entertainment: ['firm-entertainment-a', 'firm-entertainment-b'],
+}
+
 export const DEFAULT_CONFIG: SimulationConfig = {
   startingPriceCents: 200,
   initialStepCents: 100,

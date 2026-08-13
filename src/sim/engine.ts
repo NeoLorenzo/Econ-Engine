@@ -1,5 +1,5 @@
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
-import { DEFAULT_CONFIG, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
+import { DEFAULT_CONFIG, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
 import { totalMoney, validateState } from './invariants'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
 import type { DayMetrics, Firm, IndustryId, MarketMetrics, SimulationConfig, SimulationEvent, SimulationEventType, SimulationState } from './types'
@@ -23,18 +23,19 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
     initialStepCents: Math.max(1, Math.round(config.initialStepCents)),
     dailySupplyPerIndustry: Math.max(0, Math.round(config.dailySupplyPerIndustry)),
     industryStartingPricesCents: config.industryStartingPricesCents,
+    firmStartingPricesCents: config.firmStartingPricesCents,
     industryProcessingOrder: safeProcessingOrder(config),
   }
   const industries = structuredClone(DEFAULT_INDUSTRIES)
-  const firms: Firm[] = industries.map((industry) => {
-    const price = Math.max(1, Math.round(safeConfig.industryStartingPricesCents?.[industry.id] ?? safeConfig.startingPriceCents))
+  const firms: Firm[] = industries.flatMap((industry) => DEFAULT_FIRM_IDS_BY_INDUSTRY[industry.id].map((firmId) => {
+    const price = Math.max(1, Math.round(safeConfig.firmStartingPricesCents?.[firmId] ?? safeConfig.industryStartingPricesCents?.[industry.id] ?? safeConfig.startingPriceCents))
     return {
-      id: `firm-${industry.id}`, industryId: industry.id, cashCents: 0, postedPriceCents: price,
+      id: firmId, industryId: industry.id, cashCents: 0, postedPriceCents: price,
       unitsSoldToday: 0, revenueTodayCents: 0, preTaxProfitTodayCents: 0, availableUnitsToday: 0,
       unitsExpiredToday: 0, soldOutToday: false, pricing: createPricingState(price, safeConfig.initialStepCents),
       latestDecisionReason: 'The first price is set by the run configuration.', latestDecisionAction: 'hold',
     }
-  })
+  }))
   const state: SimulationState = {
     day: 0,
     config: safeConfig,
@@ -75,47 +76,62 @@ export function stepSimulation(previous: SimulationState): SimulationState {
 
   for (const industryId of state.config.industryProcessingOrder ?? safeProcessingOrder(state.config)) {
     const industry = state.industries.find(({ id }) => id === industryId)!
-    const firm = state.firms.find((candidate) => candidate.industryId === industryId)!
-    const price = firm.postedPriceCents
-    const affordableAtOpen = countAffordableAtPrice(state.households.map((household) => Math.min(household.cashCents, household.industryOutcomes[industryId].budgetCents)), price)
-    pushEvent(state, 'SUPPLY_RECEIVED', `${firm.id} received ${state.config.dailySupplyPerIndustry} exogenous ${industry.name.toLowerCase()} units.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: state.config.dailySupplyPerIndustry })
-    pushEvent(state, 'PRICE_POSTED', `${firm.id} posted ${dollars(price)} in ${industry.name}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: price })
+    const industryFirms = state.firms.filter((candidate) => candidate.industryId === industryId).sort((left, right) => left.id.localeCompare(right.id))
+    const minimumPostedPrice = Math.min(...industryFirms.map(({ postedPriceCents }) => postedPriceCents))
+    const affordableAtOpen = countAffordableAtPrice(state.households.map((household) => Math.min(household.cashCents, household.industryOutcomes[industryId].budgetCents)), minimumPostedPrice)
+    for (const firm of industryFirms) {
+      pushEvent(state, 'SUPPLY_RECEIVED', `${firm.id} received ${state.config.dailySupplyPerIndustry} exogenous ${industry.name.toLowerCase()} units.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: state.config.dailySupplyPerIndustry })
+      pushEvent(state, 'PRICE_POSTED', `${firm.id} posted ${dollars(firm.postedPriceCents)} in ${industry.name}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.postedPriceCents })
+    }
 
-    for (const household of purchasingOrder) {
+    for (const [attemptIndex, household] of purchasingOrder.entries()) {
       const outcome = household.industryOutcomes[industryId]
-      const details = { actorId: household.id, counterpartyId: firm.id, householdId: household.id, firmId: firm.id, industryId, priceCents: price }
-      if (price > outcome.budgetCents || household.cashCents < price) {
+      const affordable = industryFirms.filter((firm) => firm.postedPriceCents <= outcome.budgetCents && firm.postedPriceCents <= household.cashCents)
+      const available = affordable.filter((firm) => firm.availableUnitsToday > 0)
+      if (affordable.length === 0) {
         outcome.purchaseOutcomeToday = 'insufficient_funds'; outcome.lifetimeAffordabilityFailures += 1
-        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', `${household.id} could not afford ${industry.name} at ${dollars(price)} within its ${dollars(outcome.budgetCents)} industry budget.`, details)
-      } else if (firm.availableUnitsToday === 0) {
+        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', `${household.id} could not afford any ${industry.name} firm within its ${dollars(outcome.budgetCents)} industry budget.`, { actorId: household.id, householdId: household.id, industryId, priceCents: minimumPostedPrice })
+      } else if (available.length === 0) {
         outcome.purchaseOutcomeToday = 'stockout'; outcome.lifetimeStockoutFailures += 1
-        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT', `${household.id} could afford ${industry.name}, but no stock remained.`, details)
+        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT', `${household.id} could afford ${industry.name}, but no affordable firm had stock.`, { actorId: household.id, householdId: household.id, industryId, priceCents: minimumPostedPrice })
       } else {
+        const cheapestPrice = Math.min(...available.map(({ postedPriceCents }) => postedPriceCents))
+        const tied = available.filter(({ postedPriceCents }) => postedPriceCents === cheapestPrice)
+        const tieOffset = (state.day - 1) % tied.length
+        const firm = tied[(attemptIndex + tieOffset) % tied.length]
+        const price = firm.postedPriceCents
+        const details = { actorId: household.id, counterpartyId: firm.id, householdId: household.id, firmId: firm.id, industryId, priceCents: price }
         household.cashCents -= price; firm.cashCents += price; firm.availableUnitsToday -= 1; firm.unitsSoldToday += 1
         Object.assign(outcome, { purchasedToday: true, spentTodayCents: price, purchaseOutcomeToday: 'purchased' }); outcome.lifetimeUnitsPurchased += 1
         pushEvent(state, 'HOUSEHOLD_PURCHASE', `${household.id} purchased ${industry.name} for ${dollars(price)}.`, { ...details, amountCents: price, quantity: 1 })
       }
     }
 
-    firm.unitsExpiredToday = firm.availableUnitsToday; firm.availableUnitsToday = 0
-    firm.soldOutToday = firm.unitsSoldToday === state.config.dailySupplyPerIndustry
-    pushEvent(state, 'GOODS_EXPIRED', `${firm.unitsExpiredToday} unsold ${industry.name.toLowerCase()} units expired.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: firm.unitsExpiredToday })
-    const revenue = firm.unitsSoldToday * price
-    if (firm.cashCents !== revenue) throw new Error(`${firm.id} cash does not equal today's zero-cost revenue`)
-    firm.revenueTodayCents = revenue; firm.preTaxProfitTodayCents = revenue
-    pushEvent(state, 'FIRM_DAY_RESULT', `${firm.id} sold ${firm.unitsSoldToday}/${state.config.dailySupplyPerIndustry} units and realised ${dollars(revenue)} profit.`, { actorId: firm.id, firmId: firm.id, industryId, amountCents: revenue, quantity: firm.unitsSoldToday })
-    const decision = decideTomorrowPrice(firm.pricing, price, firm.unitsSoldToday, revenue)
-    firm.pricing = decision.state; firm.latestDecisionReason = decision.reason; firm.latestDecisionAction = decision.action; firm.postedPriceCents = decision.nextPriceCents
-    pushEvent(state, 'FIRM_PRICE_DECISION', `${firm.id} will post ${dollars(decision.nextPriceCents)} tomorrow. ${decision.reason}`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: decision.nextPriceCents })
-    if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `${firm.id} converged at ${dollars(firm.pricing.bestPriceCents)}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.pricing.bestPriceCents })
-    marketMetrics.push({
-      industryId, firmId: firm.id, postedPriceCents: price, nextPriceCents: decision.nextPriceCents,
-      bestKnownPriceCents: firm.pricing.bestPriceCents, priceStepSizeCents: firm.pricing.stepSizeCents, searchDirection: firm.pricing.direction,
-      unitsSold: firm.unitsSoldToday, unitsSupplied: state.config.dailySupplyPerIndustry, unitsExpired: firm.unitsExpiredToday,
-      stockoutFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'stockout').length,
-      affordabilityFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'insufficient_funds').length,
-      soldOut: firm.soldOutToday, householdsAffordableAtMarketOpen: affordableAtOpen, revenueCents: revenue, preTaxProfitCents: revenue, converged: firm.pricing.converged,
-    })
+    const totalIndustryUnitsSold = industryFirms.reduce((sum, firm) => sum + firm.unitsSoldToday, 0)
+    for (const firm of industryFirms) {
+      const testedPrice = firm.postedPriceCents
+      firm.unitsExpiredToday = firm.availableUnitsToday; firm.availableUnitsToday = 0
+      firm.soldOutToday = firm.unitsSoldToday === state.config.dailySupplyPerIndustry
+      pushEvent(state, 'GOODS_EXPIRED', `${firm.unitsExpiredToday} unsold ${industry.name.toLowerCase()} units expired at ${firm.id}.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: firm.unitsExpiredToday })
+      const revenue = firm.unitsSoldToday * testedPrice
+      if (firm.cashCents !== revenue) throw new Error(`${firm.id} cash does not equal today's zero-cost revenue`)
+      firm.revenueTodayCents = revenue; firm.preTaxProfitTodayCents = revenue
+      pushEvent(state, 'FIRM_DAY_RESULT', `${firm.id} sold ${firm.unitsSoldToday}/${state.config.dailySupplyPerIndustry} units and realised ${dollars(revenue)} profit.`, { actorId: firm.id, firmId: firm.id, industryId, amountCents: revenue, quantity: firm.unitsSoldToday })
+      const decision = decideTomorrowPrice(firm.pricing, testedPrice, firm.unitsSoldToday, revenue)
+      firm.pricing = decision.state; firm.latestDecisionReason = decision.reason; firm.latestDecisionAction = decision.action; firm.postedPriceCents = decision.nextPriceCents
+      pushEvent(state, 'FIRM_PRICE_DECISION', `${firm.id} will post ${dollars(decision.nextPriceCents)} tomorrow. ${decision.reason}`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: decision.nextPriceCents })
+      if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `${firm.id} converged at ${dollars(firm.pricing.bestPriceCents)}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.pricing.bestPriceCents })
+      marketMetrics.push({
+        industryId, firmId: firm.id, postedPriceCents: testedPrice, nextPriceCents: decision.nextPriceCents,
+        bestKnownPriceCents: firm.pricing.bestPriceCents, priceStepSizeCents: firm.pricing.stepSizeCents, searchDirection: firm.pricing.direction,
+        unitsSold: firm.unitsSoldToday, unitsSupplied: state.config.dailySupplyPerIndustry, unitsExpired: firm.unitsExpiredToday,
+        stockoutFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'stockout').length,
+        affordabilityFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'insufficient_funds').length,
+        soldOut: firm.soldOutToday, householdsAffordableAtMarketOpen: affordableAtOpen, revenueCents: revenue, preTaxProfitCents: revenue, converged: firm.pricing.converged,
+        marketShare: totalIndustryUnitsSold === 0 ? 0 : firm.unitsSoldToday / totalIndustryUnitsSold,
+        totalIndustryUnitsSold, transactionPricesCents: firm.unitsSoldToday > 0 ? [testedPrice] : [],
+      })
+    }
   }
 
   const totalFirmCashBeforeTax = state.firms.reduce((sum, firm) => sum + firm.cashCents, 0)

@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest'
+import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
+import { COMPETITION_GRID_STARTS_CENTS, runCompetitionStartingPriceGrid } from './competitionGridExperiment'
+
+describe('Entertainment starting-price grid experiment', () => {
+  it('runs the full deterministic Cartesian grid', () => {
+    const first = runCompetitionStartingPriceGrid()
+    const second = runCompetitionStartingPriceGrid()
+    expect(first).toEqual(second)
+    expect(first.startingPricesCents).toEqual([...COMPETITION_GRID_STARTS_CENTS])
+    expect(first.results).toHaveLength(64)
+  }, 20_000)
+
+  it('preserves swapped-start label symmetry across the full grid', () => {
+    const suite = runCompetitionStartingPriceGrid()
+    for (const xy of suite.results) {
+      const yx = suite.results.find((result) => result.firmAStartCents === xy.firmBStartCents && result.firmBStartCents === xy.firmAStartCents)!
+      expect([xy.firmAEndpointCents, xy.firmBEndpointCents]).toEqual([yx.firmBEndpointCents, yx.firmAEndpointCents])
+      expect([xy.firmAConvergenceDay, xy.firmBConvergenceDay]).toEqual([yx.firmBConvergenceDay, yx.firmAConvergenceDay])
+      expect(xy.finalMarketShares).toEqual([...yx.finalMarketShares].reverse())
+    }
+  }, 10_000)
+
+  it('reports non-convergence at a short horizon and does not mutate options', () => {
+    const options = { startingPricesCents: [100, 800] as const, horizonDays: 1 }
+    const original = structuredClone(options)
+    const suite = runCompetitionStartingPriceGrid(options)
+    expect(suite.results.some((result) => !result.bothConverged && result.firmAEndpointCents === null && result.firmBEndpointCents === null)).toBe(true)
+    expect(options).toEqual(original)
+  })
+
+  it('leaves all monopoly control endpoints unchanged', () => {
+    const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 1_000] })
+    expect(suite.results.every(({ controlEndpointsCents }) => JSON.stringify(controlEndpointsCents) === JSON.stringify({ food: 1_500, utilities: 1_200, transport: 800, healthcare: 1_000 }))).toBe(true)
+  })
+
+  it('keeps observer results outside the pricing boundary', () => {
+    const state = createPricingState(200, 100)
+    const before = decideTomorrowPrice(state, 200, 5, 1_000)
+    const observerOnly = { competitorEndpoint: 400, marketShare: 0.5, gridCell: '4/4' }
+    expect(observerOnly.marketShare).toBe(0.5)
+    expect(decideTomorrowPrice(state, 200, 5, 1_000)).toEqual(before)
+  })
+})

@@ -6,6 +6,59 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
+## [MVP3-Entertainment_Competition-005.1] - (2026-08-13)
+
+### Summary
+
+Added deterministic starting-price sensitivity analysis for the existing Entertainment competition model without changing economic or pricing behavior.
+
+### Added
+
+- Full 8×8 Cartesian grid over $1/$2/$3/$4/$5/$6/$8/$10 Entertainment A/B starts with a 300-day horizon.
+- Per-combination endpoints, convergence days, convergence status, final shares/profits, final pricing state, and control endpoints.
+- Full-grid swapped-start symmetry regression and horizon/non-mutation/control/observer-boundary tests.
+- Compact matrix in the existing dashboard with A starts as rows, B starts as columns, and A/B endpoints in each cell.
+
+### Validation
+
+- All 64 combinations converged within 300 days; multiple deterministic endpoint regions were observed.
+- Equal-price starts remained synchronized and converged to $5/$5; asymmetric starts produced path-dependent endpoints ranging from $1/$1 through $5/$5, including one- and two-cent endpoint differences.
+- Swapped starts were exactly symmetric after exchanging firm labels, including endpoints, convergence timing, and final shares.
+- Food/Utilities/Transport/Healthcare remained at $15/$12/$8/$10 in every run.
+- 43 tests passed across five files; typecheck, build, aggregate check, and browser validation passed.
+- No simulation behavior, pricing logic, firm information, tie-breaking, or experiment parameter changed during final documentation and validation.
+
+## [MVP3-Entertainment_Competition-005] - (2026-08-13)
+
+### Summary
+
+Added homogeneous-product competition in Entertainment while retaining the other four industries as monopoly controls.
+
+### Added
+
+- A second independently learning Entertainment firm with its own cash, inventory, outcomes, and pricing state.
+- Generic cheapest-affordable-available supplier choice with fallback after stockout.
+- Deterministic equal-price demand splitting with rotating daily first priority.
+- Per-firm market share, total industry sales, and truthful transaction-price observer metrics.
+- Competitive $1/$8 starting-price experiment with price, sales, profit, share, convergence, and final learner-state results.
+- `docs/MVP3_SPEC.md` and competition regressions covering choice, ties, fallback, failure semantics, events, taxation, controls, determinism, and 1,000-day stability.
+
+### Changed
+
+- Generalized industry processing and invariants from exactly one firm to configured one-or-more firm collections.
+- Government now taxes and pools receipts from six firms.
+- Price/profit charts and market table identify both Entertainment firms separately; the table displays observer market share.
+- Grouped Entertainment events retain granular firm counterparties.
+- Pricing strategy and firm information inputs remain unchanged.
+
+### Validation
+
+- 38 tests passed across four files; typecheck, build, and aggregate check passed.
+- Food/Utilities/Transport/Healthcare retained $15/$12/$8/$10 control endpoints.
+- Entertainment A/B converged to an observed $4 learner endpoint on days 12/13; equal-price days split demand 5/5.
+- The 1,000-day run retained $500 total money, $50 equal household balances, zero Gini, exact stock flows, bounded histories, and deterministic output.
+- Desktop and 390px browser checks passed with populated experiment data, contained table scrolling, no page/chart overflow, and no console warnings or errors.
+
 ## [MVP2-Industry_Demand_Boundaries-004.1] - (2026-08-13)
 
 ### Summary

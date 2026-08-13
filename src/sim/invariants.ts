@@ -1,4 +1,4 @@
-import { DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, TOTAL_MONEY_CENTS } from './config'
+import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, TOTAL_MONEY_CENTS } from './config'
 import type { SimulationState } from './types'
 
 const assertIntegerMoney = (label: string, value: number) => {
@@ -13,11 +13,15 @@ export function totalMoney(state: Pick<SimulationState, 'households' | 'firms' |
 
 export function validateState(state: SimulationState, endOfDay = false) {
   if (state.industries.length !== DEFAULT_INDUSTRIES.length) throw new Error('Expected exactly five industries')
-  if (state.firms.length !== state.industries.length) throw new Error('Expected exactly one firm per industry')
+  if (state.firms.length !== 6) throw new Error('Expected six firms')
   if (state.households.length !== HOUSEHOLD_COUNT) throw new Error(`Expected ${HOUSEHOLD_COUNT} households`)
   const industryIds = state.industries.map(({ id }) => id)
   if (new Set(industryIds).size !== industryIds.length) throw new Error('Industry IDs must be unique')
-  if (new Set(state.firms.map(({ industryId }) => industryId)).size !== industryIds.length) throw new Error('Every industry must have one firm')
+  for (const industryId of industryIds) {
+    const expected = DEFAULT_FIRM_IDS_BY_INDUSTRY[industryId]
+    const actual = state.firms.filter((firm) => firm.industryId === industryId).map(({ id }) => id).sort()
+    if (actual.join('|') !== [...expected].sort().join('|')) throw new Error(`${industryId} firm membership is invalid`)
+  }
   if (!Number.isInteger(state.config.dailySupplyPerIndustry) || state.config.dailySupplyPerIndustry < 0) throw new Error('Daily supply must be a non-negative integer')
 
   state.households.forEach((household) => {
@@ -47,11 +51,14 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (endOfDay && firm.availableUnitsToday !== 0) throw new Error(`${firm.id} goods cannot carry over`)
     if (endOfDay && state.config.dailySupplyPerIndustry !== firm.unitsSoldToday + firm.unitsExpiredToday) throw new Error(`${firm.id} stock-flow accounting failed`)
     if (endOfDay && firm.soldOutToday !== (firm.unitsSoldToday === state.config.dailySupplyPerIndustry)) throw new Error(`${firm.id} sold-out status is inconsistent`)
-    if (endOfDay) {
-      const purchased = state.households.filter((household) => household.industryOutcomes[firm.industryId].purchasedToday)
-      if (purchased.length !== firm.unitsSoldToday) throw new Error(`${firm.id} sales do not match household purchases`)
-    }
+    if (endOfDay && state.events.filter((event) => event.day === state.day && event.type === 'HOUSEHOLD_PURCHASE' && event.firmId === firm.id).length !== firm.unitsSoldToday) throw new Error(`${firm.id} sales do not match purchase events`)
   })
+
+  if (endOfDay) for (const industryId of industryIds) {
+    const sales = state.firms.filter((firm) => firm.industryId === industryId).reduce((sum, firm) => sum + firm.unitsSoldToday, 0)
+    const purchases = state.households.filter((household) => household.industryOutcomes[industryId].purchasedToday).length
+    if (sales !== purchases || sales > HOUSEHOLD_COUNT) throw new Error(`${industryId} total sales exceed or disagree with household demand`)
+  }
 
   if (totalMoney(state) !== TOTAL_MONEY_CENTS) throw new Error(`Money conservation failed: expected ${TOTAL_MONEY_CENTS} cents, found ${totalMoney(state)}`)
   if (endOfDay && state.government.cashCents !== 0) throw new Error('Government cash must be zero after redistribution')
