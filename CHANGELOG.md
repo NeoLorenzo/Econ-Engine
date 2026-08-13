@@ -4,7 +4,95 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 ## Maintenance convention
 
-Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
+Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
+
+## [MVP1-Scarcity_Analysis-003.1] - (2026-08-13)
+
+### Summary
+
+Added household-distribution analysis and deterministic starting-price experiments, then changed the visible default finite exogenous daily supply from eight to ten units to stabilize the baseline economy. The firm's pricing strategy and information inputs remain unchanged.
+
+### Added
+
+- Added pure minimum, median, maximum, Gini, and affordability measurements derived from household cash balances.
+- Added pre-market and end-of-day household distribution fields to historical daily metrics.
+- Added `householdsAffordableAtMarketOpen`, captured before queue processing or purchases.
+- Added lifetime purchases, stockout failures, and affordability failures to household state so cumulative analysis is independent of bounded event retention.
+- Added runtime validation that every household's cumulative outcomes are non-negative integers and account for every simulated day.
+- Added a deterministic starting-price experiment utility with the required 11-price grid, fixed $1.00 step, ten-unit default supply, 300-day horizon, explicit non-convergence results, final wealth distribution, affordability, and per-household cumulative outcomes.
+- Added a latest-day causal diagnostic linking tested price, market-open cash distribution, affordability, market result, profit, and next price.
+- Added a household wealth-distribution chart, current Gini metric, market-capacity chart, cumulative household outcome columns, and an on-demand experiment chart/table.
+- Added precise analytics and controlled-experiment tests, including known Gini distributions and observer/strategy boundary checks.
+
+### Experiment results
+
+- Under ten-unit supply, all 11 sampled starting prices converged to the $10.00 learner endpoint in 9–19 days.
+- Every run ended with equal $10.00 household balances, zero Gini, and equal cumulative consumption within that run.
+- The former eight-unit grid remains documented in lab notes as the historical scarcity comparison that produced multiple learner endpoints.
+
+### Changed
+
+- Extended the former food stock-flow chart to compare affordable households at market open with supply, sales, and expiration.
+- Updated household inspection to expose long-run food access without changing household behavior.
+- Changed the default and default experiment supply from eight to ten exogenous units, matching one desired unit for each household.
+- Made the stabilizing role explicit: affordable default markets serve every household, full redistribution restores each balance exactly, and stockout-driven wealth divergence does not arise.
+- Updated README, architecture, MVP 1 specification, validation documentation, page metadata, and lab notes for the MVP 1.1 analysis layer.
+- Left `pricingStrategy.ts`, the `decideTomorrowPrice` signature, and all existing firm inputs unchanged.
+
+### Validation
+
+- `npm run test:run`: 41 tests passed across 4 test files.
+- `npm run typecheck`: passed.
+- `npm run build`: passed; Vite retained its non-failing chunk-size advisory.
+- `npm run check`: passed.
+- The controlled 11-price suite ran twice identically; every sampled start converged to $10.00 within 19 days.
+- `npm run dev`: the local application loaded successfully in the browser.
+- Desktop checks verified daily causal diagnostics, all 11 experiment rows, cumulative outcomes for all 10 households, the common $10.00 endpoint, and zero console warnings/errors.
+- Mobile checks at a 390-pixel viewport verified both normal and populated-experiment layouts with no page-level horizontal overflow.
+- GitHub Pages deployment was not performed as part of this local update.
+
+## [MVP1-Finite_Supply-003] - (2026-08-13)
+
+### Summary
+
+Introduced a fixed exogenous daily food supply as MVP 1's single economic mechanism, with explicit stock-flow accounting, causal scarcity outcomes, deterministic allocation, historical metrics, dashboard inspection, and runtime validation. The firm's MVP 0 pricing strategy and its input boundary remain unchanged.
+
+### Added
+
+- Added configurable non-negative integer `dailyFoodSupply`, defaulting to eight units and applied only when a run is created or reset.
+- Added daily firm stock, expiration, and sold-out state plus household `purchased`, `insufficient_funds`, and `stockout` outcomes.
+- Added explicit `FOOD_SUPPLY_RECEIVED`, `HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS`, `HOUSEHOLD_PURCHASE_FAILED_STOCKOUT`, and `FOOD_EXPIRED` events.
+- Added deterministic rotating household purchase priority, advancing the first household by one each day and wrapping after household 10.
+- Added historical food-supplied, units-sold, units-expired, stockout-failure, affordability-failure, and sold-out metrics.
+- Added runtime food invariants for non-negative integer stock, the sales cap, exact supply-to-sale/expiration accounting, zero carry-over, matching household/firm sales, and complete causal outcomes.
+- Added dashboard supply configuration, food stock-flow chart, scarcity headline metrics, firm supply/expiration inspection, and household-level failure causes.
+- Added an MVP 1 specification and updated architecture, validation, README, and historical-spec routing.
+- Expanded automated coverage for supply caps, exact eight-unit sales, expiration, stock-flow conservation, no carry-over, inventory bounds, causal failures, rotation fairness, determinism, money, taxation, redistribution, event grouping, historical metrics, reset behavior, and learner behavior.
+
+### Changed
+
+- Replaced unlimited food with a new exogenous receipt at the start of every simulated day.
+- Replaced fixed household priority with cyclic day-based priority without introducing randomness.
+- Replaced generic purchase failures with separate affordability and stockout event causes.
+- Replaced the Quantity Sold chart with a supplied/sold/expired stock-flow chart.
+- Updated the ledger's market summaries to report purchases, affordability failures, stockout failures, and spending while preserving raw source events.
+- Made expiration explicit even when zero units expire; inventory is never silently reset.
+- Kept `decideTomorrowPrice` behaviorally and structurally unchanged: neither stockouts nor latent unmet demand became new strategy inputs.
+
+### Observed behavior
+
+- The equal-cash one-day benchmark remains exact: $9.99 yields eight sales and $79.92, $10.00 yields eight sales and $80.00, and $10.01 yields no sales.
+- Finite allocation makes later affordability path-dependent because equal redistribution does not erase the cash difference between buyers and non-buyers. With the unchanged learner, the tested $20.00 path converges to $10.00, while the default $2.00 path deterministically converges to $6.70. This behavior is documented rather than corrected with an excluded stabilizer or pricing heuristic.
+
+### Validation
+
+- `npm run test:run`: 26 tests passed across 2 test files.
+- `npm run typecheck`: passed.
+- `npm run build`: passed; Vite reported its existing non-failing chunk-size advisory.
+- `npm run check`: passed.
+- `npm run dev`: Vite became ready and the local application returned HTTP 200.
+- Browser smoke tests confirmed the MVP 1 controls, one-day scarcity metrics, supply and expiration ledger events, household stockout outcomes, zero console warnings/errors, and no horizontal overflow at a 390-pixel responsive viewport.
+- GitHub Pages deployment was not performed as part of this local update.
 
 ## [MVP0-UI_Refinement-002] - (2026-08-13)
 

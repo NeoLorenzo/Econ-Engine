@@ -10,4 +10,5 @@ export const MAX_EVENTS = 160
 export const DEFAULT_CONFIG: SimulationConfig = {
   startingPriceCents: 200,
   initialStepCents: 100,
+  dailyFoodSupply: 10,
 }

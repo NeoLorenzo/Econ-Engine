@@ -4,13 +4,20 @@ export type PriceDecisionAction = 'increase' | 'decrease' | 'refine' | 'hold' | 
 export interface SimulationConfig {
   startingPriceCents: number
   initialStepCents: number
+  dailyFoodSupply: number
 }
+
+export type HouseholdPurchaseOutcome = 'purchased' | 'insufficient_funds' | 'stockout' | null
 
 export interface Household {
   id: string
   cashCents: number
   purchasedToday: boolean
   spentTodayCents: number
+  purchaseOutcomeToday: HouseholdPurchaseOutcome
+  lifetimeUnitsPurchased: number
+  lifetimeStockoutFailures: number
+  lifetimeAffordabilityFailures: number
 }
 
 export interface Firm {
@@ -20,6 +27,9 @@ export interface Firm {
   unitsSoldToday: number
   revenueTodayCents: number
   preTaxProfitTodayCents: number
+  availableFoodToday: number
+  unitsExpiredToday: number
+  soldOutToday: boolean
 }
 
 export interface Government {
@@ -50,9 +60,12 @@ export interface PriceDecision {
 
 export type SimulationEventType =
   | 'DAY_STARTED'
+  | 'FOOD_SUPPLY_RECEIVED'
   | 'PRICE_POSTED'
   | 'HOUSEHOLD_PURCHASE'
-  | 'HOUSEHOLD_PURCHASE_FAILED'
+  | 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS'
+  | 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT'
+  | 'FOOD_EXPIRED'
   | 'FIRM_DAY_RESULT'
   | 'FIRM_PRICE_DECISION'
   | 'TAX_PAID'
@@ -79,7 +92,20 @@ export interface DayMetrics {
   priceStepSizeCents: number
   searchDirection: Direction
   unitsSold: number
-  failedPurchases: number
+  foodSupplied: number
+  unitsExpired: number
+  stockoutFailures: number
+  affordabilityFailures: number
+  soldOut: boolean
+  householdsAffordableAtMarketOpen: number
+  householdCashMinimumAtMarketOpenCents: number
+  householdCashMedianAtMarketOpenCents: number
+  householdCashMaximumAtMarketOpenCents: number
+  householdCashGiniAtMarketOpen: number
+  householdCashMinimumCents: number
+  householdCashMedianCents: number
+  householdCashMaximumCents: number
+  householdCashGini: number
   revenueCents: number
   preTaxProfitCents: number
   totalHouseholdCashCents: number

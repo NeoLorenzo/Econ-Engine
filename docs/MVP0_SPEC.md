@@ -1,5 +1,7 @@
 # MVP 0 formal specification
 
+> Historical specification: this describes MVP 0's unlimited-supply environment. The current model is [MVP 1 finite supply](MVP1_SPEC.md).
+
 This document is subordinate to the repository's [governing simulation design rules](../SIMULATION_DESIGN_RULES.md).
 
 ## World and starting conditions

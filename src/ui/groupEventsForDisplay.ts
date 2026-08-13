@@ -17,7 +17,9 @@ export function groupEventsForDisplay(events: SimulationEvent[]): DisplayEvent[]
   const transferGroups = new Map<number, DisplayEvent>()
 
   for (const event of events) {
-    if (event.type === 'HOUSEHOLD_PURCHASE' || event.type === 'HOUSEHOLD_PURCHASE_FAILED') {
+    if (event.type === 'HOUSEHOLD_PURCHASE'
+      || event.type === 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS'
+      || event.type === 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT') {
       let group = householdGroups.get(event.day)
       if (!group) {
         group = { key: `market-${event.day}`, day: event.day, type: 'HOUSEHOLD PURCHASES', description: '', details: [], grouped: true }
@@ -51,15 +53,21 @@ export function groupEventsForDisplay(events: SimulationEvent[]): DisplayEvent[]
 
   for (const group of householdGroups.values()) {
     const purchases = group.details.filter((event) => event.type === 'HOUSEHOLD_PURCHASE')
-    const failures = group.details.length - purchases.length
+    const affordabilityFailures = group.details.filter((event) => event.type === 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS').length
+    const stockoutFailures = group.details.filter((event) => event.type === 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT').length
     const total = purchases.reduce((sum, event) => sum + (event.amountCents ?? 0), 0)
     const price = purchases[0]?.amountCents ?? group.details.find((event) => event.priceCents !== undefined)?.priceCents ?? 0
     if (purchases.length === 0) {
       group.type = 'PURCHASES FAILED'
-      group.description = `0 of ${group.details.length} households could afford food at ${money(price)}.`
+      group.description = affordabilityFailures === group.details.length
+        ? `0 purchased · ${affordabilityFailures} affordability failures at ${money(price)}.`
+        : `0 purchased · ${affordabilityFailures} affordability failures · ${stockoutFailures} stockout failures.`
     } else {
-      const failureText = failures ? ` ${failures} purchase${failures === 1 ? '' : 's'} failed.` : ''
-      group.description = `${purchases.length} of ${group.details.length} households bought 1 food each at ${money(price)}.${failureText} Total spending: ${money(total)}.`
+      const failureParts = [
+        affordabilityFailures ? `${affordabilityFailures} affordability failure${affordabilityFailures === 1 ? '' : 's'}` : '',
+        stockoutFailures ? `${stockoutFailures} stockout failure${stockoutFailures === 1 ? '' : 's'}` : '',
+      ].filter(Boolean)
+      group.description = `${purchases.length} purchased${failureParts.length ? ` · ${failureParts.join(' · ')}` : ''} · ${money(total)} spent.`
     }
   }
 

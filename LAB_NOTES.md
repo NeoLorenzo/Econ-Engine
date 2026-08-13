@@ -4,7 +4,222 @@
 
 ## Maintenance convention
 
-Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
+Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
+
+## [MVP1-Scarcity_Analysis-003.1] - (2026-08-13)
+
+### Context
+
+MVP 1.1 instrumented an eight-unit economy and showed that scarce allocation made household balances diverge. The resulting affordability feedback produced multiple deterministic learner convergence endpoints, including $6.70 from the $2.00 start, even though $10.00 remained the one-day optimum in the initial equal-cash state.
+
+The default exogenous supply is now ten units—one per household—as an explicit stabilization choice. This does not change the pricing learner, reset household cash during a run, or add a hidden price rule. It changes the visible environment constraint so an affordable market can serve every household.
+
+### Mechanism
+
+Under the historical eight-unit configuration, if eight households purchase at price `P`, the firm receives `8P` and equal redistribution returns approximately `0.8P` to each household:
+
+```text
+buyer net cash change     = -P + 0.8P = -0.2P
+non-buyer net cash change =      0.8P = +0.8P
+```
+
+With ten supplied units, every affordable household purchases. The firm receives `10P` and redistribution returns exactly `P` to each household:
+
+```text
+buyer net cash change = -P + P = 0
+```
+
+Household balances therefore remain $10.00, pre-market affordability depends only on the tested price, and the realised price→profit function is stationary across affordable default days.
+
+### Revised research question
+
+> Does matching finite daily supply to maximum household demand remove the stockout-driven wealth feedback and stabilize the learner's experimental environment?
+
+### Why no behavioral fix was added
+
+The change does not reset balances, alter pricing in response to stockouts, expose latent demand, or encode $10.00. Ten units are received through the existing explicit supply event and remain configurable. The stabilizer is therefore an overt environment assumption, not hidden strategy logic. `pricingStrategy.ts` and the `decideTomorrowPrice` boundary remain unchanged.
+
+### Instrumentation decisions
+
+- Minimum, median, and maximum household cash expose distributional movement concealed by a stable total.
+- Gini summarizes dispersion from balances only. It is zero when balances are equal or all zero and never feeds back into behavior.
+- Market-open affordability is captured before queue processing, separating the number able to pay from supply and realised sales.
+- Cumulative household purchases, stockouts, and affordability failures live on household state because the event ledger is intentionally bounded.
+- Pre-market and end-of-day distributions are both snapshotted so a day's causal starting condition is not confused with its result.
+- The controlled experiment runner records how starting-price interventions change convergence and final household state while using the normal public engine.
+
+### Controlled experiment methodology
+
+The current experiment grid uses starting prices of $1.00, $2.00, $4.00, $6.00, $8.00, $9.00, $9.50, $10.00, $11.00, $15.00, and $20.00. Every run uses a $1.00 initial search step, ten daily food units, identical $10.00 household balances, the same rotating allocation, 100% taxation, equal redistribution, and the unchanged deterministic learner.
+
+The maximum horizon was 300 days. A run stopped only when the existing learner reported convergence or the horizon was reached. Non-convergence would be returned as a distinct null result rather than converted into a price. Collected outputs included starting and converged price, days, final minimum/median/maximum cash, Gini, affordability at the final posted price, and each household's cumulative purchases and failure causes.
+
+### Results
+
+All eleven sampled runs converged to $10.00 within 19 days:
+
+| Start | Converged | Days | Final cash min / median / max | Gini |
+|---:|---:|---:|---:|---:|
+| $1.00 | $10.00 | 18 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $2.00 | $10.00 | 17 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $4.00 | $10.00 | 15 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $6.00 | $10.00 | 13 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $8.00 | $10.00 | 11 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $9.00 | $10.00 | 10 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $9.50 | $10.00 | 11 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $10.00 | $10.00 | 9 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $11.00 | $10.00 | 10 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $15.00 | $10.00 | 14 | $10.00 / $10.00 / $10.00 | 0.000 |
+| $20.00 | $10.00 | 19 | $10.00 / $10.00 / $10.00 | 0.000 |
+
+Observed: every sampled start reaches the same $10.00 learner convergence endpoint. Every household ends with $10.00, Gini is zero, and cumulative consumption is equal across households within each run.
+
+The historical eight-unit suite produced multiple endpoints ($6.70–$10.00 in the sampled grid) and positive wealth dispersion. Comparing the two fixed-supply configurations supports the explanation that stockout allocation and redistribution generated the moving affordability landscape. Ten-unit supply removes that channel in the homogeneous default world.
+
+### Path dependence
+
+The current ten-unit grid shows no path dependence in learner endpoints across the sampled starts. This result is specific to the stabilizing supply assumption and the current homogeneous, full-redistribution institutions. Lower configured supply still reproduces the historical path-dependent case.
+
+### Trade-offs
+
+- Ten households make individual histories inspectable but limit generalization.
+- Deterministic rotation is one allocation institution, not a neutral market-clearing process.
+- Supply is fixed, exogenous, and perishable.
+- Equal redistribution stabilizes balances only because all ten households buy on affordable default days.
+- The world remains a zero-cost monopolist with no production or persistent inventory.
+- Results depend on the current bounded one-day-profit heuristic and its $1.00 initial step.
+- Ten-unit supply removes stockout scarcity from affordable default days, although supply remains finite.
+
+### Validation
+
+Pure analytics tests cover even-population medians, equal and unequal Gini benchmarks, distribution summaries, and order-independent affordability. Engine-level tests verify pre-market timing, historical state boundaries, cumulative outcome increments, persistence, and reset. Experiment tests verify reproducibility, fixed non-intervention settings, explicit horizon behavior, complete cumulative histories, and the unchanged strategy boundary.
+
+`npm run test:run` passed 41 tests across four files. `npm run typecheck`, `npm run build`, and `npm run check` passed; the build retained Vite's non-failing chunk-size advisory. The controlled ten-unit suite produced identical results on repeated execution. Desktop and populated 390-pixel mobile checks confirmed the ten-unit default, ten sales on the first affordable day, zero Gini, all eleven $10.00 experiment endpoints, no page-level overflow, and no browser console warnings or errors. GitHub Pages deployment was not attempted.
+
+### Lessons
+
+- A visible environment parameter can stabilize a model without modifying agent strategy.
+- Matching maximum supply to homogeneous demand prevents the allocation feedback that previously moved affordability.
+- Observer analytics make the stabilization testable: min/median/max remain equal and Gini remains zero.
+- The historical eight-unit result remains useful as a controlled comparison rather than something to erase.
+
+### Open questions
+
+- How sensitive is stabilization to supply below ten?
+- Would heterogeneous household demand or a different redistribution institution reintroduce wealth divergence?
+- Should future comparisons treat supply quantity as the explicit intervention?
+
+## [MVP1-Finite_Supply-003] - (2026-08-13)
+
+### Context
+
+MVP 0 had reached a useful baseline: the browser simulation was deterministic, monetary transfers conserved every cent, the bounded learner could be inspected through strategy state and raw events, and the unlimited-supply analytical benchmark was covered by tests. Its assumptions and failure modes were sufficiently understood to introduce one additional constraint without simultaneously changing production, household demand, taxation, or price learning.
+
+The unlimited-food world made quantity sold a pure affordability result. If every household could pay, ten units always appeared and ten purchases occurred. That design was appropriate for isolating the first learner, but it could not represent physical scarcity or distinguish inability to pay from inability to obtain an available good.
+
+### Research question
+
+> How does the existing price-discovery mechanism behave when quantity sold is constrained by finite physical supply rather than only by consumer affordability?
+
+### Why finite supply was chosen
+
+Finite supply is the smallest environmental change that makes physical quantity constrain the market. A fixed eight-unit daily receipt creates a known gap between ten desired units and available food without requiring a theory of production. It adds one stock-flow identity and one allocation institution while leaving the firm's objective, government circuit, and household desire unchanged.
+
+### Risks identified before implementation
+
+- Sales could become an ambiguous signal: eight sales might mean exactly eight willing buyers or a sold-out market with additional latent attempts.
+- Stockout data known by the engine could accidentally leak into the firm's strategy and give it God-view demand information.
+- Persistent inventory could introduce additional path dependence and contaminate the isolated price experiment.
+- Fixed household ordering could permanently advantage low-numbered households.
+- Fake production costs could destroy money or add an unexplained recipient.
+- A stockout response in the learner would change behavior at the same time as the environment.
+- Adding workers, wages, suppliers, or quantity choice would turn one mechanism into an uncontrolled production model.
+- Equal redistribution after scarce allocation could create unequal household balances even though aggregate money remains conserved.
+
+### Decisions and rationale
+
+#### Use fixed exogenous daily supply
+
+The configured integer supply arrives at the start of each day through an explicit event. It is not chosen by the firm and is not described as output from workers, capital, or raw materials. Eight units is the default because it creates two physically unserved households in an otherwise affordable initial market.
+
+#### Expire every unsold unit
+
+Remaining stock moves explicitly to expiration after household attempts. The engine records an expiration event even when the quantity is zero, making the daily stock lifecycle visible. Ending inventory must be zero. This avoids persistent physical-state path dependence while preserving a causal destination for every unit.
+
+#### Rotate purchasing priority
+
+The first household advances by one ID each day and the rest follow cyclically. Across ten always-affordable days with eight units, each household encounters stockout exactly twice. The order is reproducible, explainable from the current day, and contains no unseeded randomness.
+
+#### Separate failure causes
+
+Each household ends the market with exactly one causal outcome. Insufficient funds is evaluated before stock availability so a household that cannot pay is not mislabeled merely because earlier buyers depleted stock. An affordable household receives a stockout outcome only when inventory is zero. This preserves the intended $10.01 benchmark classification.
+
+#### Keep the pricing strategy unchanged and restrict its information
+
+Inventory belongs to the environment. The pricing function still accepts only the current price, units sold, realised profit, and private learning state. It is not passed stockout-failure counts, household balances, the daily-supply parameter, or the analytical benchmark. The engine can report sold-out status in state and metrics without converting it into a new pricing rule.
+
+#### Enforce food accounting directly
+
+Runtime validation requires non-negative integer supply variables, sales no greater than supply, zero ending stock, exact `supply = sales + expiration`, matching household purchase and firm sales counts, and one outcome per household. Money conservation and cleared institutional balances remain unchanged.
+
+### Expected benchmark
+
+For the equal-cash starting state and eight units:
+
+| Price | Sales | Revenue | Causal failures |
+|---:|---:|---:|---|
+| $9.99 | 8 | $79.92 | 2 stockouts |
+| $10.00 | 8 | $80.00 | 2 stockouts |
+| $10.01 | 0 | $0.00 | 10 insufficient-funds failures |
+
+The initial-state revenue optimum is therefore $10.00. The learner is not given this result.
+
+### Findings
+
+Verified observation: finite supply caps an affordable first-day market at eight purchases. The remaining two households produce granular stockout events, no food expires, and the firm records $80.00 at a $10.00 price. At $10.01, all ten attempts fail for affordability, all eight supplied units expire, and revenue is zero.
+
+Verified observation: the rotation removes permanent structural priority when households remain affordable. In a ten-day, one-cent scenario, every household experiences exactly two stockouts.
+
+Verified observation: physical inventory itself has no path dependence; every completed day ends with zero available food and the next day receives exactly the configured amount.
+
+Verified observation: household cash does become path-dependent. Equal redistribution gives buyers and non-buyers the same transfer even though only buyers spent money. Consequently, the household population no longer returns to ten identical $10.00 balances after every market.
+
+That monetary distribution changes later affordability and makes the learner's realised one-day profit surface depend on its experiment path. The unchanged learner converges to $10.00 in the tested run beginning at $20.00, but the default $2.00/$1.00-step run converges reproducibly to $6.70. The $10.00 benchmark is still exact for the specified initial state; it is not a stationary guarantee for every subsequent state.
+
+This result was not hidden with a balance reset, credit, purchase-correlated transfer, repeated-price averaging rule, or stockout-based heuristic because each would add or change a mechanism excluded from MVP 1.
+
+### Trade-offs
+
+- Supply is exogenous and says nothing about how food is produced.
+- Expiration is a simplifying institution, not an empirical shelf-life model.
+- Rotating queue allocation is institutional rather than price- or preference-driven.
+- A sellout reveals scarcity to the firm, but MVP 1 does not provide the learner with the exact latent number of affordable attempts.
+- Equal redistribution preserves aggregate money but does not restore household symmetry after scarce allocation.
+- Production quantity is fixed and cannot respond to prices, sales, or stockouts.
+
+### Validation
+
+The expanded tests verify the analytical table, stock-flow identity, inventory bounds, zero carry-over, distinct failures, causal outcome completeness, deterministic rotation, money conservation, taxation, redistribution, raw-event preservation, historical metrics, reset behavior, and unchanged pricing-action branches.
+
+`npm run test:run` passed 26 tests across two files. `npm run typecheck`, `npm run build`, and the combined `npm run check` all passed. The build retained Vite's non-failing chunk-size advisory. The development server became ready and returned HTTP 200. Rendered browser checks found no console warnings or errors, confirmed the day-one supply, sold/expired, failure, household, and ledger views, and found no horizontal overflow at a 390-pixel viewport. No GitHub Pages deployment was attempted in this update.
+
+### Lessons
+
+- Removing physical inventory carry-over does not remove all path dependence; allocation can transmit history through household balance sheets.
+- An analytical one-day optimum and a repeated adaptive-market optimum are different claims and should be tested and labeled separately.
+- Failure taxonomy matters for both interpretation and information boundaries: the engine can know more than the pricing agent.
+- A zero-quantity expiration event can still be valuable evidence that a lifecycle phase occurred.
+- Rotating order solves permanent queue priority but does not equalize economic outcomes when affordability evolves.
+- Preserving an unchanged strategy can reveal that an environmental intervention invalidates the stationarity assumptions implicit in its learning path.
+
+### Open questions / next steps
+
+- Should persistent inventory be studied as the next isolated physical mechanism, or would it compound the already observed monetary path dependence too quickly?
+- Should a future firm strategy explicitly learn from a sellout signal, and how could that be tested separately from exact latent demand?
+- Should competition precede endogenous production?
+- How should allocation work once households differ in income, needs, or preferences?
+- How can production become endogenous later while preserving explicit physical and monetary stock-flow accounting?
+- Should future price experiments hold a price for a documented observation window, and would that be a strategy change or an experimental-protocol change?
 
 ## [MVP0-UI_Refinement-002] - (2026-08-13)
 
