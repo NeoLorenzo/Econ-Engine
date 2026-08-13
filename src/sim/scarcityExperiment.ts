@@ -27,6 +27,7 @@ export interface MultiIndustryExperimentOptions {
   initialStepCents?: number
   dailySupplyPerIndustry?: number
   horizonDays?: number
+  seed?: number
 }
 
 export interface FirmExperimentResult {
@@ -71,9 +72,9 @@ export function runMultiIndustryExperiment(options: MultiIndustryExperimentOptio
   const dailySupplyPerIndustry = Math.max(0, Math.round(options.dailySupplyPerIndustry ?? 10))
   const horizonDays = Math.max(0, Math.round(options.horizonDays ?? MULTI_INDUSTRY_EXPERIMENT_HORIZON_DAYS))
   const startingPrices = { ...MULTI_INDUSTRY_STARTING_PRICES_CENTS, ...options.startingPricesCents }
-  let state = createSimulation({ startingPriceCents: 200, initialStepCents, dailySupplyPerIndustry, industryStartingPricesCents: startingPrices, firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS })
+  let state = createSimulation({ startingPriceCents: 200, initialStepCents, dailySupplyPerIndustry, industryStartingPricesCents: startingPrices, firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS, seed: options.seed })
   const convergenceDays = new Map<string, number>()
-  while (!state.firms.every((firm) => firm.pricing.converged) && state.day < horizonDays) {
+  while (state.day < horizonDays) {
     state = stepSimulation(state)
     state.firms.forEach((firm) => { if (firm.pricing.converged && !convergenceDays.has(firm.id)) convergenceDays.set(firm.id, state.day) })
   }
@@ -82,7 +83,7 @@ export function runMultiIndustryExperiment(options: MultiIndustryExperimentOptio
     initialStepCents, dailySupplyPerIndustry, horizonDays, daysRun: state.day,
     firms: state.firms.map((firm) => ({
       industryId: firm.industryId, firmId: firm.id, startingPriceCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS[firm.id as keyof typeof ENTERTAINMENT_COMPETITOR_STARTS_CENTS] ?? startingPrices[firm.industryId],
-      convergedPriceCents: firm.pricing.converged ? firm.pricing.bestPriceCents : null,
+      convergedPriceCents: firm.pricing.locallySettled ? firm.pricing.incumbentPriceCents : null,
       daysToConvergence: convergenceDays.get(firm.id) ?? null,
       finalPriceCents: firm.postedPriceCents,
       finalUnitsSold: firm.unitsSoldToday,

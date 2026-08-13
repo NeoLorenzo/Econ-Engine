@@ -6,6 +6,32 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP3-Entertainment_Competition-005.2] - (2026-08-13)
+
+### Problem
+
+The 005.1 grid showed that symmetric Entertainment learners could synchronize and freeze at $5/$5 even though a unilateral $4.99 test could capture substantially more demand. Accounting remained exact; the behavioral problem was the rule `converged = stop experimenting forever`, which is unsuitable when another adaptive firm changes the environment.
+
+### Design decision
+
+Permanent convergence was replaced with local settlement plus persistent experimentation. Broad price discovery is unchanged. Once locally settled, each firm independently has a 10% seeded probability per simulated day of scheduling a one-cent up/down probe. A probe is adopted only when the firm's own realised profit strictly exceeds its stored incumbent reference profit; otherwise the incumbent is restored. Firms receive no competitor price, profit, market-share, household-balance, or hidden-demand input.
+
+The simulation uses a centralized xorshift32 generator with canonical seed `20260813`. It supplies every stochastic household shuffle, equal-price firm selection, probe-timing draw, and probe-direction draw. The seed and internal generator state are part of simulation state, so the same model, configuration, and seed replay exactly.
+
+> Randomness represents uncertainty, ordering, matching, and search—not missing economic mechanisms.
+
+### Findings
+
+Six sampled 300-day runs covered $5/$5 and $1/$8 starts under seeds `20260813`, `7`, and `42`. The formerly frozen $5/$5 state was escaped: the canonical and seed-7 runs ended with $4.99/$4.98 incumbents, while seed 42 ended at $4.99/$4.99 with one firm temporarily testing $5.00. Thus unilateral probes can be adopted and competitive prices can continue moving; no terminal or equilibrium claim is made.
+
+The $1/$8 runs reached $4/$4 incumbents for all three sampled seeds over 300 days. They continued to generate probe days, but sampled probes did not improve the stored incumbent references enough to be adopted. Equal-price daily sales and shares varied by seed rather than being forced to 5/5.
+
+The four monopoly controls remained centered on their established incumbent optima—Food $15, Utilities $12, Transport $8, and Healthcare $10—while occasionally testing an adjacent cent. Seeded histories differed legitimately across seeds, while repeated canonical-seed runs were exactly identical in state, metrics, events, and cumulative outcomes.
+
+### Stability and scope
+
+The 1,000-day baseline retained exactly $500 total money, zero household Gini, equal $50 household balances, exact daily stock flow, cleared firm/government balances, deterministic same-seed execution, and bounded histories. The change adds no competitor observation, undercut heuristic, best response, marginal cost, product differentiation, additional firm/industry, or stabilizer.
+
 ## [MVP3-Entertainment_Competition-005.1] - (2026-08-13)
 
 ### Motivation and research question

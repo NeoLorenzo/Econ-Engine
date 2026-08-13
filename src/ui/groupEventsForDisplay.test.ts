@@ -44,7 +44,10 @@ describe('multi-market event display grouping', () => {
     const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'market-1-entertainment')
     expect(group?.details).toHaveLength(10)
     expect(group?.description).toBe('10 purchased · 0 affordability · 0 stockout failures · $40.00 spent.')
-    expect(group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-a')).toHaveLength(5)
-    expect(group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-b')).toHaveLength(5)
+    const a = group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-a').length ?? 0
+    const b = group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-b').length ?? 0
+    expect(a + b).toBe(10)
+    expect(a).toBeGreaterThan(0)
+    expect(b).toBeGreaterThan(0)
   })
 })

@@ -25,7 +25,7 @@ npm run check
 - Money uses integer cents and remains exactly $500. Observer analytics and raw events do not enter firm decisions.
 - Common daily supply remains configurable, so lower-supply scarcity and path dependence remain available.
 
-The monopoly control benchmarks remain Food $15, Utilities $12, Healthcare $10, and Transport $8. Entertainment has no universal convergence price: equal starts synchronize toward a $5/$5 learner endpoint, while the $1/$8 controlled run reaches $4/$4 and the wider grid exposes additional path-dependent endpoints. These are deterministic learner stopping points, not strategy targets or claims of competitive equilibrium.
+The monopoly control incumbents remain Food $15, Utilities $12, Healthcare $10, and Transport $8, with occasional one-cent probe days. Entertainment has no universal convergence price: seeded, persistent local experiments can escape formerly frozen states such as $5/$5, while histories remain exactly reproducible for a fixed seed. These are learner dynamics, not claims of competitive equilibrium.
 
 ## Architecture
 

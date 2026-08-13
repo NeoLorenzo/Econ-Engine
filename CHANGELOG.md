@@ -6,6 +6,26 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
+## [MVP3-Entertainment_Competition-005.2] - (2026-08-13)
+
+Replaced artificial ordering and terminal learner convergence with reproducible seeded sampling and persistent local price exploration. No new market mechanism or competitor information was added.
+
+### Added
+
+- Central xorshift32 seeded RNG (canonical seed `20260813`) with reusable draw, shuffle, selection, and probability utilities; the UI exposes the run seed.
+- Seeded household arrival shuffles for every market/day and seeded equal-price firm selection.
+- Independently sampled 10%-per-day one-cent probes for locally settled firms, with explicit incumbent/reference profit, probe direction/state, and `PRICE_PROBE_STARTED`, `PRICE_PROBE_ADOPTED`, and `PRICE_PROBE_REJECTED` events.
+
+### Changed
+
+- Terminal pricing convergence is now local settlement: firms retain broad discovery, then remain capable of probing indefinitely and adopt only probes that improve their own realised profit.
+- Dashboard status distinguishes searching, locally settled, and probing, and displays tested, next, and incumbent prices.
+- Competition experiments run through their configured horizon and accept a seed so post-settlement behavior remains observable.
+
+### Validation
+
+- Added seeded replay, seeded tie/shuffle, probe lifecycle, persistent exploration, accounting, 1,000-day stability, and bounded-history coverage; obsolete exact 5/5 and permanent-price assumptions were removed.
+
 ## [MVP3-Entertainment_Competition-005.1] - (2026-08-13)
 
 ### Summary

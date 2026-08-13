@@ -1,6 +1,11 @@
 import { MIN_PRICE_CENTS } from './config'
 import type { Direction, PriceDecision, PricingState } from './types'
 
+export interface PricingExplorationDraw {
+  shouldProbe: boolean
+  direction: Direction
+}
+
 const move = (price: number, direction: Direction, step: number) =>
   Math.max(MIN_PRICE_CENTS, price + (direction === 'up' ? step : -step))
 
@@ -16,6 +21,11 @@ export function createPricingState(startingPriceCents: number, initialStepCents:
     foundPositiveProfit: false,
     testedLowerAtOneCent: false,
     testedUpperAtOneCent: false,
+    incumbentPriceCents: startingPriceCents,
+    incumbentProfitCents: -1,
+    locallySettled: false,
+    probing: false,
+    probeDirection: null,
   }
 }
 
@@ -24,10 +34,50 @@ export function decideTomorrowPrice(
   currentPriceCents: number,
   unitsSold: number,
   currentProfitCents: number,
+  exploration: PricingExplorationDraw = { shouldProbe: false, direction: 'up' },
 ): PriceDecision {
   const next = { ...state }
-  if (next.converged) {
-    return { nextPriceCents: next.bestPriceCents, state: next, action: 'hold', justConverged: false, reason: 'Price discovery is complete. Holding the best-known price.' }
+  if (next.probing) {
+    const adopted = currentProfitCents > next.incumbentProfitCents
+    if (adopted) {
+      next.incumbentPriceCents = currentPriceCents
+      next.incumbentProfitCents = currentProfitCents
+      next.bestPriceCents = currentPriceCents
+      next.bestProfitCents = currentProfitCents
+    }
+    next.probing = false
+    next.probeDirection = null
+    return {
+      nextPriceCents: next.incumbentPriceCents,
+      state: next,
+      action: adopted ? 'probe_adopted' : 'probe_rejected',
+      justConverged: false,
+      probeEvent: adopted ? 'adopted' : 'rejected',
+      reason: adopted
+        ? 'The one-cent probe improved realized profit, so it becomes the new incumbent price.'
+        : 'The one-cent probe did not improve realized profit, so the incumbent price is restored.',
+    }
+  }
+
+  if (next.locallySettled || next.converged) {
+    next.locallySettled = true
+    next.converged = true
+    if (exploration.shouldProbe) {
+      let direction = exploration.direction
+      if (next.incumbentPriceCents === MIN_PRICE_CENTS && direction === 'down') direction = 'up'
+      next.probing = true
+      next.probeDirection = direction
+      const probePrice = move(next.incumbentPriceCents, direction, 1)
+      return {
+        nextPriceCents: probePrice,
+        state: next,
+        action: 'probe_started',
+        justConverged: false,
+        probeEvent: 'started',
+        reason: `Starting an independently sampled one-cent ${direction} probe from the incumbent price.`,
+      }
+    }
+    return { nextPriceCents: next.incumbentPriceCents, state: next, action: 'hold', justConverged: false, reason: 'Locally settled. Holding the incumbent price until a future probe is sampled.' }
   }
 
   if (!next.foundPositiveProfit && currentProfitCents === 0 && unitsSold === 0) {
@@ -75,12 +125,15 @@ export function decideTomorrowPrice(
 
   if (next.testedLowerAtOneCent && next.testedUpperAtOneCent) {
     next.converged = true
+    next.locallySettled = true
+    next.incumbentPriceCents = next.bestPriceCents
+    next.incumbentProfitCents = next.bestProfitCents
     return {
       nextPriceCents: next.bestPriceCents,
       state: next,
-      action: 'converged',
+      action: 'locally_settled',
       justConverged: true,
-      reason: 'Both adjacent one-cent prices failed to improve realized profit. Holding the best-known price.',
+      reason: 'Both adjacent one-cent prices failed to improve realized profit. The learner is locally settled and will keep testing occasional probes.',
     }
   }
 

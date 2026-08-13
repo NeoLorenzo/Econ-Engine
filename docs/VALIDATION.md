@@ -25,9 +25,9 @@ Default budgets and firm optima are Food $15, Utilities $12, Healthcare $10, Tra
 
 ## Automated coverage
 
-The suite covers industry and firm cardinality, independent pricing states, household cash/budgets/outcomes, budget non-monetization, finite stock per market, affordability/stockout distinctions, five-purchase days, cross-market budget independence, full tax pooling, equal redistribution, long-run balance/Gini/money stability, varied-start convergence, learner isolation, determinism, industry-order independence, lower-supply stockouts, cumulative counters, reset, generic event identity/grouping, observer boundaries, and bounded histories.
+The suite covers industry and firm cardinality, independent pricing states, household cash/budgets/outcomes, budget non-monetization, finite stock per market, affordability/stockout distinctions, five-purchase days, cross-market budget independence, full tax pooling, equal redistribution, long-run balance/Gini/money stability, learner isolation, same-seed determinism, different-seed sampling, seeded tie choice, probe adoption/restoration, persistent probing, lower-supply stockouts, cumulative counters, reset, generic event identity/grouping, observer boundaries, and bounded histories.
 
-## Observed control and competitive convergence
+## Observed local settlement and continued exploration
 
 With starts Food $1, Utilities $2, Transport $5, Healthcare $15, Entertainment $20; initial step $1; supply ten each; and horizon 300:
 
@@ -40,13 +40,15 @@ With starts Food $1, Utilities $2, Transport $5, Healthcare $15, Entertainment $
 | Entertainment A | $4.00 | 12 |
 | Entertainment B | $4.00 | 13 |
 
-Entertainment A started at $1 and B at $8. Full-market leadership alternated as their experimental prices crossed. A converged to a $4 best-known price on day 12 and B on day 13. From day 14 both posted $4 and deterministic ties produced 5/5 sales, $20 profit per firm, and 50% observer market share. This is the implemented learner endpoint, not an encoded competitive target.
+Entertainment A started at $1 and B at $8. Broad discovery still locally settles around $4/$4, after which seeded probes continue; equal-price demand is no longer forced to split 5/5. In sampled 300-day runs with seeds `20260813`, `7`, and `42`, incumbents remained $4/$4 while probe days continued.
+
+For $5/$5 starts, all three sampled seeds escaped the formerly frozen state. After 300 days the incumbents were $4.99/$4.98 for seeds `20260813` and `7`, and $4.99/$4.99 for seed `42`. These are sampled learner states, not competitive equilibria or hard-coded targets.
 
 The joint run ended on day 23 after Food reached $15; Utilities, Transport, and Healthcare retained $12/$8/$10. Every household held $50, Gini was 0, and total money was $500.
 
-A 1,000-day run kept total money at $500, all household balances equal at $50, Gini at zero, all six firms non-negative, every per-firm stock flow balanced, total Entertainment sales at or below ten, and histories bounded. Identical long runs were deterministic.
+A 1,000-day run kept total money at $500, all household balances equal at $50, Gini at zero, all six firms non-negative, every per-firm stock flow balanced, total Entertainment sales at or below ten, control incumbents at $15/$12/$8/$10, and histories bounded. Identical-seed long runs were deterministic.
 
-Forward and reversed industry processing orders produced identical canonical household states and per-firm price, search, sales, and revenue results. Identical runs produced identical full state, metrics, events, and cumulative outcomes.
+Changing industry processing order remains a different configured causal ordering and can consume the seeded stream differently. Both tested orders preserve accounting and control incumbents. Identical configurations and seeds produce identical full state, metrics, events, and cumulative outcomes.
 
 Lower common supply remains an explicitly different scarcity configuration: it produces valid stockout events and can retain wealth divergence/path dependence. It is not forced into canonical stability.
 

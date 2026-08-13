@@ -1,5 +1,5 @@
 export type Direction = 'up' | 'down'
-export type PriceDecisionAction = 'increase' | 'decrease' | 'refine' | 'hold' | 'converged'
+export type PriceDecisionAction = 'increase' | 'decrease' | 'refine' | 'hold' | 'locally_settled' | 'probe_started' | 'probe_adopted' | 'probe_rejected'
 
 export type IndustryId = 'food' | 'utilities' | 'transport' | 'healthcare' | 'entertainment'
 
@@ -16,6 +16,8 @@ export interface SimulationConfig {
   industryStartingPricesCents?: Partial<Record<IndustryId, number>>
   firmStartingPricesCents?: Record<string, number>
   industryProcessingOrder?: IndustryId[]
+  seed?: number
+  probeProbability?: number
 }
 
 export type HouseholdPurchaseOutcome = 'purchased' | 'insufficient_funds' | 'stockout' | null
@@ -45,6 +47,11 @@ export interface PricingState {
   foundPositiveProfit: boolean
   testedLowerAtOneCent: boolean
   testedUpperAtOneCent: boolean
+  incumbentPriceCents: number
+  incumbentProfitCents: number
+  locallySettled: boolean
+  probing: boolean
+  probeDirection: Direction | null
 }
 
 export interface Firm {
@@ -76,6 +83,7 @@ export interface PriceDecision {
   action: PriceDecisionAction
   state: PricingState
   justConverged: boolean
+  probeEvent?: 'started' | 'adopted' | 'rejected'
 }
 
 export type SimulationEventType =
@@ -91,6 +99,9 @@ export type SimulationEventType =
   | 'TAX_PAID'
   | 'TRANSFER_RECEIVED'
   | 'PRICE_DISCOVERY_CONVERGED'
+  | 'PRICE_PROBE_STARTED'
+  | 'PRICE_PROBE_ADOPTED'
+  | 'PRICE_PROBE_REJECTED'
   | 'DAY_ENDED'
 
 export interface SimulationEvent {
@@ -126,6 +137,9 @@ export interface MarketMetrics {
   revenueCents: number
   preTaxProfitCents: number
   converged: boolean
+  locallySettled: boolean
+  probing: boolean
+  incumbentPriceCents: number
   marketShare: number
   totalIndustryUnitsSold: number
   transactionPricesCents: number[]
@@ -151,6 +165,7 @@ export interface DayMetrics {
   governmentCashAfterRedistributionCents: number
   totalMoneyCents: number
   allFirmsConverged: boolean
+  allFirmsLocallySettled: boolean
 }
 
 export interface SimulationState {
@@ -163,4 +178,5 @@ export interface SimulationState {
   metrics: DayMetrics[]
   events: SimulationEvent[]
   nextEventId: number
+  rngState: number
 }

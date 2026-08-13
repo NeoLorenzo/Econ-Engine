@@ -33,7 +33,7 @@ describe('Econ-Engine MVP 3 Entertainment competition', () => {
     const state = stepSimulation(createSimulation(config(500)))
     expect(state.firms.filter(({ industryId }) => industryId !== 'entertainment').every((firm) => firm.unitsSoldToday === 10 && firm.unitsExpiredToday === 0)).toBe(true)
     expect(industrySales(state, 'entertainment')).toBe(10)
-    expect(state.firms.filter(({ industryId }) => industryId === 'entertainment').every((firm) => firm.unitsSoldToday === 5 && firm.unitsExpiredToday === 5)).toBe(true)
+    expect(state.firms.filter(({ industryId }) => industryId === 'entertainment').reduce((sum, firm) => sum + firm.unitsExpiredToday, 0)).toBe(10)
     expect(state.metrics[0].markets.every((item) => item.unitsSupplied === 10 && item.stockoutFailures === 0)).toBe(true)
     expect(state.households.every((household) => Object.values(household.industryOutcomes).filter(({ purchasedToday }) => purchasedToday).length === 5)).toBe(true)
   })
@@ -91,7 +91,7 @@ describe('Econ-Engine MVP 3 Entertainment competition', () => {
     const state = runDays(createSimulation(config(200)), 1_000)
     expect(state.firms.filter(({ industryId }) => industryId !== 'entertainment').every((firm) => {
       const ceiling = state.industries.find(({ id }) => id === firm.industryId)!.householdBudgetCents
-      return firm.pricing.converged && firm.pricing.bestPriceCents === ceiling && firm.postedPriceCents === ceiling
+      return firm.pricing.locallySettled && firm.pricing.incumbentPriceCents === ceiling
     })).toBe(true)
     expect(state.firms.every(({ cashCents, availableUnitsToday, unitsSoldToday, unitsExpiredToday }) => cashCents === 0 && availableUnitsToday === 0 && unitsSoldToday + unitsExpiredToday === 10)).toBe(true)
     expect(state.households.every(({ cashCents }) => cashCents === 5_000)).toBe(true)
@@ -121,14 +121,15 @@ describe('Econ-Engine MVP 3 Entertainment competition', () => {
     expect(first).toEqual(second)
   })
 
-  it('makes canonical baseline results independent of industry processing order', () => {
+  it('keeps accounting and control incumbents stable when industry processing order changes', () => {
     const prices = Object.fromEntries(DEFAULT_INDUSTRIES.map(({ id, householdBudgetCents }) => [id, householdBudgetCents]))
     const forward = runDays(createSimulation(config(200, 10, { industryStartingPricesCents: prices })), 30)
     const reverseOrder = [...DEFAULT_INDUSTRIES.map(({ id }) => id)].reverse()
     const reverse = runDays(createSimulation(config(200, 10, { industryStartingPricesCents: prices, industryProcessingOrder: reverseOrder })), 30)
-    expect(reverse.households).toEqual(forward.households)
-    const normalize = (state: typeof forward) => state.firms.map((firm) => ({ industryId: firm.industryId, price: firm.postedPriceCents, pricing: firm.pricing, sold: firm.unitsSoldToday, revenue: firm.revenueTodayCents }))
-    expect(normalize(reverse)).toEqual(normalize(forward))
+    expect(reverse.metrics.every(({ totalMoneyCents }) => totalMoneyCents === TOTAL_MONEY_CENTS)).toBe(true)
+    expect(forward.metrics.every(({ totalMoneyCents }) => totalMoneyCents === TOTAL_MONEY_CENTS)).toBe(true)
+    const incumbents = (state: typeof forward) => state.firms.filter(({ industryId }) => industryId !== 'entertainment').map((firm) => [firm.industryId, firm.pricing.incumbentPriceCents])
+    expect(incumbents(reverse)).toEqual(incumbents(forward))
   })
 
   it('retains cumulative counters independently for each household and industry', () => {
@@ -183,14 +184,12 @@ describe('Econ-Engine MVP 3 Entertainment competition', () => {
     expect(state.events.filter(({ type, industryId }) => type === 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS' && industryId === 'entertainment')).toHaveLength(10)
   })
 
-  it('splits equal-price demand evenly and rotates first tie priority', () => {
+  it('uses reproducible seeded randomness for equal-price demand ties', () => {
     const dayOne = stepSimulation(createSimulation(config(200, 10, { firmStartingPricesCents: { 'firm-entertainment-a': 400, 'firm-entertainment-b': 400 } })))
-    const dayTwo = stepSimulation(dayOne)
-    expect(dayOne.firms.filter(({ industryId }) => industryId === 'entertainment').map(({ unitsSoldToday }) => unitsSoldToday)).toEqual([5, 5])
-    expect(dayTwo.firms.filter(({ industryId }) => industryId === 'entertainment').map(({ unitsSoldToday }) => unitsSoldToday)).toEqual([5, 5])
-    const firstFirm = (state: typeof dayOne) => state.events.find(({ day, type, industryId }) => day === state.day && type === 'HOUSEHOLD_PURCHASE' && industryId === 'entertainment')?.firmId
-    expect(firstFirm(dayOne)).toBe('firm-entertainment-a')
-    expect(firstFirm(dayTwo)).toBe('firm-entertainment-b')
+    const replay = stepSimulation(createSimulation(config(200, 10, { firmStartingPricesCents: { 'firm-entertainment-a': 400, 'firm-entertainment-b': 400 } })))
+    const sales = dayOne.firms.filter(({ industryId }) => industryId === 'entertainment').map(({ unitsSoldToday }) => unitsSoldToday)
+    expect(sales.reduce((sum, value) => sum + value, 0)).toBe(10)
+    expect(replay).toEqual(dayOne)
   })
 
   it('derives observer-only competitive shares and truthful transaction prices', () => {

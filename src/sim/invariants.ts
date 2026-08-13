@@ -23,6 +23,8 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (actual.join('|') !== [...expected].sort().join('|')) throw new Error(`${industryId} firm membership is invalid`)
   }
   if (!Number.isInteger(state.config.dailySupplyPerIndustry) || state.config.dailySupplyPerIndustry < 0) throw new Error('Daily supply must be a non-negative integer')
+  if (!Number.isInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffff_ffff) throw new Error('RNG state must be an unsigned 32-bit integer')
+  if ((state.config.probeProbability ?? 0) < 0 || (state.config.probeProbability ?? 0) > 1) throw new Error('Probe probability must be between zero and one')
 
   state.households.forEach((household) => {
     assertIntegerMoney(`${household.id} cash`, household.cashCents)
@@ -44,6 +46,8 @@ export function validateState(state: SimulationState, endOfDay = false) {
     assertIntegerMoney(`${firm.id} cash`, firm.cashCents)
     assertIntegerMoney(`${firm.id} price`, firm.postedPriceCents)
     assertIntegerMoney(`${firm.id} step`, firm.pricing.stepSizeCents)
+    assertIntegerMoney(`${firm.id} incumbent price`, firm.pricing.incumbentPriceCents)
+    if (firm.pricing.probing && !firm.pricing.locallySettled) throw new Error(`${firm.id} cannot probe before local settlement`)
     if (firm.postedPriceCents < 1 || firm.pricing.stepSizeCents < 1) throw new Error(`${firm.id} price and step must be positive`)
     if (![firm.availableUnitsToday, firm.unitsExpiredToday, firm.unitsSoldToday].every((value) => Number.isInteger(value) && value >= 0)) throw new Error(`${firm.id} goods fields must be non-negative integers`)
     if (firm.unitsSoldToday > Math.min(HOUSEHOLD_COUNT, state.config.dailySupplyPerIndustry)) throw new Error(`${firm.id} sold above finite supply`)

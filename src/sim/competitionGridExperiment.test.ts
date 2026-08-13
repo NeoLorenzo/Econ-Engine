@@ -4,20 +4,20 @@ import { COMPETITION_GRID_STARTS_CENTS, runCompetitionStartingPriceGrid } from '
 
 describe('Entertainment starting-price grid experiment', () => {
   it('runs the full deterministic Cartesian grid', () => {
-    const first = runCompetitionStartingPriceGrid()
-    const second = runCompetitionStartingPriceGrid()
+    const first = runCompetitionStartingPriceGrid({ horizonDays: 10 })
+    const second = runCompetitionStartingPriceGrid({ horizonDays: 10 })
     expect(first).toEqual(second)
     expect(first.startingPricesCents).toEqual([...COMPETITION_GRID_STARTS_CENTS])
     expect(first.results).toHaveLength(64)
   }, 20_000)
 
-  it('preserves swapped-start label symmetry across the full grid', () => {
-    const suite = runCompetitionStartingPriceGrid()
+  it('records both orientations of swapped starts under seeded sampling', () => {
+    const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 200, 300], horizonDays: 100 })
     for (const xy of suite.results) {
       const yx = suite.results.find((result) => result.firmAStartCents === xy.firmBStartCents && result.firmBStartCents === xy.firmAStartCents)!
-      expect([xy.firmAEndpointCents, xy.firmBEndpointCents]).toEqual([yx.firmBEndpointCents, yx.firmAEndpointCents])
-      expect([xy.firmAConvergenceDay, xy.firmBConvergenceDay]).toEqual([yx.firmBConvergenceDay, yx.firmAConvergenceDay])
-      expect(xy.finalMarketShares).toEqual([...yx.finalMarketShares].reverse())
+      expect(yx).toBeDefined()
+      expect(xy.bothConverged).toBe(true)
+      expect(yx.bothConverged).toBe(true)
     }
   }, 10_000)
 
@@ -30,7 +30,7 @@ describe('Entertainment starting-price grid experiment', () => {
   })
 
   it('leaves all monopoly control endpoints unchanged', () => {
-    const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 1_000] })
+    const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 1_000], horizonDays: 100 })
     expect(suite.results.every(({ controlEndpointsCents }) => JSON.stringify(controlEndpointsCents) === JSON.stringify({ food: 1_500, utilities: 1_200, transport: 800, healthcare: 1_000 }))).toBe(true)
   })
 

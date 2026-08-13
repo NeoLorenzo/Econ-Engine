@@ -1,7 +1,8 @@
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
-import { DEFAULT_CONFIG, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
+import { DEFAULT_CONFIG, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
 import { totalMoney, validateState } from './invariants'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
+import { normalizeSeed, probabilityCheck, randomInt, seededShuffle } from './rng'
 import type { DayMetrics, Firm, IndustryId, MarketMetrics, SimulationConfig, SimulationEvent, SimulationEventType, SimulationState } from './types'
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`
@@ -25,6 +26,8 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
     industryStartingPricesCents: config.industryStartingPricesCents,
     firmStartingPricesCents: config.firmStartingPricesCents,
     industryProcessingOrder: safeProcessingOrder(config),
+    seed: normalizeSeed(config.seed ?? DEFAULT_SEED),
+    probeProbability: Math.max(0, Math.min(1, config.probeProbability ?? DEFAULT_PROBE_PROBABILITY)),
   }
   const industries = structuredClone(DEFAULT_INDUSTRIES)
   const firms: Firm[] = industries.flatMap((industry) => DEFAULT_FIRM_IDS_BY_INDUSTRY[industry.id].map((firmId) => {
@@ -50,7 +53,7 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
     })),
     firms,
     government: { id: 'government-1', cashCents: 0, taxCollectedTodayCents: 0, redistributedTodayCents: 0 },
-    metrics: [], events: [], nextEventId: 1,
+    metrics: [], events: [], nextEventId: 1, rngState: normalizeSeed(safeConfig.seed ?? DEFAULT_SEED),
   }
   validateState(state)
   return state
@@ -70,21 +73,22 @@ export function stepSimulation(previous: SimulationState): SimulationState {
 
   const openingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   pushEvent(state, 'DAY_STARTED', `Day ${state.day} began.`)
-  const firstHouseholdIndex = (state.day - 1) % HOUSEHOLD_COUNT
-  const purchasingOrder = Array.from({ length: HOUSEHOLD_COUNT }, (_, offset) => state.households[(firstHouseholdIndex + offset) % HOUSEHOLD_COUNT])
   const marketMetrics: MarketMetrics[] = []
 
   for (const industryId of state.config.industryProcessingOrder ?? safeProcessingOrder(state.config)) {
     const industry = state.industries.find(({ id }) => id === industryId)!
     const industryFirms = state.firms.filter((candidate) => candidate.industryId === industryId).sort((left, right) => left.id.localeCompare(right.id))
     const minimumPostedPrice = Math.min(...industryFirms.map(({ postedPriceCents }) => postedPriceCents))
+    const shuffled = seededShuffle(state.households, state.rngState)
+    state.rngState = shuffled.state
+    const purchasingOrder = shuffled.values
     const affordableAtOpen = countAffordableAtPrice(state.households.map((household) => Math.min(household.cashCents, household.industryOutcomes[industryId].budgetCents)), minimumPostedPrice)
     for (const firm of industryFirms) {
       pushEvent(state, 'SUPPLY_RECEIVED', `${firm.id} received ${state.config.dailySupplyPerIndustry} exogenous ${industry.name.toLowerCase()} units.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: state.config.dailySupplyPerIndustry })
       pushEvent(state, 'PRICE_POSTED', `${firm.id} posted ${dollars(firm.postedPriceCents)} in ${industry.name}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.postedPriceCents })
     }
 
-    for (const [attemptIndex, household] of purchasingOrder.entries()) {
+    for (const household of purchasingOrder) {
       const outcome = household.industryOutcomes[industryId]
       const affordable = industryFirms.filter((firm) => firm.postedPriceCents <= outcome.budgetCents && firm.postedPriceCents <= household.cashCents)
       const available = affordable.filter((firm) => firm.availableUnitsToday > 0)
@@ -97,8 +101,9 @@ export function stepSimulation(previous: SimulationState): SimulationState {
       } else {
         const cheapestPrice = Math.min(...available.map(({ postedPriceCents }) => postedPriceCents))
         const tied = available.filter(({ postedPriceCents }) => postedPriceCents === cheapestPrice)
-        const tieOffset = (state.day - 1) % tied.length
-        const firm = tied[(attemptIndex + tieOffset) % tied.length]
+        const selection = randomInt(state.rngState, tied.length)
+        state.rngState = selection.state
+        const firm = tied[selection.value]
         const price = firm.postedPriceCents
         const details = { actorId: household.id, counterpartyId: firm.id, householdId: household.id, firmId: firm.id, industryId, priceCents: price }
         household.cashCents -= price; firm.cashCents += price; firm.availableUnitsToday -= 1; firm.unitsSoldToday += 1
@@ -117,10 +122,26 @@ export function stepSimulation(previous: SimulationState): SimulationState {
       if (firm.cashCents !== revenue) throw new Error(`${firm.id} cash does not equal today's zero-cost revenue`)
       firm.revenueTodayCents = revenue; firm.preTaxProfitTodayCents = revenue
       pushEvent(state, 'FIRM_DAY_RESULT', `${firm.id} sold ${firm.unitsSoldToday}/${state.config.dailySupplyPerIndustry} units and realised ${dollars(revenue)} profit.`, { actorId: firm.id, firmId: firm.id, industryId, amountCents: revenue, quantity: firm.unitsSoldToday })
-      const decision = decideTomorrowPrice(firm.pricing, testedPrice, firm.unitsSoldToday, revenue)
+      let shouldProbe = false
+      let probeDirection: 'up' | 'down' = 'up'
+      if (firm.pricing.locallySettled && !firm.pricing.probing) {
+        const probeDraw = probabilityCheck(state.rngState, state.config.probeProbability ?? DEFAULT_PROBE_PROBABILITY)
+        state.rngState = probeDraw.state
+        shouldProbe = probeDraw.value
+        if (shouldProbe) {
+          const directionDraw = randomInt(state.rngState, 2)
+          state.rngState = directionDraw.state
+          probeDirection = directionDraw.value === 0 ? 'down' : 'up'
+        }
+      }
+      const decision = decideTomorrowPrice(firm.pricing, testedPrice, firm.unitsSoldToday, revenue, { shouldProbe, direction: probeDirection })
       firm.pricing = decision.state; firm.latestDecisionReason = decision.reason; firm.latestDecisionAction = decision.action; firm.postedPriceCents = decision.nextPriceCents
       pushEvent(state, 'FIRM_PRICE_DECISION', `${firm.id} will post ${dollars(decision.nextPriceCents)} tomorrow. ${decision.reason}`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: decision.nextPriceCents })
-      if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `${firm.id} converged at ${dollars(firm.pricing.bestPriceCents)}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.pricing.bestPriceCents })
+      if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `${firm.id} became locally settled at ${dollars(firm.pricing.incumbentPriceCents)}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.pricing.incumbentPriceCents })
+      if (decision.probeEvent) {
+        const type = decision.probeEvent === 'started' ? 'PRICE_PROBE_STARTED' : decision.probeEvent === 'adopted' ? 'PRICE_PROBE_ADOPTED' : 'PRICE_PROBE_REJECTED'
+        pushEvent(state, type, `${firm.id}: ${decision.reason}`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: decision.nextPriceCents })
+      }
       marketMetrics.push({
         industryId, firmId: firm.id, postedPriceCents: testedPrice, nextPriceCents: decision.nextPriceCents,
         bestKnownPriceCents: firm.pricing.bestPriceCents, priceStepSizeCents: firm.pricing.stepSizeCents, searchDirection: firm.pricing.direction,
@@ -128,6 +149,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
         stockoutFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'stockout').length,
         affordabilityFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'insufficient_funds').length,
         soldOut: firm.soldOutToday, householdsAffordableAtMarketOpen: affordableAtOpen, revenueCents: revenue, preTaxProfitCents: revenue, converged: firm.pricing.converged,
+        locallySettled: firm.pricing.locallySettled, probing: firm.pricing.probing, incumbentPriceCents: firm.pricing.incumbentPriceCents,
         marketShare: totalIndustryUnitsSold === 0 ? 0 : firm.unitsSoldToday / totalIndustryUnitsSold,
         totalIndustryUnitsSold, transactionPricesCents: firm.unitsSoldToday > 0 ? [testedPrice] : [],
       })
@@ -159,6 +181,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     totalHouseholdCashCents: state.households.reduce((sum, household) => sum + household.cashCents, 0), totalFirmCashBeforeTaxCents: totalFirmCashBeforeTax,
     totalFirmCashAfterTaxCents: state.firms.reduce((sum, firm) => sum + firm.cashCents, 0), governmentCashBeforeRedistributionCents: governmentCashBeforeRedistribution,
     governmentCashAfterRedistributionCents: state.government.cashCents, totalMoneyCents: totalMoney(state), allFirmsConverged: state.firms.every((firm) => firm.pricing.converged),
+    allFirmsLocallySettled: state.firms.every((firm) => firm.pricing.locallySettled),
   }
   state.metrics.push(metric); if (state.metrics.length > MAX_HISTORY) state.metrics.shift()
   validateState(state, true)

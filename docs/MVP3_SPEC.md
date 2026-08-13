@@ -24,7 +24,7 @@ Each household wants at most one unit per industry. For Entertainment it conside
 
 Only after all alternatives are considered does the engine record affordability failure or stockout/unavailability. A successful event identifies the actual household, industry, and firm counterparty.
 
-Equal-price firms split attempts deterministically. Attempt priority alternates across tied firms, and the first tied firm rotates by day. With ten households and equal availability this produces 5/5 sales while reversing first priority on successive days. No randomness or permanent array-first privilege is used.
+Household arrival order is shuffled independently for each market/day. Equal-price available firms are selected with seeded random tie-breaking, so a day may split 6/4 or 3/7 rather than being forced to 5/5. All draws use the simulation's centralized xorshift32 state; `Math.random()` is not used. The same configuration and seed reproduce the same full run.
 
 ## Firm information boundary
 
@@ -36,12 +36,12 @@ The one government taxes all six firms, pools receipts, and redistributes the fu
 
 ## Observer metrics
 
-Every firm retains tested/next price, supply, sales, expiration, revenue/profit, and convergence metrics. Derived competitive fields add market share, total industry sales, and the actual transaction price for each selling firm. Multiple transaction prices remain separate rather than being collapsed into a fictional single market price. These fields never feed strategy.
+Every firm retains tested/next/incumbent price, supply, sales, expiration, revenue/profit, and learner-status metrics. After broad discovery reaches local settlement, a firm independently samples a 10%-per-day chance to test one adjacent cent. It adopts only a strictly better own realised profit and otherwise restores its incumbent; it remains capable of future probes forever. Derived competitive fields add market share, total industry sales, and actual transaction prices. These observer fields never feed strategy.
 
 ## Stability and benchmark distinction
 
-System/accounting stability is required: exact money, non-negative balances/inventory, per-firm stock flows, bounded histories, reproducibility, and household equality. Entertainment price convergence is an observed learner outcome, not an invariant or encoded target. The four monopoly controls must retain their established benchmarks.
+System/accounting stability is required: exact money, non-negative balances/inventory, per-firm stock flows, bounded histories, seeded reproducibility, and household equality. Competitive prices may keep adapting. The four monopoly controls must retain their established incumbent benchmarks despite temporary adjacent-cent probes.
 
 ## Scope exclusions
 
-MVP 3 excludes competition outside Entertainment, additional firms, differentiation, quality, loyalty, advertising, geography, switching costs, competitor awareness, market-share strategies, explicit undercutting, costs, wages, ownership, entry/exit, bankruptcy, investment, heterogeneous households, elastic quantity demand, differentiated taxes, credit, and randomness.
+MVP 3 excludes competition outside Entertainment, additional firms, differentiation, quality, loyalty, advertising, geography, switching costs, competitor awareness, market-share strategies, explicit undercutting, costs, wages, ownership, entry/exit, bankruptcy, investment, heterogeneous households, elastic quantity demand, differentiated taxes, and credit. Seeded randomness is limited to ordering, matching, and experimentation timing/direction.
