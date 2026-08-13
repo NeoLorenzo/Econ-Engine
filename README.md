@@ -39,6 +39,8 @@ The pure TypeScript core in `src/sim` owns domain state, daily phases, events, p
 
 Read the full [MVP specification](docs/MVP0_SPEC.md), [architecture notes](docs/ARCHITECTURE.md), [validation guide](docs/VALIDATION.md), and the governing [simulation design rules](SIMULATION_DESIGN_RULES.md).
 
+Project evolution is recorded in the [changelog](CHANGELOG.md), while the [lab notes](LAB_NOTES.md) preserve design rationale, observations, trade-offs, and lessons.
+
 ## Deployment
 
 Pushes to `main` run validation and deploy the static `dist` bundle through GitHub Pages. Vite uses relative assets so both localhost and the `/Econ-Engine/` project path work.
