@@ -6,6 +6,7 @@ export type IndustryId = 'food' | 'utilities' | 'transport' | 'healthcare' | 'en
 export interface Industry {
   id: IndustryId
   name: string
+  householdBudgetCents: number
 }
 
 export interface SimulationConfig {

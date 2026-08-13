@@ -1,6 +1,6 @@
 # Econ-Engine
 
-Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP 2 generalizes the stable finite-supply reference economy into five symmetric industries with five independently learning firms.
+Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP 2.1 gives five independently learning industries distinct fixed demand boundaries while retaining the stable finite-supply reference economy.
 
 ## Run locally
 
@@ -17,7 +17,7 @@ npm run check
 
 - Ten households start with one real $50 cash balance.
 - Food, Utilities, Transport, Healthcare, and Entertainment each have one firm and ten exogenous units per day by default.
-- Each household attempts one unit per industry daily and has a fixed $10 behavioral spending constraint in each market.
+- Each household attempts one unit per industry daily. Fixed behavioral spending constraints are Food $15, Utilities $12, Healthcare $10, Transport $8, and Entertainment $5; these experimental parameters sum to $50.
 - Industry budgets are not wallets or money. Purchases reduce the household's shared real cash; spending in one market does not consume another market's budget.
 - Every firm owns independent state for the unchanged local price learner.
 - Unsold units explicitly expire. Each market satisfies `supply = sold + expired` with no carry-over.
@@ -25,7 +25,7 @@ npm run check
 - Money uses integer cents and remains exactly $500. Observer analytics and raw events do not enter firm decisions.
 - Common daily supply remains configurable, so lower-supply scarcity and path dependence remain available.
 
-The canonical benchmark is $10 per industry. At that price each firm sells ten units for $100, total revenue is $500, each household spends $50 and receives $50, household cash remains $50, and Gini remains zero. At $10.01 an industry's fixed budget rejects the purchase. Firms learn this boundary from their own realised results; it is never hard-coded into the strategy.
+The canonical firm benchmarks are the corresponding industry budgets: Food $15, Utilities $12, Healthcare $10, Transport $8, and Entertainment $5. At those prices every firm sells ten units, total revenue is $500, each household spends $50 and receives $50, household cash remains $50, and Gini remains zero. One cent above an industry's budget rejects that purchase. Firms learn their boundaries from their own realised results; the answers are never hard-coded into the strategy.
 
 ## Architecture
 
@@ -39,4 +39,4 @@ Pushes to `main` validate and deploy the static Vite bundle through GitHub Pages
 
 ## Current limits
 
-Industries currently differ only by identity. There is no within-industry competition, endogenous household budget allocation, persistent inventory, production, costs, labour, wages, ownership, credit, heterogeneous preferences, or shocks. Exogenous supply and full redistribution are controlled institutions for this architecture and stability experiment, not claims of realism.
+Industries currently differ only by identity and fixed experimental household budget. There is no within-industry competition, endogenous household budget allocation, elastic demand, substitution, persistent inventory, production, costs, labour, wages, ownership, credit, household heterogeneity, or shocks. Exogenous supply and full redistribution are controlled institutions for this stability experiment, not claims of realism.

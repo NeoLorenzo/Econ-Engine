@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
-import { MULTI_INDUSTRY_STARTING_PRICES_CENTS, runMultiIndustryExperiment } from './scarcityExperiment'
+import { EXPECTED_INDUSTRY_OPTIMA_CENTS, MULTI_INDUSTRY_STARTING_PRICES_CENTS, runMultiIndustryExperiment } from './scarcityExperiment'
 
 describe('deterministic multi-industry experiment', () => {
-  it('converges five varied independent starts to $10.00 reproducibly', () => {
+  it('converges varied starts below and above distinct boundaries reproducibly', () => {
     const first = runMultiIndustryExperiment()
     const second = runMultiIndustryExperiment()
     expect(first).toEqual(second)
     expect(first.firms).toHaveLength(5)
     expect(Object.values(MULTI_INDUSTRY_STARTING_PRICES_CENTS)).toEqual([100, 200, 500, 1_500, 2_000])
-    expect(first.firms.every((firm) => firm.convergedPriceCents === 1_000 && firm.daysToConvergence !== null)).toBe(true)
+    expect(first.firms.every((firm) => firm.convergedPriceCents === EXPECTED_INDUSTRY_OPTIMA_CENTS[firm.industryId] && firm.daysToConvergence !== null)).toBe(true)
     expect(first).toMatchObject({ finalHouseholdCashMinimumCents: 5_000, finalHouseholdCashMedianCents: 5_000, finalHouseholdCashMaximumCents: 5_000, finalHouseholdCashGini: 0, totalMoneyCents: 50_000 })
   })
 

@@ -6,6 +6,38 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP2-Industry_Demand_Boundaries-004.1] - (2026-08-13)
+
+### Context and decision
+
+MVP 2 established that five symmetric markets could preserve a deterministic stable reference economy. The first asymmetry is deliberately limited to fixed industry demand boundaries. This changes the price-learning question without introducing scarcity, household heterogeneity, differentiated taxes, or competition, all of which would add allocation or distribution feedback.
+
+The experimental per-household budgets are Food $15, Utilities $12, Healthcare $10, Transport $8, and Entertainment $5. They are arbitrary research parameters and sum to the unchanged $50 real cash balance. Households remain identical. On a successful day each household buys the same basket, spends the same amount, and receives the same pooled redistribution, preserving exact monetary symmetry.
+
+Budgets now belong to industry definitions and initialize industry-keyed household outcome state. They remain behavioral constraints rather than money. Market logic and `pricingStrategy.ts` are unchanged, and firms receive no information about their boundary.
+
+### Findings
+
+| Industry | Start | Endpoint | Convergence day |
+|---|---:|---:|---:|
+| Food | $1.00 | $15.00 | 23 |
+| Utilities | $2.00 | $12.00 | 19 |
+| Transport | $5.00 | $8.00 | 12 |
+| Healthcare | $15.00 | $10.00 | 14 |
+| Entertainment | $20.00 | $5.00 | 24 |
+
+Starts sampled both below and above relevant boundaries. All five learners independently found their own ceiling by day 24. Final household cash remained exactly $50, Gini was 0, and total money was $500. The 1,000-day run preserved those values and all stock-flow invariants. Reversing canonical industry order did not change household or firm economic outcomes; identical configurations remained deterministic.
+
+### Limitations and validation
+
+The budgets are fixed, homogeneous, and arbitrary. Industries otherwise retain identical demand, supply, firm strategy, tax treatment, and production assumptions. There is still no elastic demand, substitution, endogenous allocation, or competition.
+
+- `npm run test:run`: 31 tests passed across four files.
+- `npm run typecheck`: passed.
+- `npm run build`: passed with the non-failing bundle-size advisory.
+- `npm run check`: passed.
+- `npm run dev`: served successfully. Browser verification confirmed the MVP 2.1 header, all five visible budget values in the market table, populated convergence rows at $15/$12/$8/$10/$5, and no console warnings or errors. No deployment was performed.
+
 ## [MVP2-Multi_Industry-004] - (2026-08-13)
 
 ### Context

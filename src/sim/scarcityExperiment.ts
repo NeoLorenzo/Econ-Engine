@@ -10,6 +10,13 @@ export const MULTI_INDUSTRY_STARTING_PRICES_CENTS: Record<IndustryId, number> = 
   entertainment: 2_000,
 }
 export const MULTI_INDUSTRY_EXPERIMENT_HORIZON_DAYS = 300
+export const EXPECTED_INDUSTRY_OPTIMA_CENTS: Record<IndustryId, number> = {
+  food: 1_500,
+  utilities: 1_200,
+  transport: 800,
+  healthcare: 1_000,
+  entertainment: 500,
+}
 
 export interface MultiIndustryExperimentOptions {
   startingPricesCents?: Partial<Record<IndustryId, number>>

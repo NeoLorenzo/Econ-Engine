@@ -4,15 +4,15 @@ MVP 2 validation combines analytical benchmarks, runtime invariants, determinist
 
 ## Analytical benchmark
 
-For every industry with ten households, ten supplied units, and a $10 household industry budget:
+For any industry with ten households, ten supplied units, and household budget `B`:
 
 | Price | Sales | Expired | Stockouts | Affordability failures | Firm revenue |
 |---:|---:|---:|---:|---:|---:|
-| $9.99 | 10 | 0 | 0 | 0 | $99.90 |
-| $10.00 | 10 | 0 | 0 | 0 | $100.00 |
-| $10.01 | 0 | 10 | 0 | 10 | $0.00 |
+| B − $0.01 | 10 | 0 | 0 | 0 | 10(B − $0.01) |
+| B | 10 | 0 | 0 | 0 | 10B |
+| B + $0.01 | 0 | 10 | 0 | 10 | $0.00 |
 
-At $10 across five firms, total revenue/tax/redistribution is $500. Every household spends and receives $50, ends at $50, and Gini is zero.
+Default budgets and firm optima are Food $15, Utilities $12, Healthcare $10, Transport $8, and Entertainment $5. Their sum is $50, so total revenue/tax/redistribution at the joint benchmark is $500. Every household spends and receives $50, ends at $50, and Gini is zero.
 
 ## Runtime invariants
 
@@ -33,13 +33,13 @@ With starts Food $1, Utilities $2, Transport $5, Healthcare $15, Entertainment $
 
 | Industry | Endpoint | Convergence day |
 |---|---:|---:|
-| Food | $10.00 | 18 |
-| Utilities | $10.00 | 17 |
-| Transport | $10.00 | 14 |
+| Food | $15.00 | 23 |
+| Utilities | $12.00 | 19 |
+| Transport | $8.00 | 12 |
 | Healthcare | $10.00 | 14 |
-| Entertainment | $10.00 | 19 |
+| Entertainment | $5.00 | 24 |
 
-The joint run ended on day 19 with every household at $50, Gini 0, and total money $500. A 1,000-day canonical run held all prices at $10 after convergence, all household balances at $50, Gini at zero, and total money at $500.
+The joint run ended on day 24 with every household at $50, Gini 0, and total money $500. A 1,000-day run held every firm at its own industry ceiling after convergence, all household balances at $50, Gini at zero, and total money at $500.
 
 Forward and reversed industry processing orders produced identical canonical household states and per-firm price, search, sales, and revenue results. Identical runs produced identical full state, metrics, events, and cumulative outcomes.
 
@@ -56,4 +56,4 @@ npm run check
 
 Final command and browser results are recorded in the newest changelog and lab-note entries. Validation establishes accounting, causality, reproducibility, and the known controlled benchmark; it does not establish realism, welfare, or general equilibrium.
 
-The development server and initial desktop dashboard DOM were verified. The in-app browser subsequently blocked further localhost actions under its URL security policy, so populated interaction, the 390px viewport, and browser-console inspection remain genuine manual follow-ups.
+The development server and normal desktop dashboard were verified for MVP 2.1. The market table displayed all five configured household budgets, the populated experiment displayed the observed distinct endpoints/days, and the browser console contained no warnings or errors. A new 390px mobile check was not requested or performed for this deliberately small table/configuration update.

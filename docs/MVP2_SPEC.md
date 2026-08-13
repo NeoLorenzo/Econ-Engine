@@ -1,6 +1,6 @@
 # MVP 2 multi-industry specification
 
-This document is subordinate to the repository's [governing simulation design rules](../SIMULATION_DESIGN_RULES.md). [MVP1_SPEC.md](MVP1_SPEC.md) remains the historical finite single-market specification.
+This document is subordinate to the repository's [governing simulation design rules](../SIMULATION_DESIGN_RULES.md). [MVP1_SPEC.md](MVP1_SPEC.md) remains the historical finite single-market specification. MVP 2.1 extends this specification only by assigning a distinct fixed household budget to each industry.
 
 ## Research question
 
@@ -14,7 +14,17 @@ Each household starts with one real `cashCents` balance of 5,000 cents. Firms an
 
 ## Cash and industry budgets
 
-Every household has a fixed daily 1,000-cent spending constraint for each industry. A purchase requires both:
+Every industry definition supplies the fixed daily household spending constraint used to initialize household outcome state:
+
+| Industry | Budget |
+|---|---:|
+| Food | $15.00 |
+| Utilities | $12.00 |
+| Healthcare | $10.00 |
+| Transport | $8.00 |
+| Entertainment | $5.00 |
+
+The five constraints sum to $50.00. They are experimental parameters, not empirical spending claims. A purchase requires both:
 
 ```text
 household cash >= posted price
@@ -74,7 +84,7 @@ Generic market events carry `industryId`, `firmId`, and `householdId` where appl
 
 ## Analytical stable benchmark
 
-With ten households, ten units per market, a $10 budget per industry, and $50 cash per household, a $10 price produces ten sales and $100 revenue in each industry. Five firms produce $500 total revenue. Every household spends $50 and receives $50 from pooled redistribution, so all end at $50 and Gini remains zero. At $10.01, that industry's behavioral affordability constraint rejects all purchases.
+With ten households, ten units per market, and $50 cash per household, each industry's revenue-maximizing price is its fixed homogeneous budget: Food $15, Utilities $12, Healthcare $10, Transport $8, and Entertainment $5. Those prices produce $150/$120/$100/$80/$50 firm revenue respectively and $500 total. Every household spends $50 and receives $50 from pooled redistribution, so all end at $50 and Gini remains zero. One cent above any industry's budget rejects all purchases in that market.
 
 The benchmark is validation information, not firm knowledge. The five independent learners discover it from experience.
 
@@ -90,4 +100,4 @@ The benchmark is validation information, not firm knowledge. The five independen
 
 ## Scope exclusions
 
-MVP 2 excludes within-industry competition, substitution, complements, heterogeneous preferences or budgets, endogenous allocation, production, costs, workers, wages, capital, persistent inventory, borrowing, banking, ownership, differentiated taxes, subsidies, price indexes, macro policy, random shocks, and new pricing heuristics.
+MVP 2.1 excludes within-industry competition, substitution, complements, heterogeneous household preferences or budgets, elastic demand, endogenous allocation, production, costs, workers, wages, capital, persistent inventory, borrowing, banking, ownership, differentiated taxes, subsidies, price indexes, macro policy, random shocks, and new pricing heuristics.

@@ -1,5 +1,5 @@
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
-import { DEFAULT_CONFIG, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, INDUSTRY_BUDGET_CENTS, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
+import { DEFAULT_CONFIG, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
 import { totalMoney, validateState } from './invariants'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
 import type { DayMetrics, Firm, IndustryId, MarketMetrics, SimulationConfig, SimulationEvent, SimulationEventType, SimulationState } from './types'
@@ -42,8 +42,8 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
     households: Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => ({
       id: `household-${index + 1}`,
       cashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
-      industryOutcomes: Object.fromEntries(industries.map(({ id }) => [id, {
-        budgetCents: INDUSTRY_BUDGET_CENTS, purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null,
+      industryOutcomes: Object.fromEntries(industries.map(({ id, householdBudgetCents }) => [id, {
+        budgetCents: householdBudgetCents, purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null,
         lifetimeUnitsPurchased: 0, lifetimeStockoutFailures: 0, lifetimeAffordabilityFailures: 0,
       }])) as SimulationState['households'][number]['industryOutcomes'],
     })),

@@ -4,7 +4,7 @@ Econ-Engine separates environment rules, agent strategies, state, events, observ
 
 ## Simulation core
 
-`types.ts` defines configurable industries, firms, industry-keyed household outcomes, government, generic market events, per-market metrics, and economy-wide metrics. `config.ts` contains the five symmetric default industries and stable monetary assumptions. `engine.ts` creates and iterates the collections through one reusable deterministic market lifecycle.
+`types.ts` defines configurable industries, including their fixed household budget, plus firms, industry-keyed household outcomes, government, generic market events, per-market metrics, and economy-wide metrics. `config.ts` contains the five default industries and stable monetary assumptions. `engine.ts` creates and iterates the collections through one reusable deterministic market lifecycle.
 
 Each `Firm` owns its `PricingState`; there is no shared singleton learner. Each `Household` owns one real cash stock plus an `industryOutcomes` record containing behavioral budget, daily cause, and cumulative counters for every industry. Budget fields never enter `totalMoney`.
 

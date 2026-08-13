@@ -22,7 +22,7 @@ describe('multi-industry observer analytics', () => {
   })
 
   it('records economy-wide and per-market historical boundaries', () => {
-    const state = stepSimulation(createSimulation({ startingPriceCents: 1_000, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
+    const state = stepSimulation(createSimulation({ startingPriceCents: 500, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
     expect(state.metrics[0]).toMatchObject({ householdCashMinimumAtMarketOpenCents: 5_000, householdCashMedianAtMarketOpenCents: 5_000, householdCashMaximumAtMarketOpenCents: 5_000, householdCashGiniAtMarketOpen: 0, householdCashMinimumCents: 5_000, householdCashGini: 0 })
     expect(state.metrics[0].markets.every(({ householdsAffordableAtMarketOpen }) => householdsAffordableAtMarketOpen === 10)).toBe(true)
   })

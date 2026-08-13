@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_INDUSTRIES, INDUSTRY_BUDGET_CENTS, TOTAL_MONEY_CENTS } from './config'
+import { DEFAULT_INDUSTRIES, TOTAL_MONEY_CENTS } from './config'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
 import type { IndustryId, SimulationConfig } from './types'
@@ -16,29 +16,39 @@ describe('Econ-Engine MVP 2 multi-industry economy', () => {
     expect(new Set(state.firms.map(({ pricing }) => pricing)).size).toBe(5)
   })
 
-  it('gives every household $50 cash plus five $10 behavioral budgets without creating money', () => {
+  it('gives every household the configured $15/$12/$10/$8/$5 budgets without creating money', () => {
     const state = createSimulation()
+    const expected = { food: 1_500, utilities: 1_200, transport: 800, healthcare: 1_000, entertainment: 500 }
     expect(state.households.every((household) => household.cashCents === 5_000)).toBe(true)
     expect(state.households.every((household) => Object.values(household.industryOutcomes).length === 5)).toBe(true)
-    expect(state.households.every((household) => Object.values(household.industryOutcomes).every(({ budgetCents }) => budgetCents === INDUSTRY_BUDGET_CENTS))).toBe(true)
+    expect(Object.fromEntries(state.industries.map(({ id, householdBudgetCents }) => [id, householdBudgetCents]))).toEqual(expected)
+    expect(state.households.every((household) => Object.entries(household.industryOutcomes).every(([id, outcome]) => outcome.budgetCents === expected[id as IndustryId]))).toBe(true)
+    expect(Object.values(expected).reduce((sum, budget) => sum + budget, 0)).toBe(5_000)
     expect(totalMoney(state)).toBe(TOTAL_MONEY_CENTS)
   })
 
   it('supplies ten units and permits one purchase in every industry', () => {
-    const state = stepSimulation(createSimulation(config()))
+    const state = stepSimulation(createSimulation(config(500)))
     expect(state.firms.every((firm) => firm.unitsSoldToday === 10 && firm.unitsExpiredToday === 0)).toBe(true)
     expect(state.metrics[0].markets.every((item) => item.unitsSupplied === 10 && item.stockoutFailures === 0)).toBe(true)
     expect(state.households.every((household) => Object.values(household.industryOutcomes).filter(({ purchasedToday }) => purchasedToday).length === 5)).toBe(true)
   })
 
   it('keeps each industry budget independent while reducing one real cash balance', () => {
-    const state = stepSimulation(createSimulation(config(900)))
+    const state = stepSimulation(createSimulation(config(400)))
     expect(state.households.every((household) => household.cashCents === 5_000)).toBe(true)
-    expect(state.households.every((household) => Object.values(household.industryOutcomes).every((outcome) => outcome.spentTodayCents === 900 && outcome.budgetCents === 1_000))).toBe(true)
+    expect(state.households.every((household) => Object.values(household.industryOutcomes).every((outcome) => outcome.spentTodayCents === 400))).toBe(true)
   })
 
-  it('rejects $10.01 by the relevant industry constraint without blocking affordable industries', () => {
-    const state = stepSimulation(createSimulation(config(1_000, 10, { industryStartingPricesCents: { food: 1_001 } })))
+  it.each(DEFAULT_INDUSTRIES)('buys at the $name budget and rejects one cent above it', (industry) => {
+    const exact = stepSimulation(createSimulation(config(1, 10, { industryStartingPricesCents: { [industry.id]: industry.householdBudgetCents } })))
+    const above = stepSimulation(createSimulation(config(1, 10, { industryStartingPricesCents: { [industry.id]: industry.householdBudgetCents + 1 } })))
+    expect(market(exact, industry.id)).toMatchObject({ unitsSold: 10, affordabilityFailures: 0 })
+    expect(market(above, industry.id)).toMatchObject({ unitsSold: 0, affordabilityFailures: 10, stockoutFailures: 0, unitsExpired: 10 })
+  })
+
+  it('does not let one industry affordability failure block other markets', () => {
+    const state = stepSimulation(createSimulation(config(400, 10, { industryStartingPricesCents: { food: 1_501 } })))
     expect(market(state, 'food')).toMatchObject({ unitsSold: 0, affordabilityFailures: 10, stockoutFailures: 0, unitsExpired: 10 })
     expect(state.metrics[0].markets.filter(({ industryId }) => industryId !== 'food').every(({ unitsSold }) => unitsSold === 10)).toBe(true)
     expect(state.households.every((household) => household.cashCents === 5_000)).toBe(true)
@@ -58,7 +68,7 @@ describe('Econ-Engine MVP 2 multi-industry economy', () => {
   })
 
   it('preserves affordability versus stockout causes in lower-supply scenarios', () => {
-    const state = stepSimulation(createSimulation(config(1_000, 8, { industryStartingPricesCents: { food: 1_001 } })))
+    const state = stepSimulation(createSimulation(config(500, 8, { industryStartingPricesCents: { food: 1_501 } })))
     expect(market(state, 'food')).toMatchObject({ affordabilityFailures: 10, stockoutFailures: 0 })
     expect(market(state, 'utilities')).toMatchObject({ unitsSold: 8, affordabilityFailures: 0, stockoutFailures: 2 })
     expect(state.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT').length).toBeGreaterThan(0)
@@ -72,8 +82,11 @@ describe('Econ-Engine MVP 2 multi-industry economy', () => {
   })
 
   it('holds $50 balances and zero Gini at the converged benchmark', () => {
-    const state = runDays(createSimulation(config()), 1_000)
-    expect(state.firms.every((firm) => firm.pricing.converged && firm.pricing.bestPriceCents === 1_000 && firm.postedPriceCents === 1_000)).toBe(true)
+    const state = runDays(createSimulation(config(200)), 1_000)
+    expect(state.firms.every((firm) => {
+      const ceiling = state.industries.find(({ id }) => id === firm.industryId)!.householdBudgetCents
+      return firm.pricing.converged && firm.pricing.bestPriceCents === ceiling && firm.postedPriceCents === ceiling
+    })).toBe(true)
     expect(state.households.every(({ cashCents }) => cashCents === 5_000)).toBe(true)
     expect(state.metrics.every(({ householdCashGini, totalMoneyCents }) => householdCashGini === 0 && totalMoneyCents === 50_000)).toBe(true)
   }, 15_000)
@@ -94,9 +107,10 @@ describe('Econ-Engine MVP 2 multi-industry economy', () => {
   })
 
   it('makes canonical baseline results independent of industry processing order', () => {
-    const forward = runDays(createSimulation(config(1_000)), 30)
+    const prices = Object.fromEntries(DEFAULT_INDUSTRIES.map(({ id, householdBudgetCents }) => [id, householdBudgetCents]))
+    const forward = runDays(createSimulation(config(200, 10, { industryStartingPricesCents: prices })), 30)
     const reverseOrder = [...DEFAULT_INDUSTRIES.map(({ id }) => id)].reverse()
-    const reverse = runDays(createSimulation(config(1_000, 10, { industryProcessingOrder: reverseOrder })), 30)
+    const reverse = runDays(createSimulation(config(200, 10, { industryStartingPricesCents: prices, industryProcessingOrder: reverseOrder })), 30)
     expect(reverse.households).toEqual(forward.households)
     const normalize = (state: typeof forward) => state.firms.map((firm) => ({ industryId: firm.industryId, price: firm.postedPriceCents, pricing: firm.pricing, sold: firm.unitsSoldToday, revenue: firm.revenueTodayCents }))
     expect(normalize(reverse)).toEqual(normalize(forward))

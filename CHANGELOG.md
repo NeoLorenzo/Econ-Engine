@@ -6,6 +6,33 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
+## [MVP2-Industry_Demand_Boundaries-004.1] - (2026-08-13)
+
+### Summary
+
+Introduced the first controlled industry asymmetry through distinct fixed household demand boundaries while preserving the stable $500 monetary circuit.
+
+### Added
+
+- Industry-defined household budgets: Food $15, Utilities $12, Healthcare $10, Transport $8, and Entertainment $5.
+- Boundary regressions for purchase at the exact budget and affordability failure one cent above it.
+- Distinct-optimum convergence coverage, long-run stability, and cross-industry isolation checks.
+
+### Changed
+
+- Household industry outcomes now initialize budgets from reusable industry definitions rather than one shared constant.
+- Market overview now displays each industry's household budget beside tested/next price, sales, profit, and convergence.
+- Varied-start experiment expectations and current documentation now reflect five distinct analytical optima.
+- Pricing strategy, supply, taxation, redistribution, household symmetry, and information boundaries remain unchanged.
+
+### Validation
+
+- 31 tests passed across four files; typecheck, production build, and aggregate check passed.
+- Food/Utilities/Transport/Healthcare/Entertainment converged to $15/$12/$8/$10/$5 on days 23/19/12/14/24.
+- The 1,000-day run retained $50 household balances, zero Gini, $500 total money, and valid independent stock flows.
+- Determinism and canonical industry-processing-order independence passed.
+- Development-server browser verification confirmed visible per-industry budgets, populated distinct convergence results, and no console warnings or errors.
+
 ## [MVP2-Multi_Industry-004] - (2026-08-13)
 
 ### Summary
