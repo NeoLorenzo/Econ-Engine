@@ -1,17 +1,25 @@
 export type Direction = 'up' | 'down'
 export type PriceDecisionAction = 'increase' | 'decrease' | 'refine' | 'hold' | 'converged'
 
+export type IndustryId = 'food' | 'utilities' | 'transport' | 'healthcare' | 'entertainment'
+
+export interface Industry {
+  id: IndustryId
+  name: string
+}
+
 export interface SimulationConfig {
   startingPriceCents: number
   initialStepCents: number
-  dailyFoodSupply: number
+  dailySupplyPerIndustry: number
+  industryStartingPricesCents?: Partial<Record<IndustryId, number>>
+  industryProcessingOrder?: IndustryId[]
 }
 
 export type HouseholdPurchaseOutcome = 'purchased' | 'insufficient_funds' | 'stockout' | null
 
-export interface Household {
-  id: string
-  cashCents: number
+export interface HouseholdIndustryOutcome {
+  budgetCents: number
   purchasedToday: boolean
   spentTodayCents: number
   purchaseOutcomeToday: HouseholdPurchaseOutcome
@@ -20,23 +28,10 @@ export interface Household {
   lifetimeAffordabilityFailures: number
 }
 
-export interface Firm {
-  id: 'firm-1'
+export interface Household {
+  id: string
   cashCents: number
-  postedPriceCents: number
-  unitsSoldToday: number
-  revenueTodayCents: number
-  preTaxProfitTodayCents: number
-  availableFoodToday: number
-  unitsExpiredToday: number
-  soldOutToday: boolean
-}
-
-export interface Government {
-  id: 'government-1'
-  cashCents: number
-  taxCollectedTodayCents: number
-  redistributedTodayCents: number
+  industryOutcomes: Record<IndustryId, HouseholdIndustryOutcome>
 }
 
 export interface PricingState {
@@ -50,6 +45,29 @@ export interface PricingState {
   testedUpperAtOneCent: boolean
 }
 
+export interface Firm {
+  id: string
+  industryId: IndustryId
+  cashCents: number
+  postedPriceCents: number
+  unitsSoldToday: number
+  revenueTodayCents: number
+  preTaxProfitTodayCents: number
+  availableUnitsToday: number
+  unitsExpiredToday: number
+  soldOutToday: boolean
+  pricing: PricingState
+  latestDecisionReason: string
+  latestDecisionAction: PriceDecisionAction
+}
+
+export interface Government {
+  id: 'government-1'
+  cashCents: number
+  taxCollectedTodayCents: number
+  redistributedTodayCents: number
+}
+
 export interface PriceDecision {
   nextPriceCents: number
   reason: string
@@ -60,12 +78,12 @@ export interface PriceDecision {
 
 export type SimulationEventType =
   | 'DAY_STARTED'
-  | 'FOOD_SUPPLY_RECEIVED'
+  | 'SUPPLY_RECEIVED'
   | 'PRICE_POSTED'
   | 'HOUSEHOLD_PURCHASE'
   | 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS'
   | 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT'
-  | 'FOOD_EXPIRED'
+  | 'GOODS_EXPIRED'
   | 'FIRM_DAY_RESULT'
   | 'FIRM_PRICE_DECISION'
   | 'TAX_PAID'
@@ -79,25 +97,38 @@ export interface SimulationEvent {
   type: SimulationEventType
   actorId?: string
   counterpartyId?: string
+  industryId?: IndustryId
+  firmId?: string
+  householdId?: string
   amountCents?: number
   priceCents?: number
   quantity?: number
   description: string
 }
 
-export interface DayMetrics {
-  day: number
+export interface MarketMetrics {
+  industryId: IndustryId
+  firmId: string
   postedPriceCents: number
+  nextPriceCents: number
   bestKnownPriceCents: number
   priceStepSizeCents: number
   searchDirection: Direction
   unitsSold: number
-  foodSupplied: number
+  unitsSupplied: number
   unitsExpired: number
   stockoutFailures: number
   affordabilityFailures: number
   soldOut: boolean
   householdsAffordableAtMarketOpen: number
+  revenueCents: number
+  preTaxProfitCents: number
+  converged: boolean
+}
+
+export interface DayMetrics {
+  day: number
+  markets: MarketMetrics[]
   householdCashMinimumAtMarketOpenCents: number
   householdCashMedianAtMarketOpenCents: number
   householdCashMaximumAtMarketOpenCents: number
@@ -106,27 +137,25 @@ export interface DayMetrics {
   householdCashMedianCents: number
   householdCashMaximumCents: number
   householdCashGini: number
-  revenueCents: number
-  preTaxProfitCents: number
+  totalRevenueCents: number
+  totalPreTaxProfitCents: number
   totalHouseholdCashCents: number
-  firmCashBeforeTaxCents: number
-  firmCashAfterTaxCents: number
+  totalFirmCashBeforeTaxCents: number
+  totalFirmCashAfterTaxCents: number
   governmentCashBeforeRedistributionCents: number
   governmentCashAfterRedistributionCents: number
   totalMoneyCents: number
-  converged: boolean
+  allFirmsConverged: boolean
 }
 
 export interface SimulationState {
   day: number
   config: SimulationConfig
+  industries: Industry[]
   households: Household[]
-  firm: Firm
+  firms: Firm[]
   government: Government
-  pricing: PricingState
   metrics: DayMetrics[]
   events: SimulationEvent[]
-  latestDecisionReason: string
-  latestDecisionAction: PriceDecisionAction
   nextEventId: number
 }

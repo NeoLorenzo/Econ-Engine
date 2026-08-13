@@ -1,163 +1,74 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { DEFAULT_INDUSTRIES, TOTAL_MONEY_CENTS } from './sim/config'
 import { createSimulation, stepSimulation } from './sim/engine'
-import { runStartingPriceExperiments, SCARCITY_EXPERIMENT_STARTING_PRICES_CENTS, type ScarcityExperimentSuite } from './sim/scarcityExperiment'
-import type { PriceDecisionAction, SimulationConfig, SimulationState } from './sim/types'
+import { MULTI_INDUSTRY_STARTING_PRICES_CENTS, runMultiIndustryExperiment, type MultiIndustryExperimentResult } from './sim/scarcityExperiment'
+import type { IndustryId, SimulationConfig, SimulationState } from './sim/types'
 import { groupEventsForDisplay } from './ui/groupEventsForDisplay'
 
 const money = (cents: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'USD' }).format(cents / 100)
-const SPEEDS = [1, 5, 20, 100]
-const DECISION_SYMBOLS: Record<PriceDecisionAction, string> = {
-  increase: '↑',
-  decrease: '↓',
-  refine: '◇',
-  hold: '—',
-  converged: '✓',
-}
+const colors: Record<IndustryId, string> = { food: '#deff75', utilities: '#65bfa1', transport: '#97a3ff', healthcare: '#d6a866', entertainment: '#d47c9b' }
+const chartTooltip = { background: '#111715', border: '1px solid #28322e', borderRadius: 8, color: '#f4f7f5' }
 
 function Metric({ label, value, detail, accent = false }: { label: string; value: string; detail?: string; accent?: boolean }) {
   return <div className={`metric ${accent ? 'metric--accent' : ''}`}><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>
 }
 
-function ChartPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return <section className="panel chart-panel"><div className="panel-heading"><div><h2>{title}</h2><p>{subtitle}</p></div></div><div className="chart-wrap">{children}</div></section>
-}
-
-const chartTooltip = { background: '#111715', border: '1px solid #28322e', borderRadius: 8, color: '#f4f7f5' }
-
 function PriceChart({ state }: { state: SimulationState }) {
-  const data = state.metrics.map((m) => ({ day: m.day, posted: m.postedPriceCents / 100, best: m.bestKnownPriceCents / 100 }))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -16, bottom: 0 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" tickLine={false} axisLine={false} /><YAxis stroke="#69756f" tickFormatter={(v) => `$${v}`} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartTooltip} formatter={(v) => money(Number(v ?? 0) * 100)} labelFormatter={(v) => `Day ${v}`} /><Line type="monotone" dataKey="posted" name="Tested price" stroke="#deff75" dot={false} strokeWidth={2} /><Line type="stepAfter" dataKey="best" name="Best known" stroke="#65bfa1" dot={false} strokeWidth={1.5} strokeDasharray="5 5" /></LineChart></ResponsiveContainer>
+  const data = state.metrics.map((metric) => Object.fromEntries([['day', metric.day], ...metric.markets.map((market) => [market.industryId, market.postedPriceCents / 100])]))
+  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -12 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${value}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value) * 100)} labelFormatter={(value) => `Day ${value}`} />{DEFAULT_INDUSTRIES.map((industry) => <Line key={industry.id} type="monotone" dataKey={industry.id} name={industry.name} stroke={colors[industry.id]} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
 }
 
-function SimpleChart({ state, field, color, formatter = (v) => String(v) }: { state: SimulationState; field: 'preTaxProfitCents' | 'priceStepSizeCents'; color: string; formatter?: (value: number) => string }) {
-  const data = state.metrics.map((m) => ({ day: m.day, value: m[field] }))
-  const name = field === 'priceStepSizeCents' ? 'Search step' : 'Profit'
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -16, bottom: 0 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" tickLine={false} axisLine={false} /><YAxis stroke="#69756f" tickFormatter={formatter} domain={['auto', 'auto']} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartTooltip} formatter={(v) => formatter(Number(v ?? 0))} labelFormatter={(v) => `Day ${v}`} /><Line type="monotone" dataKey="value" name={name} stroke={color} dot={false} strokeWidth={2} /></LineChart></ResponsiveContainer>
+function ProfitChart({ state }: { state: SimulationState }) {
+  const data = state.metrics.map((metric) => Object.fromEntries([['day', metric.day], ...metric.markets.map((market) => [market.industryId, market.preTaxProfitCents])]))
+  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -4 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${Number(value) / 100}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value))} labelFormatter={(value) => `Day ${value}`} />{DEFAULT_INDUSTRIES.map((industry) => <Line key={industry.id} type="monotone" dataKey={industry.id} name={industry.name} stroke={colors[industry.id]} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
 }
 
-function FoodFlowChart({ state }: { state: SimulationState }) {
-  const data = state.metrics.map((m) => ({ day: m.day, affordable: m.householdsAffordableAtMarketOpen, supplied: m.foodSupplied, sold: m.unitsSold, expired: m.unitsExpired }))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -16, bottom: 0 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" tickLine={false} axisLine={false} /><YAxis stroke="#69756f" domain={[0, 10]} allowDecimals={false} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartTooltip} labelFormatter={(v) => `Day ${v}`} /><Line type="monotone" dataKey="affordable" name="Affordable at open" stroke="#65bfa1" dot={false} strokeWidth={2} /><Line type="stepAfter" dataKey="supplied" name="Supplied" stroke="#97a3ff" dot={false} strokeWidth={1.5} strokeDasharray="5 5" /><Line type="monotone" dataKey="sold" name="Sold" stroke="#d6a866" dot={false} strokeWidth={2} /><Line type="monotone" dataKey="expired" name="Expired" stroke="#d47c6b" dot={false} strokeWidth={1.25} /></LineChart></ResponsiveContainer>
+function MarketFlowChart({ state, industryId }: { state: SimulationState; industryId: IndustryId }) {
+  const data = state.metrics.map((metric) => { const market = metric.markets.find((item) => item.industryId === industryId)!; return { day: metric.day, affordable: market.householdsAffordableAtMarketOpen, supplied: market.unitsSupplied, sold: market.unitsSold, expired: market.unitsExpired } })
+  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -16 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" allowDecimals={false} /><Tooltip contentStyle={chartTooltip} labelFormatter={(value) => `Day ${value}`} /><Line dataKey="affordable" name="Affordable" stroke="#65bfa1" dot={false} /><Line dataKey="supplied" name="Supplied" stroke="#97a3ff" dot={false} strokeDasharray="5 5" /><Line dataKey="sold" name="Sold" stroke="#d6a866" dot={false} /><Line dataKey="expired" name="Expired" stroke="#d47c6b" dot={false} /></LineChart></ResponsiveContainer>
 }
 
-function WealthDistributionChart({ state }: { state: SimulationState }) {
-  const data = state.metrics.map((m) => ({ day: m.day, minimum: m.householdCashMinimumCents, median: m.householdCashMedianCents, maximum: m.householdCashMaximumCents }))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" tickLine={false} axisLine={false} /><YAxis stroke="#69756f" tickFormatter={(v) => `$${Number(v) / 100}`} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartTooltip} formatter={(v) => money(Number(v ?? 0))} labelFormatter={(v) => `End of day ${v}`} /><Line type="monotone" dataKey="minimum" name="Minimum cash" stroke="#d47c6b" dot={false} strokeWidth={1.25} /><Line type="monotone" dataKey="median" name="Median cash" stroke="#deff75" dot={false} strokeWidth={2} /><Line type="monotone" dataKey="maximum" name="Maximum cash" stroke="#97a3ff" dot={false} strokeWidth={1.25} /></LineChart></ResponsiveContainer>
-}
-
-function ExperimentChart({ suite }: { suite: ScarcityExperimentSuite }) {
-  const data = suite.results.map((result) => ({ start: result.startingPriceCents / 100, converged: result.convergedPriceCents === null ? null : result.convergedPriceCents / 100 }))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 12, right: 16, left: -6, bottom: 0 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="start" type="number" domain={['dataMin', 'dataMax']} stroke="#69756f" tickFormatter={(v) => `$${v}`} tickLine={false} axisLine={false} /><YAxis stroke="#69756f" tickFormatter={(v) => `$${v}`} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartTooltip} formatter={(v) => v === null ? 'No convergence' : money(Number(v) * 100)} labelFormatter={(v) => `Starting price ${money(Number(v) * 100)}`} /><Line type="linear" dataKey="converged" name="Converged price" stroke="#deff75" dot={{ r: 3, fill: '#deff75' }} strokeWidth={2} connectNulls={false} /></LineChart></ResponsiveContainer>
+function WealthChart({ state }: { state: SimulationState }) {
+  const data = state.metrics.map((metric) => ({ day: metric.day, minimum: metric.householdCashMinimumCents, median: metric.householdCashMedianCents, maximum: metric.householdCashMaximumCents }))
+  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -4 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${Number(value) / 100}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value))} labelFormatter={(value) => `Day ${value}`} /><Line dataKey="minimum" name="Minimum" stroke="#d47c6b" dot={false} /><Line dataKey="median" name="Median" stroke="#deff75" dot={false} strokeWidth={2} /><Line dataKey="maximum" name="Maximum" stroke="#97a3ff" dot={false} /></LineChart></ResponsiveContainer>
 }
 
 export default function App() {
   const [draft, setDraft] = useState({ startingPrice: '2.00', step: '1.00', dailySupply: '10' })
-  const [speed, setSpeed] = useState(5)
-  const [running, setRunning] = useState(false)
   const [state, setState] = useState(() => createSimulation())
-  const [experimentSuite, setExperimentSuite] = useState<ScarcityExperimentSuite | null>(null)
-
+  const [running, setRunning] = useState(false)
+  const [speed, setSpeed] = useState(5)
+  const [selectedIndustry, setSelectedIndustry] = useState<IndustryId>('food')
+  const [experiment, setExperiment] = useState<MultiIndustryExperimentResult | null>(null)
   const step = () => setState((current) => stepSimulation(current))
   const reset = () => {
-    const config: SimulationConfig = {
-      startingPriceCents: Math.max(1, Math.round(Number(draft.startingPrice || 0) * 100)),
-      initialStepCents: Math.max(1, Math.round(Number(draft.step || 0) * 100)),
-      dailyFoodSupply: Math.max(0, Math.round(Number(draft.dailySupply || 0))),
-    }
-    setRunning(false)
-    setState(createSimulation(config))
+    const config: SimulationConfig = { startingPriceCents: Math.max(1, Math.round(Number(draft.startingPrice || 0) * 100)), initialStepCents: Math.max(1, Math.round(Number(draft.step || 0) * 100)), dailySupplyPerIndustry: Math.max(0, Math.round(Number(draft.dailySupply || 0))) }
+    setRunning(false); setState(createSimulation(config))
   }
-
   useEffect(() => {
     if (!running) return
-    const interval = window.setInterval(() => {
-      setState((current) => {
-        let next = current
-        const batch = speed === 100 ? 5 : 1
-        for (let index = 0; index < batch; index += 1) next = stepSimulation(next)
-        return next
-      })
-    }, speed === 100 ? 50 : 1000 / speed)
-    return () => window.clearInterval(interval)
+    const timer = window.setInterval(() => setState((current) => { let next = current; for (let index = 0; index < (speed === 100 ? 5 : 1); index += 1) next = stepSimulation(next); return next }), speed === 100 ? 50 : 1000 / speed)
+    return () => window.clearInterval(timer)
   }, [running, speed])
-
   const latest = state.metrics.at(-1)
-  const status = state.pricing.converged ? 'Converged' : state.pricing.stepSizeCents < state.config.initialStepCents ? 'Refining' : 'Exploring'
-  const recentEvents = useMemo(() => groupEventsForDisplay(state.events).reverse().slice(0, 28), [state.events])
+  const recentEvents = useMemo(() => groupEventsForDisplay(state.events).reverse().slice(0, 30), [state.events])
+  const convergedCount = state.firms.filter(({ pricing }) => pricing.converged).length
 
   return <main>
-    <header className="hero">
-      <div className="eyebrow">MVP 1.1 · Scarcity Analysis</div>
-      <div className="hero-row"><div><h1>Econ<span>—</span>Engine</h1><p>Ten finite daily units stabilize the baseline while observer analytics preserve the ability to inspect lower-supply scarcity experiments.</p></div><div className="system-note"><i />Explicit stabilizer · Deterministic · $100 closed circuit</div></div>
-    </header>
+    <header className="hero"><div className="eyebrow">MVP 2 · Multi-Industry Economy</div><div className="hero-row"><div><h1>Econ<span>—</span>Engine</h1><p>Five symmetric markets and five independently learning firms share one monetary circuit while household industry budgets keep affordability explicit.</p></div><div className="system-note"><i />Deterministic · $500 closed circuit</div></div></header>
+    <section className="control-bar panel"><div className="run-controls"><button className="primary" onClick={() => setRunning((value) => !value)}>{running ? 'Pause' : 'Run simulation'}</button><button onClick={step} disabled={running}>Step one day</button><button onClick={reset}>Reset</button></div><div className="config-controls"><label>Common start $<input value={draft.startingPrice} onChange={(event) => setDraft({ ...draft, startingPrice: event.target.value })} /></label><label>Initial step $<input value={draft.step} onChange={(event) => setDraft({ ...draft, step: event.target.value })} /></label><label>Supply each<input value={draft.dailySupply} onChange={(event) => setDraft({ ...draft, dailySupply: event.target.value })} /></label><label>Speed<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[1, 5, 20, 100].map((value) => <option key={value} value={value}>{value} days/sec</option>)}</select></label></div></section>
 
-    <section className="control-bar panel">
-      <div className="run-controls"><button className="primary" onClick={() => setRunning((value) => !value)}>{running ? 'Pause' : 'Run simulation'}</button><button onClick={step} disabled={running}>Step one day</button><button onClick={reset}>Reset</button></div>
-      <div className="config-controls"><label>Starting price <span>$</span><input inputMode="decimal" value={draft.startingPrice} onChange={(e) => setDraft({ ...draft, startingPrice: e.target.value })} /></label><label>Initial step <span>$</span><input inputMode="decimal" value={draft.step} onChange={(e) => setDraft({ ...draft, step: e.target.value })} /></label><label>Daily supply <input inputMode="numeric" min="0" step="1" value={draft.dailySupply} onChange={(e) => setDraft({ ...draft, dailySupply: e.target.value })} /></label><label>Simulation speed<select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>{SPEEDS.map((value) => <option key={value} value={value}>{value} day{value > 1 ? 's' : ''}/sec</option>)}</select></label></div>
-    </section>
+    <section className="baseline panel"><div><span>Baseline configuration</span><strong>10 households · 5 industries · 5 firms</strong></div><div><span>Supply</span><strong>{state.config.dailySupplyPerIndustry} each</strong></div><div><span>Industry budget</span><strong>$10 each</strong></div><div><span>Initial household cash</span><strong>$50</strong></div></section>
+    <section className="metrics-grid"><Metric label="Current day" value={String(state.day)} detail={running ? 'Running' : 'Paused'} /><Metric label="Daily revenue" value={money(latest?.totalRevenueCents ?? 0)} detail="Across five firms" /><Metric label="Household cash" value={latest ? `${money(latest.householdCashMinimumCents)}–${money(latest.householdCashMaximumCents)}` : '$50.00'} detail="Minimum–maximum" /><Metric label="Cash Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail="Observer metric" /><Metric label="Total money" value={money(latest?.totalMoneyCents ?? TOTAL_MONEY_CENTS)} detail="✓ Budgets excluded" accent /><Metric label="Firms converged" value={`${convergedCount} / 5`} detail="Independent learners" accent={convergedCount === 5} /></section>
 
-    <section className="metrics-grid">
-      <Metric label="Current day" value={String(state.day)} detail={running ? 'Simulation running' : 'Simulation paused'} />
-      <Metric label="Last tested price" value={latest ? money(latest.postedPriceCents) : '—'} detail={latest ? `Produced ${money(latest.preTaxProfitCents)} profit` : 'No experiment yet'} />
-      <Metric label="Daily profit" value={money(latest?.preTaxProfitCents ?? 0)} detail={latest ? 'From last tested price' : 'No result yet'} />
-      <Metric label="Next price" value={money(state.firm.postedPriceCents)} detail="Tomorrow’s experiment" />
-      <Metric label="Best-known price" value={state.pricing.bestProfitCents < 0 ? '—' : money(state.pricing.bestPriceCents)} detail="From realized profit" accent />
-      <Metric label="Search step" value={money(state.pricing.stepSizeCents)} detail={`Direction: ${state.pricing.direction}`} />
-      <Metric label="Food supplied" value={String(latest?.foodSupplied ?? state.config.dailyFoodSupply)} detail="Exogenous units per day" />
-      <Metric label="Sold / expired" value={latest ? `${latest.unitsSold} / ${latest.unitsExpired}` : '—'} detail={latest ? `Sold out: ${latest.soldOut ? 'yes' : 'no'}` : 'No market yet'} />
-      <Metric label="Purchase failures" value={latest ? `${latest.stockoutFailures} / ${latest.affordabilityFailures}` : '—'} detail="Stockout / affordability" />
-      <Metric label="Cash Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail="End-of-day dispersion" />
-      <Metric label="Total money" value={money(latest?.totalMoneyCents ?? 10_000)} detail="✓ Invariant satisfied" />
-      <Metric label="Discovery status" value={status} detail={state.pricing.converged ? 'Adjacent cents tested' : 'Learning from experiments'} accent={state.pricing.converged} />
-    </section>
+    <section className="panel market-overview"><div className="panel-heading"><div><h2>Market overview</h2><p>One reusable market result per industry; prices shown are last tested and next posted</p></div></div><div className="market-table-wrap"><table><thead><tr><th>Industry</th><th>Firm</th><th>Tested</th><th>Next</th><th>Sold / supplied</th><th>Revenue</th><th>Search state</th></tr></thead><tbody>{state.firms.map((firm) => { const result = latest?.markets.find(({ industryId }) => industryId === firm.industryId); return <tr key={firm.id}><td><i style={{ background: colors[firm.industryId] }} />{state.industries.find(({ id }) => id === firm.industryId)?.name}</td><td>{firm.id}</td><td>{result ? money(result.postedPriceCents) : '—'}</td><td>{money(firm.postedPriceCents)}</td><td>{result ? `${result.unitsSold} / ${result.unitsSupplied}` : '—'}</td><td>{money(result?.revenueCents ?? 0)}</td><td>{firm.pricing.converged ? 'Converged' : `Exploring · ${money(firm.pricing.stepSizeCents)}`}</td></tr> })}</tbody></table></div></section>
 
-    <section className="decision panel"><div className={`decision-mark decision-mark--${state.latestDecisionAction}`} aria-label={`Decision action: ${state.latestDecisionAction}`}>{DECISION_SYMBOLS[state.latestDecisionAction]}</div><div><span>Latest pricing decision</span><p>{state.latestDecisionReason}</p></div></section>
+    <section className="charts-grid"><section className="panel chart-panel"><div className="panel-heading"><div><h2>Price trajectories</h2><p>All five independent learners</p></div></div><div className="chart-wrap"><PriceChart state={state} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Profit trajectories</h2><p>Zero-cost realised revenue by firm</p></div></div><div className="chart-wrap"><ProfitChart state={state} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Selected market capacity</h2><p>Affordability, finite supply, sales, and expiration</p></div><select value={selectedIndustry} onChange={(event) => setSelectedIndustry(event.target.value as IndustryId)}>{DEFAULT_INDUSTRIES.map((industry) => <option key={industry.id} value={industry.id}>{industry.name}</option>)}</select></div><div className="chart-wrap"><MarketFlowChart state={state} industryId={selectedIndustry} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Household wealth</h2><p>End-of-day minimum, median, and maximum cash</p></div></div><div className="chart-wrap"><WealthChart state={state} /></div></section></section>
 
-    <section className="causal-strip panel" aria-label="Latest day causal diagnostics">
-      {latest ? <>
-        <div><span>Tested price</span><strong>{money(latest.postedPriceCents)}</strong></div><b>→</b>
-        <div><span>Cash at market open</span><strong>{money(latest.householdCashMinimumAtMarketOpenCents)} / {money(latest.householdCashMedianAtMarketOpenCents)} / {money(latest.householdCashMaximumAtMarketOpenCents)}</strong><small>Minimum / median / maximum</small></div><b>→</b>
-        <div><span>Affordable</span><strong>{latest.householdsAffordableAtMarketOpen} / 10</strong></div><b>→</b>
-        <div><span>Market result</span><strong>{latest.foodSupplied} supplied · {latest.unitsSold} sold</strong><small>{latest.stockoutFailures} stockout · {latest.affordabilityFailures} affordability failures</small></div><b>→</b>
-        <div><span>Realised profit</span><strong>{money(latest.preTaxProfitCents)}</strong></div><b>→</b>
-        <div><span>Next price</span><strong>{money(state.firm.postedPriceCents)}</strong></div>
-      </> : <p>Step the simulation to reveal the price → wealth → affordability → market → profit feedback chain.</p>}
-    </section>
+    <section className="panel experiment-panel"><div className="panel-heading"><div><h2>Five-firm convergence experiment</h2><p>Varied starts, $1 step, 10 units per market, 300-day horizon</p></div><button onClick={() => setExperiment(runMultiIndustryExperiment())}>{experiment ? 'Run again' : 'Run experiment'}</button></div>{experiment ? <div className="market-table-wrap"><table><thead><tr><th>Industry</th><th>Start</th><th>Endpoint</th><th>Convergence day</th></tr></thead><tbody>{experiment.firms.map((firm) => <tr key={firm.firmId}><td>{firm.industryId}</td><td>{money(firm.startingPriceCents)}</td><td>{firm.convergedPriceCents === null ? 'No convergence' : money(firm.convergedPriceCents)}</td><td>{firm.daysToConvergence ?? `>${experiment.horizonDays}`}</td></tr>)}</tbody></table><p className="experiment-result">Final cash {money(experiment.finalHouseholdCashMinimumCents)} / {money(experiment.finalHouseholdCashMedianCents)} / {money(experiment.finalHouseholdCashMaximumCents)} · Gini {experiment.finalHouseholdCashGini.toFixed(3)} · total money {money(experiment.totalMoneyCents)}</p></div> : <div className="experiment-empty">Starts: {Object.entries(MULTI_INDUSTRY_STARTING_PRICES_CENTS).map(([id, price]) => `${id} ${money(price)}`).join(' · ')}. The benchmark is validation information, never firm knowledge.</div>}</section>
 
-    <section className="charts-grid">
-      <ChartPanel title="Price discovery" subtitle="Tested price versus the firm’s best realized price"><PriceChart state={state} /></ChartPanel>
-      <ChartPanel title="Daily profit" subtitle="Realized revenue; production cost is zero"><SimpleChart state={state} field="preTaxProfitCents" color="#65bfa1" formatter={money} /></ChartPanel>
-      <ChartPanel title="Market capacity" subtitle="Affordable households at open versus supplied, sold, and expired units"><FoodFlowChart state={state} /></ChartPanel>
-      <ChartPanel title="Search step" subtitle="How aggressively the firm is exploring around its best-known price"><SimpleChart state={state} field="priceStepSizeCents" color="#97a3ff" formatter={money} /></ChartPanel>
-      <ChartPanel title="Household wealth distribution" subtitle="End-of-day minimum, median, and maximum cash"><WealthDistributionChart state={state} /></ChartPanel>
-    </section>
-
-    <section className="panel experiment-panel">
-      <div className="panel-heading"><div><h2>Controlled starting-price experiment</h2><p>Only starting price varies; step = $1.00, daily supply = 10, horizon = 300 days</p></div><button onClick={() => setExperimentSuite(runStartingPriceExperiments())}>{experimentSuite ? 'Run again' : 'Run 11-price grid'}</button></div>
-      {experimentSuite ? <div className="experiment-content">
-        <div className="experiment-chart"><ExperimentChart suite={experimentSuite} /></div>
-        <div className="experiment-table-wrap"><table><thead><tr><th>Start</th><th>Converged</th><th>Days</th><th>Final cash min / median / max</th><th>Gini</th><th>Food bought range</th></tr></thead><tbody>{experimentSuite.results.map((result) => {
-          const minFood = Math.min(...result.cumulativeFoodConsumptionByHousehold)
-          const maxFood = Math.max(...result.cumulativeFoodConsumptionByHousehold)
-          return <tr key={result.startingPriceCents}><td>{money(result.startingPriceCents)}</td><td>{result.convergedPriceCents === null ? 'No convergence' : money(result.convergedPriceCents)}</td><td>{result.daysToConvergence ?? `>${experimentSuite.horizonDays}`}</td><td>{money(result.finalHouseholdCashMinimumCents)} / {money(result.finalHouseholdCashMedianCents)} / {money(result.finalHouseholdCashMaximumCents)}</td><td>{result.finalHouseholdCashGini.toFixed(3)}</td><td>{minFood}–{maxFood} units</td></tr>
-        })}</tbody></table></div>
-      </div> : <div className="experiment-empty">Run the deterministic grid ({SCARCITY_EXPERIMENT_STARTING_PRICES_CENTS.map((price) => money(price)).join(', ')}) to inspect starting price → convergence time → household distribution. Results are observer-only and never enter the live firm's strategy.</div>}
-    </section>
-
-    <section className="inspection-grid">
-      <div className="panel agent-panel"><div className="panel-heading"><div><h2>Agent inspection</h2><p>Current cash, daily cause, and cumulative food access</p></div></div><div className="agent-summary"><article><span>Firm</span><strong>{money(state.firm.cashCents)}</strong><dl><div><dt>Supply / sold</dt><dd>{state.day ? `${state.config.dailyFoodSupply} / ${state.firm.unitsSoldToday}` : '—'}</dd></div><div><dt>Expired</dt><dd>{state.day ? state.firm.unitsExpiredToday : '—'}</dd></div><div><dt>Sold out</dt><dd>{state.day ? (state.firm.soldOutToday ? 'Yes' : 'No') : '—'}</dd></div><div><dt>Today’s profit</dt><dd>{money(state.firm.preTaxProfitTodayCents)}</dd></div></dl></article><article><span>Government</span><strong>{money(state.government.cashCents)}</strong><dl><div><dt>Tax collected</dt><dd>{money(state.government.taxCollectedTodayCents)}</dd></div><div><dt>Redistributed</dt><dd>{money(state.government.redistributedTodayCents)}</dd></div><div><dt>End balance</dt><dd>{money(state.government.cashCents)}</dd></div></dl></article></div><div className="households"><div className="table-head"><span>Household</span><span>Balance</span><span>Today</span><span>Lifetime outcomes</span></div>{state.households.map((household) => <div className="household-row" key={household.id}><span>H{household.id.split('-')[1]}</span><strong>{money(household.cashCents)}</strong><span className={household.purchasedToday ? 'success' : state.day ? 'failed' : ''}>{state.day === 0 ? 'Waiting' : household.purchaseOutcomeToday === 'purchased' ? `Bought · ${money(household.spentTodayCents)}` : household.purchaseOutcomeToday === 'stockout' ? 'Stockout' : 'Insufficient funds'}</span><span>{household.lifetimeUnitsPurchased} bought · {household.lifetimeStockoutFailures}S · {household.lifetimeAffordabilityFailures}A</span></div>)}</div></div>
-      <div className="panel ledger"><div className="panel-heading"><div><h2>Recent event ledger</h2><p>Grouped causes, with granular detail preserved</p></div><span>{recentEvents.length} shown</span></div><div className="event-list">{recentEvents.length === 0 ? <div className="empty">Run or step the simulation to inspect its causal ledger.</div> : recentEvents.map((event) => <div className="event" key={event.key}><span>D{event.day}</span><div><strong>{event.type}</strong><p>{event.description}</p>{event.grouped && <details><summary>Show {event.details.length} underlying events</summary><div className="event-details">{event.details.map((detail) => <p key={detail.id}>{detail.description}</p>)}</div></details>}</div></div>)}</div></div>
-    </section>
-
-    <footer><p><strong>Stabilized benchmark, not equilibrium.</strong> With ten daily units, every affordable household can buy; $10.00 yields $100.00 and $10.01 yields no sales. The firm is never given that answer.</p><span>Ten-unit supply is an explicit stabilizing assumption. Supply remains fixed and exogenous.</span></footer>
+    <section className="inspection-grid"><section className="panel agent-panel"><div className="panel-heading"><div><h2>Household inspection</h2><p>One real cash balance; industry-keyed daily and lifetime outcomes</p></div></div><div className="households"><div className="table-head"><span>Household</span><span>Cash</span><span>Today</span><span>Lifetime totals</span></div>{state.households.map((household) => { const outcomes = Object.values(household.industryOutcomes); return <div className="household-row" key={household.id}><span>{household.id.replace('household-', 'H')}</span><strong>{money(household.cashCents)}</strong><span>{state.day === 0 ? 'Waiting' : `${outcomes.filter(({ purchasedToday }) => purchasedToday).length}/5 purchased`}</span><span>{outcomes.reduce((sum, item) => sum + item.lifetimeUnitsPurchased, 0)} bought · {outcomes.reduce((sum, item) => sum + item.lifetimeStockoutFailures, 0)}S · {outcomes.reduce((sum, item) => sum + item.lifetimeAffordabilityFailures, 0)}A</span></div> })}</div></section><section className="panel ledger"><div className="panel-heading"><div><h2>Recent event ledger</h2><p>Market summaries retain granular raw events</p></div></div><div className="event-list">{recentEvents.map((event) => <div className="event" key={event.key}><span>D{event.day}</span><div><strong>{event.type}</strong><p>{event.description}</p>{event.grouped && <details><summary>Show {event.details.length} raw events</summary><div className="event-details">{event.details.map((detail) => <p key={detail.id}>{detail.description}</p>)}</div></details>}</div></div>)}</div></section></section>
+    <footer><p><strong>Stable architecture benchmark.</strong> At $10 in all markets, each household spends $50 and receives $50 from pooled taxes.</p><span>Industry budgets constrain behaviour; they are not wallets or monetary assets.</span></footer>
   </main>
 }

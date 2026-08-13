@@ -6,6 +6,40 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
+## [MVP2-Multi_Industry-004] - (2026-08-13)
+
+### Summary
+
+Generalized the deterministic finite-supply economy from one food market to five symmetric industries while preserving the analytically stable reference circuit.
+
+### Added
+
+- Food, Utilities, Transport, Healthcare, and Entertainment definitions with one independently learning firm each.
+- Industry-keyed household budgets, daily outcomes, and lifetime causal counters.
+- Generic market events carrying industry, firm, and household identity.
+- Per-market historical metrics, compact five-market dashboard, selected-market capacity chart, and five-line price/profit comparisons.
+- Deterministic varied-start five-firm convergence experiment and `docs/MVP2_SPEC.md`.
+- Regression coverage for independent stock flows, pooled taxation, budget non-monetization, long-run stability, determinism, and industry processing order.
+
+### Changed
+
+- Raised default household cash from $10 to $50 and total closed-circuit money from $100 to $500.
+- Replaced the single `firm`/`pricing` state with iterable industry and firm collections; the pricing heuristic itself remains materially unchanged.
+- Applied one common configurable daily supply independently to all five markets, defaulting to ten units each.
+- Generalized supply, expiration, firm-result, pricing, tax, and display-grouping paths across markets.
+- Government now taxes all five firms, pools receipts, and redistributes the complete pool equally.
+- Updated README, architecture, validation, and research notes for the MVP 2 model.
+
+### Validation
+
+- 26 automated tests passed across four files.
+- TypeScript typecheck passed.
+- Production build and aggregate check passed.
+- Varied starts $1/$2/$5/$15/$20 converged independently to $10 on days 18/17/14/14/19.
+- A 1,000-day canonical run retained $50 household balances, zero Gini, $500 total money, and valid per-industry stock flows.
+- Forward and reversed canonical industry orders produced identical economic outcomes.
+- Development server and initial desktop dashboard DOM sanity check passed; populated/mobile/console browser follow-ups remain pending because the browser URL policy blocked subsequent localhost interaction.
+
 ## [MVP1-Scarcity_Analysis-003.1] - (2026-08-13)
 
 ### Summary

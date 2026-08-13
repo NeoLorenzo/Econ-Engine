@@ -1,57 +1,42 @@
 # Econ-Engine
 
-Econ-Engine is a browser-based agent economic simulation built to make every outcome inspectable. MVP 1.1 includes observer analytics for household wealth, affordability, food access, and deterministic price-learning experiments.
-
-The deterministic world contains ten households, one zero-cost food firm, and one government. There is no backend, database, authentication, external data, or server-side simulation.
+Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP 2 generalizes the stable finite-supply reference economy into five symmetric industries with five independently learning firms.
 
 ## Run locally
 
 ```bash
 npm install
 npm run dev
-```
-
-Then open the local URL printed by Vite.
-
-```bash
-npm run test:run   # simulation tests
-npm run typecheck  # static type validation
-npm run build      # production bundle
-npm run preview    # preview the bundle
-npm run check      # all validation
+npm run test:run
+npm run typecheck
+npm run build
+npm run check
 ```
 
 ## Model at a glance
 
-- Ten households start with $10.00 each and attempt to buy one food unit per day.
-- Ten units of exogenous food arrive at the firm at the start of each day by default—one for each household. The integer daily supply remains configurable at reset and never adapts during a run.
-- Households are processed in a deterministic rotating order. An attempt can succeed, fail for insufficient funds, or fail because affordable stock has sold out.
-- Unsold food explicitly expires after the market. No inventory persists: `food supplied = units sold + units expired` on every completed day.
-- The firm has zero production cost and uses the unchanged MVP 0 learner. It receives only its tested price, units sold, realised profit, and private strategy history; stockout attempts and household balances are not pricing inputs.
-- Government taxes 100% of daily firm revenue and redistributes every cent equally across households.
-- Money uses integer cents and remains exactly $100.00. Food and money invariants are checked at runtime.
-- Observer-only daily metrics record market-open affordability, minimum/median/maximum household cash, and the household-balance Gini coefficient. These measurements never enter firm decisions.
-- Each household retains cumulative purchases, stockout failures, and affordability failures independently of the bounded event ledger.
-- A deterministic 11-start experiment compares price-learning paths while holding step size, ten-unit supply, households, allocation, and institutions fixed.
+- Ten households start with one real $50 cash balance.
+- Food, Utilities, Transport, Healthcare, and Entertainment each have one firm and ten exogenous units per day by default.
+- Each household attempts one unit per industry daily and has a fixed $10 behavioral spending constraint in each market.
+- Industry budgets are not wallets or money. Purchases reduce the household's shared real cash; spending in one market does not consume another market's budget.
+- Every firm owns independent state for the unchanged local price learner.
+- Unsold units explicitly expire. Each market satisfies `supply = sold + expired` with no carry-over.
+- One government taxes 100% of all firm revenue, pools receipts, and redistributes every cent equally.
+- Money uses integer cents and remains exactly $500. Observer analytics and raw events do not enter firm decisions.
+- Common daily supply remains configurable, so lower-supply scarcity and path dependence remain available.
 
-The analytical benchmark is $10.00: at $9.99 ten sales yield $99.90, at $10.00 ten sales yield $100.00, and at $10.01 no household can afford food. This benchmark is validation information, not firm knowledge.
-
-The ten-unit default is an explicit stabilizing assumption. When the price is affordable, all ten households buy and equal redistribution returns each household's spending exactly. Balances therefore remain equal, Gini remains zero, and the learner faces a stationary price→profit relationship. Lower configured supplies still expose the scarcity-driven wealth divergence documented by MVP 1.1; the historical eight-unit experiment remains covered by tests and lab notes.
+The canonical benchmark is $10 per industry. At that price each firm sells ten units for $100, total revenue is $500, each household spends $50 and receives $50, household cash remains $50, and Gini remains zero. At $10.01 an industry's fixed budget rejects the purchase. Firms learn this boundary from their own realised results; it is never hard-coded into the strategy.
 
 ## Architecture
 
-The pure TypeScript core in `src/sim` owns domain state, finite-supply phases, observer analytics, controlled experiments, events, pricing strategy, and invariant checks. React consumes immutable snapshots and controls time; it does not contain economic rules. Chart and event histories are bounded for browser performance.
+The pure TypeScript core in `src/sim` owns industries, firms, household industry outcomes, finite-supply markets, pooled government transfers, pricing, events, metrics, experiments, and invariants. The engine iterates collections rather than duplicating industry logic. React owns controls and presentation only.
 
-Read the current [MVP 1 specification](docs/MVP1_SPEC.md), historical [MVP 0 specification](docs/MVP0_SPEC.md), [architecture notes](docs/ARCHITECTURE.md), [validation guide](docs/VALIDATION.md), and governing [simulation design rules](SIMULATION_DESIGN_RULES.md).
-
-Project evolution is recorded in the [changelog](CHANGELOG.md); [lab notes](LAB_NOTES.md) preserve rationale, observations, trade-offs, and lessons.
+Read the current [MVP 2 specification](docs/MVP2_SPEC.md), historical [MVP 1 specification](docs/MVP1_SPEC.md), [architecture notes](docs/ARCHITECTURE.md), [validation guide](docs/VALIDATION.md), and authoritative [simulation design rules](SIMULATION_DESIGN_RULES.md). Project evolution is recorded in the [changelog](CHANGELOG.md) and [lab notes](LAB_NOTES.md).
 
 ## Deployment
 
-Pushes to `main` run validation and deploy the static `dist` bundle through GitHub Pages. Vite uses relative assets so localhost and the `/Econ-Engine/` project path both work.
-
-If Pages is not enabled, open the repository's **Settings → Pages** and set **Source** to **GitHub Actions**.
+Pushes to `main` validate and deploy the static Vite bundle through GitHub Pages. Relative assets preserve localhost and `/Econ-Engine/` compatibility. No deployment is performed by this update.
 
 ## Current limits
 
-MVP 1 deliberately excludes persistent inventory, endogenous production, costs, workers, wages, ownership, credit, competition, multiple goods, heterogeneous preferences, shocks, and stockout-based pricing rules. The ten daily units are finite exogenous supply, not modeled production.
+Industries currently differ only by identity. There is no within-industry competition, endogenous household budget allocation, persistent inventory, production, costs, labour, wages, ownership, credit, heterogeneous preferences, or shocks. Exogenous supply and full redistribution are controlled institutions for this architecture and stability experiment, not claims of realism.

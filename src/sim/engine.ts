@@ -1,8 +1,8 @@
-import { DEFAULT_CONFIG, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
+import { DEFAULT_CONFIG, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, INDUSTRY_BUDGET_CENTS, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
 import { totalMoney, validateState } from './invariants'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
-import type { DayMetrics, SimulationConfig, SimulationEvent, SimulationEventType, SimulationState } from './types'
+import type { DayMetrics, Firm, IndustryId, MarketMetrics, SimulationConfig, SimulationEvent, SimulationEventType, SimulationState } from './types'
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
@@ -11,33 +11,45 @@ function pushEvent(state: SimulationState, type: SimulationEventType, descriptio
   if (state.events.length > MAX_EVENTS) state.events.splice(0, state.events.length - MAX_EVENTS)
 }
 
+function safeProcessingOrder(config: SimulationConfig): IndustryId[] {
+  const defaults = DEFAULT_INDUSTRIES.map(({ id }) => id)
+  const proposed = config.industryProcessingOrder
+  return proposed?.length === defaults.length && new Set(proposed).size === defaults.length && defaults.every((id) => proposed.includes(id)) ? [...proposed] : defaults
+}
+
 export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): SimulationState {
-  const safeConfig = {
+  const safeConfig: SimulationConfig = {
     startingPriceCents: Math.max(1, Math.round(config.startingPriceCents)),
     initialStepCents: Math.max(1, Math.round(config.initialStepCents)),
-    dailyFoodSupply: Math.max(0, Math.round(config.dailyFoodSupply)),
+    dailySupplyPerIndustry: Math.max(0, Math.round(config.dailySupplyPerIndustry)),
+    industryStartingPricesCents: config.industryStartingPricesCents,
+    industryProcessingOrder: safeProcessingOrder(config),
   }
+  const industries = structuredClone(DEFAULT_INDUSTRIES)
+  const firms: Firm[] = industries.map((industry) => {
+    const price = Math.max(1, Math.round(safeConfig.industryStartingPricesCents?.[industry.id] ?? safeConfig.startingPriceCents))
+    return {
+      id: `firm-${industry.id}`, industryId: industry.id, cashCents: 0, postedPriceCents: price,
+      unitsSoldToday: 0, revenueTodayCents: 0, preTaxProfitTodayCents: 0, availableUnitsToday: 0,
+      unitsExpiredToday: 0, soldOutToday: false, pricing: createPricingState(price, safeConfig.initialStepCents),
+      latestDecisionReason: 'The first price is set by the run configuration.', latestDecisionAction: 'hold',
+    }
+  })
   const state: SimulationState = {
     day: 0,
     config: safeConfig,
+    industries,
     households: Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => ({
       id: `household-${index + 1}`,
       cashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
-      purchasedToday: false,
-      spentTodayCents: 0,
-      purchaseOutcomeToday: null,
-      lifetimeUnitsPurchased: 0,
-      lifetimeStockoutFailures: 0,
-      lifetimeAffordabilityFailures: 0,
+      industryOutcomes: Object.fromEntries(industries.map(({ id }) => [id, {
+        budgetCents: INDUSTRY_BUDGET_CENTS, purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null,
+        lifetimeUnitsPurchased: 0, lifetimeStockoutFailures: 0, lifetimeAffordabilityFailures: 0,
+      }])) as SimulationState['households'][number]['industryOutcomes'],
     })),
-    firm: { id: 'firm-1', cashCents: 0, postedPriceCents: safeConfig.startingPriceCents, unitsSoldToday: 0, revenueTodayCents: 0, preTaxProfitTodayCents: 0, availableFoodToday: 0, unitsExpiredToday: 0, soldOutToday: false },
+    firms,
     government: { id: 'government-1', cashCents: 0, taxCollectedTodayCents: 0, redistributedTodayCents: 0 },
-    pricing: createPricingState(safeConfig.startingPriceCents, safeConfig.initialStepCents),
-    metrics: [],
-    events: [],
-    latestDecisionReason: 'The first price is set by the run configuration.',
-    latestDecisionAction: 'hold',
-    nextEventId: 1,
+    metrics: [], events: [], nextEventId: 1,
   }
   validateState(state)
   return state
@@ -46,122 +58,95 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
 export function stepSimulation(previous: SimulationState): SimulationState {
   const state = structuredClone(previous)
   state.day += 1
-  state.firm.unitsSoldToday = 0
-  state.firm.revenueTodayCents = 0
-  state.firm.preTaxProfitTodayCents = 0
-  state.firm.availableFoodToday = state.config.dailyFoodSupply
-  state.firm.unitsExpiredToday = 0
-  state.firm.soldOutToday = false
   state.government.taxCollectedTodayCents = 0
   state.government.redistributedTodayCents = 0
-  state.households.forEach((household) => { household.purchasedToday = false; household.spentTodayCents = 0; household.purchaseOutcomeToday = null })
+  state.firms.forEach((firm) => {
+    Object.assign(firm, { unitsSoldToday: 0, revenueTodayCents: 0, preTaxProfitTodayCents: 0, availableUnitsToday: state.config.dailySupplyPerIndustry, unitsExpiredToday: 0, soldOutToday: false })
+  })
+  state.households.forEach((household) => Object.values(household.industryOutcomes).forEach((outcome) => {
+    Object.assign(outcome, { purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null })
+  }))
 
-  const price = state.firm.postedPriceCents
-  const marketOpenCash = state.households.map((household) => household.cashCents)
-  const marketOpenDistribution = summarizeCashDistribution(marketOpenCash)
-  const householdsAffordableAtMarketOpen = countAffordableAtPrice(marketOpenCash, price)
+  const openingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   pushEvent(state, 'DAY_STARTED', `Day ${state.day} began.`)
-  pushEvent(state, 'FOOD_SUPPLY_RECEIVED', `${state.config.dailyFoodSupply} units of exogenous food supply arrived for today's market.`, { actorId: state.firm.id, quantity: state.config.dailyFoodSupply })
-  pushEvent(state, 'PRICE_POSTED', `Firm posted ${dollars(price)} for one unit of food.`, { actorId: state.firm.id, priceCents: price })
-
   const firstHouseholdIndex = (state.day - 1) % HOUSEHOLD_COUNT
-  const purchasingOrder = Array.from({ length: HOUSEHOLD_COUNT }, (_, offset) =>
-    state.households[(firstHouseholdIndex + offset) % HOUSEHOLD_COUNT])
+  const purchasingOrder = Array.from({ length: HOUSEHOLD_COUNT }, (_, offset) => state.households[(firstHouseholdIndex + offset) % HOUSEHOLD_COUNT])
+  const marketMetrics: MarketMetrics[] = []
 
-  for (const household of purchasingOrder) {
-    if (household.cashCents < price) {
-      household.purchaseOutcomeToday = 'insufficient_funds'
-      household.lifetimeAffordabilityFailures += 1
-      pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', `${household.id.replace('-', ' ')} could not afford food at ${dollars(price)}.`, { actorId: household.id, counterpartyId: state.firm.id, priceCents: price })
-    } else if (state.firm.availableFoodToday === 0) {
-      household.purchaseOutcomeToday = 'stockout'
-      household.lifetimeStockoutFailures += 1
-      pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT', `${household.id.replace('-', ' ')} could afford food at ${dollars(price)}, but no stock remained.`, { actorId: household.id, counterpartyId: state.firm.id, priceCents: price })
-    } else {
-      household.cashCents -= price
-      state.firm.cashCents += price
-      state.firm.availableFoodToday -= 1
-      household.purchasedToday = true
-      household.spentTodayCents = price
-      household.purchaseOutcomeToday = 'purchased'
-      household.lifetimeUnitsPurchased += 1
-      state.firm.unitsSoldToday += 1
-      pushEvent(state, 'HOUSEHOLD_PURCHASE', `${household.id.replace('-', ' ')} purchased food for ${dollars(price)}.`, { actorId: household.id, counterpartyId: state.firm.id, amountCents: price, quantity: 1 })
+  for (const industryId of state.config.industryProcessingOrder ?? safeProcessingOrder(state.config)) {
+    const industry = state.industries.find(({ id }) => id === industryId)!
+    const firm = state.firms.find((candidate) => candidate.industryId === industryId)!
+    const price = firm.postedPriceCents
+    const affordableAtOpen = countAffordableAtPrice(state.households.map((household) => Math.min(household.cashCents, household.industryOutcomes[industryId].budgetCents)), price)
+    pushEvent(state, 'SUPPLY_RECEIVED', `${firm.id} received ${state.config.dailySupplyPerIndustry} exogenous ${industry.name.toLowerCase()} units.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: state.config.dailySupplyPerIndustry })
+    pushEvent(state, 'PRICE_POSTED', `${firm.id} posted ${dollars(price)} in ${industry.name}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: price })
+
+    for (const household of purchasingOrder) {
+      const outcome = household.industryOutcomes[industryId]
+      const details = { actorId: household.id, counterpartyId: firm.id, householdId: household.id, firmId: firm.id, industryId, priceCents: price }
+      if (price > outcome.budgetCents || household.cashCents < price) {
+        outcome.purchaseOutcomeToday = 'insufficient_funds'; outcome.lifetimeAffordabilityFailures += 1
+        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', `${household.id} could not afford ${industry.name} at ${dollars(price)} within its ${dollars(outcome.budgetCents)} industry budget.`, details)
+      } else if (firm.availableUnitsToday === 0) {
+        outcome.purchaseOutcomeToday = 'stockout'; outcome.lifetimeStockoutFailures += 1
+        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT', `${household.id} could afford ${industry.name}, but no stock remained.`, details)
+      } else {
+        household.cashCents -= price; firm.cashCents += price; firm.availableUnitsToday -= 1; firm.unitsSoldToday += 1
+        Object.assign(outcome, { purchasedToday: true, spentTodayCents: price, purchaseOutcomeToday: 'purchased' }); outcome.lifetimeUnitsPurchased += 1
+        pushEvent(state, 'HOUSEHOLD_PURCHASE', `${household.id} purchased ${industry.name} for ${dollars(price)}.`, { ...details, amountCents: price, quantity: 1 })
+      }
     }
+
+    firm.unitsExpiredToday = firm.availableUnitsToday; firm.availableUnitsToday = 0
+    firm.soldOutToday = firm.unitsSoldToday === state.config.dailySupplyPerIndustry
+    pushEvent(state, 'GOODS_EXPIRED', `${firm.unitsExpiredToday} unsold ${industry.name.toLowerCase()} units expired.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: firm.unitsExpiredToday })
+    const revenue = firm.unitsSoldToday * price
+    if (firm.cashCents !== revenue) throw new Error(`${firm.id} cash does not equal today's zero-cost revenue`)
+    firm.revenueTodayCents = revenue; firm.preTaxProfitTodayCents = revenue
+    pushEvent(state, 'FIRM_DAY_RESULT', `${firm.id} sold ${firm.unitsSoldToday}/${state.config.dailySupplyPerIndustry} units and realised ${dollars(revenue)} profit.`, { actorId: firm.id, firmId: firm.id, industryId, amountCents: revenue, quantity: firm.unitsSoldToday })
+    const decision = decideTomorrowPrice(firm.pricing, price, firm.unitsSoldToday, revenue)
+    firm.pricing = decision.state; firm.latestDecisionReason = decision.reason; firm.latestDecisionAction = decision.action; firm.postedPriceCents = decision.nextPriceCents
+    pushEvent(state, 'FIRM_PRICE_DECISION', `${firm.id} will post ${dollars(decision.nextPriceCents)} tomorrow. ${decision.reason}`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: decision.nextPriceCents })
+    if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `${firm.id} converged at ${dollars(firm.pricing.bestPriceCents)}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.pricing.bestPriceCents })
+    marketMetrics.push({
+      industryId, firmId: firm.id, postedPriceCents: price, nextPriceCents: decision.nextPriceCents,
+      bestKnownPriceCents: firm.pricing.bestPriceCents, priceStepSizeCents: firm.pricing.stepSizeCents, searchDirection: firm.pricing.direction,
+      unitsSold: firm.unitsSoldToday, unitsSupplied: state.config.dailySupplyPerIndustry, unitsExpired: firm.unitsExpiredToday,
+      stockoutFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'stockout').length,
+      affordabilityFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'insufficient_funds').length,
+      soldOut: firm.soldOutToday, householdsAffordableAtMarketOpen: affordableAtOpen, revenueCents: revenue, preTaxProfitCents: revenue, converged: firm.pricing.converged,
+    })
   }
 
-  state.firm.unitsExpiredToday = state.firm.availableFoodToday
-  state.firm.availableFoodToday = 0
-  state.firm.soldOutToday = state.firm.unitsSoldToday === state.config.dailyFoodSupply
-  pushEvent(state, 'FOOD_EXPIRED', `${state.firm.unitsExpiredToday} unsold food unit${state.firm.unitsExpiredToday === 1 ? '' : 's'} expired; no food carries into tomorrow.`, { actorId: state.firm.id, quantity: state.firm.unitsExpiredToday })
-
-  const revenue = state.firm.unitsSoldToday * price
-  if (state.firm.cashCents !== revenue) throw new Error('Firm cash does not equal today\'s zero-cost revenue')
-  state.firm.revenueTodayCents = revenue
-  state.firm.preTaxProfitTodayCents = revenue
-  pushEvent(state, 'FIRM_DAY_RESULT', `Firm sold ${state.firm.unitsSoldToday}/${state.config.dailyFoodSupply} supplied units and realized ${dollars(revenue)} pre-tax profit.`, { actorId: state.firm.id, amountCents: revenue, quantity: state.firm.unitsSoldToday })
-
-  const decision = decideTomorrowPrice(state.pricing, price, state.firm.unitsSoldToday, revenue)
-  state.pricing = decision.state
-  state.latestDecisionReason = decision.reason
-  state.latestDecisionAction = decision.action
-  state.firm.postedPriceCents = decision.nextPriceCents
-  pushEvent(state, 'FIRM_PRICE_DECISION', `Firm will post ${dollars(decision.nextPriceCents)} tomorrow. ${decision.reason}`, { actorId: state.firm.id, priceCents: decision.nextPriceCents })
-  if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `Price discovery converged at ${dollars(state.pricing.bestPriceCents)}.`, { actorId: state.firm.id, priceCents: state.pricing.bestPriceCents })
-
-  const firmCashBeforeTax = state.firm.cashCents
-  state.firm.cashCents -= firmCashBeforeTax
-  state.government.cashCents += firmCashBeforeTax
-  state.government.taxCollectedTodayCents = firmCashBeforeTax
-  pushEvent(state, 'TAX_PAID', `Government collected ${dollars(firmCashBeforeTax)} from the firm.`, { actorId: state.firm.id, counterpartyId: state.government.id, amountCents: firmCashBeforeTax })
-
+  const totalFirmCashBeforeTax = state.firms.reduce((sum, firm) => sum + firm.cashCents, 0)
+  for (const firm of state.firms) {
+    const tax = firm.cashCents; firm.cashCents = 0; state.government.cashCents += tax
+    pushEvent(state, 'TAX_PAID', `${firm.id} paid ${dollars(tax)} tax.`, { actorId: firm.id, counterpartyId: state.government.id, firmId: firm.id, industryId: firm.industryId, amountCents: tax })
+  }
+  state.government.taxCollectedTodayCents = totalFirmCashBeforeTax
   const governmentCashBeforeRedistribution = state.government.cashCents
   const quotient = Math.floor(governmentCashBeforeRedistribution / HOUSEHOLD_COUNT)
   const remainder = governmentCashBeforeRedistribution % HOUSEHOLD_COUNT
   state.households.forEach((household, index) => {
-    const amount = quotient + (index < remainder ? 1 : 0)
-    state.government.cashCents -= amount
-    household.cashCents += amount
-    pushEvent(state, 'TRANSFER_RECEIVED', `${household.id.replace('-', ' ')} received ${dollars(amount)} from the government.`, { actorId: state.government.id, counterpartyId: household.id, amountCents: amount })
+    const amount = quotient + (index < remainder ? 1 : 0); state.government.cashCents -= amount; household.cashCents += amount
+    pushEvent(state, 'TRANSFER_RECEIVED', `${household.id} received ${dollars(amount)} from pooled taxes.`, { actorId: state.government.id, counterpartyId: household.id, householdId: household.id, amountCents: amount })
   })
   state.government.redistributedTodayCents = governmentCashBeforeRedistribution
-  const endOfDayDistribution = summarizeCashDistribution(state.households.map((household) => household.cashCents))
-
-  const metrics: DayMetrics = {
-    day: state.day,
-    postedPriceCents: price,
-    bestKnownPriceCents: state.pricing.bestPriceCents,
-    priceStepSizeCents: state.pricing.stepSizeCents,
-    searchDirection: state.pricing.direction,
-    unitsSold: state.firm.unitsSoldToday,
-    foodSupplied: state.config.dailyFoodSupply,
-    unitsExpired: state.firm.unitsExpiredToday,
-    stockoutFailures: state.households.filter((household) => household.purchaseOutcomeToday === 'stockout').length,
-    affordabilityFailures: state.households.filter((household) => household.purchaseOutcomeToday === 'insufficient_funds').length,
-    soldOut: state.firm.soldOutToday,
-    householdsAffordableAtMarketOpen,
-    householdCashMinimumAtMarketOpenCents: marketOpenDistribution.minimumCents,
-    householdCashMedianAtMarketOpenCents: marketOpenDistribution.medianCents,
-    householdCashMaximumAtMarketOpenCents: marketOpenDistribution.maximumCents,
-    householdCashGiniAtMarketOpen: marketOpenDistribution.gini,
-    householdCashMinimumCents: endOfDayDistribution.minimumCents,
-    householdCashMedianCents: endOfDayDistribution.medianCents,
-    householdCashMaximumCents: endOfDayDistribution.maximumCents,
-    householdCashGini: endOfDayDistribution.gini,
-    revenueCents: revenue,
-    preTaxProfitCents: revenue,
-    totalHouseholdCashCents: state.households.reduce((sum, household) => sum + household.cashCents, 0),
-    firmCashBeforeTaxCents: firmCashBeforeTax,
-    firmCashAfterTaxCents: state.firm.cashCents,
-    governmentCashBeforeRedistributionCents: governmentCashBeforeRedistribution,
-    governmentCashAfterRedistributionCents: state.government.cashCents,
-    totalMoneyCents: totalMoney(state),
-    converged: state.pricing.converged,
+  const endingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
+  const metric: DayMetrics = {
+    day: state.day, markets: marketMetrics,
+    householdCashMinimumAtMarketOpenCents: openingDistribution.minimumCents, householdCashMedianAtMarketOpenCents: openingDistribution.medianCents,
+    householdCashMaximumAtMarketOpenCents: openingDistribution.maximumCents, householdCashGiniAtMarketOpen: openingDistribution.gini,
+    householdCashMinimumCents: endingDistribution.minimumCents, householdCashMedianCents: endingDistribution.medianCents,
+    householdCashMaximumCents: endingDistribution.maximumCents, householdCashGini: endingDistribution.gini,
+    totalRevenueCents: totalFirmCashBeforeTax, totalPreTaxProfitCents: totalFirmCashBeforeTax,
+    totalHouseholdCashCents: state.households.reduce((sum, household) => sum + household.cashCents, 0), totalFirmCashBeforeTaxCents: totalFirmCashBeforeTax,
+    totalFirmCashAfterTaxCents: state.firms.reduce((sum, firm) => sum + firm.cashCents, 0), governmentCashBeforeRedistributionCents: governmentCashBeforeRedistribution,
+    governmentCashAfterRedistributionCents: state.government.cashCents, totalMoneyCents: totalMoney(state), allFirmsConverged: state.firms.every((firm) => firm.pricing.converged),
   }
-  state.metrics.push(metrics)
-  if (state.metrics.length > MAX_HISTORY) state.metrics.shift()
+  state.metrics.push(metric); if (state.metrics.length > MAX_HISTORY) state.metrics.shift()
   validateState(state, true)
-  pushEvent(state, 'DAY_ENDED', `Day ${state.day} ended with exactly ${dollars(metrics.totalMoneyCents)} in the closed circuit.`)
+  pushEvent(state, 'DAY_ENDED', `Day ${state.day} ended with exactly ${dollars(metric.totalMoneyCents)} in the closed circuit.`)
   return state
 }
 

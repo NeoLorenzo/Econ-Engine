@@ -1,46 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import { createSimulation, stepSimulation } from '../sim/engine'
-import type { SimulationEvent } from '../sim/types'
 import { groupEventsForDisplay } from './groupEventsForDisplay'
 
-describe('event display grouping', () => {
-  it('groups a full market while preserving granular raw purchase events', () => {
-    const state = stepSimulation(createSimulation({ startingPriceCents: 800, initialStepCents: 100, dailyFoodSupply: 10 }))
-    const rawPurchases = state.events.filter((event) => event.type === 'HOUSEHOLD_PURCHASE')
+describe('multi-market event display grouping', () => {
+  it('groups each market separately while preserving all granular events', () => {
+    const state = stepSimulation(createSimulation({ startingPriceCents: 800, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
     const displayed = groupEventsForDisplay(state.events)
-    const market = displayed.find((event) => event.key === 'market-1')
-
-    expect(rawPurchases).toHaveLength(10)
-    expect(market?.details).toHaveLength(10)
-    expect(market?.description).toBe('10 purchased · $80.00 spent.')
-    expect(displayed.filter((event) => event.type === 'HOUSEHOLD PURCHASES')).toHaveLength(1)
+    const markets = displayed.filter(({ key }) => key.startsWith('market-'))
+    expect(markets).toHaveLength(5)
+    expect(markets.every(({ details }) => details.length === 10)).toBe(true)
+    expect(markets.find(({ key }) => key === 'market-1-food')?.description).toBe('10 purchased · 0 affordability · 0 stockout failures · $80.00 spent.')
+    expect(state.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')).toHaveLength(50)
   })
 
-  it('summarizes a completely unaffordable market', () => {
-    const state = stepSimulation(createSimulation({ startingPriceCents: 1_001, initialStepCents: 100, dailyFoodSupply: 8 }))
-    const market = groupEventsForDisplay(state.events).find((event) => event.key === 'market-1')
-    expect(state.events.filter((event) => event.type === 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS')).toHaveLength(10)
-    expect(market?.type).toBe('PURCHASES FAILED')
-    expect(market?.description).toBe('0 purchased · 10 affordability failures at $10.01.')
+  it('distinguishes unaffordable and scarce markets in grouped summaries', () => {
+    const state = stepSimulation(createSimulation({ startingPriceCents: 1_000, initialStepCents: 100, dailySupplyPerIndustry: 8, industryStartingPricesCents: { food: 1_001 } }))
+    const displayed = groupEventsForDisplay(state.events)
+    expect(displayed.find(({ key }) => key === 'market-1-food')?.description).toContain('10 affordability')
+    expect(displayed.find(({ key }) => key === 'market-1-utilities')?.description).toContain('2 stockout failures')
   })
 
-  it('summarizes a mixed market without mutating its input', () => {
-    const events: SimulationEvent[] = [
-      { id: 1, day: 2, type: 'HOUSEHOLD_PURCHASE', actorId: 'household-1', amountCents: 950, description: 'purchase' },
-      { id: 2, day: 2, type: 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT', actorId: 'household-2', priceCents: 950, description: 'failed' },
-    ]
-    const original = structuredClone(events)
-    const market = groupEventsForDisplay(events)[0]
-    expect(market.description).toBe('1 purchased · 1 stockout failure · $9.50 spent.')
-    expect(events).toEqual(original)
-  })
-
-  it('groups scarcity outcomes while preserving each granular cause', () => {
-    const state = stepSimulation(createSimulation({ startingPriceCents: 1_000, initialStepCents: 100, dailyFoodSupply: 8 }))
-    const market = groupEventsForDisplay(state.events).find((event) => event.key === 'market-1')
-
-    expect(market?.details).toHaveLength(10)
-    expect(market?.description).toBe('8 purchased · 2 stockout failures · $80.00 spent.')
-    expect(market?.details.filter((event) => event.type === 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT')).toHaveLength(2)
+  it('groups pooled redistribution without altering source events', () => {
+    const state = stepSimulation(createSimulation({ startingPriceCents: 1_000, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
+    const original = structuredClone(state.events)
+    const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'redistribution-1')
+    expect(group?.details).toHaveLength(10)
+    expect(group?.description).toBe('Government redistributed $500.00 across 10 households.')
+    expect(state.events).toEqual(original)
   })
 })

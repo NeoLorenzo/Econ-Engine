@@ -6,6 +6,79 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP2-Multi_Industry-004] - (2026-08-13)
+
+### Context
+
+Finite supply successfully exposed endogenous wealth divergence, path dependence, and multiple learner endpoints when supply was below demand. Stability is now the highest priority. Returning the single-market default to ten units for ten households restored the stable reference economy: every affordable household could purchase and equal redistribution restored equal balances.
+
+The next expansion is therefore architectural rather than another destabilizing behavioral mechanism. Five simultaneous symmetric industries test whether the engine can grow in breadth while keeping causes and benchmarks legible.
+
+### Research question
+
+> Can Econ-Engine support several simultaneous markets and independently learning firms while preserving a deterministic, analytically known, stable reference economy?
+
+### Main risk
+
+Giving households only one unrestricted $50 wallet and processing markets sequentially would make later industries lose demand whenever an experimental basket exceeded available cash. Industry order would become a hidden economic institution and contaminate each firm's learning path.
+
+### Design decision
+
+The model uses one real household cash balance plus five fixed per-industry spending constraints. A purchase must satisfy both real-cash and industry-budget affordability. The constraints are not money stocks, never enter monetary conservation, and are not depleted by purchases in other industries. This keeps the monetary circuit explicit, makes the canonical markets independent of processing order, preserves the $10 analytical boundary, and lets each firm learn against a stable local result.
+
+### Architecture
+
+The core now iterates reusable `industries` and `firms` collections. Each firm owns private pricing state. Each household owns an industry-keyed outcome record with budget, daily cause, and lifetime counters. Metrics contain five reusable market records; generic events carry industry and firm identity. This avoided five hard-coded engine copies without adding a plugin framework.
+
+A single common supply configuration is applied independently to each industry. The government remains singular: it taxes all firms, pools receipts, and redistributes the pool.
+
+### Stable benchmark
+
+The canonical economy has ten households, five firms, ten units supplied per firm, a $10 budget per household/industry, $50 household cash, and $500 total money. At all firms priced $10, each household spends $50, government collects and redistributes $500, every household ends at $50, and Gini is zero.
+
+### Findings
+
+The controlled varied-start run produced:
+
+| Industry | Start | Endpoint | Convergence day |
+|---|---:|---:|---:|
+| Food | $1.00 | $10.00 | 18 |
+| Utilities | $2.00 | $10.00 | 17 |
+| Transport | $5.00 | $10.00 | 14 |
+| Healthcare | $15.00 | $10.00 | 14 |
+| Entertainment | $20.00 | $10.00 | 19 |
+
+All learners converged by day 19 without knowing the benchmark or other firms' results. Final household minimum, median, and maximum cash were all $50; Gini was zero and total money was $500.
+
+A 1,000-day canonical run kept all five prices at $10 after convergence, every household at $50, Gini at zero, total money at $500, and each market's stock flow balanced. Reversing industry processing order produced identical household outcomes and per-firm pricing state, sales, and revenue. No unexpected canonical instability appeared.
+
+### Stability
+
+The canonical baseline is deliberately stable because supply equals demand and the fixed industry constraints preserve the known affordability boundary. Lower common supply remains available and produces explicit stockouts; its wealth divergence and path dependence are valid experimental outcomes, not model breakage. No hidden lower-supply stabilizer was introduced.
+
+### Trade-offs
+
+- Industries are currently labels over identical mechanics.
+- Spending constraints are fixed and imposed, not endogenous allocation.
+- There is no within-industry competition.
+- Supply remains finite but exogenous.
+- Full pooled taxation and equal redistribution remain deliberately artificial.
+- This is a controlled architecture/stability test rather than a realistic economy.
+
+### Validation
+
+- `npm run test:run`: 26 tests passed across four files.
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- `npm run check`: passed.
+- `npm run dev`: served successfully; initial desktop DOM sanity check showed the five-market overview, four charts, experiment control, household inspection, and event ledger with the expected $500 baseline values.
+- Populated experiment interaction, approximately 390px viewport, and console inspection were not completed because the in-app browser's URL security policy blocked further localhost actions after the metadata refresh. This is a validation-tool limitation, not an observed application failure.
+- GitHub Pages deployment was not performed.
+
+### Lessons and open questions
+
+Collection-based markets and keyed outcomes broaden the architecture without broadening firm knowledge. The fixed-envelope approach is analytically clean but should remain explicit as an institution. Future research can ask when industries should differ, whether household allocation should become endogenous, whether competition should enter one industry first, and how wages/income might replace the redistribution circuit. None belongs in MVP 2.
+
 ## [MVP1-Scarcity_Analysis-003.1] - (2026-08-13)
 
 ### Context
