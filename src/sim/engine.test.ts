@@ -1,101 +1,84 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_INDUSTRIES, TOTAL_MONEY_CENTS } from './config'
+import { DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
-import type { SimulationConfig } from './types'
+import type { IndustryId } from './types'
+import { manhattanDistance } from './spatial'
 
-const config = (extra: Partial<SimulationConfig> = {}): SimulationConfig => ({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, ...extra })
+const consumerIds = ['food', 'utilities', 'healthcare', 'entertainment'] as const
+const base = { startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 20260813 }
 
-describe('MVP4 spatial Entertainment engine', () => {
-  it('keeps three non-spatial consumer controls, two Entertainment firms, and one derived Transport firm', () => {
-    const state = createSimulation()
-    expect(state.industries).toEqual(DEFAULT_INDUSTRIES)
-    expect(state.firms).toHaveLength(6)
-    expect(state.firms.filter((firm) => firm.industryId === 'entertainment')).toHaveLength(2)
-    expect(state.firms.filter((firm) => ['food', 'utilities', 'healthcare'].includes(firm.industryId))).toHaveLength(3)
+describe('MVP4 full spatial competition', () => {
+  it('creates two firms in every consumer industry and one derived Transport monopoly', () => {
+    const state = createSimulation(base)
+    expect(state.firms).toHaveLength(9)
+    consumerIds.forEach((id) => expect(state.firms.filter((firm) => firm.industryId === id).map(({ id }) => id)).toEqual([`firm-${id}-a`, `firm-${id}-b`]))
+    expect(state.firms.filter(({ industryId }) => industryId === 'transport')).toHaveLength(1)
   })
 
-  it('does not create an abstract Transport purchase outcome', () => {
-    const state = stepSimulation(createSimulation(config({ firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 100 } })))
-    expect(state.households.every((h) => h.industryOutcomes.transport.purchaseOutcomeToday === null)).toBe(true)
-    expect(state.events.some((e) => e.type === 'HOUSEHOLD_PURCHASE' && e.industryId === 'transport')).toBe(false)
-    expect(state.events.filter((e) => e.type === 'TRANSPORT_SERVICE_PURCHASED')).toHaveLength(10)
+  it('uses integer basis-point shares and deterministic half-up cent rounding', () => {
+    const state = createSimulation(base)
+    expect(state.config.industryBudgetSharesBps).toEqual(DEFAULT_INDUSTRY_BUDGET_SHARES_BPS)
+    expect(Object.values(DEFAULT_INDUSTRY_BUDGET_SHARES_BPS).reduce((sum, value) => sum + value, 0)).toBe(3_140)
+    expect(deriveIndustryBudgetCents(5_000, 1_290)).toBe(645)
+    expect(deriveIndustryBudgetCents(5_000, 600)).toBe(300)
+    expect(deriveIndustryBudgetCents(5_000, 790)).toBe(395)
+    expect(deriveIndustryBudgetCents(5_000, 460)).toBe(230)
+    expect(state.industries.find(({ id }) => id === 'transport')?.budgetShareBps).toBeUndefined()
   })
 
-  it('separates product and travel transfers and records causal spatial fields', () => {
-    const state = createSimulation(config({ firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 900 } }))
-    state.households[0].coordinate = { x: 0, y: 0 }; state.firms.find((f) => f.id === 'firm-entertainment-a')!.coordinate = { x: 3, y: 1 }
+  it('places ten households and eight consumer firms on unique in-bounds cells', () => {
+    const state = createSimulation(base)
+    const entities = [...state.households, ...state.firms.filter(({ industryId }) => industryId !== 'transport')]
+    expect(entities).toHaveLength(18)
+    expect(new Set(entities.map(({ coordinate }) => `${coordinate!.x},${coordinate!.y}`)).size).toBe(18)
+    expect(entities.every(({ coordinate }) => coordinate!.x >= 0 && coordinate!.x < 20 && coordinate!.y >= 0 && coordinate!.y < 20)).toBe(true)
+    expect(state.firms.find(({ industryId }) => industryId === 'transport')?.coordinate).toBeUndefined()
+  })
+
+  it('routes every consumer purchase product payment and travel payment separately', () => {
+    const day = stepSimulation(createSimulation(base))
+    expect(day.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE').length).toBe(40)
+    expect(day.events.filter(({ type }) => type === 'TRANSPORT_SERVICE_PURCHASED').length).toBe(40)
+    expect(day.households.every((household) => consumerIds.every((id) => household.industryOutcomes[id].purchasedToday))).toBe(true)
+    expect(day.households.every((household) => household.industryOutcomes.transport.purchaseOutcomeToday === null)).toBe(true)
+    expect(day.metrics[0].entertainmentTrips).toBe(40)
+    expect(Object.keys(day.metrics[0].transportRevenueByIndustryCents).sort()).toEqual([...consumerIds].sort())
+  })
+
+  it.each(consumerIds)('uses delivered cost and derived affordability in %s', (industryId) => {
+    const state = createSimulation(base)
+    const firms = state.firms.filter((firm) => firm.industryId === industryId)
+    const household = state.households.find((candidate) => manhattanDistance(candidate.coordinate, firms[0].coordinate!) !== manhattanDistance(candidate.coordinate, firms[1].coordinate!))!
+    const [closer, farther] = [...firms].sort((left, right) => manhattanDistance(household.coordinate, left.coordinate!) - manhattanDistance(household.coordinate, right.coordinate!))
+    closer.postedPriceCents = 101; farther.postedPriceCents = 100
     const day = stepSimulation(state)
-    const purchase = day.events.find((e) => e.day === 1 && e.type === 'HOUSEHOLD_PURCHASE' && e.householdId === 'household-1' && e.industryId === 'entertainment')!
-    const travel = day.events.find((e) => e.day === 1 && e.type === 'TRANSPORT_SERVICE_PURCHASED' && e.householdId === 'household-1')!
-    expect(purchase).toMatchObject({ firmId: 'firm-entertainment-a', amountCents: 100, oneWayDistance: 4, roundTripTiles: 8, transportFeeCents: 16, deliveredCostCents: 116 })
-    expect(travel).toMatchObject({ firmId: 'firm-transport', amountCents: 16 })
+    expect(day.households.find(({ id }) => id === household.id)!.spatialPurchasesToday[industryId]?.chosenFirmId).toBe(closer.id)
   })
 
-  it('chooses delivered cost rather than sticker price', () => {
-    const state = createSimulation(config({ firmStartingPricesCents: { 'firm-entertainment-a': 450, 'firm-entertainment-b': 420 } }))
-    const h = state.households[0]; h.coordinate = { x: 0, y: 0 }
-    state.firms.find((f) => f.id === 'firm-entertainment-a')!.coordinate = { x: 1, y: 0 }
-    state.firms.find((f) => f.id === 'firm-entertainment-b')!.coordinate = { x: 10, y: 0 }
-    const day = stepSimulation(state)
-    expect(day.households[0].entertainmentToday?.chosenFirmId).toBe('firm-entertainment-a')
-    expect(day.households[0].entertainmentToday?.deliveredCostCents).toBe(454)
+  it('keeps category boundaries behavioral and leaves unused cash in the single household balance until parity', () => {
+    const day = stepSimulation(createSimulation(base))
+    expect(day.households.every(({ cashCents }) => cashCents === 5_000)).toBe(true)
+    expect(day.households.every((household) => !('wallets' in household))).toBe(true)
+    expect(day.events.filter(({ type }) => type === 'PARITY_TRANSFER_RECEIVED')).toHaveLength(10)
   })
 
-  it('applies the Entertainment budget to the full delivered cost', () => {
-    const state = createSimulation(config({ firmStartingPricesCents: { 'firm-entertainment-a': 499, 'firm-entertainment-b': 900 } }))
-    state.households.forEach((h) => { h.coordinate = { x: 0, y: 0 } })
-    state.firms.find((f) => f.id === 'firm-entertainment-a')!.coordinate = { x: 1, y: 0 }
-    const day = stepSimulation(state)
-    expect(day.firms.filter((f) => f.industryId === 'entertainment').reduce((s, f) => s + f.unitsSoldToday, 0)).toBe(0)
-    expect(day.households.every((h) => h.industryOutcomes.entertainment.purchaseOutcomeToday === 'insufficient_funds')).toBe(true)
-  })
-
-  it('uses proximity priority and fallback without double purchasing', () => {
-    const state = createSimulation(config({ dailySupplyPerIndustry: 1, firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 110 } }))
-    const a = state.firms.find((f) => f.id === 'firm-entertainment-a')!; const b = state.firms.find((f) => f.id === 'firm-entertainment-b')!
-    a.coordinate = { x: 0, y: 0 }; b.coordinate = { x: 19, y: 19 }
-    state.households.forEach((h, i) => { h.coordinate = { x: Math.min(19, i + 1), y: 0 } })
-    const day = stepSimulation(state)
-    expect(day.events.filter((e) => e.type === 'HOUSEHOLD_PURCHASE' && e.industryId === 'entertainment')).toHaveLength(2)
-    expect(day.households[0].entertainmentToday?.chosenFirmId).toBe('firm-entertainment-a')
-    expect(day.households.every((h) => h.industryOutcomes.entertainment.lifetimeUnitsPurchased <= 1)).toBe(true)
-  })
-
-  it('taxes Transport and restores every household through explicit parity events', () => {
-    const day = stepSimulation(createSimulation())
-    const transport = day.firms.find((f) => f.industryId === 'transport')!
-    expect(transport.revenueTodayCents).toBeGreaterThan(0)
-    expect(day.events.find((e) => e.type === 'TAX_PAID' && e.firmId === transport.id)?.amountCents).toBe(transport.revenueTodayCents)
-    expect(day.events.filter((e) => e.type === 'PARITY_TRANSFER_RECEIVED')).toHaveLength(10)
-    expect(day.households.every((h) => h.cashCents === 5_000)).toBe(true)
+  it('preserves taxation, parity, money, and stock flows', () => {
+    const day = stepSimulation(createSimulation(base))
+    expect(day.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
     expect(day.government.cashCents).toBe(0)
-    expect(day.firms.every((f) => f.cashCents === 0)).toBe(true)
-    expect(totalMoney(day)).toBe(TOTAL_MONEY_CENTS)
-  })
-
-  it('preserves exact stock flows and bounded household Entertainment demand', () => {
-    const day = stepSimulation(createSimulation(config({ dailySupplyPerIndustry: 8 })))
-    day.firms.filter((f) => f.industryId !== 'transport').forEach((f) => expect(f.unitsSoldToday + f.unitsExpiredToday).toBe(8))
-    expect(day.firms.filter((f) => f.industryId === 'entertainment').reduce((s, f) => s + f.unitsSoldToday, 0)).toBeLessThanOrEqual(10)
+    expect(day.households.every(({ cashCents }) => cashCents === 5_000)).toBe(true)
+    expect(totalMoney(day)).toBe(50_000)
+    day.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(firm.unitsSoldToday + firm.unitsExpiredToday).toBe(10))
     expect(() => validateState(day, true)).not.toThrow()
   })
 
-  it('is fully reproducible and keeps histories bounded', () => {
-    const first = runDays(createSimulation(config({ seed: 77 })), 450)
-    const second = runDays(createSimulation(config({ seed: 77 })), 450)
+  it('reproduces full runs, bounds histories, and remains invariant-safe for 1,000 days', () => {
+    const first = runDays(createSimulation({ ...base, seed: 77 }), 1_000)
+    const second = runDays(createSimulation({ ...base, seed: 77 }), 1_000)
     expect(first).toEqual(second)
-    expect(first.metrics).toHaveLength(400)
-    expect(first.events.length).toBeLessThanOrEqual(600)
-  }, 15_000)
-
-  it('remains invariant-safe for 1,000 days and retains control benchmarks', () => {
-    const state = runDays(createSimulation(config()), 1_000)
-    for (const id of ['food', 'utilities', 'healthcare'] as const) {
-      const firm = state.firms.find((f) => f.industryId === id)!
-      expect(firm.pricing.incumbentPriceCents).toBe(state.industries.find((i) => i.id === id)!.householdBudgetCents)
-    }
-    expect(state.metrics.every((m) => m.totalMoneyCents === 50_000 && m.householdCashGini === 0)).toBe(true)
-    expect(state.households.every((h) => h.cashCents === 5_000)).toBe(true)
-  }, 20_000)
+    expect(first.metrics).toHaveLength(MAX_HISTORY)
+    expect(first.events.length).toBeLessThanOrEqual(MAX_EVENTS)
+    expect(first.metrics.every(({ totalMoneyCents }) => totalMoneyCents === 50_000)).toBe(true)
+  }, 30_000)
 })

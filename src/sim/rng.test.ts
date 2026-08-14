@@ -51,5 +51,5 @@ describe('seeded randomness and persistent probes', () => {
 })
 
 function stepEvents(seed: number) {
-  return runDays(createSimulation({ startingPriceCents: 400, initialStepCents: 100, dailySupplyPerIndustry: 10, seed, firmStartingPricesCents: { 'firm-entertainment-a': 400, 'firm-entertainment-b': 400 } }), 1).events
+  return runDays(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10, seed, firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 100 } }), 1).events
 }

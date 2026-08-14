@@ -2,11 +2,36 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP4-Spatial_Competition_Full-006.4] - (2026-08-14)
+
+- Added a permanent design rule requiring dynamic behavior to be evaluated from trajectories rather than inferred from terminal snapshots.
+- Changed generalized spatial competition reports to analyze all days 1–1,000 with no implicit burn-in.
+- Added leadership/tie occupancy, mean and cumulative sales shares, leadership transitions, and leading-spell duration.
+- Added temporary 100%-share occupancy and spell metrics without classifying those days as monopoly.
+- Added posted/incumbent price ranges and means plus cumulative, mean, and industry-share zero-cost profit.
+- Reframed retained end-of-horizon values as secondary day-1,000 terminal snapshots.
+- Added synthetic trajectory, tie-transition, spell, aggregation, purity, and seeded 1,000-day reproducibility tests.
+
 ## Maintenance convention
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
-## [MVP4-Spatial_Entertainment-006.2] - (2026-08-14)
+## [MVP4-Spatial_Competition_Full-006.3] - (2026-08-14)
+
+### Added
+
+- Added Food A/B, Utilities A/B, and Healthcare A/B alongside Entertainment A/B, producing four two-firm spatial consumer markets plus the single derived Transport monopoly.
+- Added seeded unique coordinates for all eight consumer firms and all ten households, generalized delivered-cost clearing, proximity inventory priority, fallback, and competitor-aware experiment catalogs across every consumer industry.
+- Added integer basis-point expenditure shares—Food 1290, Utilities 600, Healthcare 790, Entertainment 460—plus a separate configurable daily expenditure base and deterministic integer-cent derivation.
+- Added per-household spatial outcomes by industry, per-firm delivered-cost and travel metrics, Transport revenue by originating industry, a generalized map, budget summary, competitive-pricing inspection, experiments, and regression coverage.
+
+### Changed
+
+- All modeled consumer purchases now generate separate product and Transport transfers. Transport remains unlimited-capacity, fixed-rate, non-adaptive, and without a household expenditure share.
+- Fixed authoritative dollar category limits were replaced by derived limits from the daily expenditure base and shares. The modeled shares intentionally total 31.4% and unused limits remain ordinary household cash.
+- Generalized Entertainment-specific spatial terminology and clearing code while preserving Government parity, exact money conservation, finite inventory, seeded RNG streams, and the 006.2 structural-sharing step architecture.
+
+## [MVP4-Spatial_Competition_Full-006.2] - (2026-08-14)
 
 ### Changed
 
@@ -18,7 +43,7 @@ Every meaningful software update should receive a newest-first entry with a read
 
 - Added previous-state immutability and historical-reference-sharing tests, exact 1,000-day same-seed replay, and a 10,000-day stress regression with 400 metrics, no more than 600 events, and exact terminal invariants.
 
-## [MVP4-Spatial_Entertainment-006.1] - (2026-08-14)
+## [MVP4-Spatial_Competition_Full-006.1] - (2026-08-14)
 
 ### Added
 
@@ -34,7 +59,7 @@ Every meaningful software update should receive a newest-first entry with a read
 - Firms that sold their entire stock on the just-completed day now mask every below-incumbent catalog candidate; upward experiments remain available, and discounts return when the firm does not sell out.
 - Monopoly controls receive incumbent-anchored candidates only; Transport, spatial household choice, parity restoration, and transaction accounting are unchanged.
 
-## [MVP4-Spatial_Entertainment-006] - (2026-08-14)
+## [MVP4-Spatial_Competition_Full-006] - (2026-08-14)
 
 ### Added
 
@@ -80,7 +105,7 @@ Added deterministic starting-price sensitivity analysis for the existing Enterta
 ### Added
 
 - Full 8×8 Cartesian grid over $1/$2/$3/$4/$5/$6/$8/$10 Entertainment A/B starts with a 300-day horizon.
-- Per-combination endpoints, convergence days, convergence status, final shares/profits, final pricing state, and control endpoints.
+- Per-combination endpoints, convergence days, convergence status, terminal shares/profits, terminal pricing state, and control endpoints.
 - Full-grid swapped-start symmetry regression and horizon/non-mutation/control/observer-boundary tests.
 - Compact matrix in the existing dashboard with A starts as rows, B starts as columns, and A/B endpoints in each cell.
 
@@ -88,7 +113,7 @@ Added deterministic starting-price sensitivity analysis for the existing Enterta
 
 - All 64 combinations converged within 300 days; multiple deterministic endpoint regions were observed.
 - Equal-price starts remained synchronized and converged to $5/$5; asymmetric starts produced path-dependent endpoints ranging from $1/$1 through $5/$5, including one- and two-cent endpoint differences.
-- Swapped starts were exactly symmetric after exchanging firm labels, including endpoints, convergence timing, and final shares.
+- Swapped starts were exactly symmetric after exchanging firm labels, including endpoints, convergence timing, and terminal shares.
 - Food/Utilities/Transport/Healthcare remained at $15/$12/$8/$10 in every run.
 - 43 tests passed across five files; typecheck, build, aggregate check, and browser validation passed.
 - No simulation behavior, pricing logic, firm information, tie-breaking, or experiment parameter changed during final documentation and validation.

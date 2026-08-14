@@ -642,6 +642,18 @@ An obviously simplified model whose assumptions are explicit is preferable to an
 
 ---
 
+## 28. Dynamic behavior must be evaluated over time, not inferred from terminal snapshots
+
+A simulation state at the end of an experiment represents only the state of the economy at that moment. When a variable can fluctuate, cycle, switch regimes, or adapt over time, conclusions about its behavior must be based on its trajectory across the experimental horizon.
+
+Terminal values may be reported as the current state at the observation horizon, but must not be treated as evidence that the system behaved that way throughout the run.
+
+**Experiments should summarize temporal occupancy, averages, and transitions.** For competitive markets, report how much simulated time firms spend leading, tied, or dominated; average market shares and prices over time; cumulative sales and profit; leadership transitions; and dominance-spell duration where useful.
+
+Do not label a market as monopolized, balanced, converged, dominated, or otherwise characterize its long-run behavior solely from the terminal snapshot. This rule applies equally to prices, profits, shortages, inequality, transport utilization, unemployment, output, firm dominance, market share, and any other dynamic state.
+
+---
+
 # Core Philosophy
 
 Agent Econ should follow a simple hierarchy:

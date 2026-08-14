@@ -12,6 +12,7 @@ export interface Industry {
   id: IndustryId
   name: string
   householdBudgetCents: number
+  budgetShareBps?: number
 }
 
 export interface SimulationConfig {
@@ -27,6 +28,8 @@ export interface SimulationConfig {
   gridHeight?: number
   transportCostPerTileCents?: number
   targetHouseholdCashCents?: number
+  dailyExpenditureBudgetCents?: number
+  industryBudgetSharesBps?: Partial<Record<Exclude<IndustryId, 'transport'>, number>>
 }
 
 export type HouseholdPurchaseOutcome = 'purchased' | 'insufficient_funds' | 'stockout' | null
@@ -47,6 +50,7 @@ export interface Household {
   industryOutcomes: Record<IndustryId, HouseholdIndustryOutcome>
   coordinate: Coordinate
   entertainmentToday: HouseholdEntertainmentMetrics | null
+  spatialPurchasesToday: Partial<Record<Exclude<IndustryId, 'transport'>, HouseholdEntertainmentMetrics>>
 }
 
 export interface Coordinate { x: number; y: number }
@@ -189,6 +193,8 @@ export interface MarketMetrics {
   totalIndustryUnitsSold: number
   transactionPricesCents: number[]
   averageCustomerDistance: number
+  averageDeliveredCostCents: number
+  averageTransportFeeCents: number
 }
 
 export interface DayMetrics {
@@ -217,6 +223,7 @@ export interface DayMetrics {
   totalTilesTravelled: number
   totalTransportRevenueCents: number
   averageTransportFeeCents: number
+  transportRevenueByIndustryCents: Partial<Record<Exclude<IndustryId, 'transport'>, number>>
 }
 
 export interface SimulationState {

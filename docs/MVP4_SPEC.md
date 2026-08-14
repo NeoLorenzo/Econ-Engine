@@ -4,11 +4,29 @@ This specification is subordinate to [SIMULATION_DESIGN_RULES.md](../SIMULATION_
 
 ## Release
 
-`[MVP4-Spatial_Entertainment-006]`
+`[MVP4-Spatial_Competition_Full-006]`
 
-Pricing-intelligence refinement: `[MVP4-Spatial_Entertainment-006.1]`.
+Pricing-intelligence refinement: `[MVP4-Spatial_Competition_Full-006.1]`.
 
-Performance architecture refinement: `[MVP4-Spatial_Entertainment-006.2]`.
+Performance architecture refinement: `[MVP4-Spatial_Competition_Full-006.2]`.
+
+Full spatial competition generalization: `[MVP4-Spatial_Competition_Full-006.3]`.
+
+Dynamic-analysis refinement: `[MVP4-Spatial_Competition_Full-006.4]`.
+
+Competitive analysis defaults to the complete day-1 through day-1,000 trajectory. Reports prioritize leadership occupancy, mean and cumulative market shares, leadership transitions and spells, temporary 100%-share occupancy, price distributions, and cumulative/mean zero-cost profit. Day-1,000 values remain available only as a terminal snapshot and are not evidence of equilibrium or persistent market structure. Ties pause transition detection: `A → tie → B` counts once, while `A → tie → A` does not.
+
+## 006.3 full spatial consumer competition
+
+Food, Utilities, Healthcare, and Entertainment each contain independent A/B firms with seeded unique coordinates. Ten households and all eight consumer firms share the derived spatial-layout RNG stream; Transport and Government remain off-map. Every consumer market uses the same Manhattan delivered-cost ranking, seeded ties, proximity inventory priority, fallback, separate product/Transport transfers, finite stock accounting, and same-industry public competitor-price experiments.
+
+Household category constraints derive from a separate daily expenditure base using integer basis points:
+
+```text
+budget cents = Math.round(daily expenditure base cents × share bps / 10000)
+```
+
+Defaults are Food 1290 bps ($6.45), Utilities 600 ($3.00), Healthcare 790 ($3.95), and Entertainment 460 ($2.30) at a $50 base. The 3140-bps modeled share is deliberately partial and never normalized. Transport has no share, and unused category limits do not move money or create wallets. Government's independently configured $50 parity target remains a stock-restoration institution.
 
 ## 006.2 immutable step architecture
 

@@ -1,5 +1,5 @@
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
-import { DEFAULT_CONFIG, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
+import { DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
 import { totalMoney, validateState } from './invariants'
 import { buildPriceExperimentCatalog, createPricingState, decideTomorrowPrice, type PriceExperimentCandidate } from './pricingStrategy'
 import { normalizeSeed, probabilityCheck, randomInt, seededShuffle } from './rng'
@@ -33,9 +33,12 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
     gridHeight: Math.max(1, Math.round(config.gridHeight ?? DEFAULT_GRID_HEIGHT)),
     transportCostPerTileCents: Math.max(0, Math.round(config.transportCostPerTileCents ?? DEFAULT_TRANSPORT_COST_PER_TILE_CENTS)),
     targetHouseholdCashCents: Math.max(0, Math.round(config.targetHouseholdCashCents ?? INITIAL_HOUSEHOLD_CASH_CENTS)),
+    dailyExpenditureBudgetCents: Math.max(0, Math.round(config.dailyExpenditureBudgetCents ?? DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS)),
+    industryBudgetSharesBps: Object.fromEntries(Object.entries(DEFAULT_INDUSTRY_BUDGET_SHARES_BPS).map(([id, defaultBps]) => [id, Math.max(0, Math.min(10_000, Math.round(config.industryBudgetSharesBps?.[id as keyof typeof DEFAULT_INDUSTRY_BUDGET_SHARES_BPS] ?? defaultBps)))])),
   }
-  const industries = structuredClone(DEFAULT_INDUSTRIES)
-  const spatialIds = [...Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => `household-${index + 1}`), 'firm-entertainment-a', 'firm-entertainment-b']
+  const industries = DEFAULT_INDUSTRIES.map((industry) => industry.id === 'transport' ? { ...industry } : { ...industry, budgetShareBps: safeConfig.industryBudgetSharesBps![industry.id], householdBudgetCents: deriveIndustryBudgetCents(safeConfig.dailyExpenditureBudgetCents!, safeConfig.industryBudgetSharesBps![industry.id]!) })
+  const consumerFirmIds = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').flatMap(({ id }) => DEFAULT_FIRM_IDS_BY_INDUSTRY[id])
+  const spatialIds = [...Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => `household-${index + 1}`), ...consumerFirmIds]
   const layout = generateSpatialLayout(safeConfig.seed!, safeConfig.gridWidth!, safeConfig.gridHeight!, spatialIds)
   const firms: Firm[] = industries.flatMap((industry) => DEFAULT_FIRM_IDS_BY_INDUSTRY[industry.id].map((firmId) => {
     const price = Math.max(1, Math.round(safeConfig.firmStartingPricesCents?.[firmId] ?? safeConfig.industryStartingPricesCents?.[industry.id] ?? safeConfig.startingPriceCents))
@@ -56,6 +59,7 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
       cashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
       coordinate: layout[`household-${index + 1}`],
       entertainmentToday: null,
+      spatialPurchasesToday: {},
       industryOutcomes: Object.fromEntries(industries.map(({ id, householdBudgetCents }) => [id, {
         budgetCents: householdBudgetCents, purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null,
         lifetimeUnitsPurchased: 0, lifetimeStockoutFailures: 0, lifetimeAffordabilityFailures: 0,
@@ -76,6 +80,7 @@ function copyStateForStep(previous: SimulationState): SimulationState {
       ...household,
       coordinate: household.coordinate,
       entertainmentToday: household.entertainmentToday ? { ...household.entertainmentToday } : null,
+      spatialPurchasesToday: Object.fromEntries(Object.entries(household.spatialPurchasesToday).map(([id, outcome]) => [id, { ...outcome }])) as typeof household.spatialPurchasesToday,
       industryOutcomes: Object.fromEntries(Object.entries(household.industryOutcomes).map(([industryId, outcome]) => [industryId, { ...outcome }])) as typeof household.industryOutcomes,
     })),
     firms: previous.firms.map((firm) => ({ ...firm, coordinate: firm.coordinate, pricing: { ...firm.pricing } })),
@@ -97,6 +102,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     Object.assign(outcome, { purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null })
   }))
   state.households.forEach((household) => { household.entertainmentToday = null })
+  state.households.forEach((household) => { household.spatialPurchasesToday = {} })
 
   const openingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   pushEvent(state, 'DAY_STARTED', `Day ${state.day} began.`)
@@ -111,7 +117,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     const shuffled = seededShuffle(state.households, state.rngState)
     state.rngState = shuffled.state
     let purchasingOrder = shuffled.values
-    if (industryId === 'entertainment') {
+    {
       const priority = purchasingOrder.map((household) => {
         const ranked = industryFirms.map((firm) => ({ firm, ...transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!) }))
           .sort((left, right) => (left.firm.postedPriceCents + left.transportFeeCents) - (right.firm.postedPriceCents + right.transportFeeCents))
@@ -144,11 +150,9 @@ export function stepSimulation(previous: SimulationState): SimulationState {
 
     for (const household of purchasingOrder) {
       const outcome = household.industryOutcomes[industryId]
-      const quote = (firm: Firm) => industryId === 'entertainment'
-        ? transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
-        : { oneWayDistance: 0, roundTripTiles: 0, transportFeeCents: 0 }
+      const quote = (firm: Firm) => transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
       const delivered = (firm: Firm) => firm.postedPriceCents + quote(firm).transportFeeCents
-      if (industryId === 'entertainment') household.entertainmentToday = {
+      household.spatialPurchasesToday[industryId] = {
         chosenFirmId: null,
         distanceToA: quote(industryFirms[0]).oneWayDistance,
         distanceToB: quote(industryFirms[1]).oneWayDistance,
@@ -173,13 +177,15 @@ export function stepSimulation(previous: SimulationState): SimulationState {
         const total = price + travel.transportFeeCents
         const details = { actorId: household.id, counterpartyId: firm.id, householdId: household.id, firmId: firm.id, industryId, priceCents: price, oneWayDistance: travel.oneWayDistance, roundTripTiles: travel.roundTripTiles, transportFeeCents: travel.transportFeeCents, deliveredCostCents: total }
         household.cashCents -= total; firm.cashCents += price; firm.availableUnitsToday -= 1; firm.unitsSoldToday += 1
-        if (industryId === 'entertainment') {
+        {
           const transportFirm = state.firms.find(({ industryId: id }) => id === 'transport')!
           transportFirm.cashCents += travel.transportFeeCents
           transportFirm.unitsSoldToday += 1
           transportFirm.revenueTodayCents += travel.transportFeeCents
           transportFirm.preTaxProfitTodayCents += travel.transportFeeCents
-          household.entertainmentToday = { chosenFirmId: firm.id, distanceToA: transportQuote(household.coordinate, industryFirms[0].coordinate!, 0).oneWayDistance, distanceToB: transportQuote(household.coordinate, industryFirms[1].coordinate!, 0).oneWayDistance, chosenOneWayDistance: travel.oneWayDistance, roundTripTiles: travel.roundTripTiles, productPriceCents: price, transportFeeCents: travel.transportFeeCents, deliveredCostCents: total }
+          const spatialResult = { chosenFirmId: firm.id, distanceToA: transportQuote(household.coordinate, industryFirms[0].coordinate!, 0).oneWayDistance, distanceToB: transportQuote(household.coordinate, industryFirms[1].coordinate!, 0).oneWayDistance, chosenOneWayDistance: travel.oneWayDistance, roundTripTiles: travel.roundTripTiles, productPriceCents: price, transportFeeCents: travel.transportFeeCents, deliveredCostCents: total }
+          household.spatialPurchasesToday[industryId] = spatialResult
+          if (industryId === 'entertainment') household.entertainmentToday = spatialResult
           pushEvent(state, 'TRANSPORT_SERVICE_PURCHASED', `${household.id} paid ${dollars(travel.transportFeeCents)} to Transport for ${travel.roundTripTiles} tiles of Entertainment travel.`, { ...details, counterpartyId: transportFirm.id, firmId: transportFirm.id, amountCents: travel.transportFeeCents, quantity: travel.roundTripTiles })
         }
         Object.assign(outcome, { purchasedToday: true, spentTodayCents: total, purchaseOutcomeToday: 'purchased' }); outcome.lifetimeUnitsPurchased += 1
@@ -245,16 +251,18 @@ export function stepSimulation(previous: SimulationState): SimulationState {
         locallySettled: firm.pricing.locallySettled, probing: firm.pricing.probing, incumbentPriceCents: firm.pricing.incumbentPriceCents,
         marketShare: totalIndustryUnitsSold === 0 ? 0 : firm.unitsSoldToday / totalIndustryUnitsSold,
         totalIndustryUnitsSold, transactionPricesCents: firm.unitsSoldToday > 0 ? [testedPrice] : [],
-        averageCustomerDistance: industryId === 'entertainment' && firm.unitsSoldToday > 0
-          ? state.households.filter((household) => household.entertainmentToday?.chosenFirmId === firm.id).reduce((sum, household) => sum + household.entertainmentToday!.chosenOneWayDistance!, 0) / firm.unitsSoldToday
+        averageCustomerDistance: firm.unitsSoldToday > 0
+          ? state.households.filter((household) => household.spatialPurchasesToday[industryId]?.chosenFirmId === firm.id).reduce((sum, household) => sum + household.spatialPurchasesToday[industryId]!.chosenOneWayDistance!, 0) / firm.unitsSoldToday
           : 0,
+        averageDeliveredCostCents: firm.unitsSoldToday > 0 ? state.households.filter((household) => household.spatialPurchasesToday[industryId]?.chosenFirmId === firm.id).reduce((sum, household) => sum + household.spatialPurchasesToday[industryId]!.deliveredCostCents, 0) / firm.unitsSoldToday : 0,
+        averageTransportFeeCents: firm.unitsSoldToday > 0 ? state.households.filter((household) => household.spatialPurchasesToday[industryId]?.chosenFirmId === firm.id).reduce((sum, household) => sum + household.spatialPurchasesToday[industryId]!.transportFeeCents, 0) / firm.unitsSoldToday : 0,
       })
     }
   }
 
   const transportFirm = state.firms.find(({ industryId }) => industryId === 'transport')!
   const entertainmentTrips = transportFirm.unitsSoldToday
-  const totalTilesTravelled = state.households.reduce((sum, household) => sum + (household.entertainmentToday?.roundTripTiles ?? 0), 0)
+  const totalTilesTravelled = state.households.reduce((sum, household) => sum + Object.values(household.spatialPurchasesToday).reduce((subtotal, purchase) => subtotal + (purchase?.roundTripTiles ?? 0), 0), 0)
   const totalTransportRevenueCents = transportFirm.cashCents
   const totalFirmCashBeforeTax = state.firms.reduce((sum, firm) => sum + firm.cashCents, 0)
   for (const firm of state.firms) {
@@ -288,6 +296,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     allFirmsLocallySettled: state.firms.filter((firm) => firm.industryId !== 'transport').every((firm) => firm.pricing.locallySettled),
     entertainmentTrips, totalTilesTravelled, totalTransportRevenueCents,
     averageTransportFeeCents: entertainmentTrips === 0 ? 0 : totalTransportRevenueCents / entertainmentTrips,
+    transportRevenueByIndustryCents: Object.fromEntries(DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').map(({ id }) => [id, state.households.reduce((sum, household) => sum + (household.spatialPurchasesToday[id as Exclude<IndustryId, 'transport'>]?.transportFeeCents ?? 0), 0)])),
   }
   state.metrics.push(metric); if (state.metrics.length > MAX_HISTORY) state.metrics.shift()
   validateState(state, true)

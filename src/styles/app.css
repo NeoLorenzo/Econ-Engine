@@ -7,6 +7,7 @@ body { margin: 0; min-width: 320px; background: radial-gradient(circle at 75% 0%
 .chart-panel:has(.wealth-chart--hidden) { display: none; }
 .map-legend { display: flex; flex-wrap: wrap; gap: 12px; color: #aab5b0; font-size: .75rem; }
 .pricing-intelligence { margin: 18px 0; }
+.market-overview tbody tr:nth-child(5) { display: none; }
 .pricing-intelligence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .pricing-intelligence article { display: grid; gap: 5px; padding: 14px; border: 1px solid #28322e; border-radius: 8px; background: #101513; }
 .pricing-intelligence article > span { font-family: 'DM Mono', monospace; color: #8d9a94; font-size: .7rem; text-transform: uppercase; }
@@ -76,6 +77,11 @@ input:focus, select:focus { border-color: #86a940; }
 .causal-strip > p { margin: 0; color: #78847e; font-size: .76rem; }
 .charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .charts-grid .chart-panel:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.trajectory-section { margin-top: 22px; }
+.trajectory-heading { margin: 0 0 12px 2px; }
+.trajectory-heading h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.trajectory-heading p { margin: 0; color: #6f7d76; font-size: .73rem; }
+.auxiliary-charts { margin-top: 16px; }
 .chart-panel { min-height: 340px; padding: 22px 20px 12px; }
 .panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .panel-heading h2 { font-size: 1rem; margin: 0 0 5px; letter-spacing: -.02em; }
@@ -89,6 +95,8 @@ input:focus, select:focus { border-color: #86a940; }
 .market-table-wrap td { padding: 11px 10px; color: #b7c0bb; border-bottom: 1px solid #1c2320; }
 .market-table-wrap td i { display: inline-block; width: 7px; height: 7px; margin-right: 9px; border-radius: 50%; }
 .experiment-result { color: #8d9993; font-size: .74rem; }
+.temporal-report table { min-width: 1250px; }
+.temporal-report .terminal-snapshot { color: #77847e; background: #0b0f0d; }
 .competition-matrix-wrap { overflow-x: auto; margin-top: 18px; }
 .competition-matrix-wrap table { min-width: 930px; width: 100%; border-collapse: collapse; font: .66rem 'DM Mono', monospace; white-space: nowrap; }
 .competition-matrix-wrap th, .competition-matrix-wrap td { padding: 9px 10px; border: 1px solid #252d29; text-align: center; }

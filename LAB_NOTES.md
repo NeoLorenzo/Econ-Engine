@@ -6,7 +6,67 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
-## [MVP4-Spatial_Entertainment-006.2] - (2026-08-14)
+## [MVP4-Spatial_Competition_Full-006.4] - (2026-08-14)
+
+### Analytical mistake and design response
+
+A market observed at 100/0 on day 1,000 was being described as though it had behaved as a 100/0 market throughout the experiment. This confuses a terminal observation with a temporal property of an adaptive system. A day-1,000 snapshot can coexist with a 1,000-day average near 51/49; neither fact invalidates the other, but they answer different questions.
+
+006.4 therefore adds a permanent design rule: dynamic claims must come from trajectories. The generalized report includes every day from 1 through 1,000, with no hidden burn-in. It measures leading and tied occupancy, mean daily share, cumulative sales share, leadership transitions, leading spells, temporary 100%-share spells, posted and incumbent price distributions, and cumulative/mean zero-cost profit. Ties pause transition detection: `A → tie → B` counts once, while `A → tie → A` does not. Analytics are observer-only and consume no RNG.
+
+### Canonical 1,000-day findings
+
+For seed `20260813` from equal $1 starts:
+
+| Industry | Mean daily A/B share | A/B/tie leading days | Changes | Longest A/B lead | A/B 100%-share days | Day-1,000 snapshot |
+| --- | --- | --- | ---: | --- | --- | --- |
+| Food | 53.7% / 46.3% | 274 / 228 / 498 | 29 | 26 / 40 | 35 / 10 | 50% / 50% |
+| Utilities | 61.5% / 38.5% | 561 / 406 / 33 | 179 | 40 / 39 | 481 / 109 | 20% / 80% |
+| Healthcare | 49.4% / 50.5% | 438 / 530 / 32 | 117 | 61 / 48 | 42 / 5 | 90% / 10% |
+| Entertainment | 70.0% / 30.0% | 759 / 10 / 231 | 4 | 152 / 9 | 2 / 0 | 70% / 30% |
+
+The Utilities terminal snapshot was materially misleading if read as a run-wide result: B held 80% on day 1,000, while A averaged 61.5%, led on more days, captured 61.5% of cumulative sales, and received 60.8% of industry profit. Healthcare showed the converse form: A held 90% on day 1,000, but the full trajectory was almost even in mean and cumulative share and B led on more days. Entertainment's terminal 70/30 happened to resemble its temporal average, but its 231 tied days and four leadership changes still contain information absent from the snapshot.
+
+Mean incumbent prices in A/B order were Food $1.36/$1.42, Utilities $0.90/$0.88, Healthcare $0.99/$1.00, and Entertainment $0.90/$0.86. Because production cost remains zero, recorded profit equals realized revenue; canonical cumulative A/B profit was Food $8,208.29/$5,883.79, Utilities $5,339.15/$3,448.23, Healthcare $5,262.76/$4,590.90, and Entertainment $6,289.08/$2,511.53.
+
+### Alternate-seed observations and limitations
+
+Seeds `7` and `42` confirm material path and geography dependence. Seed 7 produced persistent B leadership in Food (90.7% of days), Utilities (99.7%), Healthcare (97.3%), and Entertainment (75.4%). Seed 42 was more mixed: B led Food 69.8%, Utilities 54.6%, and Entertainment 70.7% of days, while A led Healthcare 93.2%. Across the three seeds, leadership changes ranged from 2 to 179 and longest leading spells from 9 to 831 days. Temporary 100%-share occupancy ranged from zero to 48.1% for an individual firm; this is reported as occupancy, not monopoly classification.
+
+Three seeds are a compact deterministic comparison, not a population estimate. The full window intentionally mixes early adaptation with later behavior, and no stationarity test, burn-in selection, confidence interval, or equilibrium detector is introduced. These metrics describe the observed horizon without claiming what would occur beyond day 1,000.
+
+## [MVP4-Spatial_Competition_Full-006.3] - (2026-08-14)
+
+### Motivation and market structure
+
+Entertainment showed that geography can create local market power without arbitrary product differentiation. 006.3 tests whether the same friction scales across the modeled consumer economy:
+
+```text
+4 spatial competitive industries × 2 firms
++ 1 monopoly derived Transport service
+```
+
+Food, Utilities, Healthcare, and Entertainment now share the same delivered-cost, proximity-priority, fallback, finite-inventory, and same-industry public-price experiment architecture. Government and Transport remain off-map.
+
+### Budget model and partial basket
+
+Authoritative fixed category dollars were replaced by a distinct $50 daily expenditure flow base multiplied by integer basis-point shares. Government's $50 household target remains a monetary stock restored after trading; the expenditure base is only the flow basis for behavioral limits. They happen to match numerically but are independently configured concepts.
+
+Food 12.9%, Utilities 6.0%, Healthcare 7.9%, and Entertainment 4.6% derive $6.45, $3.00, $3.95, and $2.30 limits using `Math.round(base × bps / 10000)`. The four shares total 31.4% and are not normalized. The remainder represents unmodeled expenditure categories. Limits are maxima, not category wallets; unused amounts remain household cash.
+
+Transport has no share. Its demand emerges from up to four daily round trips and revenue is separately attributable to the originating industry.
+
+### Findings
+
+At day 300 under canonical seed 20260813, learner incumbents were Food $2.04/$2.04, Utilities $1.36/$1.42, Healthcare $1.21/$1.20, and Entertainment $1.35/$1.10. Final shares were 50/50, 100/0, 20/80, and 50/50 respectively. Industry Transport revenue was $3.52, $4.08, $5.44, and $3.96, totaling $17.00 from 40 trips and 850 round-trip tiles.
+
+Seeds 7 and 42 produced distinct prices, shares, and travel totals. Seed 7 generated $15.44 Transport revenue across 772 tiles; seed 42 generated $15.84 across 792 tiles. The differences show geographically distinct local customer bases and path-dependent learner incumbents, not equilibria.
+
+### Scope
+
+No production costs, production decisions, labor, wages, income, savings behavior, housing, credit, adaptive Transport pricing, roads, congestion, relocation, land values, quality, brands, advertising, or collusion were introduced.
+
+## [MVP4-Spatial_Competition_Full-006.2] - (2026-08-14)
 
 ### Problem and root cause
 
@@ -26,7 +86,7 @@ The 100-days/second path still simulates five sequential economic days before pu
 
 The automated 10,000-day stress run completed with exact accounting and stock-flow invariants, 400 metrics, and no more than 600 events. In the test runtime it completed in approximately 1.1 seconds. A separate 1,000-day same-seed comparison produced exactly equal complete states. The real React UI ran to day 2,510 at the 100-days/second setting—five times beyond the former failure point—with $500 displayed, all map entities present, no page overflow, and no console warnings or errors. The available browser surface did not expose precise heap profiling, so validation is limited to sustained execution and the removal of catastrophic whole-state allocations rather than a claimed byte measurement. No economic mechanism changed.
 
-## [MVP4-Spatial_Entertainment-006.1] - (2026-08-14)
+## [MVP4-Spatial_Competition_Full-006.1] - (2026-08-14)
 
 ### Problem and research question
 
@@ -56,7 +116,7 @@ For the directly comparable canonical $2/$2 start, 006.1 ended day 300 at $2.39/
 
 Firms remain bounded experimental learners. They do not know household geography or exact demand, calculate an optimum, respond to market share, observe competitor outcomes, or follow a mandatory undercut/best-response rule. Spatial choice, Transport, Government parity, and control-market institutions are unchanged.
 
-## [MVP4-Spatial_Entertainment-006] - (2026-08-14)
+## [MVP4-Spatial_Competition_Full-006] - (2026-08-14)
 
 ### Motivation and research question
 

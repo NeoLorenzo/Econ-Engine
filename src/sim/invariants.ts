@@ -1,4 +1,4 @@
-import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, TOTAL_MONEY_CENTS } from './config'
+import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, TOTAL_MONEY_CENTS, deriveIndustryBudgetCents } from './config'
 import type { SimulationState } from './types'
 
 const assertIntegerMoney = (label: string, value: number) => {
@@ -13,7 +13,7 @@ export function totalMoney(state: Pick<SimulationState, 'households' | 'firms' |
 
 export function validateState(state: SimulationState, endOfDay = false) {
   if (state.industries.length !== DEFAULT_INDUSTRIES.length) throw new Error('Expected exactly five industries')
-  if (state.firms.length !== 6) throw new Error('Expected six firms')
+  if (state.firms.length !== 9) throw new Error('Expected eight consumer firms and one Transport firm')
   if (state.households.length !== HOUSEHOLD_COUNT) throw new Error(`Expected ${HOUSEHOLD_COUNT} households`)
   const industryIds = state.industries.map(({ id }) => id)
   if (new Set(industryIds).size !== industryIds.length) throw new Error('Industry IDs must be unique')
@@ -25,6 +25,14 @@ export function validateState(state: SimulationState, endOfDay = false) {
   if (!Number.isInteger(state.config.dailySupplyPerIndustry) || state.config.dailySupplyPerIndustry < 0) throw new Error('Daily supply must be a non-negative integer')
   if (!Number.isInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffff_ffff) throw new Error('RNG state must be an unsigned 32-bit integer')
   if ((state.config.probeProbability ?? 0) < 0 || (state.config.probeProbability ?? 0) > 1) throw new Error('Probe probability must be between zero and one')
+  for (const industry of state.industries.filter(({ id }) => id !== 'transport')) {
+    const share = state.config.industryBudgetSharesBps?.[industry.id as Exclude<typeof industry.id, 'transport'>]
+    if (!Number.isInteger(share) || share! < 0 || share! > 10_000) throw new Error(`${industry.id} expenditure share must be integer basis points`)
+    if (industry.householdBudgetCents !== deriveIndustryBudgetCents(state.config.dailyExpenditureBudgetCents!, share!)) throw new Error(`${industry.id} derived budget is inconsistent`)
+  }
+  const spatialEntities = [...state.households.map(({ id, coordinate }) => ({ id, coordinate })), ...state.firms.filter(({ industryId }) => industryId !== 'transport').map(({ id, coordinate }) => ({ id, coordinate: coordinate! }))]
+  if (new Set(spatialEntities.map(({ coordinate }) => `${coordinate.x},${coordinate.y}`)).size !== spatialEntities.length) throw new Error('Spatial entity coordinates must be unique')
+  if (spatialEntities.some(({ coordinate }) => coordinate.x < 0 || coordinate.x >= state.config.gridWidth! || coordinate.y < 0 || coordinate.y >= state.config.gridHeight!)) throw new Error('Spatial entity coordinate is outside grid bounds')
 
   state.households.forEach((household) => {
     assertIntegerMoney(`${household.id} cash`, household.cashCents)

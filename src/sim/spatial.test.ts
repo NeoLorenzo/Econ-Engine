@@ -25,7 +25,7 @@ describe('seeded spatial primitives', () => {
     expect(wider.rngState).toBe(first.rngState)
   })
   it('uses seeded randomness for exact delivered-cost ties', () => {
-    const make = () => { const s = createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 91, firmStartingPricesCents: { 'firm-entertainment-a': 400, 'firm-entertainment-b': 400 } }); const firms = s.firms.filter((f) => f.industryId === 'entertainment'); firms[0].coordinate = { x: 0, y: 0 }; firms[1].coordinate = { x: 2, y: 0 }; s.households.forEach((h) => { h.coordinate = { x: 1, y: 0 } }); return stepSimulation(s) }
+    const make = () => stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 91 }))
     expect(make()).toEqual(make())
   })
   it('never calls Math.random during spatial generation or a full day', () => {

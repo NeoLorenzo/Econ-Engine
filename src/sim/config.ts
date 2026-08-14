@@ -11,20 +11,22 @@ export const DEFAULT_PROBE_PROBABILITY = 0.1
 export const DEFAULT_GRID_WIDTH = 20
 export const DEFAULT_GRID_HEIGHT = 20
 export const DEFAULT_TRANSPORT_COST_PER_TILE_CENTS = 2
+export const DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS = 5_000
+export const DEFAULT_INDUSTRY_BUDGET_SHARES_BPS = { food: 1_290, utilities: 600, healthcare: 790, entertainment: 460 } as const
 
 export const DEFAULT_INDUSTRIES: Industry[] = [
-  { id: 'food', name: 'Food', householdBudgetCents: 1_500 },
-  { id: 'utilities', name: 'Utilities', householdBudgetCents: 1_200 },
-  { id: 'transport', name: 'Transport', householdBudgetCents: 800 },
-  { id: 'healthcare', name: 'Healthcare', householdBudgetCents: 1_000 },
-  { id: 'entertainment', name: 'Entertainment', householdBudgetCents: 500 },
+  { id: 'food', name: 'Food', householdBudgetCents: 0, budgetShareBps: 1_290 },
+  { id: 'utilities', name: 'Utilities', householdBudgetCents: 0, budgetShareBps: 600 },
+  { id: 'transport', name: 'Transport', householdBudgetCents: 0 },
+  { id: 'healthcare', name: 'Healthcare', householdBudgetCents: 0, budgetShareBps: 790 },
+  { id: 'entertainment', name: 'Entertainment', householdBudgetCents: 0, budgetShareBps: 460 },
 ]
 
 export const DEFAULT_FIRM_IDS_BY_INDUSTRY: Record<Industry['id'], string[]> = {
-  food: ['firm-food'],
-  utilities: ['firm-utilities'],
+  food: ['firm-food-a', 'firm-food-b'],
+  utilities: ['firm-utilities-a', 'firm-utilities-b'],
   transport: ['firm-transport'],
-  healthcare: ['firm-healthcare'],
+  healthcare: ['firm-healthcare-a', 'firm-healthcare-b'],
   entertainment: ['firm-entertainment-a', 'firm-entertainment-b'],
 }
 
@@ -38,4 +40,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   gridHeight: DEFAULT_GRID_HEIGHT,
   transportCostPerTileCents: DEFAULT_TRANSPORT_COST_PER_TILE_CENTS,
   targetHouseholdCashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
+  dailyExpenditureBudgetCents: DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS,
+  industryBudgetSharesBps: DEFAULT_INDUSTRY_BUDGET_SHARES_BPS,
 }
+
+export const deriveIndustryBudgetCents = (dailyExpenditureBudgetCents: number, shareBps: number) => Math.round(dailyExpenditureBudgetCents * shareBps / 10_000)

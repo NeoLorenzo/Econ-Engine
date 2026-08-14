@@ -72,7 +72,7 @@ describe('MVP4 006.1 price experiment catalogs', () => {
     expect(pricingSource).not.toMatch(/competitorProfit|competitorSales|marketShare|coordinate|household/)
     const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 18, probeProbability: 1 }), 100)
     const competitive = state.events.filter(({ type, industryId }) => type === 'PRICE_EXPERIMENT_STARTED' && industryId === 'entertainment')
-    const monopoly = state.events.filter(({ type, industryId }) => type === 'PRICE_EXPERIMENT_STARTED' && industryId === 'food')
+    const monopoly = state.events.filter(({ type, industryId }) => type === 'PRICE_EXPERIMENT_STARTED' && industryId === 'transport')
     expect(competitive.some(({ competitorPriceObservedCents }) => competitorPriceObservedCents !== undefined)).toBe(true)
     expect(monopoly.every(({ competitorPriceObservedCents, experimentType }) => competitorPriceObservedCents === undefined && !experimentType?.startsWith('competitor_'))).toBe(true)
   })

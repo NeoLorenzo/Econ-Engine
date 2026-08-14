@@ -29,9 +29,9 @@ describe('Entertainment starting-price grid experiment', () => {
     expect(options).toEqual(original)
   })
 
-  it('leaves all monopoly control endpoints unchanged', () => {
+  it('keeps all non-Transport firms inside valid competitive pricing state', () => {
     const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 1_000], horizonDays: 100 })
-    expect(suite.results.every(({ controlEndpointsCents }) => controlEndpointsCents.food === 1_500 && controlEndpointsCents.utilities === 1_200 && controlEndpointsCents.healthcare === 1_000 && controlEndpointsCents.transport === null)).toBe(true)
+    expect(suite.results.every(({ controlEndpointsCents }) => Object.entries(controlEndpointsCents).every(([id, price]) => id === 'transport' ? price === null : price === null || price >= 1))).toBe(true)
   })
 
   it('keeps observer results outside the pricing boundary', () => {
