@@ -6,6 +6,59 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP7-Wages_Profits-009] - (2026-08-14)
+
+### Problem and research objective
+
+MVP5 made production income explicit but distributed every firm's complete daily revenue as wages. That closed the monetary circuit while making revenue, labor income, and profit the same accounting quantity. MVP7 separates them without pretending that a labor market already exists:
+
+```text
+firm revenue → fixed contractual payroll → residual profit
+residual profit → fixed corporate profit tax → Government
+household wealth tax → Government
+combined Government balance → poorest-first redistribution
+```
+
+Employment remains the fixed seeded assignment: one worker at each consumer firm and two at Transport. The update does not add hiring, firing, vacancies, job search, worker mobility, employer choice, or wage negotiation.
+
+### Wage choice and payroll boundary
+
+Every worker receives a fresh $10 contractual obligation each day. The value is exogenous and deliberately not calibrated after observing results. Actual payroll is bounded by current firm cash, cannot borrow against future sales, and cannot make a firm negative. Unpaid wages are therefore a daily measure of contract non-fulfillment, not a debt stock.
+
+When a firm cannot cover multiple workers, available cents are divided as evenly as possible through the existing independently derived payroll order. This preserves reproducibility without consuming spatial, market, price-learning, or Government RNG streams.
+
+Wages remain fixed because firms currently have bargaining agency while workers do not. Allowing profit-seeking firms to choose wages before workers can reject offers or leave employers would mechanically reward wage reductions; that would be a one-sided optimization rule rather than a labor-market result.
+
+### Profit, taxation, and monetary closure
+
+Residual profit is firm cash after contractual payroll. Firms cannot retain it in MVP7 because there is not yet any investment, capital purchase, input payment, dividend, or credit channel returning retained liquidity to households. Persistent retained firm cash would therefore drain the household side of the fixed $500 circuit mechanically.
+
+Government temporarily taxes residual profit at 100%. This is an accounting-closure mechanism, not a realistic corporate-tax recommendation and not a parameter learned by Government. It makes profit independently observable while returning all residual liquidity to households. The adaptive MVP6 household wealth tax remains a separate distributional instrument and continues using post-payroll household cash as its base.
+
+Both receipt sources enter the same deterministic poorest-first water-filling stage. Separate source accounting is retained even though Government redistributes one combined balance and ends every completed day at zero.
+
+### Compatibility and information boundaries
+
+The existing price learner still evaluates the same pre-payroll zero-cost operating outcome at the same lifecycle point. Its legacy `preTaxProfit` field remains behaviorally unchanged to avoid altering price trajectories under the guise of an accounting update. MVP7's new residual-profit fields are the observer-facing profit measure after payroll.
+
+Production, household choice, transport pricing, competition, spatial layout, Government experimentation, and fixed employment are otherwise unchanged. No wage arrears, retained earnings, dividends, capital, bankruptcy, credit, or new Government objective was introduced.
+
+### Canonical 1,000-day findings
+
+Seed `20260813` generated $100,000.00 of contractual payroll, $88,037.35 of actual wages, and $11,962.65 of unpaid wages, for 88.037% economy-wide fulfillment. Residual profit and corporate profit tax were both $47,705.36. Household wealth tax contributed another $42,447.67, so Government redistributed $90,153.03: 52.916% financed by corporate tax and 47.084% by household wealth tax.
+
+Consumption completion was 92.278%. Mean completed-day cash Gini was 0.00198, mean wage-income Gini was 0.09118, and effective equality occupied 85.8% of days. The applied household wealth-tax rate ranged from 0% to 100% and returned to a secondary terminal value of 0%; the trajectory, not that endpoint, is the relevant result.
+
+Firm outcomes were heterogeneous. Food A/B fulfilled 96.588%/95.730% of payroll and produced $18,111.89/$18,568.05 of residual profit. Utilities A/B fulfilled 90.483%/92.325%; Healthcare A/B fulfilled 96.100%/94.604%. Transport fulfilled 75.746%, while Entertainment A/B fulfilled 87.435%/75.615%. Transport and both Entertainment firms had incomplete payroll on all 1,000 days and generated no residual profit; Food generated most corporate-tax receipts.
+
+These outcomes were documented rather than used to adjust the $10 contract. They show that a uniform obligation can have sharply different realized coverage across the existing revenue structures.
+
+### Validation, limitations, and next boundary
+
+Same-seed 1,000-day reports reproduced exactly. Existing alternate-seed checks remained active. A 10,000-day canonical stress run conserved exactly $500, kept all balances non-negative, cleared every firm and Government balance after completed days, and retained bounded live histories. Desktop and 390-pixel mobile rendering had no page-level overflow or console errors.
+
+The corporate tax removes all retained-firm-wealth dynamics by construction, and the fixed wage does not model bargaining, reservation wages, productivity differences, or labor reallocation. Profit is meaningful as a daily operating residual but cannot yet fund investment. The next justified expansion is a genuine labor market with symmetric worker exit/choice before firms receive wage-setting freedom; retained earnings should wait until capital or another explicit recirculation channel exists.
+
 ## [MVP6-Government-008.1] - (2026-08-14)
 
 ### Problem and objective refinement

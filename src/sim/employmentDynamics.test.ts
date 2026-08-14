@@ -34,10 +34,10 @@ describe('[MVP5-Employment-007.1] report isolation and accounting', () => {
     expect(report.observations).toHaveLength(20)
     expect(report.observations[0].day).toBe(1); expect(report.observations.at(-1)?.day).toBe(20)
     expect(Object.values(report.economy.failureTotals).reduce((sum, value) => sum + value, 0) + report.households.reduce((sum, household) => sum + household.successfulPurchases, 0)).toBe(20 * 10 * 4)
-    report.firms.forEach((firm) => expect(firm.cumulativeOperatingEarningsCents).toBe(firm.cumulativeWagesCents))
+    report.firms.forEach((firm) => expect(firm.cumulativeOperatingEarningsCents).toBeGreaterThanOrEqual(firm.cumulativeWagesCents))
     const transport = report.firms.find(({ industryId }) => industryId === 'transport')!
     expect(report.households.filter(({ employerFirmId }) => employerFirmId === transport.firmId).reduce((sum, household) => sum + household.cumulativeWagesCents, 0)).toBe(transport.cumulativeWagesCents)
-    report.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(report.households.find(({ householdId }) => householdId === firm.workerIds[0])!.cumulativeWagesCents).toBe(firm.cumulativeOperatingEarningsCents))
+    report.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(report.households.find(({ householdId }) => householdId === firm.workerIds[0])!.cumulativeWagesCents).toBe(firm.cumulativeWagesCents))
   })
 
   it('consumes no RNG, mutates no state, and cannot alter continuation', () => {

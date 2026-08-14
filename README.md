@@ -1,6 +1,6 @@
 # Econ-Engine — [MVP6-Government-008.1]
 
-Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP6 preserves the MVP5 production-income economy and adds an adaptive Government that learns a flat household wealth-tax rate to minimize post-fiscal cash Gini, then redistributes every collected cent by poorest-first water filling.
+Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP7 pays fixed $10 cash-constrained contractual wages, taxes residual firm profit at a fixed 100%, and combines those receipts with the adaptive household wealth tax for poorest-first redistribution.
 
 ## Run locally
 
@@ -17,7 +17,7 @@ npm run check
 
 - Ten households have fixed seeded employment and persistent cash.
 - Eight competitive consumer firms each employ one worker and produce five units per day; monopoly Transport employs two workers.
-- Households choose by delivered cost within percentage expenditure budgets. Purchases pay consumer firms and Transport; complete firm revenue becomes payroll.
+- Households choose by delivered cost within percentage expenditure budgets. Purchases pay firms; contractual payroll is capped by cash and residual profit is taxed explicitly.
 - Government acts only after payroll, starts at 0%, and tests seeded 0–100% wealth-tax alternatives.
 - Tax rates use integer basis points; liabilities use floor-to-cent rounding.
 - Every receipt returns explicitly through deterministic means-tested water filling. Government cannot borrow or create money.

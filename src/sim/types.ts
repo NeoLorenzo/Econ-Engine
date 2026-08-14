@@ -59,6 +59,8 @@ export interface Household {
   spatialPurchasesToday: Partial<Record<Exclude<IndustryId, 'transport'>, HouseholdEntertainmentMetrics>>
   employerFirmId: string
   wageTodayCents: number
+  contractualWageTodayCents: number
+  unpaidWageTodayCents: number
   cumulativeWagesCents: number
   spendingTodayCents: number
   netCashChangeTodayCents: number
@@ -125,7 +127,13 @@ export interface Firm {
   productivityPerWorker: number | null
   unitsProducedToday: number
   wagePoolTodayCents: number
+  contractualWageCents: number
+  contractualPayrollTodayCents: number
   wagesPaidTodayCents: number
+  unpaidWagesTodayCents: number
+  payrollFulfillmentRate: number
+  residualProfitTodayCents: number
+  corporateProfitTaxTodayCents: number
   meanWageTodayCents: number
 }
 
@@ -133,6 +141,9 @@ export interface Government {
   id: 'government-1'
   cashCents: number
   taxCollectedTodayCents: number
+  corporateTaxCollectedTodayCents: number
+  wealthTaxCollectedTodayCents: number
+  totalReceiptsTodayCents: number
   redistributedTodayCents: number
   incumbentWealthTaxRateBps: number
   appliedWealthTaxRateBps: number
@@ -175,6 +186,8 @@ export type SimulationEventType =
   | 'EMPLOYMENT_ASSIGNED'
   | 'FIRM_PRODUCED'
   | 'WAGE_PAID'
+  | 'PAYROLL_OBLIGATION_RECORDED'
+  | 'CORPORATE_PROFIT_TAX_PAID'
   | 'PRICE_POSTED'
   | 'HOUSEHOLD_PURCHASE'
   | 'TRANSPORT_SERVICE_PURCHASED'
@@ -226,6 +239,9 @@ export interface SimulationEvent {
   productivityPerWorker?: number
   unitsProduced?: number
   wageCents?: number
+  contractualPayrollCents?: number
+  unpaidWagesCents?: number
+  residualProfitCents?: number
   employerDailyRevenue?: number
   employeeCount?: number
   householdCashAvailableCents?: number
@@ -303,6 +319,11 @@ export interface DayMetrics {
   averageTransportFeeCents: number
   transportRevenueByIndustryCents: Partial<Record<Exclude<IndustryId, 'transport'>, number>>
   totalWagesPaidCents: number
+  totalContractualPayrollCents: number
+  totalUnpaidWagesCents: number
+  payrollFulfillmentRate: number
+  totalResidualFirmProfitCents: number
+  totalCorporateProfitTaxCents: number
   meanDailyWageCents: number
   wageIncomeGini: number
   householdSpendingCents: number
@@ -314,6 +335,7 @@ export interface DayMetrics {
   governmentPolicyStatus: 'incumbent' | 'experiment'
   governmentExperimentType: GovernmentExperimentType | null
   totalWealthTaxCollectedCents: number
+  totalGovernmentReceiptsCents: number
   totalMeansTestedTransfersCents: number
   householdsPayingWealthTax: number
   householdsReceivingTransfers: number

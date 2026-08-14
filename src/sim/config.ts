@@ -14,6 +14,8 @@ export const DEFAULT_GRID_HEIGHT = 20
 export const DEFAULT_TRANSPORT_COST_PER_TILE_CENTS = 2
 export const DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS = 5_000
 export const DEFAULT_LABOR_PRODUCTIVITY = 5
+export const CONTRACTUAL_WAGE_CENTS = 1_000
+export const CORPORATE_PROFIT_TAX_RATE_BPS = 10_000
 export const DEFAULT_INDUSTRY_BUDGET_SHARES_BPS = { food: 1_290, utilities: 600, healthcare: 790, entertainment: 460 } as const
 
 export const DEFAULT_INDUSTRIES: Industry[] = [

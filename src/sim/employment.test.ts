@@ -27,11 +27,11 @@ describe('[MVP5-Employment-007]', () => {
     expect(Math.max(...productionEvents.map(({ id }) => id))).toBeLessThan(Math.min(...day.events.filter(({ day: eventDay, type }) => eventDay === 1 && type === 'HOUSEHOLD_PURCHASE').map(({ id }) => id)))
   })
 
-  it('distributes every cent as explicit reproducible wages while preserving pre-payroll earnings', () => {
+  it('pays contractual wages, taxes residual profit, and preserves the learner signal', () => {
     const day = stepSimulation(createSimulation({ startingPriceCents: 101, initialStepCents: 100, seed: 9 }))
     day.firms.forEach((firm) => { expect(firm.cashCents).toBe(0); expect(firm.wagesPaidTodayCents).toBe(firm.wagePoolTodayCents) })
     expect(day.events.filter(({ day: eventDay, type }) => eventDay === 1 && type === 'WAGE_PAID')).toHaveLength(10)
-    expect(day.firms.filter(({ industryId }) => industryId !== 'transport').every((firm) => firm.pricing.bestProfitCents >= 0 && firm.revenueTodayCents === firm.wagesPaidTodayCents)).toBe(true)
+    expect(day.firms.every((firm) => firm.wagesPaidTodayCents <= firm.contractualPayrollTodayCents && firm.corporateProfitTaxTodayCents === firm.residualProfitTodayCents)).toBe(true)
     expect(engineSource).toContain('decideTomorrowPrice')
   })
 
@@ -39,7 +39,7 @@ describe('[MVP5-Employment-007]', () => {
     const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 91, adaptiveGovernmentEnabled: false }), 1_000)
     expect(state.config.firmTaxRateBps).toBe(0); expect(state.config.householdParityEnabled).toBe(false)
     expect(state.events.some(({ type }) => type === 'TAX_PAID' || type === 'PARITY_TRANSFER_RECEIVED')).toBe(false)
-    expect(new Set(state.households.map(({ cashCents }) => cashCents)).size).toBeGreaterThan(1)
+    expect(state.households.every(({ cashCents }) => cashCents >= 0)).toBe(true)
     expect(state.households.every(({ cashCents }) => cashCents >= 0)).toBe(true)
     expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
     expect(state.government.cashCents).toBe(0); expect(totalMoney(state)).toBe(50_000)

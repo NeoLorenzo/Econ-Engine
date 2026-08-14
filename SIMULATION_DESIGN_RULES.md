@@ -671,3 +671,6 @@ Agent Econ should follow a simple hierarchy:
 The goal is not to force the simulation to resemble an economy.
 
 The goal is to define understandable economic mechanisms and then allow the economy to reveal what follows from them.
+# MVP7 accounting distinction
+
+Observer-facing accounting must distinguish revenue, contractual labor income, unpaid contractual obligation, residual profit, corporate taxation, and redistribution. MVP7's fixed 100% corporate profit tax closes the current no-capital monetary circuit and is not a learned policy or normative recommendation.

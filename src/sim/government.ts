@@ -52,7 +52,9 @@ export function collectWealthTax(households: Household[], government: Government
     household.taxPaidTodayCents = tax; household.cumulativeTaxPaidCents += tax
     total += tax
   }
-  government.taxCollectedTodayCents = total
+  government.wealthTaxCollectedTodayCents = total
+  government.totalReceiptsTodayCents = government.corporateTaxCollectedTodayCents + total
+  government.taxCollectedTodayCents = government.totalReceiptsTodayCents
   return total
 }
 

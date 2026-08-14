@@ -2,6 +2,32 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP7-Wages_Profits-009] - (2026-08-14)
+
+### Added
+
+- Added a fixed 1,000-cent contractual daily wage for every worker, contractual-payroll obligations, cash-constrained wage payments, unpaid-wage observations, and payroll-fulfillment measures.
+- Added residual post-payroll firm profit and explicit `CORPORATE_PROFIT_TAX_PAID` Firm-to-Government transfers at a fixed, non-adaptive 10,000-basis-point corporate profit-tax rate.
+- Added separate Government corporate-profit-tax receipts, household wealth-tax receipts, combined receipts, redistribution, and ending-balance accounting.
+- Added firm- and economy-level payroll, profit, corporate-tax, Government-funding-share, incomplete-payroll-spell, and industry trajectory analytics.
+- Added dashboard fields for the complete wage/profit/tax circuit, a formal [MVP7 specification](docs/MVP7_SPEC.md), and payroll/profit/fiscal invariant coverage.
+
+### Changed
+
+- Replaced complete-revenue payroll with `min(firm cash, contractual payroll)` while retaining deterministic seed/day/firm/employee remainder ordering.
+- Changed household wage income to actual contractual wages received; unpaid wages remain daily observations and are not carried as debt.
+- Changed fiscal settlement so payroll precedes fixed corporate-profit taxation, the household wealth-tax base remains post-payroll cash, and both receipt sources enter one poorest-first redistribution stage.
+- Preserved fixed employment, production, price learning, the learner information boundary, the adaptive household wealth-tax learner, and unrelated RNG trajectories.
+- Retained legacy market `preTaxProfit` as the unchanged price-learning signal; new residual-profit fields are authoritative for MVP7 accounting.
+
+### Validation
+
+- Passed `npm run check`: 87 tests across 15 files, TypeScript checking, and the production build.
+- Reproduced the canonical seed `20260813` 1,000-day trajectory exactly and retained alternate-seed coverage.
+- Recorded $100,000.00 contractual payroll, $88,037.35 wages, $11,962.65 unpaid wages, $47,705.36 corporate tax, $42,447.67 wealth tax, and $90,153.03 redistribution in the canonical trajectory.
+- Passed the 10,000-day stress test with exactly $500 conserved, non-negative balances, zero completed-day firm/Government cash, and bounded histories.
+- Validated 1,280-pixel desktop and 390-pixel mobile layouts with no page-level overflow or browser console errors/warnings.
+
 ## [MVP6-Government-008.1] - (2026-08-14)
 
 ### Changed
