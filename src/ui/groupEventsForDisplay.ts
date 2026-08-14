@@ -8,7 +8,7 @@ export function groupEventsForDisplay(events: SimulationEvent[]): DisplayEvent[]
   const groups = new Map<string, DisplayEvent>()
   for (const event of events) {
     const isMarket = ['HOUSEHOLD_PURCHASE', 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT'].includes(event.type)
-    const key = isMarket ? `market-${event.day}-${event.industryId}` : event.type === 'TRANSFER_RECEIVED' ? `redistribution-${event.day}` : ''
+    const key = isMarket ? `market-${event.day}-${event.industryId}` : ['TRANSFER_RECEIVED', 'PARITY_TRANSFER_RECEIVED'].includes(event.type) ? `redistribution-${event.day}` : ''
     if (key) {
       let group = groups.get(key)
       if (!group) {
@@ -22,7 +22,7 @@ export function groupEventsForDisplay(events: SimulationEvent[]): DisplayEvent[]
   for (const group of groups.values()) {
     if (group.key.startsWith('redistribution')) {
       const total = group.details.reduce((sum, event) => sum + (event.amountCents ?? 0), 0)
-      group.description = `Government redistributed ${money(total)} across ${group.details.length} households.`
+      group.description = `Government paid ${money(total)} in explicit parity transfers across ${group.details.length} households.`
       continue
     }
     const purchases = group.details.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')

@@ -28,7 +28,7 @@ export function validateState(state: SimulationState, endOfDay = false) {
 
   state.households.forEach((household) => {
     assertIntegerMoney(`${household.id} cash`, household.cashCents)
-    for (const industryId of industryIds) {
+    for (const industryId of industryIds.filter((id) => id !== 'transport')) {
       const outcome = household.industryOutcomes[industryId]
       if (!outcome) throw new Error(`${household.id} is missing ${industryId} budget/outcome state`)
       assertIntegerMoney(`${household.id}/${industryId} budget`, outcome.budgetCents)
@@ -50,15 +50,16 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (firm.pricing.probing && !firm.pricing.locallySettled) throw new Error(`${firm.id} cannot probe before local settlement`)
     if (firm.postedPriceCents < 1 || firm.pricing.stepSizeCents < 1) throw new Error(`${firm.id} price and step must be positive`)
     if (![firm.availableUnitsToday, firm.unitsExpiredToday, firm.unitsSoldToday].every((value) => Number.isInteger(value) && value >= 0)) throw new Error(`${firm.id} goods fields must be non-negative integers`)
-    if (firm.unitsSoldToday > Math.min(HOUSEHOLD_COUNT, state.config.dailySupplyPerIndustry)) throw new Error(`${firm.id} sold above finite supply`)
+    if (firm.industryId !== 'transport' && firm.unitsSoldToday > Math.min(HOUSEHOLD_COUNT, state.config.dailySupplyPerIndustry)) throw new Error(`${firm.id} sold above finite supply`)
     if (endOfDay && firm.cashCents !== 0) throw new Error(`${firm.id} cash must be zero after taxation`)
     if (endOfDay && firm.availableUnitsToday !== 0) throw new Error(`${firm.id} goods cannot carry over`)
-    if (endOfDay && state.config.dailySupplyPerIndustry !== firm.unitsSoldToday + firm.unitsExpiredToday) throw new Error(`${firm.id} stock-flow accounting failed`)
-    if (endOfDay && firm.soldOutToday !== (firm.unitsSoldToday === state.config.dailySupplyPerIndustry)) throw new Error(`${firm.id} sold-out status is inconsistent`)
-    if (endOfDay && state.events.filter((event) => event.day === state.day && event.type === 'HOUSEHOLD_PURCHASE' && event.firmId === firm.id).length !== firm.unitsSoldToday) throw new Error(`${firm.id} sales do not match purchase events`)
+    if (endOfDay && firm.industryId !== 'transport' && state.config.dailySupplyPerIndustry !== firm.unitsSoldToday + firm.unitsExpiredToday) throw new Error(`${firm.id} stock-flow accounting failed`)
+    if (endOfDay && firm.industryId !== 'transport' && firm.soldOutToday !== (firm.unitsSoldToday === state.config.dailySupplyPerIndustry)) throw new Error(`${firm.id} sold-out status is inconsistent`)
+    const saleEventType = firm.industryId === 'transport' ? 'TRANSPORT_SERVICE_PURCHASED' : 'HOUSEHOLD_PURCHASE'
+    if (endOfDay && state.events.filter((event) => event.day === state.day && event.type === saleEventType && event.firmId === firm.id).length !== firm.unitsSoldToday) throw new Error(`${firm.id} sales do not match purchase events`)
   })
 
-  if (endOfDay) for (const industryId of industryIds) {
+  if (endOfDay) for (const industryId of industryIds.filter((id) => id !== 'transport')) {
     const sales = state.firms.filter((firm) => firm.industryId === industryId).reduce((sum, firm) => sum + firm.unitsSoldToday, 0)
     const purchases = state.households.filter((household) => household.industryOutcomes[industryId].purchasedToday).length
     if (sales !== purchases || sales > HOUSEHOLD_COUNT) throw new Error(`${industryId} total sales exceed or disagree with household demand`)
@@ -66,4 +67,5 @@ export function validateState(state: SimulationState, endOfDay = false) {
 
   if (totalMoney(state) !== TOTAL_MONEY_CENTS) throw new Error(`Money conservation failed: expected ${TOTAL_MONEY_CENTS} cents, found ${totalMoney(state)}`)
   if (endOfDay && state.government.cashCents !== 0) throw new Error('Government cash must be zero after redistribution')
+  if (endOfDay && state.households.some((household) => household.cashCents !== state.config.targetHouseholdCashCents)) throw new Error('Household parity restoration failed')
 }

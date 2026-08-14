@@ -18,6 +18,10 @@ export interface SimulationConfig {
   industryProcessingOrder?: IndustryId[]
   seed?: number
   probeProbability?: number
+  gridWidth?: number
+  gridHeight?: number
+  transportCostPerTileCents?: number
+  targetHouseholdCashCents?: number
 }
 
 export type HouseholdPurchaseOutcome = 'purchased' | 'insufficient_funds' | 'stockout' | null
@@ -36,6 +40,20 @@ export interface Household {
   id: string
   cashCents: number
   industryOutcomes: Record<IndustryId, HouseholdIndustryOutcome>
+  coordinate: Coordinate
+  entertainmentToday: HouseholdEntertainmentMetrics | null
+}
+
+export interface Coordinate { x: number; y: number }
+export interface HouseholdEntertainmentMetrics {
+  chosenFirmId: string | null
+  distanceToA: number
+  distanceToB: number
+  chosenOneWayDistance: number | null
+  roundTripTiles: number
+  productPriceCents: number
+  transportFeeCents: number
+  deliveredCostCents: number
 }
 
 export interface PricingState {
@@ -68,6 +86,7 @@ export interface Firm {
   pricing: PricingState
   latestDecisionReason: string
   latestDecisionAction: PriceDecisionAction
+  coordinate?: Coordinate
 }
 
 export interface Government {
@@ -91,6 +110,7 @@ export type SimulationEventType =
   | 'SUPPLY_RECEIVED'
   | 'PRICE_POSTED'
   | 'HOUSEHOLD_PURCHASE'
+  | 'TRANSPORT_SERVICE_PURCHASED'
   | 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS'
   | 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT'
   | 'GOODS_EXPIRED'
@@ -98,6 +118,7 @@ export type SimulationEventType =
   | 'FIRM_PRICE_DECISION'
   | 'TAX_PAID'
   | 'TRANSFER_RECEIVED'
+  | 'PARITY_TRANSFER_RECEIVED'
   | 'PRICE_DISCOVERY_CONVERGED'
   | 'PRICE_PROBE_STARTED'
   | 'PRICE_PROBE_ADOPTED'
@@ -116,6 +137,10 @@ export interface SimulationEvent {
   amountCents?: number
   priceCents?: number
   quantity?: number
+  oneWayDistance?: number
+  roundTripTiles?: number
+  transportFeeCents?: number
+  deliveredCostCents?: number
   description: string
 }
 
@@ -143,6 +168,7 @@ export interface MarketMetrics {
   marketShare: number
   totalIndustryUnitsSold: number
   transactionPricesCents: number[]
+  averageCustomerDistance: number
 }
 
 export interface DayMetrics {
@@ -156,6 +182,7 @@ export interface DayMetrics {
   householdCashMedianCents: number
   householdCashMaximumCents: number
   householdCashGini: number
+  householdCashGiniBeforeParity: number
   totalRevenueCents: number
   totalPreTaxProfitCents: number
   totalHouseholdCashCents: number
@@ -166,6 +193,10 @@ export interface DayMetrics {
   totalMoneyCents: number
   allFirmsConverged: boolean
   allFirmsLocallySettled: boolean
+  entertainmentTrips: number
+  totalTilesTravelled: number
+  totalTransportRevenueCents: number
+  averageTransportFeeCents: number
 }
 
 export interface SimulationState {
@@ -179,4 +210,5 @@ export interface SimulationState {
   events: SimulationEvent[]
   nextEventId: number
   rngState: number
+  spatialSeed: number
 }

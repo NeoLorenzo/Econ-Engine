@@ -31,7 +31,7 @@ describe('Entertainment starting-price grid experiment', () => {
 
   it('leaves all monopoly control endpoints unchanged', () => {
     const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 1_000], horizonDays: 100 })
-    expect(suite.results.every(({ controlEndpointsCents }) => JSON.stringify(controlEndpointsCents) === JSON.stringify({ food: 1_500, utilities: 1_200, transport: 800, healthcare: 1_000 }))).toBe(true)
+    expect(suite.results.every(({ controlEndpointsCents }) => controlEndpointsCents.food === 1_500 && controlEndpointsCents.utilities === 1_200 && controlEndpointsCents.healthcare === 1_000 && controlEndpointsCents.transport === null)).toBe(true)
   })
 
   it('keeps observer results outside the pricing boundary', () => {

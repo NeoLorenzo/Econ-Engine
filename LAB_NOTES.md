@@ -6,6 +6,40 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP4-Spatial_Entertainment-006] - (2026-08-14)
+
+### Motivation and research question
+
+Perfect homogeneous competition made tiny sticker-price differences dominate household choice. This update introduces travel cost as a real economic friction without changing the learner or firm intelligence.
+
+> How does spatial distance alter competition between otherwise identical Entertainment firms when households minimize delivered cost rather than sticker price?
+
+### Spatial design and delivered price
+
+Ten households and Entertainment A/B occupy unique cells on a seeded, fixed 20 × 20 grid. A deterministic spatial subseed keeps placement from advancing runtime market randomness. Manhattan distance represents one-way tiles and every visit is a round trip. Pathfinding and animation are absent because they are unnecessary for this first spatial question.
+
+```text
+delivered cost = product price + (2 × Manhattan distance × $0.02)
+```
+
+A closer firm may therefore charge more and remain cheaper delivered. The full cost must fit the $5 Entertainment budget and real cash. Nearest households receive earlier inventory access, seeded ties avoid household-ID priority, and affordable fallback is considered before failure.
+
+### Transport and government parity
+
+Abstract one-unit daily Transport consumption was removed. Successful Entertainment travel creates a separate household-to-Transport transfer. Transport has unlimited capacity, no inventory, zero modeled cost, and an exogenous rate; it has no adaptive pricing.
+
+Geography creates heterogeneous within-day spending. Government taxes all firm cash, including Transport, then makes explicit household-specific transfers back to $50. This artificial stabilizing institution isolates market mechanisms; it is not an empirical fiscal model. There is no hidden reset: within-day inequality, end-of-day parity, and exact money conservation are separately measured and asserted.
+
+### Findings
+
+At day 300, canonical seed 20260813 produced Entertainment incumbents of $4.48/$4.56, final-day shares of 50%/50%, average customer distances of 9.4/8.2 tiles, and $3.52 final-day Transport revenue ($3.57 average across retained days). Seed 7 produced $4.52/$4.32, 20%/80%, and $3.00; seed 42 produced $4.28/$4.37, 50%/50%, and $3.68; seed 99 produced $2.01/$1.97, 100%/0%, and $5.68. These seed-dependent observations show local customer bases and positive pricing power can persist, but do not establish spatial equilibrium or broad realism.
+
+Within-day spending varied by geography, while explicit transfers restored every household to exactly $50. Firms and Government ended at zero, total money remained exactly $500, and Food, Utilities, and Healthcare retained their established pricing boundaries in the 1,000-day run.
+
+### Scope exclusions
+
+This version excludes spatial Food/Utilities/Healthcare, animations, pathfinding, roads, congestion, Transport capacity, adaptive Transport pricing, firm relocation, household relocation, land prices, geography, product differentiation, and competitor-price awareness.
+
 ## [MVP3-Entertainment_Competition-005.2] - (2026-08-13)
 
 ### Problem

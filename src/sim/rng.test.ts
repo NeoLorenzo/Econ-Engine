@@ -37,7 +37,7 @@ describe('seeded randomness and persistent probes', () => {
 
   it('continues sampling explicit probes after local settlement', () => {
     const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 7, probeProbability: 1 }), 100)
-    expect(state.firms.every(({ pricing }) => pricing.locallySettled)).toBe(true)
+    expect(state.firms.filter(({ industryId }) => industryId !== 'transport').every(({ pricing }) => pricing.locallySettled)).toBe(true)
     expect(state.events.some(({ type }) => type === 'PRICE_PROBE_STARTED')).toBe(true)
     expect(state.events.some(({ type }) => type === 'PRICE_PROBE_REJECTED' || type === 'PRICE_PROBE_ADOPTED')).toBe(true)
   })

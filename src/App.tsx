@@ -6,6 +6,7 @@ import { runMultiIndustryExperiment, type MultiIndustryExperimentResult } from '
 import { runCompetitionStartingPriceGrid, type CompetitionGridSuite } from './sim/competitionGridExperiment'
 import type { IndustryId, SimulationConfig, SimulationState } from './sim/types'
 import { groupEventsForDisplay } from './ui/groupEventsForDisplay'
+import { transportQuote } from './sim/spatial'
 
 const money = (cents: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'USD' }).format(cents / 100)
 const colors: Record<IndustryId, string> = { food: '#deff75', utilities: '#65bfa1', transport: '#97a3ff', healthcare: '#d6a866', entertainment: '#d47c9b' }
@@ -14,7 +15,6 @@ const chartTooltip = { background: '#111715', border: '1px solid #28322e', borde
 const DEFAULT_FIRM_START_DRAFT: Record<string, string> = {
   'firm-food': '2.00',
   'firm-utilities': '2.00',
-  'firm-transport': '2.00',
   'firm-healthcare': '2.00',
   'firm-entertainment-a': '2.00',
   'firm-entertainment-b': '2.00',
@@ -26,12 +26,12 @@ function Metric({ label, value, detail, accent = false }: { label: string; value
 
 function PriceChart({ state }: { state: SimulationState }) {
   const data = state.metrics.map((metric) => Object.fromEntries([['day', metric.day], ...metric.markets.map((market) => [market.firmId, market.postedPriceCents / 100])]))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -12 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${value}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value) * 100)} labelFormatter={(value) => `Day ${value}`} />{state.firms.map((firm) => <Line key={firm.id} type="monotone" dataKey={firm.id} name={firm.id.replace('firm-', '')} stroke={firmColor(firm.id, firm.industryId)} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -12 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${value}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value) * 100)} labelFormatter={(value) => `Day ${value}`} />{state.firms.filter(({ industryId }) => industryId !== 'transport').map((firm) => <Line key={firm.id} type="monotone" dataKey={firm.id} name={firm.id.replace('firm-', '')} stroke={firmColor(firm.id, firm.industryId)} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
 }
 
 function ProfitChart({ state }: { state: SimulationState }) {
   const data = state.metrics.map((metric) => Object.fromEntries([['day', metric.day], ...metric.markets.map((market) => [market.firmId, market.preTaxProfitCents])]))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -4 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${Number(value) / 100}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value))} labelFormatter={(value) => `Day ${value}`} />{state.firms.map((firm) => <Line key={firm.id} type="monotone" dataKey={firm.id} name={firm.id.replace('firm-', '')} stroke={firmColor(firm.id, firm.industryId)} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
+  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -4 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${Number(value) / 100}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value))} labelFormatter={(value) => `Day ${value}`} />{state.firms.filter(({ industryId }) => industryId !== 'transport').map((firm) => <Line key={firm.id} type="monotone" dataKey={firm.id} name={firm.id.replace('firm-', '')} stroke={firmColor(firm.id, firm.industryId)} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
 }
 
 function MarketFlowChart({ state, industryId }: { state: SimulationState; industryId: IndustryId }) {
@@ -41,11 +41,26 @@ function MarketFlowChart({ state, industryId }: { state: SimulationState; indust
 
 function WealthChart({ state }: { state: SimulationState }) {
   const data = state.metrics.map((metric) => ({ day: metric.day, minimum: metric.householdCashMinimumCents, median: metric.householdCashMedianCents, maximum: metric.householdCashMaximumCents }))
+  const first = data[0]
+  const isDynamic = first !== undefined && data.some(({ minimum, median, maximum }) => minimum !== maximum || minimum !== first.minimum || median !== first.median || maximum !== first.maximum)
+  if (!isDynamic) return <div className="wealth-chart--hidden" aria-hidden="true" />
   return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -4 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${Number(value) / 100}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value))} labelFormatter={(value) => `Day ${value}`} /><Line dataKey="minimum" name="Minimum" stroke="#d47c6b" dot={false} /><Line dataKey="median" name="Median" stroke="#deff75" dot={false} strokeWidth={2} /><Line dataKey="maximum" name="Maximum" stroke="#97a3ff" dot={false} /></LineChart></ResponsiveContainer>
 }
 
+function SpatialGrid({ state }: { state: SimulationState }) {
+  const firms = state.firms.filter(({ industryId }) => industryId === 'entertainment')
+  const entities = [...state.households, ...firms]
+  return <section className="panel spatial-panel"><div className="panel-heading"><div><h2>Entertainment spatial world</h2><p>Fixed seeded coordinates · Manhattan round trips · no intermediate movement</p></div><div className="map-legend"><span>Households</span><span>Firm A</span><span>Firm B</span></div></div><div className="spatial-scroll"><div className="spatial-grid" style={{ gridTemplateColumns: `repeat(${state.config.gridWidth}, 1fr)`, gridTemplateRows: `repeat(${state.config.gridHeight}, 1fr)` }}>{entities.map((entity) => {
+    const isHousehold = entity.id.startsWith('household-'); const coordinate = entity.coordinate!
+    const label = isHousehold ? entity.id.replace('household-', '') : entity.id.endsWith('-a') ? 'A' : 'B'
+    let title = `${entity.id} (${coordinate.x}, ${coordinate.y})`
+    if (isHousehold) { const h = entity as SimulationState['households'][number]; const a = transportQuote(h.coordinate, firms[0].coordinate!, state.config.transportCostPerTileCents!); const b = transportQuote(h.coordinate, firms[1].coordinate!, state.config.transportCostPerTileCents!); title += ` · A ${a.oneWayDistance} tiles / ${money(firms[0].postedPriceCents + a.transportFeeCents)} delivered · B ${b.oneWayDistance} tiles / ${money(firms[1].postedPriceCents + b.transportFeeCents)} delivered · today ${h.entertainmentToday?.chosenFirmId ?? 'none'}` }
+    return <button key={entity.id} className={`map-entity ${isHousehold ? 'map-household' : entity.id.endsWith('-a') ? 'map-firm-a' : 'map-firm-b'}`} title={title} aria-label={title} style={{ gridColumn: coordinate.x + 1, gridRow: coordinate.y + 1 }}>{label}</button>
+  })}</div></div></section>
+}
+
 export default function App() {
-  const [draft, setDraft] = useState({ firmStarts: DEFAULT_FIRM_START_DRAFT, step: '1.00', dailySupply: '10', seed: String(DEFAULT_SEED) })
+  const [draft, setDraft] = useState({ firmStarts: DEFAULT_FIRM_START_DRAFT, step: '1.00', dailySupply: '10', seed: String(DEFAULT_SEED), transportRate: '0.02' })
   const [state, setState] = useState(() => createSimulation())
   const [running, setRunning] = useState(false)
   const [speed, setSpeed] = useState(5)
@@ -55,7 +70,7 @@ export default function App() {
   const step = () => setState((current) => stepSimulation(current))
   const reset = () => {
     const firmStartingPricesCents = Object.fromEntries(Object.entries(draft.firmStarts).map(([firmId, value]) => [firmId, Math.max(1, Math.round(Number(value || 0) * 100))]))
-    const config: SimulationConfig = { startingPriceCents: 200, firmStartingPricesCents, initialStepCents: Math.max(1, Math.round(Number(draft.step || 0) * 100)), dailySupplyPerIndustry: Math.max(0, Math.round(Number(draft.dailySupply || 0))), seed: Math.round(Number(draft.seed || DEFAULT_SEED)) }
+    const config: SimulationConfig = { startingPriceCents: 200, firmStartingPricesCents, initialStepCents: Math.max(1, Math.round(Number(draft.step || 0) * 100)), dailySupplyPerIndustry: Math.max(0, Math.round(Number(draft.dailySupply || 0))), seed: Math.round(Number(draft.seed || DEFAULT_SEED)), transportCostPerTileCents: Math.max(0, Math.round(Number(draft.transportRate || 0) * 100)) }
     setRunning(false); setState(createSimulation(config))
   }
   useEffect(() => {
@@ -65,20 +80,21 @@ export default function App() {
   }, [running, speed])
   const latest = state.metrics.at(-1)
   const recentEvents = useMemo(() => groupEventsForDisplay(state.events).reverse().slice(0, 30), [state.events])
-  const settledCount = state.firms.filter(({ pricing }) => pricing.locallySettled).length
+  const settledCount = state.firms.filter(({ industryId, pricing }) => industryId !== 'transport' && pricing.locallySettled).length
 
   return <main>
-    <header className="hero"><div className="eyebrow">MVP 3 · Entertainment Competition</div><div className="hero-row"><div><h1>Econ<span>—</span>Engine</h1><p>Two independently adapting Entertainment firms compete for homogeneous demand while four monopoly industries remain controls.</p></div><div className="system-note"><i />Deterministic · $500 closed circuit</div></div></header>
+    <header className="hero"><div className="eyebrow">MVP 4 · Spatial Entertainment</div><div className="hero-row"><div><h1>Econ<span>—</span>Engine</h1><p>Households choose between two Entertainment firms by delivered cost while Food, Utilities, and Healthcare remain non-spatial controls.</p></div><div className="system-note"><i />Deterministic · $500 closed circuit</div></div></header>
     <section className="control-bar panel">
       <div className="run-controls"><button className="primary" onClick={() => setRunning((value) => !value)}>{running ? 'Pause' : 'Run simulation'}</button><button onClick={step} disabled={running}>Step one day</button><button onClick={reset}>Reset with values</button></div>
       <div className="configuration">
-        <div className="firm-starts"><span>Firm starting prices</span>{state.firms.map((firm) => <label key={firm.id}>{firm.id.replace('firm-', '').replace('entertainment-', 'ent. ')} <span>$</span><input inputMode="decimal" aria-label={`${firm.id} starting price`} value={draft.firmStarts[firm.id] ?? '2.00'} onChange={(event) => setDraft({ ...draft, firmStarts: { ...draft.firmStarts, [firm.id]: event.target.value } })} /></label>)}</div>
-        <div className="config-controls"><label>Initial step <span>$</span><input inputMode="decimal" value={draft.step} onChange={(event) => setDraft({ ...draft, step: event.target.value })} /></label><label>Supply each<input inputMode="numeric" value={draft.dailySupply} onChange={(event) => setDraft({ ...draft, dailySupply: event.target.value })} /></label><label>Seed<input inputMode="numeric" aria-label="Random seed" value={draft.seed} onChange={(event) => setDraft({ ...draft, seed: event.target.value })} /></label><label>Speed<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[1, 5, 20, 100].map((value) => <option key={value} value={value}>{value} days/sec</option>)}</select></label></div>
+        <div className="firm-starts"><span>Adaptive firm starting prices</span>{state.firms.filter(({ industryId }) => industryId !== 'transport').map((firm) => <label key={firm.id}>{firm.id.replace('firm-', '').replace('entertainment-', 'ent. ')} <span>$</span><input inputMode="decimal" aria-label={`${firm.id} starting price`} value={draft.firmStarts[firm.id] ?? '2.00'} onChange={(event) => setDraft({ ...draft, firmStarts: { ...draft.firmStarts, [firm.id]: event.target.value } })} /></label>)}</div>
+        <div className="config-controls"><label>Initial step <span>$</span><input inputMode="decimal" value={draft.step} onChange={(event) => setDraft({ ...draft, step: event.target.value })} /></label><label>Supply each<input inputMode="numeric" value={draft.dailySupply} onChange={(event) => setDraft({ ...draft, dailySupply: event.target.value })} /></label><label>Transport / tile <span>$</span><input inputMode="decimal" value={draft.transportRate} onChange={(event) => setDraft({ ...draft, transportRate: event.target.value })} /></label><label>Seed<input inputMode="numeric" aria-label="Random seed" value={draft.seed} onChange={(event) => setDraft({ ...draft, seed: event.target.value })} /></label><label>Speed<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[1, 5, 20, 100].map((value) => <option key={value} value={value}>{value} days/sec</option>)}</select></label></div>
       </div>
     </section>
 
-    <section className="baseline panel"><div><span>Baseline configuration</span><strong>10 households · 5 industries · 6 firms</strong></div><div><span>Supply</span><strong>{state.config.dailySupplyPerIndustry} per firm</strong></div><div><span>Entertainment</span><strong>2 firms · $5 budget</strong></div><div><span>Initial household cash</span><strong>$50</strong></div></section>
-    <section className="metrics-grid"><Metric label="Current day" value={String(state.day)} detail={running ? 'Running' : 'Paused'} /><Metric label="Daily revenue" value={money(latest?.totalRevenueCents ?? 0)} detail="Across six firms" /><Metric label="Household cash" value={latest ? `${money(latest.householdCashMinimumCents)}–${money(latest.householdCashMaximumCents)}` : '$50.00'} detail="Minimum–maximum" /><Metric label="Cash Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail="Observer metric" /><Metric label="Total money" value={money(latest?.totalMoneyCents ?? TOTAL_MONEY_CENTS)} detail="✓ Budgets excluded" accent /><Metric label="Locally settled" value={`${settledCount} / 6`} detail={`Seed ${state.config.seed}`} accent={settledCount === 6} /></section>
+    <section className="baseline panel"><div><span>Spatial world</span><strong>{state.config.gridWidth} × {state.config.gridHeight} tiles</strong></div><div><span>Entertainment supply</span><strong>{state.config.dailySupplyPerIndustry} per firm</strong></div><div><span>Travel rate</span><strong>{money(state.config.transportCostPerTileCents!)} / tile</strong></div><div><span>Parity target</span><strong>$50 per household</strong></div></section>
+    <section className="metrics-grid"><Metric label="Current day" value={String(state.day)} detail={running ? 'Running' : 'Paused'} /><Metric label="Transport revenue" value={money(latest?.totalTransportRevenueCents ?? 0)} detail={`${latest?.totalTilesTravelled ?? 0} tiles`} /><Metric label="Pre-parity Gini" value={(latest?.householdCashGiniBeforeParity ?? 0).toFixed(3)} detail="Geographic spending" /><Metric label="Post-parity Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail="Explicit transfers" /><Metric label="Total money" value={money(latest?.totalMoneyCents ?? TOTAL_MONEY_CENTS)} detail="✓ Exact closed circuit" accent /><Metric label="Locally settled" value={`${settledCount} / 5`} detail={`Seed ${state.config.seed}`} accent={settledCount === 5} /></section>
+    <SpatialGrid state={state} />
 
     <section className="panel market-overview"><div className="panel-heading"><div><h2>Market overview</h2><p>Entertainment rows expose competition; market share is observer-only</p></div></div><div className="market-table-wrap"><table><thead><tr><th>Industry / firm</th><th>Budget</th><th>Tested</th><th>Next</th><th>Incumbent</th><th>Sold / supplied</th><th>Profit</th><th>Share</th><th>Learner status</th></tr></thead><tbody>{state.firms.map((firm) => { const result = latest?.markets.find(({ firmId }) => firmId === firm.id); const industry = state.industries.find(({ id }) => id === firm.industryId)!; const status = firm.pricing.probing ? `Probing ${firm.pricing.probeDirection}` : firm.pricing.locallySettled ? 'Locally settled' : `Searching · ${money(firm.pricing.stepSizeCents)}`; return <tr key={firm.id}><td><i style={{ background: firmColor(firm.id, firm.industryId) }} />{industry.name} · {firm.id.replace(`firm-${firm.industryId}`, '') || 'sole'}</td><td>{money(industry.householdBudgetCents)}</td><td>{result ? money(result.postedPriceCents) : '—'}</td><td>{money(firm.postedPriceCents)}</td><td>{money(firm.pricing.incumbentPriceCents)}</td><td>{result ? `${result.unitsSold} / ${result.unitsSupplied}` : '—'}</td><td>{money(result?.preTaxProfitCents ?? 0)}</td><td>{result ? `${(result.marketShare * 100).toFixed(0)}%` : '—'}</td><td>{status}</td></tr> })}</tbody></table></div></section>
 

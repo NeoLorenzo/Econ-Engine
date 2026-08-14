@@ -7,10 +7,10 @@ describe('multi-market event display grouping', () => {
     const state = stepSimulation(createSimulation({ startingPriceCents: 500, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
     const displayed = groupEventsForDisplay(state.events)
     const markets = displayed.filter(({ key }) => key.startsWith('market-'))
-    expect(markets).toHaveLength(5)
+    expect(markets).toHaveLength(4)
     expect(markets.every(({ details }) => details.length === 10)).toBe(true)
     expect(markets.find(({ key }) => key === 'market-1-food')?.description).toBe('10 purchased · 0 affordability · 0 stockout failures · $50.00 spent.')
-    expect(state.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')).toHaveLength(50)
+    expect(state.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')).toHaveLength(30)
   })
 
   it('distinguishes unaffordable and scarce markets in grouped summaries', () => {
@@ -30,7 +30,7 @@ describe('multi-market event display grouping', () => {
     const original = structuredClone(state.events)
     const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'redistribution-1')
     expect(group?.details).toHaveLength(10)
-    expect(group?.description).toBe('Government redistributed $500.00 across 10 households.')
+    expect(group?.description).toContain('explicit parity transfers across 10 households')
     expect(state.events).toEqual(original)
   })
 

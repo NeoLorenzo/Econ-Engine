@@ -6,6 +6,23 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
+## [MVP4-Spatial_Entertainment-006] - (2026-08-14)
+
+### Added
+
+- Added a seeded static 20 × 20 integer grid with unique fixed coordinates for ten households and Entertainment Firms A and B, generated from an isolated derived spatial RNG stream.
+- Added Manhattan round-trip travel, a configurable 2-cent-per-tile rate, delivered-cost choice, seeded ties, proximity priority, and affordable inventory fallback.
+- Added separate product and Transport transfers, spatial events/analytics, explicit parity transfers, pre/post-parity Gini, and a multi-seed experiment.
+- Added a responsive static tile map with household numbers, distinct A/B markers, coordinate and delivered-quote tooltips.
+- Added `docs/MVP4_SPEC.md` and spatial, accounting, determinism, experiment, and 1,000-day stability coverage.
+
+### Changed
+
+- Removed abstract daily Transport-unit consumption. Transport is now an unlimited-capacity, inventory-free derived Entertainment travel service with an exogenous rate and no adaptive pricing.
+- Entertainment budgets and cash checks now apply to delivered cost. Food, Utilities, and Healthcare remain non-spatial with unchanged learners and demand boundaries.
+- Replaced equal redistribution with explicit household-specific transfers restoring the configured $50 target after 100% taxation of every firm, including Transport.
+- Preserved the 005.2 pricing strategy and private information boundary unchanged.
+
 ## [MVP3-Entertainment_Competition-005.2] - (2026-08-13)
 
 Replaced artificial ordering and terminal learner convergence with reproducible seeded sampling and persistent local price exploration. No new market mechanism or competitor information was added.

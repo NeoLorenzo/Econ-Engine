@@ -8,6 +8,9 @@ export const MAX_HISTORY = 400
 export const MAX_EVENTS = 600
 export const DEFAULT_SEED = 2_026_0813
 export const DEFAULT_PROBE_PROBABILITY = 0.1
+export const DEFAULT_GRID_WIDTH = 20
+export const DEFAULT_GRID_HEIGHT = 20
+export const DEFAULT_TRANSPORT_COST_PER_TILE_CENTS = 2
 
 export const DEFAULT_INDUSTRIES: Industry[] = [
   { id: 'food', name: 'Food', householdBudgetCents: 1_500 },
@@ -31,4 +34,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   dailySupplyPerIndustry: 10,
   seed: DEFAULT_SEED,
   probeProbability: DEFAULT_PROBE_PROBABILITY,
+  gridWidth: DEFAULT_GRID_WIDTH,
+  gridHeight: DEFAULT_GRID_HEIGHT,
+  transportCostPerTileCents: DEFAULT_TRANSPORT_COST_PER_TILE_CENTS,
+  targetHouseholdCashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
 }
