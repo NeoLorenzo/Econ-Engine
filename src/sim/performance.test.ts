@@ -39,7 +39,7 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
     expect(state.day).toBe(10_000)
     expect(state.metrics).toHaveLength(MAX_HISTORY)
     expect(state.events.length).toBeLessThanOrEqual(MAX_EVENTS)
-    expect(state.households.every(({ cashCents }) => cashCents === 5_000)).toBe(true)
+    expect(state.households.reduce((sum, { cashCents }) => sum + cashCents, 0)).toBe(50_000)
     expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
     expect(state.government.cashCents).toBe(0)
     expect(totalMoney(state)).toBe(50_000)

@@ -1,5 +1,7 @@
 # Architecture
 
+MVP5 adds a dedicated employment subseed and a fixed household-to-firm relation. Consumer inventory is produced explicitly from worker count and productivity at day start. After market closure and pre-payroll pricing evaluation, firms transfer their complete cash balances to employees as explicit wages. Government remains present with inactive default fiscal policy. Household cash is persistent, and observer histories measure rather than correct its distribution.
+
 Econ-Engine separates environment rules, agent strategies, state, events, observer analytics, experiments, and interface so causal boundaries remain inspectable.
 
 ## Simulation core

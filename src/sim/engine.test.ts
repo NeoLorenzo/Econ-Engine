@@ -56,20 +56,20 @@ describe('MVP4 full spatial competition', () => {
     expect(day.households.find(({ id }) => id === household.id)!.spatialPurchasesToday[industryId]?.chosenFirmId).toBe(closer.id)
   })
 
-  it('keeps category boundaries behavioral and leaves unused cash in the single household balance until parity', () => {
+  it('keeps category boundaries behavioral and leaves unused cash in the single persistent household balance', () => {
     const day = stepSimulation(createSimulation(base))
-    expect(day.households.every(({ cashCents }) => cashCents === 5_000)).toBe(true)
+    expect(day.households.reduce((sum, { cashCents }) => sum + cashCents, 0)).toBe(50_000)
     expect(day.households.every((household) => !('wallets' in household))).toBe(true)
-    expect(day.events.filter(({ type }) => type === 'PARITY_TRANSFER_RECEIVED')).toHaveLength(10)
+    expect(day.events.filter(({ type }) => type === 'PARITY_TRANSFER_RECEIVED')).toHaveLength(0)
   })
 
-  it('preserves taxation, parity, money, and stock flows', () => {
+  it('preserves payroll, money, and production stock flows', () => {
     const day = stepSimulation(createSimulation(base))
     expect(day.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
     expect(day.government.cashCents).toBe(0)
-    expect(day.households.every(({ cashCents }) => cashCents === 5_000)).toBe(true)
+    expect(new Set(day.households.map(({ cashCents }) => cashCents)).size).toBeGreaterThan(1)
     expect(totalMoney(day)).toBe(50_000)
-    day.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(firm.unitsSoldToday + firm.unitsExpiredToday).toBe(10))
+    day.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(firm.unitsSoldToday + firm.unitsExpiredToday).toBe(5))
     expect(() => validateState(day, true)).not.toThrow()
   })
 

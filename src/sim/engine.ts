@@ -1,5 +1,6 @@
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
-import { DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
+import { DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_LABOR_PRODUCTIVITY, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
+import { assignEmployment, deriveEmploymentSeed, payrollOrder } from './employment'
 import { totalMoney, validateState } from './invariants'
 import { buildPriceExperimentCatalog, createPricingState, decideTomorrowPrice, type PriceExperimentCandidate } from './pricingStrategy'
 import { normalizeSeed, probabilityCheck, randomInt, seededShuffle } from './rng'
@@ -23,7 +24,9 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
   const safeConfig: SimulationConfig = {
     startingPriceCents: Math.max(1, Math.round(config.startingPriceCents)),
     initialStepCents: Math.max(1, Math.round(config.initialStepCents)),
-    dailySupplyPerIndustry: Math.max(0, Math.round(config.dailySupplyPerIndustry)),
+    laborProductivityUnitsPerWorker: Math.max(0, Math.round(config.laborProductivityUnitsPerWorker ?? DEFAULT_LABOR_PRODUCTIVITY)),
+    firmTaxRateBps: 0,
+    householdParityEnabled: false,
     industryStartingPricesCents: config.industryStartingPricesCents,
     firmStartingPricesCents: config.firmStartingPricesCents,
     industryProcessingOrder: safeProcessingOrder(config),
@@ -40,6 +43,8 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
   const consumerFirmIds = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').flatMap(({ id }) => DEFAULT_FIRM_IDS_BY_INDUSTRY[id])
   const spatialIds = [...Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => `household-${index + 1}`), ...consumerFirmIds]
   const layout = generateSpatialLayout(safeConfig.seed!, safeConfig.gridWidth!, safeConfig.gridHeight!, spatialIds)
+  const householdIds = Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => `household-${index + 1}`)
+  const employment = assignEmployment(safeConfig.seed!, householdIds, [...consumerFirmIds, 'firm-transport'])
   const firms: Firm[] = industries.flatMap((industry) => DEFAULT_FIRM_IDS_BY_INDUSTRY[industry.id].map((firmId) => {
     const price = Math.max(1, Math.round(safeConfig.firmStartingPricesCents?.[firmId] ?? safeConfig.industryStartingPricesCents?.[industry.id] ?? safeConfig.startingPriceCents))
     return {
@@ -48,6 +53,8 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
       unitsExpiredToday: 0, soldOutToday: false, pricing: createPricingState(price, safeConfig.initialStepCents),
       latestDecisionReason: industry.id === 'transport' ? 'Transport charges the configured exogenous per-tile rate.' : 'The first price is set by the run configuration.', latestDecisionAction: 'hold',
       coordinate: layout[firmId],
+      employeeIds: householdIds.filter((id) => employment[id] === firmId), productivityPerWorker: industry.id === 'transport' ? null : safeConfig.laborProductivityUnitsPerWorker!,
+      unitsProducedToday: 0, wagePoolTodayCents: 0, wagesPaidTodayCents: 0, meanWageTodayCents: 0,
     }
   }))
   const state: SimulationState = {
@@ -60,6 +67,7 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
       coordinate: layout[`household-${index + 1}`],
       entertainmentToday: null,
       spatialPurchasesToday: {},
+      employerFirmId: employment[`household-${index + 1}`], wageTodayCents: 0, cumulativeWagesCents: 0, spendingTodayCents: 0, netCashChangeTodayCents: 0,
       industryOutcomes: Object.fromEntries(industries.map(({ id, householdBudgetCents }) => [id, {
         budgetCents: householdBudgetCents, purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null,
         lifetimeUnitsPurchased: 0, lifetimeStockoutFailures: 0, lifetimeAffordabilityFailures: 0,
@@ -67,8 +75,9 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
     })),
     firms,
     government: { id: 'government-1', cashCents: 0, taxCollectedTodayCents: 0, redistributedTodayCents: 0 },
-    metrics: [], events: [], nextEventId: 1, rngState: normalizeSeed(safeConfig.seed ?? DEFAULT_SEED), spatialSeed: deriveSpatialSeed(safeConfig.seed ?? DEFAULT_SEED),
+    metrics: [], events: [], nextEventId: 1, rngState: normalizeSeed(safeConfig.seed ?? DEFAULT_SEED), spatialSeed: deriveSpatialSeed(safeConfig.seed ?? DEFAULT_SEED), employmentSeed: deriveEmploymentSeed(safeConfig.seed ?? DEFAULT_SEED),
   }
+  state.households.forEach((household) => pushEvent(state, 'EMPLOYMENT_ASSIGNED', `${household.id} was assigned to ${household.employerFirmId}.`, { actorId: household.id, householdId: household.id, counterpartyId: household.employerFirmId, firmId: household.employerFirmId }))
   validateState(state)
   return state
 }
@@ -96,16 +105,19 @@ export function stepSimulation(previous: SimulationState): SimulationState {
   state.government.taxCollectedTodayCents = 0
   state.government.redistributedTodayCents = 0
   state.firms.forEach((firm) => {
-    Object.assign(firm, { unitsSoldToday: 0, revenueTodayCents: 0, preTaxProfitTodayCents: 0, availableUnitsToday: firm.industryId === 'transport' ? 0 : state.config.dailySupplyPerIndustry, unitsExpiredToday: 0, soldOutToday: false })
+    const produced = firm.industryId === 'transport' ? 0 : firm.employeeIds.length * state.config.laborProductivityUnitsPerWorker!
+    Object.assign(firm, { unitsSoldToday: 0, revenueTodayCents: 0, preTaxProfitTodayCents: 0, unitsProducedToday: produced, availableUnitsToday: produced, unitsExpiredToday: 0, soldOutToday: false, wagePoolTodayCents: 0, wagesPaidTodayCents: 0, meanWageTodayCents: 0 })
   })
   state.households.forEach((household) => Object.values(household.industryOutcomes).forEach((outcome) => {
     Object.assign(outcome, { purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null })
   }))
   state.households.forEach((household) => { household.entertainmentToday = null })
   state.households.forEach((household) => { household.spatialPurchasesToday = {} })
+  state.households.forEach((household) => { household.wageTodayCents = 0; household.spendingTodayCents = 0; household.netCashChangeTodayCents = 0 })
 
   const openingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   pushEvent(state, 'DAY_STARTED', `Day ${state.day} began.`)
+  state.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => pushEvent(state, 'FIRM_PRODUCED', `${firm.id} produced ${firm.unitsProducedToday} units from ${firm.employeeIds.length} worker × ${firm.productivityPerWorker} productivity.`, { actorId: firm.id, firmId: firm.id, industryId: firm.industryId, quantity: firm.unitsProducedToday, workerCount: firm.employeeIds.length, productivityPerWorker: firm.productivityPerWorker!, unitsProduced: firm.unitsProducedToday }))
   const marketMetrics: MarketMetrics[] = []
 
   for (const industryId of state.config.industryProcessingOrder ?? safeProcessingOrder(state.config)) {
@@ -144,7 +156,6 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     }
     const affordableAtOpen = countAffordableAtPrice(state.households.map((household) => Math.min(household.cashCents, household.industryOutcomes[industryId].budgetCents)), minimumPostedPrice)
     for (const firm of industryFirms) {
-      pushEvent(state, 'SUPPLY_RECEIVED', `${firm.id} received ${state.config.dailySupplyPerIndustry} exogenous ${industry.name.toLowerCase()} units.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: state.config.dailySupplyPerIndustry })
       pushEvent(state, 'PRICE_POSTED', `${firm.id} posted ${dollars(firm.postedPriceCents)} in ${industry.name}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.postedPriceCents })
     }
 
@@ -176,7 +187,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
         const travel = quote(firm)
         const total = price + travel.transportFeeCents
         const details = { actorId: household.id, counterpartyId: firm.id, householdId: household.id, firmId: firm.id, industryId, priceCents: price, oneWayDistance: travel.oneWayDistance, roundTripTiles: travel.roundTripTiles, transportFeeCents: travel.transportFeeCents, deliveredCostCents: total }
-        household.cashCents -= total; firm.cashCents += price; firm.availableUnitsToday -= 1; firm.unitsSoldToday += 1
+        household.cashCents -= total; household.spendingTodayCents += total; firm.cashCents += price; firm.availableUnitsToday -= 1; firm.unitsSoldToday += 1
         {
           const transportFirm = state.firms.find(({ industryId: id }) => id === 'transport')!
           transportFirm.cashCents += travel.transportFeeCents
@@ -197,12 +208,12 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     for (const firm of industryFirms) {
       const testedPrice = firm.postedPriceCents
       firm.unitsExpiredToday = firm.availableUnitsToday; firm.availableUnitsToday = 0
-      firm.soldOutToday = firm.unitsSoldToday === state.config.dailySupplyPerIndustry
+      firm.soldOutToday = firm.unitsSoldToday === firm.unitsProducedToday
       pushEvent(state, 'GOODS_EXPIRED', `${firm.unitsExpiredToday} unsold ${industry.name.toLowerCase()} units expired at ${firm.id}.`, { actorId: firm.id, firmId: firm.id, industryId, quantity: firm.unitsExpiredToday })
       const revenue = firm.unitsSoldToday * testedPrice
       if (firm.cashCents !== revenue) throw new Error(`${firm.id} cash does not equal today's zero-cost revenue`)
       firm.revenueTodayCents = revenue; firm.preTaxProfitTodayCents = revenue
-      pushEvent(state, 'FIRM_DAY_RESULT', `${firm.id} sold ${firm.unitsSoldToday}/${state.config.dailySupplyPerIndustry} units and realised ${dollars(revenue)} profit.`, { actorId: firm.id, firmId: firm.id, industryId, amountCents: revenue, quantity: firm.unitsSoldToday })
+      pushEvent(state, 'FIRM_DAY_RESULT', `${firm.id} sold ${firm.unitsSoldToday}/${firm.unitsProducedToday} produced units and realised ${dollars(revenue)} operating earnings.`, { actorId: firm.id, firmId: firm.id, industryId, amountCents: revenue, quantity: firm.unitsSoldToday })
       let shouldProbe = false
       let probeDirection: 'up' | 'down' = 'up'
       let experimentCandidate: PriceExperimentCandidate | undefined
@@ -244,7 +255,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
       marketMetrics.push({
         industryId, firmId: firm.id, postedPriceCents: testedPrice, nextPriceCents: decision.nextPriceCents,
         bestKnownPriceCents: firm.pricing.bestPriceCents, priceStepSizeCents: firm.pricing.stepSizeCents, searchDirection: firm.pricing.direction,
-        unitsSold: firm.unitsSoldToday, unitsSupplied: state.config.dailySupplyPerIndustry, unitsExpired: firm.unitsExpiredToday,
+        unitsSold: firm.unitsSoldToday, unitsSupplied: firm.unitsProducedToday, unitsProduced: firm.unitsProducedToday, unitsExpired: firm.unitsExpiredToday,
         stockoutFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'stockout').length,
         affordabilityFailures: state.households.filter((h) => h.industryOutcomes[industryId].purchaseOutcomeToday === 'insufficient_funds').length,
         soldOut: firm.soldOutToday, householdsAffordableAtMarketOpen: affordableAtOpen, revenueCents: revenue, preTaxProfitCents: revenue, converged: firm.pricing.converged,
@@ -265,22 +276,23 @@ export function stepSimulation(previous: SimulationState): SimulationState {
   const totalTilesTravelled = state.households.reduce((sum, household) => sum + Object.values(household.spatialPurchasesToday).reduce((subtotal, purchase) => subtotal + (purchase?.roundTripTiles ?? 0), 0), 0)
   const totalTransportRevenueCents = transportFirm.cashCents
   const totalFirmCashBeforeTax = state.firms.reduce((sum, firm) => sum + firm.cashCents, 0)
-  for (const firm of state.firms) {
-    const tax = firm.cashCents; firm.cashCents = 0; state.government.cashCents += tax
-    pushEvent(state, 'TAX_PAID', `${firm.id} paid ${dollars(tax)} tax.`, { actorId: firm.id, counterpartyId: state.government.id, firmId: firm.id, industryId: firm.industryId, amountCents: tax })
-  }
-  state.government.taxCollectedTodayCents = totalFirmCashBeforeTax
-  const governmentCashBeforeRedistribution = state.government.cashCents
   const beforeParityDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
-  const required = state.households.reduce((sum, household) => sum + (state.config.targetHouseholdCashCents! - household.cashCents), 0)
-  if (required !== governmentCashBeforeRedistribution) throw new Error(`Government parity funding mismatch: has ${governmentCashBeforeRedistribution}, requires ${required}`)
-  state.households.forEach((household) => {
-    const amount = state.config.targetHouseholdCashCents! - household.cashCents
-    if (amount < 0) throw new Error(`${household.id} exceeds the parity target before redistribution`)
-    state.government.cashCents -= amount; household.cashCents += amount
-    pushEvent(state, 'PARITY_TRANSFER_RECEIVED', `${household.id} received ${dollars(amount)} to restore the ${dollars(state.config.targetHouseholdCashCents!)} parity target.`, { actorId: state.government.id, counterpartyId: household.id, householdId: household.id, amountCents: amount })
-  })
-  state.government.redistributedTodayCents = governmentCashBeforeRedistribution
+  for (const firm of state.firms) {
+    const pool = firm.cashCents
+    firm.wagePoolTodayCents = pool
+    const ordered = payrollOrder(state.config.seed!, state.day, firm.id, firm.employeeIds)
+    const baseWage = Math.floor(pool / ordered.length)
+    const remainder = pool % ordered.length
+    ordered.forEach((householdId, index) => {
+      const wage = baseWage + (index < remainder ? 1 : 0)
+      const household = state.households.find(({ id }) => id === householdId)!
+      firm.cashCents -= wage; household.cashCents += wage; household.wageTodayCents += wage; household.cumulativeWagesCents += wage
+      pushEvent(state, 'WAGE_PAID', `${firm.id} paid ${dollars(wage)} to ${household.id}.`, { actorId: firm.id, counterpartyId: household.id, firmId: firm.id, householdId: household.id, industryId: firm.industryId, amountCents: wage, wageCents: wage, employerDailyRevenue: pool, employeeCount: ordered.length })
+    })
+    firm.wagesPaidTodayCents = pool; firm.meanWageTodayCents = pool / ordered.length
+  }
+  state.households.forEach((household) => { household.netCashChangeTodayCents = household.wageTodayCents - household.spendingTodayCents })
+  const governmentCashBeforeRedistribution = state.government.cashCents
   const endingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   const metric: DayMetrics = {
     day: state.day, markets: marketMetrics,
@@ -297,6 +309,10 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     entertainmentTrips, totalTilesTravelled, totalTransportRevenueCents,
     averageTransportFeeCents: entertainmentTrips === 0 ? 0 : totalTransportRevenueCents / entertainmentTrips,
     transportRevenueByIndustryCents: Object.fromEntries(DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').map(({ id }) => [id, state.households.reduce((sum, household) => sum + (household.spatialPurchasesToday[id as Exclude<IndustryId, 'transport'>]?.transportFeeCents ?? 0), 0)])),
+    totalWagesPaidCents: state.firms.reduce((sum, firm) => sum + firm.wagesPaidTodayCents, 0),
+    meanDailyWageCents: state.households.reduce((sum, household) => sum + household.wageTodayCents, 0) / state.households.length,
+    wageIncomeGini: summarizeCashDistribution(state.households.map(({ wageTodayCents }) => wageTodayCents)).gini,
+    householdSpendingCents: state.households.reduce((sum, household) => sum + household.spendingTodayCents, 0),
   }
   state.metrics.push(metric); if (state.metrics.length > MAX_HISTORY) state.metrics.shift()
   validateState(state, true)

@@ -17,10 +17,10 @@ describe('multi-market event display grouping', () => {
     const state = stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 4, industryStartingPricesCents: { food: 1_501 } }))
     const displayed = groupEventsForDisplay(state.events)
     expect(displayed.find(({ key }) => key === 'market-1-food')?.description).toContain('10 affordability')
-    expect(displayed.find(({ key }) => key === 'market-1-utilities')?.description).toContain('2 stockout failures')
+    expect(displayed.find(({ key }) => key === 'market-1-utilities')?.description).toContain('0 stockout failures')
   })
 
-  it('groups pooled redistribution without altering source events', () => {
+  it('groups explicit payroll without altering source events', () => {
     const state = stepSimulation(createSimulation({
       startingPriceCents: 500,
       initialStepCents: 100,
@@ -28,9 +28,9 @@ describe('multi-market event display grouping', () => {
       industryStartingPricesCents: { food: 1_500, utilities: 1_200, healthcare: 1_000, transport: 800, entertainment: 500 },
     }))
     const original = structuredClone(state.events)
-    const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'redistribution-1')
+    const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'payroll-1')
     expect(group?.details).toHaveLength(10)
-    expect(group?.description).toContain('explicit parity transfers across 10 households')
+    expect(group?.description).toContain('explicit wages across 10 workers')
     expect(state.events).toEqual(original)
   })
 

@@ -8,11 +8,11 @@ export function groupEventsForDisplay(events: SimulationEvent[]): DisplayEvent[]
   const groups = new Map<string, DisplayEvent>()
   for (const event of events) {
     const isMarket = ['HOUSEHOLD_PURCHASE', 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT'].includes(event.type)
-    const key = isMarket ? `market-${event.day}-${event.industryId}` : ['TRANSFER_RECEIVED', 'PARITY_TRANSFER_RECEIVED'].includes(event.type) ? `redistribution-${event.day}` : ''
+    const key = isMarket ? `market-${event.day}-${event.industryId}` : event.type === 'WAGE_PAID' ? `payroll-${event.day}` : ''
     if (key) {
       let group = groups.get(key)
       if (!group) {
-        group = { key, day: event.day, type: isMarket ? `${event.industryId?.toUpperCase()} MARKET` : 'REDISTRIBUTION', description: '', details: [], grouped: true }
+        group = { key, day: event.day, type: isMarket ? `${event.industryId?.toUpperCase()} MARKET` : 'PAYROLL', description: '', details: [], grouped: true }
         groups.set(key, group); displayed.push(group)
       }
       group.details.push(event); continue
@@ -20,9 +20,9 @@ export function groupEventsForDisplay(events: SimulationEvent[]): DisplayEvent[]
     displayed.push({ key: `event-${event.id}`, day: event.day, type: event.type.replaceAll('_', ' '), description: event.description, details: [event], grouped: false })
   }
   for (const group of groups.values()) {
-    if (group.key.startsWith('redistribution')) {
+    if (group.key.startsWith('payroll')) {
       const total = group.details.reduce((sum, event) => sum + (event.amountCents ?? 0), 0)
-      group.description = `Government paid ${money(total)} in explicit parity transfers across ${group.details.length} households.`
+      group.description = `Firms paid ${money(total)} in explicit wages across ${group.details.length} workers.`
       continue
     }
     const purchases = group.details.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')

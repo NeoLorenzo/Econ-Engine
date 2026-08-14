@@ -6,6 +6,80 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP5-Employment-007] - (2026-08-14)
+
+### Motivation
+
+Earlier Econ-Engine versions closed the monetary circuit through an intentionally artificial Government mechanism:
+
+```text
+household spending
+→ firm revenue
+→ 100% Government taxation
+→ household-specific transfers restoring $50 parity
+```
+
+That institution isolated consumer-market mechanics, but it prevented firm performance from affecting household income or persistent purchasing power. MVP5 replaces it with the first production-income loop:
+
+```text
+household spending
+→ consumer-firm and Transport revenue
+→ wages
+→ households
+```
+
+The research purpose is to observe whether employer performance creates persistent income and wealth differences, whether those differences feed back into consumption and firm revenue, and whether the closed $500 circuit remains stable without parity restoration.
+
+### Employment simplification and information boundary
+
+Employment is deliberately fixed to isolate the income mechanism before building a labor market. Every household supplies exactly one worker; each consumer firm has one worker and Transport has two. A dedicated subseed deterministically shuffles canonically sorted household IDs into canonical employment slots. Employment is independent of spatial placement and runtime market draws and remains fixed after initialization.
+
+There is no unemployment, vacancy, search, employer choice, hiring, firing, quitting, negotiated wage, skill, or productivity heterogeneity. Labor can currently be supplied without a modeled commute. Firms do not observe worker wealth, household income, competitor payroll, or observer inequality analytics.
+
+### Production
+
+Consumer production is now causal rather than exogenous:
+
+```text
+daily firm output = worker count × 5 units per worker
+```
+
+Every one-worker consumer firm produces five units at the start of the day, preserving ten potential units per two-firm industry. Production precedes consumption and emits a structured event. Unsold goods still expire daily, so each consumer firm must satisfy `produced = sold + expired`.
+
+Transport is the explicit exception. Its two workers participate in employment and wage accounting, but Transport remains an effectively unlimited derived service. No trips-per-worker, fleet, congestion, or labor-capacity mechanism is implied.
+
+### Wage model and pricing timing
+
+Workers are residual claimants on their employer’s daily revenue. This is a minimal circulation mechanism, not a mature empirical wage-setting model. After all consumer markets, Transport activity, inventory closure, and pricing updates, the firm’s entire cash balance becomes its wage pool. A one-worker firm transfers the pool whole. Transport divides its pool evenly, with any indivisible cent assigned through a reproducible seed/day/firm-specific order. Every cent is transferred through an explicit wage event; firms are not cleared by balance reset.
+
+The pricing learner continues to optimize realized pre-payroll operating earnings. In this cost-free MVP, operating earnings equal sales revenue. Wages equal operating earnings, and retained end-of-day firm profit is zero. Payroll occurs only after the learner has consumed the operating result.
+
+### Government, persistent wealth, and circular flow
+
+Government remains architecturally present, but the default firm tax is zero and parity restoration is disabled. Household balances carry forward as prior cash minus consumption plus wages. Wealth divergence is therefore expected and is not an invariant failure.
+
+Category percentage limits remain behavioral constraints derived from the fixed $50 daily expenditure base. Actual cash also binds. There are no category wallets, negative balances, debt, overdrafts, welfare transfers, or guaranteed consumption. Production creates goods, not money; expiration destroys goods, not money. Purchases, Transport fees, and payroll relocate integer cents within the fixed 50,000-cent money supply.
+
+### Canonical 1,000-day findings
+
+For seed `20260813`, cash Gini moved from `0.040` on day 1 to `0.828` on day 1,000, averaged `0.799` across the complete trajectory, and reached a maximum of `0.873`. Day-1,000 household cash ranged from $0.13 to $395.87. Mean end-of-day household cash remained exactly $50 because completed payroll returned all 50,000 cents to households; that aggregate identity did not imply individual equality.
+
+Employer-linked outcomes diverged strongly over the horizon. The Food B worker averaged $374.02 in cash and completed 99.9% of desired purchases. The Entertainment B worker averaged $1.71 and completed 16.7%. These are full-horizon measurements rather than an inference from the day-1,000 snapshot.
+
+Each consumer firm produced exactly 5,000 units over 1,000 days. Food B sold 4,041 and expired 959; Food A sold 3,486 and expired 1,514; Healthcare B sold 1,926 and expired 3,074; Entertainment B sold 1,513 and expired 3,487. Transport performed 23,570 derived trips and distributed its full $9,167.44 cumulative revenue to its two workers. Every firm’s cumulative operating earnings exactly equaled its cumulative wages.
+
+### Cross-seed observations and feedback
+
+Seeds `77` and `91` produced different valid employment mappings and trajectories. Their mean cash Ginis were `0.827` and `0.844`; day-1,000 Ginis were `0.771` and `0.831`. A Food B worker had the highest purchase success in both runs (99.8% and 99.7%), while low-revenue Entertainment employment was associated with substantially lower consumption success.
+
+Across the three observed seeds, employer performance changed worker income, heterogeneous cash constrained later purchases, weaker demand increased expiration, and those sales outcomes fed back into subsequent wages. This is evidence of an endogenous feedback loop over the measured horizon, not a claim of equilibrium or a population estimate.
+
+### Validation and limitations
+
+Same-seed runs reproduced exactly. The canonical and alternate-seed 1,000-day experiments and the 10,000-day stress run preserved non-negative cash, exact production stock-flow identities, zero completed-payroll firm balances, zero Government cash, bounded histories, and exactly $500 total money. Desktop, approximately 390-pixel mobile, and maximum-speed browser checks completed without console errors.
+
+The model still excludes a labor market, commuting, negotiated or fixed wages, non-labor production costs, retained earnings, credit, welfare, taxes, capital, investment, and labor-constrained Transport. Strong concentration is therefore an economic result of this deliberately sparse mechanism, not a claim about a mature real economy.
+
 ## [MVP4-Spatial_Competition_Full-006.4] - (2026-08-14)
 
 ### Analytical mistake and design response

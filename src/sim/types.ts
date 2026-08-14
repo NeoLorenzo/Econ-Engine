@@ -18,7 +18,11 @@ export interface Industry {
 export interface SimulationConfig {
   startingPriceCents: number
   initialStepCents: number
-  dailySupplyPerIndustry: number
+  /** @deprecated MVP5 production is derived from employment. Accepted only for legacy callers. */
+  dailySupplyPerIndustry?: number
+  laborProductivityUnitsPerWorker?: number
+  firmTaxRateBps?: number
+  householdParityEnabled?: boolean
   industryStartingPricesCents?: Partial<Record<IndustryId, number>>
   firmStartingPricesCents?: Record<string, number>
   industryProcessingOrder?: IndustryId[]
@@ -51,6 +55,11 @@ export interface Household {
   coordinate: Coordinate
   entertainmentToday: HouseholdEntertainmentMetrics | null
   spatialPurchasesToday: Partial<Record<Exclude<IndustryId, 'transport'>, HouseholdEntertainmentMetrics>>
+  employerFirmId: string
+  wageTodayCents: number
+  cumulativeWagesCents: number
+  spendingTodayCents: number
+  netCashChangeTodayCents: number
 }
 
 export interface Coordinate { x: number; y: number }
@@ -102,6 +111,12 @@ export interface Firm {
   latestDecisionReason: string
   latestDecisionAction: PriceDecisionAction
   coordinate?: Coordinate
+  employeeIds: string[]
+  productivityPerWorker: number | null
+  unitsProducedToday: number
+  wagePoolTodayCents: number
+  wagesPaidTodayCents: number
+  meanWageTodayCents: number
 }
 
 export interface Government {
@@ -123,6 +138,9 @@ export interface PriceDecision {
 export type SimulationEventType =
   | 'DAY_STARTED'
   | 'SUPPLY_RECEIVED'
+  | 'EMPLOYMENT_ASSIGNED'
+  | 'FIRM_PRODUCED'
+  | 'WAGE_PAID'
   | 'PRICE_POSTED'
   | 'HOUSEHOLD_PURCHASE'
   | 'TRANSPORT_SERVICE_PURCHASED'
@@ -165,6 +183,12 @@ export interface SimulationEvent {
   competitorPriceObservedCents?: number
   referenceProfitCents?: number
   experimentalProfitCents?: number
+  workerCount?: number
+  productivityPerWorker?: number
+  unitsProduced?: number
+  wageCents?: number
+  employerDailyRevenue?: number
+  employeeCount?: number
   description: string
 }
 
@@ -178,6 +202,7 @@ export interface MarketMetrics {
   searchDirection: Direction
   unitsSold: number
   unitsSupplied: number
+  unitsProduced: number
   unitsExpired: number
   stockoutFailures: number
   affordabilityFailures: number
@@ -224,6 +249,10 @@ export interface DayMetrics {
   totalTransportRevenueCents: number
   averageTransportFeeCents: number
   transportRevenueByIndustryCents: Partial<Record<Exclude<IndustryId, 'transport'>, number>>
+  totalWagesPaidCents: number
+  meanDailyWageCents: number
+  wageIncomeGini: number
+  householdSpendingCents: number
 }
 
 export interface SimulationState {
@@ -238,4 +267,5 @@ export interface SimulationState {
   nextEventId: number
   rngState: number
   spatialSeed: number
+  employmentSeed: number
 }

@@ -1,6 +1,6 @@
-# Econ-Engine
+# Econ-Engine — [MVP5-Employment-007]
 
-Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP 3 introduces two independently adapting firms in Entertainment while retaining four monopoly industries as stable controls.
+Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP5 gives every household a fixed seeded job, derives consumer production from labor, distributes firm revenue as wages, and allows persistent household wealth to diverge inside an exact $500 closed circuit.
 
 ## Run locally
 
@@ -31,7 +31,7 @@ The monopoly control incumbents remain Food $15, Utilities $12, Healthcare $10, 
 
 The pure TypeScript core in `src/sim` owns industries, firms, household industry outcomes, finite-supply markets, pooled government transfers, pricing, events, metrics, experiments, and invariants. The engine iterates collections rather than duplicating industry logic. React owns controls and presentation only.
 
-Read the current [MVP 3 specification](docs/MVP3_SPEC.md), [MVP 2 specification](docs/MVP2_SPEC.md), [architecture notes](docs/ARCHITECTURE.md), [validation guide](docs/VALIDATION.md), and authoritative [simulation design rules](SIMULATION_DESIGN_RULES.md). Project evolution is recorded in the [changelog](CHANGELOG.md) and [lab notes](LAB_NOTES.md).
+Read the current [MVP 5 specification](docs/MVP5_SPEC.md), historical [MVP 4 specification](docs/MVP4_SPEC.md), [architecture notes](docs/ARCHITECTURE.md), [validation guide](docs/VALIDATION.md), and authoritative [simulation design rules](SIMULATION_DESIGN_RULES.md). Project evolution is recorded in the [changelog](CHANGELOG.md) and [lab notes](LAB_NOTES.md).
 
 ## Deployment
 

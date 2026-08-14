@@ -2,6 +2,34 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP5-Employment-007] - (2026-08-14)
+
+### Added
+
+- Made all ten households fixed workers through a dedicated deterministic employment subseed: one worker at each of the eight consumer firms and two at Transport.
+- Added explicit `EMPLOYMENT_ASSIGNED`, `FIRM_PRODUCED`, and `WAGE_PAID` events with causal employment, production, revenue, employee-count, and integer-cent transfer data.
+- Added household employer, daily wage, cumulative wage income, daily spending, and net cash-change state and analytics.
+- Added firm employee, worker-count, applicable productivity, units-produced, wage-pool, wages-paid, mean-wage, and retained-cash state and analytics.
+- Added economy-wide household cash distribution, cash Gini, mean daily wage, wage-income Gini, total wages, and household spending metrics.
+- Added a focused 1,000-day employment experiment and employment, production, payroll, fiscal-policy, affordability, determinism, conservation, and long-run regression coverage.
+
+### Changed
+
+- Replaced exogenous consumer inventory with explicit labor-derived production at five units per consumer worker per day. Each consumer firm therefore produces five units and each two-firm industry can produce ten.
+- Changed daily inventory closure to enforce `units produced = units sold + units expired` while preserving non-persistent inventory.
+- Distributed every firm’s complete end-of-market cash balance to its employees as wages. One-worker firms transfer the full pool; Transport splits its pool across two workers with reproducible integer-cent remainder allocation.
+- Preserved the MVP4 pricing learner and made its operating-performance evaluation explicitly occur before payroll, so zero retained firm cash does not erase the learner’s revenue signal.
+- Disabled the default 100% firm tax and household parity restoration while retaining Government as an inactive architectural agent with zero default cash.
+- Made household cash persistent across days and allowed household wealth to diverge while retaining category expenditure ceilings, actual-cash affordability, non-negative balances, and one real cash stock per household.
+- Kept Transport effectively unlimited-capacity and inventory-free; its two workers affect employment and payroll accounting but not service output.
+- Updated the dashboard to display the exact MVP label, labor productivity, inactive fiscal loop, employment mapping, production, operating earnings, wages, retained cash, persistent wealth, and cash/wage inequality.
+
+### Validation
+
+- Passed 64 automated tests, type checking, production build, the combined project check, and `git diff --check`.
+- Passed exact same-seed replay, canonical and alternate-seed 1,000-day experiments, and the 10,000-day bounded-history invariant stress test with exactly $500 conserved.
+- Validated desktop, approximately 390-pixel mobile, and 100-days/second browser operation with no console errors or page-level horizontal overflow.
+
 ## [MVP4-Spatial_Competition_Full-006.4] - (2026-08-14)
 
 - Added a permanent design rule requiring dynamic behavior to be evaluated from trajectories rather than inferred from terminal snapshots.

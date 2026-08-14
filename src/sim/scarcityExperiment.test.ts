@@ -14,7 +14,8 @@ describe('deterministic multi-industry experiment', () => {
     expect(first.firms.filter(({ industryId }) => industryId === 'entertainment').map(({ startingPriceCents }) => startingPriceCents)).toEqual([100, 800])
     expect(first.competitionHistory.length).toBeGreaterThan(0)
     expect(first.competitionHistory.every((point) => point.marketShare >= 0 && point.marketShare <= 1)).toBe(true)
-    expect(first).toMatchObject({ finalHouseholdCashMinimumCents: 5_000, finalHouseholdCashMedianCents: 5_000, finalHouseholdCashMaximumCents: 5_000, finalHouseholdCashGini: 0, totalMoneyCents: 50_000 })
+    expect(first).toMatchObject({ finalHouseholdCashMinimumCents: expect.any(Number), finalHouseholdCashMedianCents: expect.any(Number), finalHouseholdCashMaximumCents: expect.any(Number), finalHouseholdCashGini: expect.any(Number), totalMoneyCents: 50_000 })
+    expect(first.finalHouseholdCashGini).toBeGreaterThan(0)
   })
 
   it('reports horizon non-convergence without fabricating endpoints', () => {
