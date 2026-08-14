@@ -23,7 +23,9 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (actual.join('|') !== [...expected].sort().join('|')) throw new Error(`${industryId} firm membership is invalid`)
   }
   if (!Number.isInteger(state.config.laborProductivityUnitsPerWorker) || state.config.laborProductivityUnitsPerWorker! < 0) throw new Error('Labor productivity must be a non-negative integer')
-  if (state.config.firmTaxRateBps !== 0 || state.config.householdParityEnabled !== false) throw new Error('MVP5 default fiscal policy must be inactive')
+  if (state.config.firmTaxRateBps !== 0 || state.config.householdParityEnabled !== false) throw new Error('Legacy firm tax and parity policy must remain inactive')
+  if ((state.config.governmentExperimentProbability ?? 0) < 0 || (state.config.governmentExperimentProbability ?? 0) > 1) throw new Error('Government experiment probability must be between zero and one')
+  if (!Number.isInteger(state.governmentPolicyRngState) || state.governmentPolicyRngState < 0 || state.governmentPolicyRngState > 0xffff_ffff) throw new Error('Government policy RNG state must be an unsigned 32-bit integer')
   if (!Number.isInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffff_ffff) throw new Error('RNG state must be an unsigned 32-bit integer')
   if ((state.config.probeProbability ?? 0) < 0 || (state.config.probeProbability ?? 0) > 1) throw new Error('Probe probability must be between zero and one')
   for (const industry of state.industries.filter(({ id }) => id !== 'transport')) {
@@ -38,7 +40,10 @@ export function validateState(state: SimulationState, endOfDay = false) {
   state.households.forEach((household) => {
     assertIntegerMoney(`${household.id} cash`, household.cashCents)
     if (!state.firms.some(({ id }) => id === household.employerFirmId)) throw new Error(`${household.id} employer is invalid`)
-    ;['wageTodayCents', 'cumulativeWagesCents', 'spendingTodayCents'].forEach((field) => assertIntegerMoney(`${household.id} ${field}`, household[field as 'wageTodayCents']))
+    ;['wageTodayCents', 'cumulativeWagesCents', 'spendingTodayCents', 'preTaxCashCents', 'taxPaidTodayCents', 'transferReceivedTodayCents', 'postFiscalCashCents', 'cumulativeTaxPaidCents', 'cumulativeTransfersReceivedCents'].forEach((field) => assertIntegerMoney(`${household.id} ${field}`, household[field as 'wageTodayCents']))
+    if (household.taxPaidTodayCents > household.preTaxCashCents) throw new Error(`${household.id} tax exceeded taxable wealth`)
+    if (household.netFiscalTransferTodayCents !== household.transferReceivedTodayCents - household.taxPaidTodayCents) throw new Error(`${household.id} net fiscal transfer is inconsistent`)
+    if (household.postFiscalCashCents !== household.cashCents) throw new Error(`${household.id} post-fiscal cash is stale`)
     for (const industryId of industryIds.filter((id) => id !== 'transport')) {
       const outcome = household.industryOutcomes[industryId]
       if (!outcome) throw new Error(`${household.id} is missing ${industryId} budget/outcome state`)
@@ -82,6 +87,11 @@ export function validateState(state: SimulationState, endOfDay = false) {
   }
 
   if (totalMoney(state) !== TOTAL_MONEY_CENTS) throw new Error(`Money conservation failed: expected ${TOTAL_MONEY_CENTS} cents, found ${totalMoney(state)}`)
-  if (endOfDay && state.government.cashCents !== 0) throw new Error('Government cash must remain zero under inactive fiscal policy')
-  if (endOfDay && state.households.reduce((sum, household) => sum + household.cashCents, 0) !== TOTAL_MONEY_CENTS) throw new Error('Completed payroll must return all money to households')
+  ;['cashCents', 'taxCollectedTodayCents', 'redistributedTodayCents'].forEach((field) => assertIntegerMoney(`Government ${field}`, state.government[field as 'cashCents']))
+  if (state.government.incumbentWealthTaxRateBps < 0 || state.government.incumbentWealthTaxRateBps > 10_000 || state.government.appliedWealthTaxRateBps < 0 || state.government.appliedWealthTaxRateBps > 10_000) throw new Error('Government tax rates must remain within 0–100%')
+  if (endOfDay && state.government.cashCents !== 0) throw new Error('Government must redistribute its complete tax pool')
+  if (endOfDay && state.government.taxCollectedTodayCents !== state.government.redistributedTodayCents) throw new Error('Government taxes and transfers must reconcile')
+  if (endOfDay && state.households.reduce((sum, household) => sum + household.taxPaidTodayCents, 0) !== state.government.taxCollectedTodayCents) throw new Error('Household tax events do not reconcile with Government receipts')
+  if (endOfDay && state.households.reduce((sum, household) => sum + household.transferReceivedTodayCents, 0) !== state.government.redistributedTodayCents) throw new Error('Household transfers do not reconcile with Government outlays')
+  if (endOfDay && state.households.reduce((sum, household) => sum + household.cashCents, 0) !== TOTAL_MONEY_CENTS) throw new Error('Completed fiscal phase must return all money to households')
 }

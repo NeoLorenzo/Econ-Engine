@@ -23,6 +23,8 @@ export interface SimulationConfig {
   laborProductivityUnitsPerWorker?: number
   firmTaxRateBps?: number
   householdParityEnabled?: boolean
+  adaptiveGovernmentEnabled?: boolean
+  governmentExperimentProbability?: number
   industryStartingPricesCents?: Partial<Record<IndustryId, number>>
   firmStartingPricesCents?: Record<string, number>
   industryProcessingOrder?: IndustryId[]
@@ -60,6 +62,14 @@ export interface Household {
   cumulativeWagesCents: number
   spendingTodayCents: number
   netCashChangeTodayCents: number
+  preTaxCashCents: number
+  taxPaidTodayCents: number
+  transferReceivedTodayCents: number
+  netFiscalTransferTodayCents: number
+  postFiscalCashCents: number
+  cumulativeTaxPaidCents: number
+  cumulativeTransfersReceivedCents: number
+  cumulativeNetFiscalPositionCents: number
 }
 
 export interface Coordinate { x: number; y: number }
@@ -124,7 +134,25 @@ export interface Government {
   cashCents: number
   taxCollectedTodayCents: number
   redistributedTodayCents: number
+  incumbentWealthTaxRateBps: number
+  appliedWealthTaxRateBps: number
+  policyStatus: 'incumbent' | 'experiment'
+  incumbentReferenceGini: number | null
+  experimentRateBps: number | null
+  experimentType: GovernmentExperimentType | null
+  lastExperimentOutcome: 'adopted' | 'rejected' | null
+  lastReferenceGini: number | null
+  lastExperimentalGini: number | null
+  preFiscalCashGini: number
+  postFiscalCashGini: number
+  giniReduction: number
+  householdsPayingTax: number
+  householdsReceivingTransfers: number
+  meanTransferCents: number
+  maximumTransferCents: number
 }
+
+export type GovernmentExperimentType = 'local_up_1pp' | 'local_down_1pp' | 'local_up_5pp' | 'local_down_5pp' | 'local_up_10pp' | 'local_down_10pp' | 'local_up_20pp' | 'local_down_20pp' | 'anchor_0' | 'anchor_25' | 'anchor_50' | 'anchor_75' | 'anchor_100'
 
 export interface PriceDecision {
   nextPriceCents: number
@@ -159,6 +187,11 @@ export type SimulationEventType =
   | 'PRICE_EXPERIMENT_STARTED'
   | 'PRICE_EXPERIMENT_ADOPTED'
   | 'PRICE_EXPERIMENT_REJECTED'
+  | 'GOVERNMENT_POLICY_EXPERIMENT_STARTED'
+  | 'WEALTH_TAX_PAID'
+  | 'MEANS_TESTED_TRANSFER_PAID'
+  | 'GOVERNMENT_POLICY_EXPERIMENT_ADOPTED'
+  | 'GOVERNMENT_POLICY_EXPERIMENT_REJECTED'
   | 'DAY_ENDED'
 
 export interface SimulationEvent {
@@ -192,6 +225,14 @@ export interface SimulationEvent {
   householdCashAvailableCents?: number
   categoryBudgetCents?: number
   minimumDeliveredCostCents?: number
+  taxRateBps?: number
+  incumbentTaxRateBps?: number
+  taxCents?: number
+  transferCents?: number
+  preFiscalGini?: number
+  postFiscalGini?: number
+  referenceGini?: number
+  governmentExperimentType?: GovernmentExperimentType
   description: string
 }
 
@@ -256,6 +297,19 @@ export interface DayMetrics {
   meanDailyWageCents: number
   wageIncomeGini: number
   householdSpendingCents: number
+  preFiscalCashGini: number
+  postFiscalCashGini: number
+  giniReduction: number
+  incumbentWealthTaxRateBps: number
+  appliedWealthTaxRateBps: number
+  governmentPolicyStatus: 'incumbent' | 'experiment'
+  governmentExperimentType: GovernmentExperimentType | null
+  totalWealthTaxCollectedCents: number
+  totalMeansTestedTransfersCents: number
+  householdsPayingWealthTax: number
+  householdsReceivingTransfers: number
+  meanTransferCents: number
+  maximumTransferCents: number
 }
 
 export interface SimulationState {
@@ -271,4 +325,5 @@ export interface SimulationState {
   rngState: number
   spatialSeed: number
   employmentSeed: number
+  governmentPolicyRngState: number
 }

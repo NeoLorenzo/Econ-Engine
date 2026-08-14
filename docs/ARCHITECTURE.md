@@ -1,33 +1,29 @@
 # Architecture
 
-MVP5 adds a dedicated employment subseed and a fixed household-to-firm relation. Consumer inventory is produced explicitly from worker count and productivity at day start. After market closure and pre-payroll pricing evaluation, firms transfer their complete cash balances to employees as explicit wages. Government remains present with inactive default fiscal policy. Household cash is persistent, and observer histories measure rather than correct its distribution.
-
-Econ-Engine separates environment rules, agent strategies, state, events, observer analytics, experiments, and interface so causal boundaries remain inspectable.
+Econ-Engine separates economic rules, agent strategies, state, events, observer analytics, experiments, and React presentation so causal boundaries remain inspectable.
 
 ## Simulation core
 
-`types.ts` defines configurable industries, firms, industry-keyed household outcomes, government, generic market events, per-firm metrics, and economy-wide metrics. `config.ts` maps every industry to one-or-more firm IDs: Entertainment has two and the controls have one. `engine.ts` iterates each industry's firm collection through one reusable deterministic market lifecycle.
+`types.ts` defines household, firm, Government, event, and bounded daily metric state. `engine.ts` performs immutable daily steps: labor-derived production, spatial consumer markets and Transport payments, inventory expiration, firm pricing decisions, complete payroll, and finally Government tax/transfer policy. `invariants.ts` validates entity structure and exact stock/flow accounting after each completed day.
 
-Each `Firm` owns its `PricingState`; there is no shared singleton learner. Each `Household` owns one real cash stock plus an `industryOutcomes` record containing behavioral budget, daily cause, and cumulative counters for every industry. Budget fields never enter `totalMoney`.
+Ten households each have one fixed seeded employer. Eight consumer firms employ one worker each; monopoly Transport employs two. Consumer output is worker count times five. Households choose available suppliers by delivered cost under percentage expenditure budgets. Firm cash is complete daily operating revenue and is fully paid to workers after the pricing learner observes it.
 
-The engine accepts one common supply setting, applied independently to every firm. Households choose the cheapest affordable available firm within an industry, with deterministic rotating tie priority. Every firm receives explicit exogenous units, sells only available stock, and expires the remainder. Industry processing order is stored in configuration primarily to support regression testing.
+## Strategy boundaries and RNG
 
-After all markets close, the one government taxes all six firms, pools receipts, and redistributes the entire pool. `invariants.ts` validates 50,000 conserved cents, configured firm membership, complete household outcomes, independent per-firm stock flows, total industry demand caps, and cleared institutional balances.
+`pricingStrategy.ts` owns private firm learning. Firms receive their own realized operating outcomes and public same-industry advertised prices; they do not receive household wealth, Gini, Government references, or future information.
 
-## Strategy boundary
+`government.ts` owns the bounded Government learner and fiscal rules. Government sees current administered post-payroll cash and its realized policy history. It cannot inspect future markets or simulate counterfactual futures. Market ordering, geography, employment, payroll remainder, firm probing, and Government policy use deterministic seeds; Government has a dedicated substream so its experiments do not perturb unrelated stochastic sequences.
 
-`pricingStrategy.ts` remains unchanged. Each call receives one firm's current price, units sold, realised zero-cost profit, and private pricing state. The engine does not pass competitor price, sales, profit, market share, household balances or budgets, causal failure counts, aggregate affordability, Gini, or future information.
+## Fiscal accounting
+
+The authoritative tax rate is integer basis points. Wealth-tax liabilities floor to integer cents and are explicit Household → Government transfers. Deterministic water filling returns the exact pool through Government → Household transfers. Seeded tied-group ordering allocates indivisible remainder cents. After the fiscal phase firms and Government hold zero, households hold 50,000 cents, and total money is exactly 50,000 cents.
+
+Household state distinguishes pre-tax cash, gross tax, gross transfer, net fiscal transfer, post-fiscal cash, and cumulative fiscal positions. Government state retains incumbent/applied rates, current reference, experiment category/outcome, receipts, transfers, and pre/post Gini.
 
 ## Observer analytics and experiments
 
-`analytics.ts` measures household cash distributions and affordability without mutating simulation or strategy state. Each `DayMetrics` holds five `MarketMetrics` records plus economy-wide wealth and monetary fields. Raw events carry industry, firm, and household identity; display grouping keeps the source events underneath summaries.
-
-`scarcityExperiment.ts` now runs one deterministic six-firm world with deliberately varied control starts and Entertainment starts of $1/$8. It records price, sales, profit, market-share trajectories, convergence, and final learner state through the public engine.
+Live event and metric histories are bounded. `employmentDynamics.ts` preserves the MVP5 007.1 complete finite trajectory analysis. `governmentExperiment.ts` collects compact complete observations over an explicit horizon and compares adaptive Government with an inactive same-seed baseline. It reports policy occupancy/spells, pre/post inequality and concentration, consumption failures, sell-through, revenue, and wages. Observer computations never enter household, firm, or Government decisions.
 
 ## Interface boundary
 
-React controls reset configuration and time. The dashboard uses a compact five-row market overview, multi-line price/profit charts, a selected-industry capacity chart, wealth analytics, experiment results, household aggregate inspection, and grouped ledger. No economic rule exists in React.
-
-## Extension seams
-
-Additional symmetric industries can be configured by extending the industry definition and keyed types, without copying market logic. Economic heterogeneity, within-industry competition, endogenous budgets, production, or labour would each require a separate explicit model update with new information rules and invariants.
+React controls configuration and time and renders Government, household fiscal positions, markets, trajectories, and experiment reports. Horizontal table scrolling preserves compact mobile layouts. No economic rule exists in React.

@@ -1,6 +1,7 @@
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
-import { DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_LABOR_PRODUCTIVITY, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
+import { DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_LABOR_PRODUCTIVITY, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
 import { assignEmployment, deriveEmploymentSeed, payrollOrder } from './employment'
+import { chooseGovernmentExperiment, collectWealthTax, compareGovernmentPolicies, deriveGovernmentPolicySeed, householdCashGini, redistributeByWaterFilling } from './government'
 import { totalMoney, validateState } from './invariants'
 import { buildPriceExperimentCatalog, createPricingState, decideTomorrowPrice, type PriceExperimentCandidate } from './pricingStrategy'
 import { normalizeSeed, probabilityCheck, randomInt, seededShuffle } from './rng'
@@ -20,16 +21,18 @@ function safeProcessingOrder(config: SimulationConfig): IndustryId[] {
   return proposed?.length === defaults.length && new Set(proposed).size === defaults.length && defaults.every((id) => proposed.includes(id)) ? [...proposed] : defaults
 }
 
-export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): SimulationState {
+export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CONFIG): SimulationState {
   const safeConfig: SimulationConfig = {
-    startingPriceCents: Math.max(1, Math.round(config.startingPriceCents)),
-    initialStepCents: Math.max(1, Math.round(config.initialStepCents)),
+    startingPriceCents: Math.max(1, Math.round(config.startingPriceCents ?? DEFAULT_CONFIG.startingPriceCents)),
+    initialStepCents: Math.max(1, Math.round(config.initialStepCents ?? DEFAULT_CONFIG.initialStepCents)),
     laborProductivityUnitsPerWorker: Math.max(0, Math.round(config.laborProductivityUnitsPerWorker ?? DEFAULT_LABOR_PRODUCTIVITY)),
     firmTaxRateBps: 0,
     householdParityEnabled: false,
+    adaptiveGovernmentEnabled: config.adaptiveGovernmentEnabled ?? true,
+    governmentExperimentProbability: Math.max(0, Math.min(1, config.governmentExperimentProbability ?? DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY)),
     industryStartingPricesCents: config.industryStartingPricesCents,
     firmStartingPricesCents: config.firmStartingPricesCents,
-    industryProcessingOrder: safeProcessingOrder(config),
+    industryProcessingOrder: safeProcessingOrder(config as SimulationConfig),
     seed: normalizeSeed(config.seed ?? DEFAULT_SEED),
     probeProbability: Math.max(0, Math.min(1, config.probeProbability ?? DEFAULT_PROBE_PROBABILITY)),
     gridWidth: Math.max(1, Math.round(config.gridWidth ?? DEFAULT_GRID_WIDTH)),
@@ -68,14 +71,16 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
       entertainmentToday: null,
       spatialPurchasesToday: {},
       employerFirmId: employment[`household-${index + 1}`], wageTodayCents: 0, cumulativeWagesCents: 0, spendingTodayCents: 0, netCashChangeTodayCents: 0,
+      preTaxCashCents: INITIAL_HOUSEHOLD_CASH_CENTS, taxPaidTodayCents: 0, transferReceivedTodayCents: 0, netFiscalTransferTodayCents: 0, postFiscalCashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
+      cumulativeTaxPaidCents: 0, cumulativeTransfersReceivedCents: 0, cumulativeNetFiscalPositionCents: 0,
       industryOutcomes: Object.fromEntries(industries.map(({ id, householdBudgetCents }) => [id, {
         budgetCents: householdBudgetCents, purchasedToday: false, spentTodayCents: 0, purchaseOutcomeToday: null,
         lifetimeUnitsPurchased: 0, lifetimeStockoutFailures: 0, lifetimeAffordabilityFailures: 0,
       }])) as SimulationState['households'][number]['industryOutcomes'],
     })),
     firms,
-    government: { id: 'government-1', cashCents: 0, taxCollectedTodayCents: 0, redistributedTodayCents: 0 },
-    metrics: [], events: [], nextEventId: 1, rngState: normalizeSeed(safeConfig.seed ?? DEFAULT_SEED), spatialSeed: deriveSpatialSeed(safeConfig.seed ?? DEFAULT_SEED), employmentSeed: deriveEmploymentSeed(safeConfig.seed ?? DEFAULT_SEED),
+    government: { id: 'government-1', cashCents: 0, taxCollectedTodayCents: 0, redistributedTodayCents: 0, incumbentWealthTaxRateBps: 0, appliedWealthTaxRateBps: 0, policyStatus: 'incumbent', incumbentReferenceGini: null, experimentRateBps: null, experimentType: null, lastExperimentOutcome: null, lastReferenceGini: null, lastExperimentalGini: null, preFiscalCashGini: 0, postFiscalCashGini: 0, giniReduction: 0, householdsPayingTax: 0, householdsReceivingTransfers: 0, meanTransferCents: 0, maximumTransferCents: 0 },
+    metrics: [], events: [], nextEventId: 1, rngState: normalizeSeed(safeConfig.seed ?? DEFAULT_SEED), spatialSeed: deriveSpatialSeed(safeConfig.seed ?? DEFAULT_SEED), employmentSeed: deriveEmploymentSeed(safeConfig.seed ?? DEFAULT_SEED), governmentPolicyRngState: deriveGovernmentPolicySeed(safeConfig.seed ?? DEFAULT_SEED),
   }
   state.households.forEach((household) => pushEvent(state, 'EMPLOYMENT_ASSIGNED', `${household.id} was assigned to ${household.employerFirmId}.`, { actorId: household.id, householdId: household.id, counterpartyId: household.employerFirmId, firmId: household.employerFirmId }))
   validateState(state)
@@ -104,6 +109,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
   state.day += 1
   state.government.taxCollectedTodayCents = 0
   state.government.redistributedTodayCents = 0
+  Object.assign(state.government, { policyStatus: 'incumbent', appliedWealthTaxRateBps: state.government.incumbentWealthTaxRateBps, experimentRateBps: null, experimentType: null, householdsPayingTax: 0, householdsReceivingTransfers: 0, meanTransferCents: 0, maximumTransferCents: 0 })
   state.firms.forEach((firm) => {
     const produced = firm.industryId === 'transport' ? 0 : firm.employeeIds.length * state.config.laborProductivityUnitsPerWorker!
     Object.assign(firm, { unitsSoldToday: 0, revenueTodayCents: 0, preTaxProfitTodayCents: 0, unitsProducedToday: produced, availableUnitsToday: produced, unitsExpiredToday: 0, soldOutToday: false, wagePoolTodayCents: 0, wagesPaidTodayCents: 0, meanWageTodayCents: 0 })
@@ -113,7 +119,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
   }))
   state.households.forEach((household) => { household.entertainmentToday = null })
   state.households.forEach((household) => { household.spatialPurchasesToday = {} })
-  state.households.forEach((household) => { household.wageTodayCents = 0; household.spendingTodayCents = 0; household.netCashChangeTodayCents = 0 })
+  state.households.forEach((household) => { household.wageTodayCents = 0; household.spendingTodayCents = 0; household.netCashChangeTodayCents = 0; household.taxPaidTodayCents = 0; household.transferReceivedTodayCents = 0; household.netFiscalTransferTodayCents = 0 })
 
   const openingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   pushEvent(state, 'DAY_STARTED', `Day ${state.day} began.`)
@@ -293,7 +299,35 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     firm.wagesPaidTodayCents = pool; firm.meanWageTodayCents = pool / ordered.length
   }
   state.households.forEach((household) => { household.netCashChangeTodayCents = household.wageTodayCents - household.spendingTodayCents })
+  const preFiscalDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
+  state.government.preFiscalCashGini = preFiscalDistribution.gini
+  if (state.config.adaptiveGovernmentEnabled && state.government.incumbentReferenceGini !== null) {
+    const experimentDraw = probabilityCheck(state.governmentPolicyRngState, state.config.governmentExperimentProbability!); state.governmentPolicyRngState = experimentDraw.state
+    if (experimentDraw.value) {
+      const selection = chooseGovernmentExperiment(state.government.incumbentWealthTaxRateBps, state.governmentPolicyRngState); state.governmentPolicyRngState = selection.rngState
+      Object.assign(state.government, { policyStatus: 'experiment', appliedWealthTaxRateBps: selection.candidate.rateBps, experimentRateBps: selection.candidate.rateBps, experimentType: selection.candidate.type })
+      pushEvent(state, 'GOVERNMENT_POLICY_EXPERIMENT_STARTED', `Government started ${selection.candidate.type} at ${(selection.candidate.rateBps / 100).toFixed(2)}%.`, { actorId: state.government.id, taxRateBps: selection.candidate.rateBps, incumbentTaxRateBps: state.government.incumbentWealthTaxRateBps, governmentExperimentType: selection.candidate.type, preFiscalGini: preFiscalDistribution.gini, referenceGini: state.government.incumbentReferenceGini })
+    }
+  }
+  if (!state.config.adaptiveGovernmentEnabled) state.government.appliedWealthTaxRateBps = 0
+  collectWealthTax(state.households, state.government, state.government.appliedWealthTaxRateBps)
+  for (const household of state.households.filter(({ taxPaidTodayCents }) => taxPaidTodayCents > 0)) pushEvent(state, 'WEALTH_TAX_PAID', `${household.id} paid ${dollars(household.taxPaidTodayCents)} wealth tax.`, { actorId: household.id, counterpartyId: state.government.id, householdId: household.id, amountCents: household.taxPaidTodayCents, taxCents: household.taxPaidTodayCents, taxRateBps: state.government.appliedWealthTaxRateBps, preFiscalGini: preFiscalDistribution.gini })
   const governmentCashBeforeRedistribution = state.government.cashCents
+  const redistribution = redistributeByWaterFilling(state.households, state.government, state.governmentPolicyRngState); state.governmentPolicyRngState = redistribution.rngState
+  for (const household of state.households.filter(({ transferReceivedTodayCents }) => transferReceivedTodayCents > 0)) pushEvent(state, 'MEANS_TESTED_TRANSFER_PAID', `Government paid ${dollars(household.transferReceivedTodayCents)} to ${household.id}.`, { actorId: state.government.id, counterpartyId: household.id, householdId: household.id, amountCents: household.transferReceivedTodayCents, transferCents: household.transferReceivedTodayCents, taxRateBps: state.government.appliedWealthTaxRateBps, preFiscalGini: preFiscalDistribution.gini })
+  const postFiscalGini = householdCashGini(state.households)
+  state.households.forEach((household) => { household.netCashChangeTodayCents = household.wageTodayCents - household.spendingTodayCents + household.netFiscalTransferTodayCents })
+  const householdsPayingTax = state.households.filter(({ taxPaidTodayCents }) => taxPaidTodayCents > 0).length
+  const householdsReceivingTransfers = state.households.filter(({ transferReceivedTodayCents }) => transferReceivedTodayCents > 0).length
+  Object.assign(state.government, { postFiscalCashGini: postFiscalGini, giniReduction: preFiscalDistribution.gini - postFiscalGini, householdsPayingTax, householdsReceivingTransfers, meanTransferCents: householdsReceivingTransfers ? state.government.redistributedTodayCents / householdsReceivingTransfers : 0, maximumTransferCents: Math.max(...state.households.map(({ transferReceivedTodayCents }) => transferReceivedTodayCents)) })
+  if (state.government.policyStatus === 'experiment') {
+    const reference = state.government.incumbentReferenceGini!
+    const adopted = compareGovernmentPolicies(postFiscalGini, state.government.appliedWealthTaxRateBps, reference, state.government.incumbentWealthTaxRateBps)
+    state.government.lastReferenceGini = reference; state.government.lastExperimentalGini = postFiscalGini; state.government.lastExperimentOutcome = adopted ? 'adopted' : 'rejected'
+    const eventType = adopted ? 'GOVERNMENT_POLICY_EXPERIMENT_ADOPTED' : 'GOVERNMENT_POLICY_EXPERIMENT_REJECTED'
+    pushEvent(state, eventType, `Government ${adopted ? 'adopted' : 'rejected'} ${state.government.experimentType} at ${(state.government.appliedWealthTaxRateBps / 100).toFixed(2)}%.`, { actorId: state.government.id, taxRateBps: state.government.appliedWealthTaxRateBps, incumbentTaxRateBps: state.government.incumbentWealthTaxRateBps, governmentExperimentType: state.government.experimentType!, preFiscalGini: preFiscalDistribution.gini, postFiscalGini, referenceGini: reference })
+    if (adopted) { state.government.incumbentWealthTaxRateBps = state.government.appliedWealthTaxRateBps; state.government.incumbentReferenceGini = postFiscalGini }
+  } else state.government.incumbentReferenceGini = postFiscalGini
   const endingDistribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   const metric: DayMetrics = {
     day: state.day, markets: marketMetrics,
@@ -314,6 +348,12 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     meanDailyWageCents: state.households.reduce((sum, household) => sum + household.wageTodayCents, 0) / state.households.length,
     wageIncomeGini: summarizeCashDistribution(state.households.map(({ wageTodayCents }) => wageTodayCents)).gini,
     householdSpendingCents: state.households.reduce((sum, household) => sum + household.spendingTodayCents, 0),
+    preFiscalCashGini: preFiscalDistribution.gini, postFiscalCashGini: endingDistribution.gini, giniReduction: preFiscalDistribution.gini - endingDistribution.gini,
+    incumbentWealthTaxRateBps: state.government.incumbentWealthTaxRateBps, appliedWealthTaxRateBps: state.government.appliedWealthTaxRateBps,
+    governmentPolicyStatus: state.government.policyStatus, governmentExperimentType: state.government.experimentType,
+    totalWealthTaxCollectedCents: state.government.taxCollectedTodayCents, totalMeansTestedTransfersCents: state.government.redistributedTodayCents,
+    householdsPayingWealthTax: state.government.householdsPayingTax, householdsReceivingTransfers: state.government.householdsReceivingTransfers,
+    meanTransferCents: state.government.meanTransferCents, maximumTransferCents: state.government.maximumTransferCents,
   }
   state.metrics.push(metric); if (state.metrics.length > MAX_HISTORY) state.metrics.shift()
   validateState(state, true)

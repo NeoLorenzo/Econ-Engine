@@ -2,6 +2,24 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP6-Government-008] - (2026-08-14)
+
+### Added
+
+- Added an adaptive Government with a flat 0–100% household post-payroll wealth tax, integer-basis-point policy state, and a narrow post-fiscal cash-Gini objective.
+- Added seeded ±1/5/10/20 percentage-point and 0/25/50/75/100% anchor experiments, current references, deterministic adoption/rejection, and a `1e-12` equal-Gini lower-tax tie-breaker.
+- Added explicit poorest-first integer-cent water-filling redistribution of all receipts, including seeded fair remainder allocation.
+- Added fiscal policy, household tax/transfer, adoption/rejection events, household fiscal accounting, pre/post Gini, rate occupancy, and policy-spell analytics.
+- Added a same-seed 1,000-day inactive-Government comparison, cross-seed harness, Government UI, household fiscal fields, pre/post Gini chart, and comprehensive tests.
+
+### Changed
+
+- Government now acts after unchanged complete payroll. The default starts at the MVP5 0% baseline and learns through realized experiments; retained MVP5 probes explicitly use inactive controls.
+
+### Validation
+
+- Canonical 1,000-day and 10,000-day adaptive runs conserved exactly $500, reconciled every tax cent to transfers, and left all firms and Government at $0 after completed days.
+
 ## [MVP5-Employment-007.1] - (2026-08-14)
 
 ### Added

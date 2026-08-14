@@ -6,6 +6,46 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP6-Government-008] - (2026-08-14)
+
+### Motivation and narrow objective
+
+MVP5 removed parity redistribution. The 007.1 trajectory showed high cash concentration, low-cash occupancy, cash-affordability constraints, and a wage → cash → consumption feedback. MVP6 introduces Government as an adaptive response. Its sole objective is `minimize postFiscalCashGini`; this is not a welfare, growth, or consumption objective.
+
+### Instrument, intelligence, and redistribution
+
+The sole instrument is a flat tax on household cash immediately after payroll: a wealth tax, not income tax. Rates are integer basis points and liabilities floor to cents. Government starts at 0%, uses an isolated seeded RNG stream, and tests ±1/5/10/20pp alternatives plus 0/25/50/75/100% anchors with 10% daily probability after establishing a current reference. It sees administered current cash and realized outcomes, never future or counterfactual state.
+
+All receipts return by integer water filling: raise the poorest tied group toward the next tier, then continue upward. Seeded tied-group ordering allocates indivisible cents. Equal Gini within `1e-12` prefers lower tax. Government never permanently converges.
+
+### Pre-registered hypotheses
+
+- Government may discover very high rates.
+- Redistribution may reduce cash-affordability failures.
+- Greater circulation may raise consumption and firm sell-through.
+- Policy may alter wage dynamics indirectly.
+- The learner may cycle rather than settle.
+
+The implementation does not force these predictions.
+
+### Canonical 1,000-day findings
+
+Seed `20260813` produced 98 experiments (9.8% of days), 27 adoptions, and 71 rejections. The incumbent changed 27 times; its longest spell was 119 days and mean spell was 35.7 days. Mean incumbent/applied rates were 38.799%/39.072%. Applied rates spanned 0–100%, but occupancy concentrated at 25–50% (64.8%), then 50–75% (22.3%). The terminal 25% incumbent is secondary. No lower-tax equality tie-break adoption occurred.
+
+Mean pre/post Gini was 0.08672/0.00186, a reduction of 0.08486. Mean richest-1/2/3 shares moved from 13.253%/26.083%/36.474% pre-fiscal to 10.088%/20.143%/30.143% post-fiscal. Government collected and transferred exactly $195.32/day on average.
+
+Against the same-seed inactive control, purchase completion was 92.278% versus 58.925%; actual-cash failures were 0 versus 15,676. Sell-through was 92.278% versus 58.925%. Mean daily operating revenue and wages were both $135.74 versus $42.19. These are controlled simulation outcomes, not external causal estimates. Category-budget and inventory failures became more visible after cash stopped binding.
+
+### Cross-seed and stress findings
+
+Seeds 11, 77, and 123 produced mean applied rates 35.441%, 27.150%, and 36.737%, with terminal incumbents 25%, 23%, and 40%. Mean post-fiscal Gini was 0.01282, 0.00226, and 0.01492. Two seeds retained 150–151 cash failures while seed 77 had none. The learner did not settle generically at 100%; it mostly occupied 25–50% while continuing experiments and showing path dependence.
+
+The canonical 10,000-day run completed with 985 experiments, 272 adoptions, exact reconciliation, and terminal incumbent 24%. Mean applied tax was 36.494%, mean pre/post Gini 0.08636/0.00180, and cash failures were zero. Total money remained exactly $500 with firms and Government at $0 after completed fiscal phases.
+
+### Limitations
+
+The learner compares today's experiment with a recent incumbent day while the pre-fiscal distribution evolves; it has no counterfactual identification. The fiscal system is intentionally unrealistic, cent resolution creates plateaus, a 1,000-day horizon is not convergence proof, and stronger consumption shifts failures toward fixed budgets or inventory. No consumption effect enters Government's objective.
+
 ## [MVP5-Employment-007.1] - (2026-08-14)
 
 ### Observation and analytical purpose

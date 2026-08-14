@@ -36,7 +36,7 @@ describe('[MVP5-Employment-007]', () => {
   })
 
   it('keeps Government inactive, permits divergence, and conserves the closed circuit long-run', () => {
-    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 91 }), 1_000)
+    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 91, adaptiveGovernmentEnabled: false }), 1_000)
     expect(state.config.firmTaxRateBps).toBe(0); expect(state.config.householdParityEnabled).toBe(false)
     expect(state.events.some(({ type }) => type === 'TAX_PAID' || type === 'PARITY_TRANSFER_RECEIVED')).toBe(false)
     expect(new Set(state.households.map(({ cashCents }) => cashCents)).size).toBeGreaterThan(1)

@@ -72,7 +72,7 @@ export function runMultiIndustryExperiment(options: MultiIndustryExperimentOptio
   const dailySupplyPerIndustry = Math.max(0, Math.round(options.dailySupplyPerIndustry ?? 10))
   const horizonDays = Math.max(0, Math.round(options.horizonDays ?? MULTI_INDUSTRY_EXPERIMENT_HORIZON_DAYS))
   const startingPrices = { ...MULTI_INDUSTRY_STARTING_PRICES_CENTS, ...options.startingPricesCents }
-  let state = createSimulation({ startingPriceCents: 200, initialStepCents, dailySupplyPerIndustry, industryStartingPricesCents: startingPrices, firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS, seed: options.seed })
+  let state = createSimulation({ startingPriceCents: 200, initialStepCents, dailySupplyPerIndustry, industryStartingPricesCents: startingPrices, firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS, seed: options.seed, adaptiveGovernmentEnabled: false })
   const convergenceDays = new Map<string, number>()
   while (state.day < horizonDays) {
     state = stepSimulation(state)

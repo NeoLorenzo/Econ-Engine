@@ -8,6 +8,7 @@ export const MAX_HISTORY = 400
 export const MAX_EVENTS = 600
 export const DEFAULT_SEED = 2_026_0813
 export const DEFAULT_PROBE_PROBABILITY = 0.1
+export const DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY = 0.1
 export const DEFAULT_GRID_WIDTH = 20
 export const DEFAULT_GRID_HEIGHT = 20
 export const DEFAULT_TRANSPORT_COST_PER_TILE_CENTS = 2
@@ -37,6 +38,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   laborProductivityUnitsPerWorker: DEFAULT_LABOR_PRODUCTIVITY,
   firmTaxRateBps: 0,
   householdParityEnabled: false,
+  adaptiveGovernmentEnabled: true,
+  governmentExperimentProbability: DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY,
   seed: DEFAULT_SEED,
   probeProbability: DEFAULT_PROBE_PROBABILITY,
   gridWidth: DEFAULT_GRID_WIDTH,
