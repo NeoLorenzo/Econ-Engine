@@ -674,3 +674,6 @@ The goal is to define understandable economic mechanisms and then allow the econ
 # MVP7 accounting distinction
 
 Observer-facing accounting must distinguish revenue, contractual labor income, unpaid contractual obligation, residual profit, corporate taxation, and redistribution. MVP7's fixed 100% corporate profit tax closes the current no-capital monetary circuit and is not a learned policy or normative recommendation.
+# Population-scale comparisons
+
+When population size changes, preserve individual nominal parameters and scale total money, employment, production capacity, and contractual payroll proportionally. Compare scales primarily through per-capita, rate, volatility, concentration-percentage, and occupancy measures; raw totals must be labeled separately.

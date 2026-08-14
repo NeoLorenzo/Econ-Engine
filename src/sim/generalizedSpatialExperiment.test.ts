@@ -67,7 +67,7 @@ describe('generalized spatial competition experiment', () => {
     const first = runGeneralizedSpatialExperiment([7, 42], 30)
     expect(first).toEqual(runGeneralizedSpatialExperiment([7, 42], 30))
     expect(first.every(({ industries }) => industries.length === 4 && industries.every(({ priceTrajectories, analytics }) => analytics.horizonDays === 30 && Object.values(priceTrajectories).every((history) => history.length === 30)))).toBe(true)
-    expect(first.every(({ totalTripsAtHorizon, totalTransportRevenueCentsAtHorizon }) => totalTripsAtHorizon <= 40 && totalTransportRevenueCentsAtHorizon >= 0)).toBe(true)
+    expect(first.every(({ totalTripsAtHorizon, totalTransportRevenueCentsAtHorizon }) => totalTripsAtHorizon <= 400 && totalTransportRevenueCentsAtHorizon >= 0)).toBe(true)
   }, 15_000)
 
   it('reproduces the exact full 1000-day analysis for the same seed', () => {

@@ -1,6 +1,6 @@
 # Econ-Engine — [MVP6-Government-008.1]
 
-Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP7 pays fixed $10 cash-constrained contractual wages, taxes residual firm profit at a fixed 100%, and combines those receipts with the adaptive household wealth tax for poorest-first redistribution.
+Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP8 scales the canonical MVP7 economy to 100 households and $5,000 while preserving its per-capita structure and fixed institutions.
 
 ## Run locally
 
@@ -21,7 +21,7 @@ npm run check
 - Government acts only after payroll, starts at 0%, and tests seeded 0–100% wealth-tax alternatives.
 - Tax rates use integer basis points; liabilities use floor-to-cent rounding.
 - Every receipt returns explicitly through deterministic means-tested water filling. Government cannot borrow or create money.
-- Money uses integer cents and remains exactly $500. Live histories remain bounded; finite research harnesses retain full trajectory observations separately.
+- Money uses integer cents and remains exactly household count × $50 ($5,000 canonically). Live histories remain bounded; finite research harnesses retain full trajectory observations separately.
 
 ## Architecture
 

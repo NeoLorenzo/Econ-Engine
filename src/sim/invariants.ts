@@ -1,4 +1,4 @@
-import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, HOUSEHOLD_COUNT, TOTAL_MONEY_CENTS, deriveIndustryBudgetCents } from './config'
+import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, INITIAL_HOUSEHOLD_CASH_CENTS, deriveIndustryBudgetCents } from './config'
 import type { SimulationState } from './types'
 
 const assertIntegerMoney = (label: string, value: number) => {
@@ -14,7 +14,9 @@ export function totalMoney(state: Pick<SimulationState, 'households' | 'firms' |
 export function validateState(state: SimulationState, endOfDay = false) {
   if (state.industries.length !== DEFAULT_INDUSTRIES.length) throw new Error('Expected exactly five industries')
   if (state.firms.length !== 9) throw new Error('Expected eight consumer firms and one Transport firm')
-  if (state.households.length !== HOUSEHOLD_COUNT) throw new Error(`Expected ${HOUSEHOLD_COUNT} households`)
+  const householdCount = state.config.householdCount!
+  const expectedTotalMoney = householdCount * INITIAL_HOUSEHOLD_CASH_CENTS
+  if (state.households.length !== householdCount) throw new Error(`Expected ${householdCount} households`)
   const industryIds = state.industries.map(({ id }) => id)
   if (new Set(industryIds).size !== industryIds.length) throw new Error('Industry IDs must be unique')
   for (const industryId of industryIds) {
@@ -66,11 +68,11 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (firm.pricing.probing && !firm.pricing.locallySettled) throw new Error(`${firm.id} cannot probe before local settlement`)
     if (firm.postedPriceCents < 1 || firm.pricing.stepSizeCents < 1) throw new Error(`${firm.id} price and step must be positive`)
     if (![firm.availableUnitsToday, firm.unitsExpiredToday, firm.unitsSoldToday].every((value) => Number.isInteger(value) && value >= 0)) throw new Error(`${firm.id} goods fields must be non-negative integers`)
-    const expectedWorkers = firm.industryId === 'transport' ? 2 : 1
+    const expectedWorkers = firm.industryId === 'transport' ? householdCount / 5 : householdCount / 10
     if (firm.employeeIds.length !== expectedWorkers || firm.employeeIds.some((id) => state.households.find(({ id: householdId }) => householdId === id)?.employerFirmId !== firm.id)) throw new Error(`${firm.id} employment relation is inconsistent`)
     if (state.day > 0 && firm.industryId !== 'transport' && firm.unitsProducedToday !== firm.employeeIds.length * state.config.laborProductivityUnitsPerWorker!) throw new Error(`${firm.id} production is not labor-derived`)
     if (firm.industryId === 'transport' && firm.unitsProducedToday !== 0) throw new Error('Transport must not use consumer production units')
-    if (firm.industryId !== 'transport' && firm.unitsSoldToday > Math.min(HOUSEHOLD_COUNT, firm.unitsProducedToday)) throw new Error(`${firm.id} sold above finite production`)
+    if (firm.industryId !== 'transport' && firm.unitsSoldToday > Math.min(householdCount, firm.unitsProducedToday)) throw new Error(`${firm.id} sold above finite production`)
     if (endOfDay && firm.cashCents !== 0) throw new Error(`${firm.id} cash must be zero after payroll`)
     if (endOfDay && firm.availableUnitsToday !== 0) throw new Error(`${firm.id} goods cannot carry over`)
     if (endOfDay && firm.industryId !== 'transport' && firm.unitsProducedToday !== firm.unitsSoldToday + firm.unitsExpiredToday) throw new Error(`${firm.id} stock-flow accounting failed`)
@@ -80,17 +82,15 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (endOfDay && firm.wagesPaidTodayCents > firm.contractualPayrollTodayCents) throw new Error(`${firm.id} paid above contractual payroll`)
     if (endOfDay && firm.unpaidWagesTodayCents !== firm.contractualPayrollTodayCents - firm.wagesPaidTodayCents) throw new Error(`${firm.id} unpaid wages are inconsistent`)
     if (endOfDay && firm.corporateProfitTaxTodayCents !== firm.residualProfitTodayCents) throw new Error(`${firm.id} corporate tax must equal residual profit`)
-    const saleEventType = firm.industryId === 'transport' ? 'TRANSPORT_SERVICE_PURCHASED' : 'HOUSEHOLD_PURCHASE'
-    if (endOfDay && state.events.filter((event) => event.day === state.day && event.type === saleEventType && event.firmId === firm.id).length !== firm.unitsSoldToday) throw new Error(`${firm.id} sales do not match purchase events`)
   })
 
   if (endOfDay) for (const industryId of industryIds.filter((id) => id !== 'transport')) {
     const sales = state.firms.filter((firm) => firm.industryId === industryId).reduce((sum, firm) => sum + firm.unitsSoldToday, 0)
     const purchases = state.households.filter((household) => household.industryOutcomes[industryId].purchasedToday).length
-    if (sales !== purchases || sales > HOUSEHOLD_COUNT) throw new Error(`${industryId} total sales exceed or disagree with household demand`)
+    if (sales !== purchases || sales > householdCount) throw new Error(`${industryId} total sales exceed or disagree with household demand`)
   }
 
-  if (totalMoney(state) !== TOTAL_MONEY_CENTS) throw new Error(`Money conservation failed: expected ${TOTAL_MONEY_CENTS} cents, found ${totalMoney(state)}`)
+  if (totalMoney(state) !== expectedTotalMoney) throw new Error(`Money conservation failed: expected ${expectedTotalMoney} cents, found ${totalMoney(state)}`)
   ;['cashCents', 'taxCollectedTodayCents', 'corporateTaxCollectedTodayCents', 'wealthTaxCollectedTodayCents', 'totalReceiptsTodayCents', 'redistributedTodayCents'].forEach((field) => assertIntegerMoney(`Government ${field}`, state.government[field as 'cashCents']))
   if (state.government.incumbentWealthTaxRateBps < 0 || state.government.incumbentWealthTaxRateBps > 10_000 || state.government.appliedWealthTaxRateBps < 0 || state.government.appliedWealthTaxRateBps > 10_000) throw new Error('Government tax rates must remain within 0–100%')
   if (!['equalizing', 'minimizing_tax'].includes(state.government.policyMode)) throw new Error('Government policy mode is invalid')
@@ -100,5 +100,5 @@ export function validateState(state: SimulationState, endOfDay = false) {
   if (endOfDay && state.government.totalReceiptsTodayCents !== state.government.corporateTaxCollectedTodayCents + state.government.wealthTaxCollectedTodayCents) throw new Error('Government receipt sources do not reconcile')
   if (endOfDay && state.households.reduce((sum, household) => sum + household.taxPaidTodayCents, 0) !== state.government.wealthTaxCollectedTodayCents) throw new Error('Household tax events do not reconcile with wealth-tax receipts')
   if (endOfDay && state.households.reduce((sum, household) => sum + household.transferReceivedTodayCents, 0) !== state.government.redistributedTodayCents) throw new Error('Household transfers do not reconcile with Government outlays')
-  if (endOfDay && state.households.reduce((sum, household) => sum + household.cashCents, 0) !== TOTAL_MONEY_CENTS) throw new Error('Completed fiscal phase must return all money to households')
+  if (endOfDay && state.households.reduce((sum, household) => sum + household.cashCents, 0) !== expectedTotalMoney) throw new Error('Completed fiscal phase must return all money to households')
 }

@@ -27,22 +27,22 @@ describe('MVP4 full spatial competition', () => {
     expect(state.industries.find(({ id }) => id === 'transport')?.budgetShareBps).toBeUndefined()
   })
 
-  it('places ten households and eight consumer firms on unique in-bounds cells', () => {
+  it('places 100 households and eight consumer firms on unique in-bounds cells', () => {
     const state = createSimulation(base)
     const entities = [...state.households, ...state.firms.filter(({ industryId }) => industryId !== 'transport')]
-    expect(entities).toHaveLength(18)
-    expect(new Set(entities.map(({ coordinate }) => `${coordinate!.x},${coordinate!.y}`)).size).toBe(18)
+    expect(entities).toHaveLength(108)
+    expect(new Set(entities.map(({ coordinate }) => `${coordinate!.x},${coordinate!.y}`)).size).toBe(108)
     expect(entities.every(({ coordinate }) => coordinate!.x >= 0 && coordinate!.x < 20 && coordinate!.y >= 0 && coordinate!.y < 20)).toBe(true)
     expect(state.firms.find(({ industryId }) => industryId === 'transport')?.coordinate).toBeUndefined()
   })
 
   it('routes every consumer purchase product payment and travel payment separately', () => {
     const day = stepSimulation(createSimulation(base))
-    expect(day.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE').length).toBe(40)
-    expect(day.events.filter(({ type }) => type === 'TRANSPORT_SERVICE_PURCHASED').length).toBe(40)
+    expect(day.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE').length).toBe(400)
+    expect(day.events.filter(({ type }) => type === 'TRANSPORT_SERVICE_PURCHASED').length).toBe(400)
     expect(day.households.every((household) => consumerIds.every((id) => household.industryOutcomes[id].purchasedToday))).toBe(true)
     expect(day.households.every((household) => household.industryOutcomes.transport.purchaseOutcomeToday === null)).toBe(true)
-    expect(day.metrics[0].entertainmentTrips).toBe(40)
+    expect(day.metrics[0].entertainmentTrips).toBe(400)
     expect(Object.keys(day.metrics[0].transportRevenueByIndustryCents).sort()).toEqual([...consumerIds].sort())
   })
 
@@ -58,7 +58,7 @@ describe('MVP4 full spatial competition', () => {
 
   it('keeps category boundaries behavioral and leaves unused cash in the single persistent household balance', () => {
     const day = stepSimulation(createSimulation(base))
-    expect(day.households.reduce((sum, { cashCents }) => sum + cashCents, 0)).toBe(50_000)
+    expect(day.households.reduce((sum, { cashCents }) => sum + cashCents, 0)).toBe(500_000)
     expect(day.households.every((household) => !('wallets' in household))).toBe(true)
     expect(day.events.filter(({ type }) => type === 'PARITY_TRANSFER_RECEIVED')).toHaveLength(0)
   })
@@ -68,8 +68,8 @@ describe('MVP4 full spatial competition', () => {
     expect(day.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
     expect(day.government.cashCents).toBe(0)
     expect(new Set(day.households.map(({ cashCents }) => cashCents)).size).toBeGreaterThan(1)
-    expect(totalMoney(day)).toBe(50_000)
-    day.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(firm.unitsSoldToday + firm.unitsExpiredToday).toBe(5))
+    expect(totalMoney(day)).toBe(500_000)
+    day.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(firm.unitsSoldToday + firm.unitsExpiredToday).toBe(50))
     expect(() => validateState(day, true)).not.toThrow()
   })
 
@@ -79,6 +79,6 @@ describe('MVP4 full spatial competition', () => {
     expect(first).toEqual(second)
     expect(first.metrics).toHaveLength(MAX_HISTORY)
     expect(first.events.length).toBeLessThanOrEqual(MAX_EVENTS)
-    expect(first.metrics.every(({ totalMoneyCents }) => totalMoneyCents === 50_000)).toBe(true)
+    expect(first.metrics.every(({ totalMoneyCents }) => totalMoneyCents === 500_000)).toBe(true)
   }, 30_000)
 })

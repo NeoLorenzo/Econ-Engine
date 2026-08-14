@@ -57,7 +57,7 @@ function FiscalGiniChart({ state }: { state: SimulationState }) { const data = s
 function SpatialGrid({ state }: { state: SimulationState }) {
   const firms = state.firms.filter(({ industryId }) => industryId !== 'transport')
   const entities = [...state.households, ...firms]
-  return <section className="panel spatial-panel"><div className="panel-heading"><div><h2>Spatial consumer economy</h2><p>10 households · 8 competitive firms · fixed Manhattan travel</p></div><div className="map-legend"><span>Households</span><span>F Food</span><span>U Utilities</span><span>H Healthcare</span><span>E Entertainment</span></div></div><div className="spatial-scroll"><div className="spatial-grid" style={{ gridTemplateColumns: `repeat(${state.config.gridWidth}, 1fr)`, gridTemplateRows: `repeat(${state.config.gridHeight}, 1fr)` }}>{entities.map((entity) => {
+  return <section className="panel spatial-panel"><div className="panel-heading"><div><h2>Spatial consumer economy</h2><p>{state.households.length} households · 8 competitive firms · fixed Manhattan travel</p></div><div className="map-legend"><span>Households</span><span>F Food</span><span>U Utilities</span><span>H Healthcare</span><span>E Entertainment</span></div></div><div className="spatial-scroll"><div className="spatial-grid" style={{ gridTemplateColumns: `repeat(${state.config.gridWidth}, 1fr)`, gridTemplateRows: `repeat(${state.config.gridHeight}, 1fr)` }}>{entities.map((entity) => {
     const isHousehold = entity.id.startsWith('household-'); const coordinate = entity.coordinate!
     const firm = isHousehold ? null : entity as SimulationState['firms'][number]
     const label = isHousehold ? entity.id.replace('household-', '') : `${firm!.industryId[0].toUpperCase()}${entity.id.endsWith('-a') ? 'A' : 'B'}`
@@ -119,7 +119,7 @@ export default function App() {
   }
   useEffect(() => {
     if (!running) return
-    const timer = window.setInterval(() => setState((current) => { let next = current; for (let index = 0; index < (speed === 100 ? 5 : 1); index += 1) next = stepSimulation(next); return next }), speed === 100 ? 50 : 1000 / speed)
+    const timer = window.setInterval(() => setState((current) => { let next = current; for (let index = 0; index < (speed === 100 ? 20 : 1); index += 1) next = stepSimulation(next); return next }), speed === 100 ? 200 : 1000 / speed)
     return () => window.clearInterval(timer)
   }, [running, speed])
   const latest = state.metrics.at(-1)
@@ -127,7 +127,7 @@ export default function App() {
   const settledCount = state.firms.filter(({ industryId, pricing }) => industryId !== 'transport' && pricing.locallySettled).length
 
   return <main>
-    <header className="hero"><div className="eyebrow">[MVP7-Wages_Profits-009]</div><div className="hero-row"><div><h1>Econ<span>—</span>Engine</h1><p>Fixed contractual wages separate labor income from residual firm profit.</p></div><div className="system-note"><i />Deterministic · $500 closed circuit</div></div></header>
+    <header className="hero"><div className="eyebrow">[MVP8-Population_Scaling-010]</div><div className="hero-row"><div><h1>Econ<span>—</span>Engine</h1><p>One hundred households test whether the existing economy survives scale.</p></div><div className="system-note"><i />Deterministic · $5,000 closed circuit</div></div></header>
     <section className="control-bar panel">
       <div className="run-controls"><button className="primary" onClick={() => setRunning((value) => !value)}>{running ? 'Pause' : 'Run simulation'}</button><button onClick={step} disabled={running}>Step one day</button><button onClick={reset}>Reset with values</button></div>
       <div className="configuration">
@@ -137,7 +137,7 @@ export default function App() {
       </div>
     </section>
 
-    <section className="baseline panel"><div><span>Spatial world</span><strong>{state.config.gridWidth} × {state.config.gridHeight} tiles</strong></div><div><span>Labor productivity</span><strong>{state.config.laborProductivityUnitsPerWorker} units / worker</strong></div><div><span>Travel rate</span><strong>{money(state.config.transportCostPerTileCents!)} / tile</strong></div><div><span>Fiscal loop</span><strong>Adaptive wealth tax · water filling</strong></div></section>
+    <section className="baseline panel"><div><span>Population</span><strong>{state.households.length} households · {money(TOTAL_MONEY_CENTS)}</strong></div><div><span>Spatial world</span><strong>{state.config.gridWidth} × {state.config.gridHeight} tiles</strong></div><div><span>Labor productivity</span><strong>{state.config.laborProductivityUnitsPerWorker} units / worker</strong></div><div><span>Fiscal loop</span><strong>Profit + adaptive wealth tax</strong></div></section>
     <BudgetModel state={state} />
     <section className="metrics-grid"><Metric label="Current day" value={String(state.day)} detail={running ? 'Running' : 'Paused'} /><Metric label="Transport revenue" value={money(latest?.totalTransportRevenueCents ?? 0)} detail={`${latest?.entertainmentTrips ?? 0} trips · ${latest?.totalTilesTravelled ?? 0} tiles`} /><Metric label="Household cash Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail={`${money(latest?.householdCashMinimumCents ?? 5000)}–${money(latest?.householdCashMaximumCents ?? 5000)}`} /><Metric label="Mean daily wage" value={money(latest?.meanDailyWageCents ?? 0)} detail={`Wage Gini ${(latest?.wageIncomeGini ?? 0).toFixed(3)}`} /><Metric label="Total money" value={money(latest?.totalMoneyCents ?? TOTAL_MONEY_CENTS)} detail="✓ Exact closed circuit" accent /><Metric label="Locally settled" value={`${settledCount} / 8`} detail={`Seed ${state.config.seed}`} accent={settledCount === 8} /></section>
     <GovernmentPanel state={state} />

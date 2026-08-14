@@ -33,11 +33,11 @@ describe('[MVP5-Employment-007.1] report isolation and accounting', () => {
     const report = runEmploymentDynamics(91, 20)
     expect(report.observations).toHaveLength(20)
     expect(report.observations[0].day).toBe(1); expect(report.observations.at(-1)?.day).toBe(20)
-    expect(Object.values(report.economy.failureTotals).reduce((sum, value) => sum + value, 0) + report.households.reduce((sum, household) => sum + household.successfulPurchases, 0)).toBe(20 * 10 * 4)
+    expect(Object.values(report.economy.failureTotals).reduce((sum, value) => sum + value, 0) + report.households.reduce((sum, household) => sum + household.successfulPurchases, 0)).toBe(20 * 100 * 4)
     report.firms.forEach((firm) => expect(firm.cumulativeOperatingEarningsCents).toBeGreaterThanOrEqual(firm.cumulativeWagesCents))
     const transport = report.firms.find(({ industryId }) => industryId === 'transport')!
     expect(report.households.filter(({ employerFirmId }) => employerFirmId === transport.firmId).reduce((sum, household) => sum + household.cumulativeWagesCents, 0)).toBe(transport.cumulativeWagesCents)
-    report.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(report.households.find(({ householdId }) => householdId === firm.workerIds[0])!.cumulativeWagesCents).toBe(firm.cumulativeWagesCents))
+    report.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(report.households.filter(({ householdId }) => firm.workerIds.includes(householdId)).reduce((sum, household) => sum + household.cumulativeWagesCents, 0)).toBe(firm.cumulativeWagesCents))
   })
 
   it('consumes no RNG, mutates no state, and cannot alter continuation', () => {
@@ -50,7 +50,7 @@ describe('[MVP5-Employment-007.1] report isolation and accounting', () => {
     expect(stepSimulation(collected.state)).toEqual(stepSimulation(collectEmploymentObservations(initial, 12).state))
   })
 
-  it('reproduces exact 1,000-day reports for the same seed', () => expect(runEmploymentDynamics(77, 1_000)).toEqual(runEmploymentDynamics(77, 1_000)))
+  it('reproduces exact 1,000-day reports for the same seed', () => expect(runEmploymentDynamics(77, 1_000)).toEqual(runEmploymentDynamics(77, 1_000)), 60_000)
 
   it('does not classify a terminal rank or balance as the whole trajectory', () => {
     const households = (cash: number[], day: number) => cash.map((endCashCents, index) => ({ householdId: `h${index}`, employerFirmId: `f${index}`, openingCashCents: endCashCents, endCashCents, wageCents: 0, spendingCents: 0, netCashChangeCents: 0, outcomes: { food: 'purchased', utilities: 'purchased', healthcare: 'purchased', entertainment: 'purchased' } as const }))

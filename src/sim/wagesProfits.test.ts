@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createSimulation, runDays, stepSimulation } from './engine'
-import { TOTAL_MONEY_CENTS } from './config'
+import { MAX_EVENTS, TOTAL_MONEY_CENTS } from './config'
 import { totalMoney, validateState } from './invariants'
 import { runWagesProfitsExperiment } from './wagesProfitsExperiment'
 
@@ -37,9 +37,9 @@ describe('[MVP7-Wages_Profits-009]', () => {
     expect(state.government.cashCents).toBe(0)
     expect(state.households.every(({ cashCents }) => cashCents >= 0)).toBe(true)
     expect(state.metrics.length).toBeLessThanOrEqual(400)
-    expect(state.events.length).toBeLessThanOrEqual(600)
+    expect(state.events.length).toBeLessThanOrEqual(MAX_EVENTS)
     expect(() => validateState(state, true)).not.toThrow()
-  }, 60_000)
+  }, 180_000)
 
   it('reproduces complete 1,000-day wage/profit trajectory analytics', () => {
     const first = runWagesProfitsExperiment(2_026_0813, 1_000)

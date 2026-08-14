@@ -1,11 +1,12 @@
 import type { Industry, SimulationConfig } from './types'
 
-export const HOUSEHOLD_COUNT = 10
+export const HOUSEHOLD_COUNT = 100
 export const INITIAL_HOUSEHOLD_CASH_CENTS = 5_000
-export const TOTAL_MONEY_CENTS = 50_000
+export const TOTAL_MONEY_CENTS = HOUSEHOLD_COUNT * INITIAL_HOUSEHOLD_CASH_CENTS
+export const expectedTotalMoneyCents = (householdCount: number) => householdCount * INITIAL_HOUSEHOLD_CASH_CENTS
 export const MIN_PRICE_CENTS = 1
 export const MAX_HISTORY = 400
-export const MAX_EVENTS = 600
+export const MAX_EVENTS = 1_600
 export const DEFAULT_SEED = 2_026_0813
 export const DEFAULT_PROBE_PROBABILITY = 0.1
 export const DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY = 0.1
@@ -35,6 +36,7 @@ export const DEFAULT_FIRM_IDS_BY_INDUSTRY: Record<Industry['id'], string[]> = {
 }
 
 export const DEFAULT_CONFIG: SimulationConfig = {
+  householdCount: HOUSEHOLD_COUNT,
   startingPriceCents: 200,
   initialStepCents: 100,
   laborProductivityUnitsPerWorker: DEFAULT_LABOR_PRODUCTIVITY,

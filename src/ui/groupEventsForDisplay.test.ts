@@ -8,15 +8,15 @@ describe('multi-market event display grouping', () => {
     const displayed = groupEventsForDisplay(state.events)
     const markets = displayed.filter(({ key }) => key.startsWith('market-'))
     expect(markets).toHaveLength(4)
-    expect(markets.every(({ details }) => details.length === 10)).toBe(true)
-    expect(markets.find(({ key }) => key === 'market-1-food')?.description).toContain('10 purchased')
-    expect(state.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')).toHaveLength(40)
+    expect(markets.every(({ details }) => details.length === 100)).toBe(true)
+    expect(markets.find(({ key }) => key === 'market-1-food')?.description).toContain('100 purchased')
+    expect(state.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')).toHaveLength(400)
   })
 
   it('distinguishes unaffordable and scarce markets in grouped summaries', () => {
     const state = stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 4, industryStartingPricesCents: { food: 1_501 } }))
     const displayed = groupEventsForDisplay(state.events)
-    expect(displayed.find(({ key }) => key === 'market-1-food')?.description).toContain('10 affordability')
+    expect(displayed.find(({ key }) => key === 'market-1-food')?.description).toContain('100 affordability')
     expect(displayed.find(({ key }) => key === 'market-1-utilities')?.description).toContain('0 stockout failures')
   })
 
@@ -29,8 +29,8 @@ describe('multi-market event display grouping', () => {
     }))
     const original = structuredClone(state.events)
     const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'payroll-1')
-    expect(group?.details).toHaveLength(10)
-    expect(group?.description).toContain('explicit wages across 10 workers')
+    expect(group?.details).toHaveLength(100)
+    expect(group?.description).toContain('explicit wages across 100 workers')
     expect(state.events).toEqual(original)
   })
 
@@ -42,11 +42,11 @@ describe('multi-market event display grouping', () => {
       firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 100 },
     }))
     const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'market-1-entertainment')
-    expect(group?.details).toHaveLength(10)
-    expect(group?.description).toContain('10 purchased')
+    expect(group?.details).toHaveLength(100)
+    expect(group?.description).toContain('100 purchased')
     const a = group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-a').length ?? 0
     const b = group?.details.filter(({ firmId }) => firmId === 'firm-entertainment-b').length ?? 0
-    expect(a + b).toBe(10)
+    expect(a + b).toBe(100)
     expect(a).toBeGreaterThan(0)
     expect(b).toBeGreaterThan(0)
   })

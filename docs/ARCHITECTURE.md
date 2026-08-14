@@ -30,3 +30,6 @@ React controls configuration and time and renders Government, household fiscal p
 # MVP7 settlement boundary
 
 After markets and the unchanged price-learning evaluation, firms pay fixed cash-constrained contractual payroll. Residual cash is explicit profit and is transferred to Government as fixed 100% corporate profit tax. Government then collects its independently adaptive household wealth tax and redistributes the combined balance once. Monetary amounts use integer cents; payroll remainder ordering is derived independently from stable seed/day/entity identities.
+# MVP8 configurable population
+
+`SimulationConfig.householdCount` is the population authority. Canonical MVP8 uses 100; the scale harness also uses 10. Initial money, household generation, spatial entities, employment slots, production, payroll, demand denominators, and invariants derive from that value. Employment permits complete ten-household blocks, assigning `N/10` workers to every consumer firm and `N/5` to Transport through its isolated subseed.

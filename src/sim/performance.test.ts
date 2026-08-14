@@ -13,7 +13,7 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
     const previous = runDays(createSimulation(), 3)
     const snapshot = JSON.stringify(previous)
     const previousMetric = previous.metrics[0]
-    const previousEvent = previous.events[0]
+    const previousEvent = previous.events.at(-1)!
     const next = stepSimulation(previous)
 
     expect(JSON.stringify(previous)).toBe(snapshot)
@@ -39,12 +39,12 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
     expect(state.day).toBe(10_000)
     expect(state.metrics).toHaveLength(MAX_HISTORY)
     expect(state.events.length).toBeLessThanOrEqual(MAX_EVENTS)
-    expect(state.households.reduce((sum, { cashCents }) => sum + cashCents, 0)).toBe(50_000)
+    expect(state.households.reduce((sum, { cashCents }) => sum + cashCents, 0)).toBe(500_000)
     expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
     expect(state.government.cashCents).toBe(0)
-    expect(totalMoney(state)).toBe(50_000)
+    expect(totalMoney(state)).toBe(500_000)
     expect(() => validateState(state, true)).not.toThrow()
-  }, 120_000)
+  }, 180_000)
 
   it('reproduces the complete 1,000-day state exactly', () => {
     const config = { startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 61 }

@@ -2,6 +2,28 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Population_Scaling-010] - (2026-08-14)
+
+### Added
+
+- Added configurable household population in complete ten-household blocks and a dedicated normalized N=10/N=100 scale-comparison experiment.
+- Added per-capita, rate, volatility, extreme-share, percentage-concentration, spatial, payroll, taxation, distribution, and Government scale metrics.
+- Added canonical 100-household employment, production, money, determinism, comparison, and long-run invariant coverage.
+
+### Changed
+
+- Scaled the canonical population from 10 to 100 households and total money from $500 to $5,000 while retaining $50 per household.
+- Scaled fixed employment to 10 workers per consumer firm and 20 at Transport; consumer production is now 50 units per firm and 100 per industry.
+- Derived household generation, spatial placement, employment slots, expected money, demand limits, and invariant cardinalities from configured population.
+- Increased the bounded event history to 1,600 entries so a complete 100-household day remains inspectable.
+- Compacted household map markers and bounded household observer tables while retaining individual inspection data.
+
+### Validation
+
+- Canonical seed `20260813` 1,000-day N=100 and N=10/N=100 comparison runs reproduced exactly.
+- The canonical 10,000-day N=100 stress run conserved exactly $5,000 with non-negative balances, zero completed-day firm/Government cash, and bounded histories.
+- `npm run check`, desktop/mobile rendering, console, overflow, and interactive performance validation completed successfully.
+
 ## [MVP7-Wages_Profits-009] - (2026-08-14)
 
 ### Added

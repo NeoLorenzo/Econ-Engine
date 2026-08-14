@@ -16,6 +16,7 @@ export interface Industry {
 }
 
 export interface SimulationConfig {
+  householdCount?: number
   startingPriceCents: number
   initialStepCents: number
   /** @deprecated MVP5 production is derived from employment. Accepted only for legacy callers. */

@@ -6,7 +6,7 @@ import governmentSource from './government.ts?raw'
 import { runGovernmentExperiment } from './governmentExperiment'
 
 const synthetic = (cash: number[]) => {
-  const state = createSimulation({ adaptiveGovernmentEnabled: false })
+  const state = createSimulation({ adaptiveGovernmentEnabled: false, householdCount: cash.length })
   state.households.forEach((household, index) => { household.cashCents = cash[index] ?? 0; household.preTaxCashCents = household.cashCents; household.postFiscalCashCents = household.cashCents })
   return state
 }
@@ -86,7 +86,7 @@ describe('[MVP6-Government-008.1] directional policy learner', () => {
     expect(firstDownwardAdoption).toBeGreaterThanOrEqual(0)
     expect(observations.slice(firstDownwardAdoption + 1).some((day) => day.policyMode === 'minimizing_tax' && day.experimenting)).toBe(true)
     expect(observations.slice(firstDownwardAdoption + 1).some((day) => day.policyMode === 'equalizing')).toBe(true)
-  })
+  }, 15_000)
 })
 
 describe('[MVP6-Government-008.1] lifecycle accounting and observation', () => {
@@ -101,7 +101,7 @@ describe('[MVP6-Government-008.1] lifecycle accounting and observation', () => {
   it('reconciles every fiscal stock and flow over 1,000 days', () => {
     const state = runDays(createSimulation({ seed: 123 }), 1_000), metric = state.metrics.at(-1)!
     expect(state.government.cashCents).toBe(0); expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
-    expect(state.households.reduce((sum, h) => sum + h.cashCents, 0)).toBe(50_000); expect(totalMoney(state)).toBe(50_000)
+    expect(state.households.reduce((sum, h) => sum + h.cashCents, 0)).toBe(500_000); expect(totalMoney(state)).toBe(500_000)
     expect(metric.totalGovernmentReceiptsCents).toBe(metric.totalMeansTestedTransfersCents); expect(() => validateState(state, true)).not.toThrow()
   }, 30_000)
 })

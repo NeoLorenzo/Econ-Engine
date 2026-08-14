@@ -3,7 +3,9 @@ import { normalizeSeed, seededShuffle } from './rng'
 export const deriveEmploymentSeed = (masterSeed: number) => normalizeSeed((normalizeSeed(masterSeed) ^ 0x85ebca6b) >>> 0)
 
 export function assignEmployment(masterSeed: number, householdIds: readonly string[], firmIds: readonly string[]) {
-  const slots = [...firmIds.filter((id) => id !== 'firm-transport').sort(), 'firm-transport', 'firm-transport']
+  if (householdIds.length % 10 !== 0) throw new Error('Population must scale in complete ten-household employment blocks')
+  const scale = householdIds.length / 10
+  const slots = [...firmIds.filter((id) => id !== 'firm-transport').sort().flatMap((id) => Array.from({ length: scale }, () => id)), ...Array.from({ length: scale * 2 }, () => 'firm-transport')]
   if (slots.length !== householdIds.length) throw new Error('Employment slots must exactly match households')
   const workers = [...householdIds].sort()
   const assignment = seededShuffle(workers, deriveEmploymentSeed(masterSeed)).values

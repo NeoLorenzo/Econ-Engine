@@ -24,6 +24,7 @@ function safeProcessingOrder(config: SimulationConfig): IndustryId[] {
 export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CONFIG): SimulationState {
   const safeConfig: SimulationConfig = {
     startingPriceCents: Math.max(1, Math.round(config.startingPriceCents ?? DEFAULT_CONFIG.startingPriceCents)),
+    householdCount: Math.max(10, Math.round(config.householdCount ?? HOUSEHOLD_COUNT)),
     initialStepCents: Math.max(1, Math.round(config.initialStepCents ?? DEFAULT_CONFIG.initialStepCents)),
     laborProductivityUnitsPerWorker: Math.max(0, Math.round(config.laborProductivityUnitsPerWorker ?? DEFAULT_LABOR_PRODUCTIVITY)),
     firmTaxRateBps: 0,
@@ -44,9 +45,10 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
   }
   const industries = DEFAULT_INDUSTRIES.map((industry) => industry.id === 'transport' ? { ...industry } : { ...industry, budgetShareBps: safeConfig.industryBudgetSharesBps![industry.id], householdBudgetCents: deriveIndustryBudgetCents(safeConfig.dailyExpenditureBudgetCents!, safeConfig.industryBudgetSharesBps![industry.id]!) })
   const consumerFirmIds = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').flatMap(({ id }) => DEFAULT_FIRM_IDS_BY_INDUSTRY[id])
-  const spatialIds = [...Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => `household-${index + 1}`), ...consumerFirmIds]
+  const householdCount = safeConfig.householdCount!
+  const spatialIds = [...Array.from({ length: householdCount }, (_, index) => `household-${index + 1}`), ...consumerFirmIds]
   const layout = generateSpatialLayout(safeConfig.seed!, safeConfig.gridWidth!, safeConfig.gridHeight!, spatialIds)
-  const householdIds = Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => `household-${index + 1}`)
+  const householdIds = Array.from({ length: householdCount }, (_, index) => `household-${index + 1}`)
   const employment = assignEmployment(safeConfig.seed!, householdIds, [...consumerFirmIds, 'firm-transport'])
   const firms: Firm[] = industries.flatMap((industry) => DEFAULT_FIRM_IDS_BY_INDUSTRY[industry.id].map((firmId) => {
     const price = Math.max(1, Math.round(safeConfig.firmStartingPricesCents?.[firmId] ?? safeConfig.industryStartingPricesCents?.[industry.id] ?? safeConfig.startingPriceCents))
@@ -64,7 +66,7 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
     day: 0,
     config: safeConfig,
     industries,
-    households: Array.from({ length: HOUSEHOLD_COUNT }, (_, index) => ({
+    households: Array.from({ length: householdCount }, (_, index) => ({
       id: `household-${index + 1}`,
       cashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
       coordinate: layout[`household-${index + 1}`],

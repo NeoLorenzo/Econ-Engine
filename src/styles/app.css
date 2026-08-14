@@ -16,7 +16,8 @@ body { margin: 0; min-width: 320px; background: radial-gradient(circle at 75% 0%
 .spatial-scroll { width: 100%; overflow-x: auto; padding-bottom: 4px; }
 .spatial-grid { position: relative; display: grid; width: min(100%, 760px); min-width: 560px; aspect-ratio: 1; margin: 0 auto; border: 1px solid #39443f; background-image: linear-gradient(#202825 1px, transparent 1px), linear-gradient(90deg, #202825 1px, transparent 1px); background-size: 5% 5%; }
 .map-entity { z-index: 1; align-self: center; justify-self: center; width: 74%; aspect-ratio: 1; min-width: 17px; padding: 0; border-radius: 50%; font-family: 'DM Mono', monospace; font-size: clamp(.5rem, 1.2vw, .72rem); line-height: 1; box-shadow: 0 2px 8px #0009; }
-.map-household { background: #dfff74; border-color: #efffb4; color: #10130d; }
+.map-household { width: 42%; min-width: 8px; background: #dfff74; border-color: #efffb4; color: transparent; box-shadow: none; }
+.map-consumer-firm { z-index: 3; }
 .map-firm-a { background: #d47c9b; border-color: #f1a9c1; color: #fff; border-radius: 5px; }
 .map-firm-b { background: #f09a63; border-color: #ffc39c; color: #17100b; border-radius: 5px; }
 @media (max-width: 600px) { .spatial-grid { min-width: 520px; } .spatial-panel .panel-heading { align-items: flex-start; flex-direction: column; } }
@@ -123,7 +124,8 @@ input:focus, select:focus { border-color: #86a940; }
 dl { margin: 0; }
 dl div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: .7rem; border-top: 1px solid #1c2320; }
 dt { color: #68746e; } dd { margin: 0; color: #cbd3cf; }
-.households { border-top: 1px solid #252d29; overflow-x: auto; }
+.households { max-height: 540px; border-top: 1px solid #252d29; overflow: auto; }
+.employment-dynamics .market-table-wrap:first-of-type { max-height: 560px; overflow: auto; }
 .table-head, .household-row { display: grid; grid-template-columns: .55fr .85fr 1.15fr 1.45fr; align-items: center; min-width: 640px; }
 .table-head { padding: 12px 10px 8px; }
 .household-row { min-height: 38px; padding: 0 10px; border-top: 1px solid #191f1c; font-size: .73rem; }

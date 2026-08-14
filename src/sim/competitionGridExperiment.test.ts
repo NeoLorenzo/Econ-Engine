@@ -19,7 +19,7 @@ describe('Entertainment starting-price grid experiment', () => {
       expect(xy.bothConverged).toBe(true)
       expect(yx.bothConverged).toBe(true)
     }
-  }, 10_000)
+  }, 30_000)
 
   it('reports non-convergence at a short horizon and does not mutate options', () => {
     const options = { startingPricesCents: [100, 800] as const, horizonDays: 1 }
@@ -32,7 +32,7 @@ describe('Entertainment starting-price grid experiment', () => {
   it('keeps all non-Transport firms inside valid competitive pricing state', () => {
     const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 1_000], horizonDays: 100 })
     expect(suite.results.every(({ controlEndpointsCents }) => Object.entries(controlEndpointsCents).every(([id, price]) => id === 'transport' ? price === null : price === null || price >= 1))).toBe(true)
-  })
+  }, 20_000)
 
   it('keeps observer results outside the pricing boundary', () => {
     const state = createPricingState(200, 100)

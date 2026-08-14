@@ -23,9 +23,9 @@ describe('multi-industry observer analytics', () => {
 
   it('records economy-wide and per-market historical boundaries', () => {
     const state = stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
-    expect(state.metrics[0]).toMatchObject({ householdCashMinimumAtMarketOpenCents: 5_000, householdCashMedianAtMarketOpenCents: 5_000, householdCashMaximumAtMarketOpenCents: 5_000, householdCashGiniAtMarketOpen: 0, totalHouseholdCashCents: 50_000, totalWagesPaidCents: expect.any(Number) })
+    expect(state.metrics[0]).toMatchObject({ householdCashMinimumAtMarketOpenCents: 5_000, householdCashMedianAtMarketOpenCents: 5_000, householdCashMaximumAtMarketOpenCents: 5_000, householdCashGiniAtMarketOpen: 0, totalHouseholdCashCents: 500_000, totalWagesPaidCents: expect.any(Number) })
     expect(state.metrics[0].householdCashGini).toBeGreaterThan(0)
     expect(state.metrics[0].markets).toHaveLength(8)
-    expect(state.metrics[0].markets.every(({ householdsAffordableAtMarketOpen }) => householdsAffordableAtMarketOpen === 10)).toBe(true)
+    expect(state.metrics[0].markets.every(({ householdsAffordableAtMarketOpen }) => householdsAffordableAtMarketOpen === 100)).toBe(true)
   })
 })

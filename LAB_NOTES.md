@@ -6,6 +6,46 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Population_Scaling-010] - (2026-08-14)
+
+### Design rationale
+
+With N=10, one household represents 10% of consumer demand. A single location, affordability boundary, employer, or tie-break can therefore move firm market share and revenue in ten-point increments. MVP8 tests whether prior behavior survives when one household represents 1%, without adding a labor, firm-entry, capital, preference, or policy mechanism.
+
+The number of firms remains fixed deliberately: the research question is how the same institutions serve a larger population. Employment and production scale tenfold so supply capacity per household is preserved. Total money and payroll also scale tenfold. Individual cash, budgets, wages, prices, productivity, transport cost, and desired product units do not change because this is population multiplication, not nominal recalibration.
+
+The 20×20 grid was retained because 108 spatial entities fit uniquely. Higher density is part of the treatment. Employment remains non-spatial and deterministic through its isolated subseed.
+
+### Experiment and observations
+
+The canonical seed `20260813` was run for 1,000 days at N=10 and N=100 with proportional money, employment, production, and payroll. Raw totals are not treated as evidence of behavioral change; comparisons below use rates, per-capita measures, and trajectory volatility.
+
+Purchase completion increased from 92.278% to 95.404%. Food, Utilities, and Healthcare completion rose to 96.126%, 97.426%, and 95.263%; Entertainment fell slightly from 93.290% to 92.801%. Mean purchased distance declined from 10.261 to 9.807 tiles and mean transport fee from 41.04¢ to 39.23¢.
+
+### Finite-population results
+
+Market-share volatility fell from 0.1956 at N=10 to 0.0560 at N=100. Exact 0%/100% firm-share observations fell from 3.725% to 0.075%. Mean tested price fell from $3.272 to $3.020 and the observed price range narrowed from $6.50 to $5.85. These measurements support the finite-population hypothesis: larger demand produced smoother shares and fewer extreme competitive outcomes, without eliminating competition or price experiments.
+
+The result is not uniform improvement. Aggregate payroll fulfillment decreased from 88.037% to 87.200%, although incomplete firm-day occupancy fell from 41.978% to 36.289%. Per-household residual profit declined from $4.771 to $4.316 per day.
+
+### Entertainment payroll and structural persistence
+
+Entertainment payroll failure persisted at N=100. On the terminal observed day, Entertainment A/B fulfilled 63.00%/58.52% of payroll, while all Food, Utilities, and Healthcare firms fulfilled payroll. Transport fulfilled 77.24%. Entertainment completion remained high, but its fixed category ceiling, spatial transport component, and split competitive revenue still left firm revenue below contractual payroll.
+
+Scaling greatly reduced extreme share swings, yet did not cure Entertainment payroll. The failure is therefore not solely an N=10 granularity artifact. Discreteness amplified competitive unevenness, while the category-revenue ceiling, delivered-cost allocation, and two-firm split remain structural constraints.
+
+### Distribution, Government, and interpretation
+
+Mean cash Gini moved from 0.00198 to 0.00302 and wage Gini from 0.09118 to 0.09413. Effective-equality occupancy declined from 85.8% to 79.3%. Mean applied household wealth tax rose from 9.392% to 25.085%, equalizing-mode occupancy from 12.8% to 16.5%, and experiment occupancy from 7.8% to 10.5%.
+
+Corporate tax financed 52.916% of redistribution at N=10 but 27.391% at N=100 because wealth-tax receipts per household rose strongly. This is counterintuitive given smoother markets: finer household heterogeneity reduced competitive granularity while creating a distribution with more cent-level variation for the existing one-cent equality target and adaptive policy to manage.
+
+### Performance and limitations
+
+The 100-household engine remained deterministic and practical, but research runs became materially slower because each day performs roughly ten times as many household market, spatial, payroll, tax, and redistribution operations. The 1,000-day N=10/N=100 comparison completed in about 15.5 seconds in validation. The canonical 10,000-day invariant run remained within the test allowance, and interactive histories stayed bounded.
+
+N=100 is still a finite sample on one fixed grid and firm topology. The comparison changes household coordinates and employment assignment consistently from the same seed; it is not a nested sample or causal estimate of population alone. Terminal firm fulfillment values illustrate the final day and remain secondary to full-trajectory statistics. No observed result justifies changing wages, budgets, geography, pricing, or Government behavior within MVP8.
+
 ## [MVP7-Wages_Profits-009] - (2026-08-14)
 
 ### Problem and research objective
