@@ -6,6 +6,43 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP6-Government-008.1] - (2026-08-14)
+
+### Problem and objective refinement
+
+MVP6 could test lower rates, but preferred them only when realized Gini values were equal within `1e-12`. That floating-point tie was extremely rare and did not make Government explicitly search for the minimum tax necessary to maintain equality.
+
+008.1 replaces that behavior with:
+
+```text
+if unequal: reduce post-fiscal inequality
+if effectively equal: reduce tax while preserving equality
+```
+
+Effective equality comes from the economic stock itself: maximum minus minimum post-fiscal household cash must be at most one integer cent. This avoids inventing decimal Gini precision as an equality institution.
+
+### Dynamic policy boundary
+
+An unequal incumbent enters `EQUALIZING` and exposes only higher candidates from the unchanged experiment magnitudes and anchors. A strictly lower realized Gini or achieved equality can be adopted. An equalized incumbent enters `MINIMIZING_TAX` and exposes only lower candidates. A lower rate is adopted whenever its realized distribution remains within the one-cent range and rejected otherwise. Normal incumbent days re-test sufficiency, so changing market/payroll outcomes can send Government upward again. No rate is analytically solved or counterfactually tested.
+
+### Canonical 1,000-day findings
+
+Seed `20260813` was effectively equalized on 86.6% of days. Government spent 10.0% of observations in equalizing search and 90.0% in tax-minimization search. It ran 93 experiments, adopting 52 and rejecting 41: 44 successful downward adoptions preserved equality, all 41 rejected downward experiments broke equality, and 8 upward adoptions restored equality or improved inequality.
+
+Mean incumbent/applied tax was 41.316%/40.305%, compared with 38.799%/39.072% in 008. The rate still spanned 0–100%; occupancy was 2.3% at 0–10%, 8.1% at 10–25%, 59.7% at 25–50%, 15.1% at 50–75%, and 14.8% at 75–100%. There were 52 incumbent changes, a longest spell of 97 days, and a secondary terminal snapshot of 30% in `MINIMIZING_TAX`. The large number of successful downward moves directly demonstrates continual boundary search; it does not prove the terminal rate optimal.
+
+Mean pre/post Gini was 0.08808/0.00333. Purchase completion and sell-through remained 92.278%, cash-affordability failures remained zero, and mean daily operating revenue/wages remained $135.74. Exact average taxes and transfers were both $201.48/day.
+
+### Cross-seed and stress findings
+
+Seeds 11, 77, and 123 were effectively equalized on 79.6%, 78.0%, and 85.7% of days. Their mean applied rates were 38.270%, 27.215%, and 34.196%; successful downward adoptions were 42, 33, and 35; downward equality-breaking rejections were 47, 59, and 42; and upward adoptions were 11, 14, and 14. Terminal incumbents were 45%, 25%, and 24%, all in tax-minimization mode. Same-seed summaries reproduced exactly.
+
+The canonical 10,000-day trajectory remained invariant-safe. Effective equality occupied 81.28% of days; mode occupancy was 15.04% equalizing and 84.96% minimizing tax. Among 1,023 experiments were 386 successful downward adoptions, 494 rejected downward equality breaks, and 143 upward adoptions. Mean applied tax was 36.502%; total money remained $500 and completed-day firm/Government cash remained zero.
+
+### Limitation
+
+The learner still compares realized outcomes across an evolving economy rather than controlled counterfactuals. Effective equality can fail on a deliberate lower-rate experiment day even though the equalized incumbent is restored afterward, and the coarse experiment catalog can move across the sufficient boundary rather than identify it to one basis point. These are consequences of bounded experimental learning, not an analytical optimum.
+
 ## [MVP6-Government-008] - (2026-08-14)
 
 ### Motivation and narrow objective

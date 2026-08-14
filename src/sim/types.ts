@@ -150,7 +150,13 @@ export interface Government {
   householdsReceivingTransfers: number
   meanTransferCents: number
   maximumTransferCents: number
+  policyMode: GovernmentPolicyMode
+  effectiveEquality: boolean
+  postFiscalCashMinimumCents: number
+  postFiscalCashMaximumCents: number
 }
+
+export type GovernmentPolicyMode = 'equalizing' | 'minimizing_tax'
 
 export type GovernmentExperimentType = 'local_up_1pp' | 'local_down_1pp' | 'local_up_5pp' | 'local_down_5pp' | 'local_up_10pp' | 'local_down_10pp' | 'local_up_20pp' | 'local_down_20pp' | 'anchor_0' | 'anchor_25' | 'anchor_50' | 'anchor_75' | 'anchor_100'
 
@@ -233,6 +239,9 @@ export interface SimulationEvent {
   postFiscalGini?: number
   referenceGini?: number
   governmentExperimentType?: GovernmentExperimentType
+  governmentPolicyMode?: GovernmentPolicyMode
+  effectiveEqualityBefore?: boolean
+  effectiveEqualityAfter?: boolean
   description: string
 }
 
@@ -310,6 +319,9 @@ export interface DayMetrics {
   householdsReceivingTransfers: number
   meanTransferCents: number
   maximumTransferCents: number
+  governmentPolicyMode: GovernmentPolicyMode
+  effectiveEquality: boolean
+  postFiscalCashRangeCents: number
 }
 
 export interface SimulationState {

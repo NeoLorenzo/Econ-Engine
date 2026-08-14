@@ -1,4 +1,4 @@
-# Econ-Engine — [MVP6-Government-008]
+# Econ-Engine — [MVP6-Government-008.1]
 
 Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP6 preserves the MVP5 production-income economy and adds an adaptive Government that learns a flat household wealth-tax rate to minimize post-fiscal cash Gini, then redistributes every collected cent by poorest-first water filling.
 

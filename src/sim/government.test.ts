@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createSimulation, runDays, stepSimulation } from './engine'
-import { buildGovernmentExperimentCatalog, collectWealthTax, compareGovernmentPolicies, redistributeByWaterFilling, taxForWealth } from './government'
+import { buildGovernmentExperimentCatalog, collectWealthTax, isEffectivelyEqual, redistributeByWaterFilling, shouldAdoptGovernmentExperiment, taxForWealth } from './government'
 import { totalMoney, validateState } from './invariants'
 import governmentSource from './government.ts?raw'
+import { runGovernmentExperiment } from './governmentExperiment'
 
 const synthetic = (cash: number[]) => {
   const state = createSimulation({ adaptiveGovernmentEnabled: false })
@@ -10,7 +11,7 @@ const synthetic = (cash: number[]) => {
   return state
 }
 
-describe('[MVP6-Government-008] wealth tax and redistribution', () => {
+describe('[MVP6-Government-008.1] wealth tax and redistribution', () => {
   it('collects zero at 0%, all cash at 100%, and floors deterministic fractional cents', () => {
     expect(taxForWealth(101, 0)).toBe(0); expect(taxForWealth(101, 10_000)).toBe(101); expect(taxForWealth(101, 5_000)).toBe(50)
     const state = synthetic([101, 200, 300, 400, 500, 600, 700, 800, 900, 1_000])
@@ -41,20 +42,29 @@ describe('[MVP6-Government-008] wealth tax and redistribution', () => {
   })
 })
 
-describe('[MVP6-Government-008] bounded policy learner', () => {
-  it('starts at 0% and supplies deduplicated bounded local pp moves plus anchors', () => {
-    const state = createSimulation(); expect(state.government.incumbentWealthTaxRateBps).toBe(0)
-    const catalog = buildGovernmentExperimentCatalog(5_000)
-    expect(catalog.map(({ rateBps }) => rateBps)).toEqual(expect.arrayContaining([4_900, 5_100, 4_500, 5_500, 4_000, 6_000, 3_000, 7_000, 0, 2_500, 7_500, 10_000]))
-    expect(new Set(catalog.map(({ rateBps }) => rateBps)).size).toBe(catalog.length)
-    expect(catalog.every(({ rateBps }) => rateBps >= 0 && rateBps <= 10_000 && rateBps !== 5_000)).toBe(true)
+describe('[MVP6-Government-008.1] directional policy learner', () => {
+  it('defines equality from the integer-cent cash range', () => {
+    expect(isEffectivelyEqual([5_000, 5_000])).toBe(true)
+    expect(isEffectivelyEqual([4_999, 5_000])).toBe(true)
+    expect(isEffectivelyEqual([4_998, 5_000])).toBe(false)
+    expect(governmentSource).not.toContain('GINI_EQUALITY_TOLERANCE')
   })
 
-  it('uses lower Gini first and lower tax only within documented equality tolerance', () => {
-    expect(compareGovernmentPolicies(.1, 5_000, .2, 0)).toBe(true)
-    expect(compareGovernmentPolicies(.2, 5_000, .1, 0)).toBe(false)
-    expect(compareGovernmentPolicies(.2, 2_500, .2, 5_000)).toBe(true)
-    expect(compareGovernmentPolicies(.2, 7_500, .2, 5_000)).toBe(false)
+  it('starts at 0% and retains directional local pp moves plus anchors', () => {
+    const state = createSimulation(); expect(state.government.incumbentWealthTaxRateBps).toBe(0)
+    const upward = buildGovernmentExperimentCatalog(5_000, 'equalizing'), downward = buildGovernmentExperimentCatalog(5_000, 'minimizing_tax')
+    expect(upward.map(({ rateBps }) => rateBps)).toEqual(expect.arrayContaining([5_100, 5_500, 6_000, 7_000, 7_500, 10_000]))
+    expect(downward.map(({ rateBps }) => rateBps)).toEqual(expect.arrayContaining([4_900, 4_500, 4_000, 3_000, 0, 2_500]))
+    expect(upward.every(({ rateBps }) => rateBps > 5_000)).toBe(true); expect(downward.every(({ rateBps }) => rateBps < 5_000)).toBe(true)
+    expect(new Set([...upward, ...downward].map(({ rateBps }) => rateBps)).size).toBe(upward.length + downward.length)
+  })
+
+  it('adopts upward Gini improvements/equality and lower rates only when equality survives', () => {
+    expect(shouldAdoptGovernmentExperiment('equalizing', .1, .2, false)).toBe(true)
+    expect(shouldAdoptGovernmentExperiment('equalizing', .3, .2, false)).toBe(false)
+    expect(shouldAdoptGovernmentExperiment('equalizing', .2, .2, true)).toBe(true)
+    expect(shouldAdoptGovernmentExperiment('minimizing_tax', .123456, .000001, true)).toBe(true)
+    expect(shouldAdoptGovernmentExperiment('minimizing_tax', 0, .9, false)).toBe(false)
   })
 
   it('selects an exact same-seed experiment history and allows different valid histories', () => {
@@ -62,16 +72,27 @@ describe('[MVP6-Government-008] bounded policy learner', () => {
     expect(sequence(77)).toEqual(sequence(77)); expect(sequence(77)).not.toEqual(sequence(78)); expect(governmentSource).not.toContain('Math.random')
   })
 
-  it('adopts improvements, rejects worse policies, refreshes references, and keeps experimenting', () => {
+  it('uses only the active mode direction, transitions modes, refreshes references, and keeps experimenting', () => {
     const state = runDays(createSimulation({ seed: 91, governmentExperimentProbability: 1 }), 20)
     const outcomes = state.events.filter(({ type }) => type.startsWith('GOVERNMENT_POLICY_EXPERIMENT_'))
     expect(outcomes.some(({ type }) => type.endsWith('REJECTED'))).toBe(true)
     expect(outcomes.filter(({ type }) => type.endsWith('STARTED')).length).toBeGreaterThan(0)
+    expect(outcomes.filter(({ type }) => type.endsWith('STARTED')).every((event) => event.governmentPolicyMode === 'equalizing' ? event.taxRateBps! > event.incumbentTaxRateBps! : event.taxRateBps! < event.incumbentTaxRateBps!)).toBe(true)
+    expect(state.metrics.some(({ effectiveEquality, governmentPolicyMode }) => effectiveEquality && governmentPolicyMode === 'minimizing_tax')).toBe(true)
+    expect(state.metrics.some(({ effectiveEquality, governmentPolicyMode }) => !effectiveEquality && governmentPolicyMode === 'equalizing')).toBe(true)
     expect(state.government.incumbentReferenceGini).not.toBeNull()
+  })
+
+  it('continues downward boundary search and re-enters equalizing when sufficiency later breaks', () => {
+    const observations = runGovernmentExperiment(2_026_0813, 500).observations
+    const firstDownwardAdoption = observations.findIndex((day) => day.policyMode === 'minimizing_tax' && day.experimentOutcome === 'adopted')
+    expect(firstDownwardAdoption).toBeGreaterThanOrEqual(0)
+    expect(observations.slice(firstDownwardAdoption + 1).some((day) => day.policyMode === 'minimizing_tax' && day.experimenting)).toBe(true)
+    expect(observations.slice(firstDownwardAdoption + 1).some((day) => day.policyMode === 'equalizing')).toBe(true)
   })
 })
 
-describe('[MVP6-Government-008] lifecycle accounting and observation', () => {
+describe('[MVP6-Government-008.1] lifecycle accounting and observation', () => {
   it('captures pre-fiscal Gini before explicit taxes and post-fiscal Gini after transfers', () => {
     const day = stepSimulation(createSimulation({ governmentExperimentProbability: 0 }))
     expect(day.metrics[0].preFiscalCashGini).toBeGreaterThan(0); expect(day.metrics[0].postFiscalCashGini).toBe(day.metrics[0].preFiscalCashGini)

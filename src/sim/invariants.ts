@@ -89,6 +89,8 @@ export function validateState(state: SimulationState, endOfDay = false) {
   if (totalMoney(state) !== TOTAL_MONEY_CENTS) throw new Error(`Money conservation failed: expected ${TOTAL_MONEY_CENTS} cents, found ${totalMoney(state)}`)
   ;['cashCents', 'taxCollectedTodayCents', 'redistributedTodayCents'].forEach((field) => assertIntegerMoney(`Government ${field}`, state.government[field as 'cashCents']))
   if (state.government.incumbentWealthTaxRateBps < 0 || state.government.incumbentWealthTaxRateBps > 10_000 || state.government.appliedWealthTaxRateBps < 0 || state.government.appliedWealthTaxRateBps > 10_000) throw new Error('Government tax rates must remain within 0–100%')
+  if (!['equalizing', 'minimizing_tax'].includes(state.government.policyMode)) throw new Error('Government policy mode is invalid')
+  if (state.government.effectiveEquality !== (state.government.postFiscalCashMaximumCents - state.government.postFiscalCashMinimumCents <= 1)) throw new Error('Government effective-equality state is inconsistent')
   if (endOfDay && state.government.cashCents !== 0) throw new Error('Government must redistribute its complete tax pool')
   if (endOfDay && state.government.taxCollectedTodayCents !== state.government.redistributedTodayCents) throw new Error('Government taxes and transfers must reconcile')
   if (endOfDay && state.households.reduce((sum, household) => sum + household.taxPaidTodayCents, 0) !== state.government.taxCollectedTodayCents) throw new Error('Household tax events do not reconcile with Government receipts')

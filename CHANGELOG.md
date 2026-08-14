@@ -2,6 +2,16 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP6-Government-008.1] - (2026-08-14)
+
+### Changed
+
+- Replaced the `1e-12` Gini tie mechanism with effective equality defined by a post-fiscal integer cash range of at most one cent.
+- Added explicit `EQUALIZING` and `MINIMIZING_TAX` policy modes: experiments search only upward under inequality and only downward under effective equality.
+- Lower rates are adopted whenever effective equality survives and rejected when the cash range exceeds one cent; incumbent days return to upward search if equality later breaks.
+- Added policy-mode/equality event fields, Government-panel objective/range status, and trajectory occupancy plus directional adoption/rejection analytics.
+- Updated learner, catalog, reproducibility, lifecycle, accounting, trajectory, and UI regression coverage.
+
 ## [MVP6-Government-008] - (2026-08-14)
 
 ### Added

@@ -1,8 +1,6 @@
 import { giniCoefficient } from './analytics'
 import { normalizeSeed, randomInt, seededShuffle } from './rng'
-import type { Government, GovernmentExperimentType, Household } from './types'
-
-export const GINI_EQUALITY_TOLERANCE = 1e-12
+import type { Government, GovernmentExperimentType, GovernmentPolicyMode, Household } from './types'
 
 export interface GovernmentCandidate { rateBps: number; type: GovernmentExperimentType }
 
@@ -10,7 +8,7 @@ export function deriveGovernmentPolicySeed(masterSeed: number) {
   return normalizeSeed((masterSeed ^ 0x9e37_79b9) >>> 0)
 }
 
-export function buildGovernmentExperimentCatalog(incumbentBps: number): GovernmentCandidate[] {
+export function buildGovernmentExperimentCatalog(incumbentBps: number, mode?: GovernmentPolicyMode): GovernmentCandidate[] {
   const local: Array<[number, GovernmentExperimentType]> = [
     [100, 'local_up_1pp'], [-100, 'local_down_1pp'], [500, 'local_up_5pp'], [-500, 'local_down_5pp'],
     [1_000, 'local_up_10pp'], [-1_000, 'local_down_10pp'], [2_000, 'local_up_20pp'], [-2_000, 'local_down_20pp'],
@@ -19,20 +17,25 @@ export function buildGovernmentExperimentCatalog(incumbentBps: number): Governme
   const seen = new Set<number>([incumbentBps])
   const result: GovernmentCandidate[] = []
   for (const [value, type] of [...local.map(([delta, kind]) => [Math.max(0, Math.min(10_000, incumbentBps + delta)), kind] as [number, GovernmentExperimentType]), ...anchors]) {
-    if (!seen.has(value)) { seen.add(value); result.push({ rateBps: value, type }) }
+    const directionAllowed = mode === undefined || (mode === 'equalizing' ? value > incumbentBps : value < incumbentBps)
+    if (directionAllowed && !seen.has(value)) { seen.add(value); result.push({ rateBps: value, type }) }
   }
   return result
 }
 
-export function chooseGovernmentExperiment(incumbentBps: number, rngState: number) {
-  const catalog = buildGovernmentExperimentCatalog(incumbentBps)
+export function chooseGovernmentExperiment(incumbentBps: number, mode: GovernmentPolicyMode, rngState: number) {
+  const catalog = buildGovernmentExperimentCatalog(incumbentBps, mode)
+  if (!catalog.length) return { candidate: null, rngState }
   const draw = randomInt(rngState, catalog.length)
   return { candidate: catalog[draw.value], rngState: draw.state }
 }
 
-export function compareGovernmentPolicies(experimentalGini: number, experimentalRateBps: number, referenceGini: number, incumbentRateBps: number) {
-  if (experimentalGini < referenceGini - GINI_EQUALITY_TOLERANCE) return true
-  return Math.abs(experimentalGini - referenceGini) <= GINI_EQUALITY_TOLERANCE && experimentalRateBps < incumbentRateBps
+export function isEffectivelyEqual(cashCents: readonly number[]) {
+  return cashCents.length === 0 || Math.max(...cashCents) - Math.min(...cashCents) <= 1
+}
+
+export function shouldAdoptGovernmentExperiment(mode: GovernmentPolicyMode, experimentalGini: number, referenceGini: number, experimentalEquality: boolean) {
+  return mode === 'minimizing_tax' ? experimentalEquality : experimentalEquality || experimentalGini < referenceGini
 }
 
 /** Floor is the statutory cent-rounding rule: tax = floor(cash * bps / 10,000). */
