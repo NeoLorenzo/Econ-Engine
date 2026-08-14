@@ -189,6 +189,9 @@ export interface SimulationEvent {
   wageCents?: number
   employerDailyRevenue?: number
   employeeCount?: number
+  householdCashAvailableCents?: number
+  categoryBudgetCents?: number
+  minimumDeliveredCostCents?: number
   description: string
 }
 

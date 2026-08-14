@@ -2,6 +2,27 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP5-Employment-007.1] - (2026-08-14)
+
+### Added
+
+- Added a pure 1,000-day Employment / Wealth Dynamics report using compact complete observations outside the bounded interactive history.
+- Added household cash and wage trajectories, cash and wage Gini trajectories, and mean/maximum/terminal richest-1, richest-2, and richest-3 money concentration.
+- Added tie-aware fractional wealth ranks, richest/poorest and top/bottom-three occupancy, mean rank, and rank-change mobility statistics.
+- Added strict `<$1`, `<$5`, and `<$10` low-cash occupancy, spell count, mean spell duration, and longest-spell analysis.
+- Added household and industry purchase completion plus separate actual-cash, category-budget, and inventory/availability failure counts.
+- Added employer-worker wage, operating-earnings, wealth, consumption, Transport split-payroll, production, sell-through, expiration, and prior-cash-bin next-day consumption analysis.
+- Added canonical and alternate-seed reporting, secondary day-1,000 snapshots, descriptive Pearson wage/mean-cash correlation, and dashboard tables for the analytical results.
+- Added synthetic inequality, concentration, tied-rank, low-cash boundary/spell, trajectory, accounting, reproducibility, state-purity, RNG-isolation, and continuation-equivalence tests.
+
+### Changed
+
+- Enriched insufficient-funds observer events with already-known actual cash, category budget, and minimum delivered cost so analysis can distinguish cash from budget constraints without changing purchase decisions or RNG behavior.
+
+### Validation
+
+- Preserved all MVP5 economic behavior and accounting invariants; the update changes observer data and analysis only.
+
 ## [MVP5-Employment-007] - (2026-08-14)
 
 ### Added

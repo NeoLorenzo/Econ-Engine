@@ -173,7 +173,8 @@ export function stepSimulation(previous: SimulationState): SimulationState {
       const available = affordable.filter((firm) => firm.availableUnitsToday > 0)
       if (affordable.length === 0) {
         outcome.purchaseOutcomeToday = 'insufficient_funds'; outcome.lifetimeAffordabilityFailures += 1
-        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', `${household.id} could not afford any ${industry.name} firm within its ${dollars(outcome.budgetCents)} industry budget.`, { actorId: household.id, householdId: household.id, industryId, priceCents: minimumPostedPrice })
+        const minimumDeliveredCostCents = Math.min(...industryFirms.map(delivered))
+        pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', `${household.id} could not afford any ${industry.name} firm within its category limit and actual cash.`, { actorId: household.id, householdId: household.id, industryId, priceCents: minimumPostedPrice, householdCashAvailableCents: household.cashCents, categoryBudgetCents: outcome.budgetCents, minimumDeliveredCostCents })
       } else if (available.length === 0) {
         outcome.purchaseOutcomeToday = 'stockout'; outcome.lifetimeStockoutFailures += 1
         pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT', `${household.id} could afford ${industry.name}, but no affordable firm had stock.`, { actorId: household.id, householdId: household.id, industryId, priceCents: minimumPostedPrice })

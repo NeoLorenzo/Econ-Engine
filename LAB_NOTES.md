@@ -6,6 +6,53 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP5-Employment-007.1] - (2026-08-14)
+
+### Observation and analytical purpose
+
+The first employment run produced strong endogenous divergence while conserving exactly $500. Its day-1,000 range of $0.13–$395.87 and cash Gini of 0.828 were striking, but terminal values cannot characterize the preceding path. This refinement therefore observes every day from 1 through 1,000 with no burn-in and makes the day-1,000 state explicitly secondary.
+
+The central distinction is `wealth = completed-day household cash stock`, while `income = daily wage flow`. A household can receive a volatile wage while holding little cash, or accumulate a large cash stock from a persistent income advantage. Both require separate temporal measures.
+
+### Feedback hypothesis and fixed employment
+
+The measured mechanism is:
+
+```text
+firm sales → operating earnings → worker wage → household cash
+→ subsequent purchasing ability → future firm revenue
+```
+
+007.1 does not intervene on this loop or claim causal identification. Fixed seeded employment is useful because each household retains one employer throughout a run, allowing employer performance, wage flow, cash stock, consumption completion, and production utilization to be compared without job mobility changing the mapping.
+
+### Consumption constraints and analytical architecture
+
+The report separates actual-cash failures from category-budget failures and inventory/availability failures. The engine’s decision rule is unchanged; insufficient-funds events now record the already-known cash, budget, and minimum delivered cost so the observer can identify the binding affordability constraint.
+
+The interactive 400-day metrics and 600-event caps remain unchanged. A finite harness collects compact daily observations for exactly 1,000 days and passes them to pure post-run analytics. Exact cash ties receive fractional analytical ranks, not RNG or arbitrary ID tie-breaking. Low-cash thresholds are transparent strict inequalities rather than empirical poverty lines.
+
+### Canonical trajectory findings
+
+For seed `20260813`, cash Gini averaged `0.799`, ranged from `0.040` to `0.873`, and was `0.828` on day 1,000. Daily wage Gini averaged `0.346`, reached `0.658`, and ended at `0.370`. The richest household held an average `75.2%` of the money stock, a maximum `95.3%`, and `79.2%` on day 1,000. The richest two averaged `91.1%`; the richest three averaged `94.1%`.
+
+Rank persistence was highly asymmetric. The Food B worker ranked richest on 961 of 1,000 days, occupied the top three on 99.9% of days, and changed rank only seven times. The Entertainment B worker occupied the bottom three on 93.4% of days and ranked poorest on 431 days, although 534 rank changes show that lower positions were not literally frozen. The Food A worker changed rank 294 times and occupied the top three 58.3% of days, illustrating meaningful mobility below the dominant top position.
+
+Low liquidity was persistent for several workers. The Entertainment B worker spent 97.2% of days below $5 and had a longest below-$5 spell of 760 days; it spent 99.4% below $10. Healthcare B spent 75.1% below $5 with a longest spell of 257 days. By contrast, Food B never ended a day below $10. These are model cash-occupancy statistics, not real-world poverty measures.
+
+### Income, consumption, and unused production
+
+Canonical purchase completion was `58.9%`. Of 16,430 failed desired purchases, 15,676 (`95.4%`) were directly constrained by actual cash, 609 (`3.7%`) by category budgets, and 145 (`0.9%`) by inventory/availability. Prior-day cash strongly stratified next-day completion descriptively: `<$1` cash corresponded to `2.4%`, `$1–$5` to `37.7%`, `$5–$10` to `74.5%`, `$10–$25` to `95.0%`, and `>$50` to `99.5%` completion.
+
+The descriptive Pearson correlation between cumulative wages and mean cash across the ten households was `0.696`; N=10 is tiny and no significance or causal claim is attached. Food B paid $7,498.08 and its worker completed 99.9% of purchases. Entertainment B paid $1,073.05 and its worker completed 16.7%. Transport paid exactly $9,167.44 across its two workers; their combined wages reconcile exactly to its payroll.
+
+Every consumer firm produced 5,000 units. Sell-through ranged from 80.8% at Food B to 30.3% at Entertainment B. Across industries, substantial expiration coexisted with widespread actual-cash failures: this supports the presence of a purchasing-power feedback pattern but does not by itself identify the size of a causal effect.
+
+### Cross-seed observations and limitations
+
+Seeds `77` and `91` also showed severe concentration. Mean cash Gini was `0.827` and `0.844`; mean richest-one shares were `85.0%` and `87.9%`; mean wage Gini was `0.354` and `0.446`; aggregate completion was `51.1%` and `40.3%`. Actual cash accounted for 19,157 of 19,572 failures in seed 77 and 23,745 of 23,880 in seed 91. The richest household identity changed with assignment, but the Food B slot occupied the dominant trajectory in all three tested seeds.
+
+Three deterministic seeds are not a population estimate. Rank metrics describe cash ordering rather than welfare, the cash-bin relationship is descriptive, and employer outcomes jointly reflect geography, prices, household purchasing power, and the fixed assignment. No labor mobility, wage-setting, fiscal response, borrowing, or stabilizer is introduced.
+
 ## [MVP5-Employment-007] - (2026-08-14)
 
 ### Motivation

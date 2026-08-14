@@ -35,3 +35,9 @@ Production creates goods, never money. Purchases, Transport fees, and payroll ar
 ## Scope exclusions
 
 MVP5 deliberately excludes labor-market search and mobility, unemployment, vacancies, negotiated or fixed wages, minimum wages, skills, commuting, production inputs, non-labor costs, retained earnings, debt, credit, welfare, income tax, positive firm tax, capital, investment, and labor-constrained Transport capacity.
+
+## 007.1 Employment / Wealth Dynamics analysis
+
+`[MVP5-Employment-007.1]` is observational only and does not change the economy. A finite experiment harness collects compact observations for every day 1–1,000 outside the bounded interactive history, then pure functions analyze cash and wage inequality, top-1/2/3 concentration, fractional tie-aware wealth ranks, rank mobility, strict low-cash occupancy and spells, employer-worker outcomes, purchase completion, three distinct failure causes, production utilization, and prior-cash-bin subsequent completion. Wealth is the completed-day cash stock; income is the daily wage flow. Terminal snapshots remain secondary.
+
+Insufficient-funds events expose the cash available at the purchase attempt, category ceiling, and cheapest delivered cost. This observer data distinguishes an actual-cash constraint from a category-budget constraint without changing selection, affordability, RNG draws, or accounting. Exact ties are represented analytically and consume no RNG. The report includes a descriptive Pearson cumulative-wage/mean-cash correlation across N=10 with no significance or causal interpretation.
