@@ -59,6 +59,15 @@ function SpatialGrid({ state }: { state: SimulationState }) {
   })}</div></div></section>
 }
 
+function EntertainmentPricingIntelligence({ state }: { state: SimulationState }) {
+  const latest = state.metrics.at(-1)
+  return <section className="panel pricing-intelligence"><div className="panel-heading"><div><h2>Entertainment price experiments</h2><p>Public competitor sticker prices; realised own profit remains the adoption test</p></div></div><div className="pricing-intelligence-grid">{state.firms.filter(({ industryId }) => industryId === 'entertainment').map((firm) => {
+    const competitor = state.firms.find(({ industryId, id }) => industryId === 'entertainment' && id !== firm.id)!
+    const tested = latest?.markets.find(({ firmId }) => firmId === firm.id)?.postedPriceCents
+    return <article key={firm.id}><span>{firm.id.endsWith('-a') ? 'Firm A' : 'Firm B'}</span><strong>{money(firm.pricing.incumbentPriceCents)} incumbent</strong><small>Tested: {tested === undefined ? '—' : money(tested)} · Competitor advertised: {money(competitor.postedPriceCents)}</small><small>Experiment: {firm.pricing.experimentType?.replaceAll('_', ' ') ?? 'none yet'} · Result: {firm.pricing.lastExperimentOutcome ?? (firm.pricing.probing ? 'testing' : '—')}</small></article>
+  })}</div></section>
+}
+
 export default function App() {
   const [draft, setDraft] = useState({ firmStarts: DEFAULT_FIRM_START_DRAFT, step: '1.00', dailySupply: '10', seed: String(DEFAULT_SEED), transportRate: '0.02' })
   const [state, setState] = useState(() => createSimulation())
@@ -95,6 +104,7 @@ export default function App() {
     <section className="baseline panel"><div><span>Spatial world</span><strong>{state.config.gridWidth} × {state.config.gridHeight} tiles</strong></div><div><span>Entertainment supply</span><strong>{state.config.dailySupplyPerIndustry} per firm</strong></div><div><span>Travel rate</span><strong>{money(state.config.transportCostPerTileCents!)} / tile</strong></div><div><span>Parity target</span><strong>$50 per household</strong></div></section>
     <section className="metrics-grid"><Metric label="Current day" value={String(state.day)} detail={running ? 'Running' : 'Paused'} /><Metric label="Transport revenue" value={money(latest?.totalTransportRevenueCents ?? 0)} detail={`${latest?.totalTilesTravelled ?? 0} tiles`} /><Metric label="Pre-parity Gini" value={(latest?.householdCashGiniBeforeParity ?? 0).toFixed(3)} detail="Geographic spending" /><Metric label="Post-parity Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail="Explicit transfers" /><Metric label="Total money" value={money(latest?.totalMoneyCents ?? TOTAL_MONEY_CENTS)} detail="✓ Exact closed circuit" accent /><Metric label="Locally settled" value={`${settledCount} / 5`} detail={`Seed ${state.config.seed}`} accent={settledCount === 5} /></section>
     <SpatialGrid state={state} />
+    <EntertainmentPricingIntelligence state={state} />
 
     <section className="panel market-overview"><div className="panel-heading"><div><h2>Market overview</h2><p>Entertainment rows expose competition; market share is observer-only</p></div></div><div className="market-table-wrap"><table><thead><tr><th>Industry / firm</th><th>Budget</th><th>Tested</th><th>Next</th><th>Incumbent</th><th>Sold / supplied</th><th>Profit</th><th>Share</th><th>Learner status</th></tr></thead><tbody>{state.firms.map((firm) => { const result = latest?.markets.find(({ firmId }) => firmId === firm.id); const industry = state.industries.find(({ id }) => id === firm.industryId)!; const status = firm.pricing.probing ? `Probing ${firm.pricing.probeDirection}` : firm.pricing.locallySettled ? 'Locally settled' : `Searching · ${money(firm.pricing.stepSizeCents)}`; return <tr key={firm.id}><td><i style={{ background: firmColor(firm.id, firm.industryId) }} />{industry.name} · {firm.id.replace(`firm-${firm.industryId}`, '') || 'sole'}</td><td>{money(industry.householdBudgetCents)}</td><td>{result ? money(result.postedPriceCents) : '—'}</td><td>{money(firm.postedPriceCents)}</td><td>{money(firm.pricing.incumbentPriceCents)}</td><td>{result ? `${result.unitsSold} / ${result.unitsSupplied}` : '—'}</td><td>{money(result?.preTaxProfitCents ?? 0)}</td><td>{result ? `${(result.marketShare * 100).toFixed(0)}%` : '—'}</td><td>{status}</td></tr> })}</tbody></table></div></section>
 

@@ -1,5 +1,10 @@
 export type Direction = 'up' | 'down'
 export type PriceDecisionAction = 'increase' | 'decrease' | 'refine' | 'hold' | 'locally_settled' | 'probe_started' | 'probe_adopted' | 'probe_rejected'
+export type PriceExperimentType =
+  | 'local_up_1c' | 'local_down_1c' | 'local_up_5pct' | 'local_down_5pct'
+  | 'local_up_10pct' | 'local_down_10pct' | 'local_down_20pct'
+  | 'competitor_match' | 'competitor_up_1c' | 'competitor_down_1c'
+  | 'competitor_up_5pct' | 'competitor_down_5pct'
 
 export type IndustryId = 'food' | 'utilities' | 'transport' | 'healthcare' | 'entertainment'
 
@@ -70,6 +75,12 @@ export interface PricingState {
   locallySettled: boolean
   probing: boolean
   probeDirection: Direction | null
+  experimentType: PriceExperimentType | null
+  experimentPriceCents: number | null
+  competitorPriceObservedCents: number | null
+  lastExperimentOutcome: 'adopted' | 'rejected' | null
+  lastExperimentalProfitCents: number | null
+  lastReferenceProfitCents: number | null
 }
 
 export interface Firm {
@@ -123,6 +134,9 @@ export type SimulationEventType =
   | 'PRICE_PROBE_STARTED'
   | 'PRICE_PROBE_ADOPTED'
   | 'PRICE_PROBE_REJECTED'
+  | 'PRICE_EXPERIMENT_STARTED'
+  | 'PRICE_EXPERIMENT_ADOPTED'
+  | 'PRICE_EXPERIMENT_REJECTED'
   | 'DAY_ENDED'
 
 export interface SimulationEvent {
@@ -141,6 +155,12 @@ export interface SimulationEvent {
   roundTripTiles?: number
   transportFeeCents?: number
   deliveredCostCents?: number
+  incumbentPriceCents?: number
+  experimentalPriceCents?: number
+  experimentType?: PriceExperimentType
+  competitorPriceObservedCents?: number
+  referenceProfitCents?: number
+  experimentalProfitCents?: number
   description: string
 }
 

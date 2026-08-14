@@ -6,6 +6,12 @@ body { margin: 0; min-width: 320px; background: radial-gradient(circle at 75% 0%
 .spatial-panel { margin: 18px 0; }
 .chart-panel:has(.wealth-chart--hidden) { display: none; }
 .map-legend { display: flex; flex-wrap: wrap; gap: 12px; color: #aab5b0; font-size: .75rem; }
+.pricing-intelligence { margin: 18px 0; }
+.pricing-intelligence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pricing-intelligence article { display: grid; gap: 5px; padding: 14px; border: 1px solid #28322e; border-radius: 8px; background: #101513; }
+.pricing-intelligence article > span { font-family: 'DM Mono', monospace; color: #8d9a94; font-size: .7rem; text-transform: uppercase; }
+.pricing-intelligence article small { color: #9eaaa4; }
+@media (max-width: 600px) { .pricing-intelligence-grid { grid-template-columns: 1fr; } }
 .spatial-scroll { width: 100%; overflow-x: auto; padding-bottom: 4px; }
 .spatial-grid { position: relative; display: grid; width: min(100%, 760px); min-width: 560px; aspect-ratio: 1; margin: 0 auto; border: 1px solid #39443f; background-image: linear-gradient(#202825 1px, transparent 1px), linear-gradient(90deg, #202825 1px, transparent 1px); background-size: 5% 5%; }
 .map-entity { z-index: 1; align-self: center; justify-self: center; width: 74%; aspect-ratio: 1; min-width: 17px; padding: 0; border-radius: 50%; font-family: 'DM Mono', monospace; font-size: clamp(.5rem, 1.2vw, .72rem); line-height: 1; box-shadow: 0 2px 8px #0009; }

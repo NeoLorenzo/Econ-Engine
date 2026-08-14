@@ -6,6 +6,36 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP4-Spatial_Entertainment-006.1] - (2026-08-14)
+
+### Problem and research question
+
+Spatial customer switching creates discrete delivered-cost thresholds. A one-cent reduction can leave customer count unchanged, reduce revenue, and be rejected even when a larger reduction would cross several household switching thresholds and raise profit.
+
+> Can competitor-aware, multi-scale price experimentation allow bounded firms to discover profitable pricing regions that local one-cent search cannot reach?
+
+### Information expansion
+
+Entertainment firms may now observe the competing firm's currently advertised sticker price as plausible public market information. They still cannot observe competitor sales, profit, share, internal state, household coordinates or budgets, individual transport costs or choices, counterfactual demand, or observer analytics. Monopoly firms receive no fabricated competitor reference.
+
+### Experiment catalog and current reference
+
+At each sampled experiment opportunity the firm regenerates and deduplicates candidates anchored on its incumbent: ±1 cent, ±5%, ±10%, and −20%. Entertainment also adds competitor match, competitor ±1 cent, and competitor ±5%. Percentage values round to integer cents, the one-cent minimum applies, and the incumbent itself is excluded. Seeded random selection prevents fixed catalog order. Upward candidates remain important because proximity can support a higher sticker price while preserving a lower delivered price for local households.
+
+On every locally settled, non-experimental incumbent day, realised own profit replaces the incumbent reference profit. A following experiment is adopted only when its realised profit is strictly greater than that recent reference; otherwise the incumbent is restored. Historical best profit remains useful for broad discovery but no longer blocks adaptation in a changed competitive environment.
+
+A final 006.1 guard treats a full-stock sellout as direct evidence that a discount is not currently needed to clear available supply. Catalog generation therefore removes every price below the incumbent after a sellout, including competitor-anchored prices that would function as deductions. This does not force an increase: seeded selection may choose any remaining upward experiment, and the ordinary experiment probability is unchanged. The full downward catalog returns after a day in which the firm does not sell out.
+
+### Findings
+
+The broader catalog materially changed paths without producing a single endpoint. From $5/$5 starts at day 300, seeds 20260813, 7, and 42 ended at A/B learner incumbents of $1.72/$1.81, $2.72/$2.71, and $1.88/$1.44, with final shares of 70/30, 20/80, and 20/80. From $1/$8 starts they ended at $1.03/$1.62, $1.48/$2.03, and $1.90/$2.26, with final shares of 90/10, 60/40, and 100/0. Retained events included adopted −20% and competitor +1-cent experiments as well as rejected upward and competitor-anchored experiments.
+
+For the directly comparable canonical $2/$2 start, 006.1 ended day 300 at $2.39/$2.40 with a 50/50 final share, versus the 006 observation of $4.48/$4.56. The trajectory first revisited the earlier region and later adopted broader moves into lower-price regions. These paths demonstrate that larger experiments can leave an earlier local spatial pricing plateau. They do not establish equilibrium or prove every run escapes every plateau. Outcomes remain path-dependent, seeded, and shaped by spatial pricing power.
+
+### Scope
+
+Firms remain bounded experimental learners. They do not know household geography or exact demand, calculate an optimum, respond to market share, observe competitor outcomes, or follow a mandatory undercut/best-response rule. Spatial choice, Transport, Government parity, and control-market institutions are unchanged.
+
 ## [MVP4-Spatial_Entertainment-006] - (2026-08-14)
 
 ### Motivation and research question

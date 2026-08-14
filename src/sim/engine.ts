@@ -1,7 +1,7 @@
 import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
 import { DEFAULT_CONFIG, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY } from './config'
 import { totalMoney, validateState } from './invariants'
-import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
+import { buildPriceExperimentCatalog, createPricingState, decideTomorrowPrice, type PriceExperimentCandidate } from './pricingStrategy'
 import { normalizeSeed, probabilityCheck, randomInt, seededShuffle } from './rng'
 import { deriveSpatialSeed, generateSpatialLayout, transportQuote } from './spatial'
 import type { DayMetrics, Firm, IndustryId, MarketMetrics, SimulationConfig, SimulationEvent, SimulationEventType, SimulationState } from './types'
@@ -90,6 +90,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     if (industryId === 'transport') continue
     const industry = state.industries.find(({ id }) => id === industryId)!
     const industryFirms = state.firms.filter((candidate) => candidate.industryId === industryId).sort((left, right) => left.id.localeCompare(right.id))
+    const advertisedPrices = new Map(industryFirms.map((firm) => [firm.id, firm.postedPriceCents]))
     const minimumPostedPrice = Math.min(...industryFirms.map(({ postedPriceCents }) => postedPriceCents))
     const shuffled = seededShuffle(state.households, state.rngState)
     state.rngState = shuffled.state
@@ -182,23 +183,41 @@ export function stepSimulation(previous: SimulationState): SimulationState {
       pushEvent(state, 'FIRM_DAY_RESULT', `${firm.id} sold ${firm.unitsSoldToday}/${state.config.dailySupplyPerIndustry} units and realised ${dollars(revenue)} profit.`, { actorId: firm.id, firmId: firm.id, industryId, amountCents: revenue, quantity: firm.unitsSoldToday })
       let shouldProbe = false
       let probeDirection: 'up' | 'down' = 'up'
+      let experimentCandidate: PriceExperimentCandidate | undefined
       if (firm.pricing.locallySettled && !firm.pricing.probing) {
         const probeDraw = probabilityCheck(state.rngState, state.config.probeProbability ?? DEFAULT_PROBE_PROBABILITY)
         state.rngState = probeDraw.state
         shouldProbe = probeDraw.value
         if (shouldProbe) {
-          const directionDraw = randomInt(state.rngState, 2)
-          state.rngState = directionDraw.state
-          probeDirection = directionDraw.value === 0 ? 'down' : 'up'
+          const competitor = industryFirms.length > 1 ? industryFirms.find(({ id }) => id !== firm.id) : undefined
+          const catalog = buildPriceExperimentCatalog(firm.pricing.incumbentPriceCents, competitor ? advertisedPrices.get(competitor.id) : undefined, firm.soldOutToday)
+          if (catalog.length > 0) {
+            const candidateDraw = randomInt(state.rngState, catalog.length)
+            state.rngState = candidateDraw.state
+            experimentCandidate = catalog[candidateDraw.value]
+            probeDirection = experimentCandidate.priceCents >= firm.pricing.incumbentPriceCents ? 'up' : 'down'
+          } else shouldProbe = false
         }
       }
-      const decision = decideTomorrowPrice(firm.pricing, testedPrice, firm.unitsSoldToday, revenue, { shouldProbe, direction: probeDirection })
+      const priorPricing = firm.pricing
+      const decision = decideTomorrowPrice(firm.pricing, testedPrice, firm.unitsSoldToday, revenue, { shouldProbe, direction: probeDirection, candidate: experimentCandidate })
       firm.pricing = decision.state; firm.latestDecisionReason = decision.reason; firm.latestDecisionAction = decision.action; firm.postedPriceCents = decision.nextPriceCents
       pushEvent(state, 'FIRM_PRICE_DECISION', `${firm.id} will post ${dollars(decision.nextPriceCents)} tomorrow. ${decision.reason}`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: decision.nextPriceCents })
       if (decision.justConverged) pushEvent(state, 'PRICE_DISCOVERY_CONVERGED', `${firm.id} became locally settled at ${dollars(firm.pricing.incumbentPriceCents)}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.pricing.incumbentPriceCents })
       if (decision.probeEvent) {
         const type = decision.probeEvent === 'started' ? 'PRICE_PROBE_STARTED' : decision.probeEvent === 'adopted' ? 'PRICE_PROBE_ADOPTED' : 'PRICE_PROBE_REJECTED'
         pushEvent(state, type, `${firm.id}: ${decision.reason}`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: decision.nextPriceCents })
+        const experimentType = decision.probeEvent === 'started' ? decision.state.experimentType : priorPricing.experimentType
+        const competitorPriceObservedCents = decision.probeEvent === 'started' ? decision.state.competitorPriceObservedCents : priorPricing.competitorPriceObservedCents
+        const experimentEventType = decision.probeEvent === 'started' ? 'PRICE_EXPERIMENT_STARTED' : decision.probeEvent === 'adopted' ? 'PRICE_EXPERIMENT_ADOPTED' : 'PRICE_EXPERIMENT_REJECTED'
+        const describedExperimentPrice = decision.probeEvent === 'started' ? decision.nextPriceCents : testedPrice
+        pushEvent(state, experimentEventType, `${firm.id} ${decision.probeEvent} ${experimentType ?? 'price'} experiment at ${dollars(describedExperimentPrice)}.`, {
+          actorId: firm.id, firmId: firm.id, industryId, incumbentPriceCents: priorPricing.incumbentPriceCents,
+          experimentalPriceCents: decision.probeEvent === 'started' ? decision.nextPriceCents : testedPrice,
+          experimentType: experimentType ?? undefined, competitorPriceObservedCents: competitorPriceObservedCents ?? undefined,
+          referenceProfitCents: decision.probeEvent === 'started' ? revenue : priorPricing.incumbentProfitCents,
+          experimentalProfitCents: decision.probeEvent === 'started' ? undefined : revenue,
+        })
       }
       marketMetrics.push({
         industryId, firmId: firm.id, postedPriceCents: testedPrice, nextPriceCents: decision.nextPriceCents,

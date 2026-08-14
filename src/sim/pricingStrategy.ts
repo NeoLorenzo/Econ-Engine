@@ -1,9 +1,36 @@
 import { MIN_PRICE_CENTS } from './config'
-import type { Direction, PriceDecision, PricingState } from './types'
+import type { Direction, PriceDecision, PriceExperimentType, PricingState } from './types'
+
+export interface PriceExperimentCandidate { priceCents: number; type: PriceExperimentType; competitorPriceObservedCents: number | null }
 
 export interface PricingExplorationDraw {
   shouldProbe: boolean
   direction: Direction
+  candidate?: PriceExperimentCandidate
+}
+
+export function buildPriceExperimentCatalog(referencePriceCents: number, competitorPriceCents?: number, soldOutPreviousDay = false): PriceExperimentCandidate[] {
+  const reference = Math.max(MIN_PRICE_CENTS, Math.round(referencePriceCents))
+  const candidates: Array<[number, PriceExperimentType, number | null]> = [
+    [reference + 1, 'local_up_1c', null], [reference - 1, 'local_down_1c', null],
+    [Math.round(reference * 1.05), 'local_up_5pct', null], [Math.round(reference * 0.95), 'local_down_5pct', null],
+    [Math.round(reference * 1.10), 'local_up_10pct', null], [Math.round(reference * 0.90), 'local_down_10pct', null],
+    [Math.round(reference * 0.80), 'local_down_20pct', null],
+  ]
+  if (competitorPriceCents !== undefined) {
+    const competitor = Math.max(MIN_PRICE_CENTS, Math.round(competitorPriceCents))
+    candidates.push(
+      [competitor, 'competitor_match', competitor], [competitor + 1, 'competitor_up_1c', competitor], [competitor - 1, 'competitor_down_1c', competitor],
+      [Math.round(competitor * 1.05), 'competitor_up_5pct', competitor], [Math.round(competitor * 0.95), 'competitor_down_5pct', competitor],
+    )
+  }
+  const seen = new Set<number>([reference])
+  return candidates.flatMap(([rawPrice, type, observed]) => {
+    const priceCents = Math.max(MIN_PRICE_CENTS, Math.round(rawPrice))
+    if (seen.has(priceCents) || (soldOutPreviousDay && priceCents < reference)) return []
+    seen.add(priceCents)
+    return [{ priceCents, type, competitorPriceObservedCents: observed }]
+  })
 }
 
 const move = (price: number, direction: Direction, step: number) =>
@@ -26,6 +53,8 @@ export function createPricingState(startingPriceCents: number, initialStepCents:
     locallySettled: false,
     probing: false,
     probeDirection: null,
+    experimentType: null, experimentPriceCents: null, competitorPriceObservedCents: null,
+    lastExperimentOutcome: null, lastExperimentalProfitCents: null, lastReferenceProfitCents: null,
   }
 }
 
@@ -39,6 +68,9 @@ export function decideTomorrowPrice(
   const next = { ...state }
   if (next.probing) {
     const adopted = currentProfitCents > next.incumbentProfitCents
+    next.lastReferenceProfitCents = next.incumbentProfitCents
+    next.lastExperimentalProfitCents = currentProfitCents
+    next.lastExperimentOutcome = adopted ? 'adopted' : 'rejected'
     if (adopted) {
       next.incumbentPriceCents = currentPriceCents
       next.incumbentProfitCents = currentProfitCents
@@ -47,6 +79,7 @@ export function decideTomorrowPrice(
     }
     next.probing = false
     next.probeDirection = null
+    next.experimentPriceCents = null
     return {
       nextPriceCents: next.incumbentPriceCents,
       state: next,
@@ -62,7 +95,16 @@ export function decideTomorrowPrice(
   if (next.locallySettled || next.converged) {
     next.locallySettled = true
     next.converged = true
+    next.incumbentProfitCents = currentProfitCents
     if (exploration.shouldProbe) {
+      if (exploration.candidate) {
+        next.probing = true
+        next.probeDirection = exploration.candidate.priceCents >= next.incumbentPriceCents ? 'up' : 'down'
+        next.experimentType = exploration.candidate.type
+        next.experimentPriceCents = exploration.candidate.priceCents
+        next.competitorPriceObservedCents = exploration.candidate.competitorPriceObservedCents
+        return { nextPriceCents: exploration.candidate.priceCents, state: next, action: 'probe_started', justConverged: false, probeEvent: 'started', reason: `Starting ${exploration.candidate.type} price experiment against the current incumbent profit reference.` }
+      }
       let direction = exploration.direction
       if (next.incumbentPriceCents === MIN_PRICE_CENTS && direction === 'down') direction = 'up'
       next.probing = true

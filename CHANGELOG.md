@@ -6,6 +6,22 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
+## [MVP4-Spatial_Entertainment-006.1] - (2026-08-14)
+
+### Added
+
+- Added public same-industry competitor sticker-price observation for Entertainment firms only.
+- Added seeded dynamic price-experiment catalogs containing incumbent-anchored one-cent, 5%, 10%, and 20% moves plus competitor match, adjacent-cent, and 5% anchors.
+- Added structured experiment categories and `PRICE_EXPERIMENT_STARTED`, `PRICE_EXPERIMENT_ADOPTED`, and `PRICE_EXPERIMENT_REJECTED` observer events with incumbent, experimental, competitor, and profit-reference fields.
+- Added a compact Entertainment pricing-intelligence panel and catalog, information-boundary, reference-refresh, adoption/rejection, sequence, and long-run regression coverage.
+
+### Changed
+
+- Locally settled firms now choose experiments randomly from a regenerated, deduplicated catalog instead of limiting persistent exploration to adjacent cents.
+- Experiment profit is compared strictly against profit from the most recent normal incumbent-price day, rather than a potentially stale historical maximum.
+- Firms that sold their entire stock on the just-completed day now mask every below-incumbent catalog candidate; upward experiments remain available, and discounts return when the firm does not sell out.
+- Monopoly controls receive incumbent-anchored candidates only; Transport, spatial household choice, parity restoration, and transaction accounting are unchanged.
+
 ## [MVP4-Spatial_Entertainment-006] - (2026-08-14)
 
 ### Added
