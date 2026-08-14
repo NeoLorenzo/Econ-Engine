@@ -6,6 +6,18 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 
 Every meaningful software update should receive a newest-first entry with a readable update identifier and date. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Record the update's scope, additions, changes or fixes, and relevant validation. Include only headings that apply. Keep entries factual and implementation-focused; if a change or validation result cannot be verified, omit it or label it uncertain rather than reconstructing it.
 
+## [MVP4-Spatial_Entertainment-006.2] - (2026-08-14)
+
+### Changed
+
+- Removed `structuredClone(previous)` from the daily simulation hot path and replaced it with targeted immutable copies of households/outcomes, firms/pricing state, Government, and history array containers.
+- Existing immutable configuration, industries, spatial coordinates, daily metric records, and ledger event records are now structurally shared between consecutive states.
+- Retained the existing five-day batching per React publication at 100 days/second; every economic day still executes sequentially.
+
+### Validation
+
+- Added previous-state immutability and historical-reference-sharing tests, exact 1,000-day same-seed replay, and a 10,000-day stress regression with 400 metrics, no more than 600 events, and exact terminal invariants.
+
 ## [MVP4-Spatial_Entertainment-006.1] - (2026-08-14)
 
 ### Added

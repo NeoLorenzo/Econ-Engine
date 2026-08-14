@@ -69,8 +69,24 @@ export function createSimulation(config: SimulationConfig = DEFAULT_CONFIG): Sim
   return state
 }
 
+function copyStateForStep(previous: SimulationState): SimulationState {
+  return {
+    ...previous,
+    households: previous.households.map((household) => ({
+      ...household,
+      coordinate: household.coordinate,
+      entertainmentToday: household.entertainmentToday ? { ...household.entertainmentToday } : null,
+      industryOutcomes: Object.fromEntries(Object.entries(household.industryOutcomes).map(([industryId, outcome]) => [industryId, { ...outcome }])) as typeof household.industryOutcomes,
+    })),
+    firms: previous.firms.map((firm) => ({ ...firm, coordinate: firm.coordinate, pricing: { ...firm.pricing } })),
+    government: { ...previous.government },
+    metrics: [...previous.metrics],
+    events: [...previous.events],
+  }
+}
+
 export function stepSimulation(previous: SimulationState): SimulationState {
-  const state = structuredClone(previous)
+  const state = copyStateForStep(previous)
   state.day += 1
   state.government.taxCollectedTodayCents = 0
   state.government.redistributedTodayCents = 0

@@ -8,6 +8,14 @@ This specification is subordinate to [SIMULATION_DESIGN_RULES.md](../SIMULATION_
 
 Pricing-intelligence refinement: `[MVP4-Spatial_Entertainment-006.1]`.
 
+Performance architecture refinement: `[MVP4-Spatial_Entertainment-006.2]`.
+
+## 006.2 immutable step architecture
+
+`stepSimulation(previous)` is a pure transition without whole-state recursive cloning. It creates fresh household objects and nested industry outcomes, fresh firm objects and pricing states, a fresh Government object, and fresh bounded history array containers. Immutable configuration, industries, fixed spatial coordinates, and existing immutable metric/event value records are structurally shared. RNG scalars are copied without introducing draws.
+
+Interactive metrics are capped at 400 daily snapshots and the ledger at 600 events. No other interactive history grows with elapsed simulation age. At 100 days/second, five complete sequential days are simulated before one React state publication; no economic day is skipped or approximated.
+
 ## 006.1 public prices and experiment catalogs
 
 Entertainment firms may observe only the currently advertised sticker price of the other Entertainment firm. Competitor sales, profit, share, strategy state, household geography, budgets, travel quotes, choices, and counterfactual demand remain hidden. Monopoly firms receive no competitor input.

@@ -6,6 +6,26 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP4-Spatial_Entertainment-006.2] - (2026-08-14)
+
+### Problem and root cause
+
+At 100 days/second the browser crashed around 500 simulated days with `DataCloneError: structuredClone ... out of memory`, leaving React's root blank. Every economic day recursively copied the entire accumulated `SimulationState`. Once the 400-metric and 600-event histories saturated, the clone remained near its maximum size and was repeated five times per 50 ms UI interval, causing excessive allocation and garbage-collection pressure.
+
+The runtime audit found no additional unintentionally unbounded history in the interactive state. Metrics remain capped at 400 and events at 600. Per-household counters, firm pricing state, spatial analytics, and current-day records have constant size. The finite research harness intentionally accumulates selected experiment events over its requested horizon and is outside React state.
+
+### Architectural fix
+
+The hot path now performs targeted immutable copying. Household objects and every mutable industry outcome, firm objects and pricing states, Government, and the metric/event array containers are copied once per step. Immutable configuration, industries, fixed coordinate objects, and existing immutable metric/event records are structurally shared. Tests verify that the supplied previous state is not mutated and that shared historical records retain reference identity.
+
+The 100-days/second path still simulates five sequential economic days before publishing one React state. Rendering frequency therefore remains 20 updates per second while every purchase, travel payment, price decision, tax, parity transfer, invariant, and RNG draw executes normally.
+
+### Performance principle and validation
+
+> Once bounded histories reach capacity, simulation cost should depend primarily on model size and daily activity, not on total elapsed simulation age.
+
+The automated 10,000-day stress run completed with exact accounting and stock-flow invariants, 400 metrics, and no more than 600 events. In the test runtime it completed in approximately 1.1 seconds. A separate 1,000-day same-seed comparison produced exactly equal complete states. The real React UI ran to day 2,510 at the 100-days/second setting—five times beyond the former failure point—with $500 displayed, all map entities present, no page overflow, and no console warnings or errors. The available browser surface did not expose precise heap profiling, so validation is limited to sustained execution and the removal of catastrophic whole-state allocations rather than a claimed byte measurement. No economic mechanism changed.
+
 ## [MVP4-Spatial_Entertainment-006.1] - (2026-08-14)
 
 ### Problem and research question
