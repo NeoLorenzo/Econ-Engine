@@ -10,7 +10,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc -b --pretty false",
-    "check": "npm run typecheck && npm run test:run && npm run build"
+    "check": "npm run typecheck && npm run test:run && npm run build",
+    "agent:check": "node scripts/agent-check.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

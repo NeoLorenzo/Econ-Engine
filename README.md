@@ -1,6 +1,6 @@
-# Econ-Engine — [MVP6-Government-008.1]
+# Econ-Engine — [MVP8-Population_Scaling-010.1]
 
-Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP8 scales the canonical MVP7 economy to 100 households and $5,000 while preserving its per-capita structure and fixed institutions.
+Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP8 scales the canonical MVP7 economy to 100 households and $5,000; refinement 010.1 organizes its observer into five application tabs without changing economic behavior.
 
 ## Run locally
 
@@ -15,8 +15,8 @@ npm run check
 
 ## Model at a glance
 
-- Ten households have fixed seeded employment and persistent cash.
-- Eight competitive consumer firms each employ one worker and produce five units per day; monopoly Transport employs two workers.
+- One hundred households have fixed seeded employment and persistent cash.
+- Eight competitive consumer firms each employ ten workers and produce 50 units per day; monopoly Transport employs 20 workers.
 - Households choose by delivered cost within percentage expenditure budgets. Purchases pay firms; contractual payroll is capped by cash and residual profit is taxed explicitly.
 - Government acts only after payroll, starts at 0%, and tests seeded 0–100% wealth-tax alternatives.
 - Tax rates use integer basis points; liabilities use floor-to-cent rounding.
@@ -27,7 +27,7 @@ npm run check
 
 The pure TypeScript core in `src/sim` owns markets, employment/payroll, Government policy and fiscal transfers, events, metrics, experiments, and invariants. React owns controls and presentation only.
 
-Read the current [MVP 6 specification](docs/MVP6_SPEC.md), preserved [MVP 5 specification](docs/MVP5_SPEC.md), [architecture notes](docs/ARCHITECTURE.md), [validation guide](docs/VALIDATION.md), and authoritative [simulation design rules](SIMULATION_DESIGN_RULES.md). Project evolution is recorded in the [changelog](CHANGELOG.md) and [lab notes](LAB_NOTES.md).
+Read the current [MVP 8 specification](docs/MVP8_SPEC.md), [architecture notes](docs/ARCHITECTURE.md), [validation guide](docs/VALIDATION.md), and authoritative [simulation design rules](SIMULATION_DESIGN_RULES.md). Project evolution is recorded in the [changelog](CHANGELOG.md) and [lab notes](LAB_NOTES.md).
 
 ## Deployment
 

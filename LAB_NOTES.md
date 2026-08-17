@@ -6,6 +6,46 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Population_Scaling-010.2] - (2026-08-17)
+
+### Infrastructure refinement
+
+The population-scaling implementation is behaviorally unchanged. This refinement adds an agent-oriented validation path so Codex runs retain the existing typecheck → test → build semantics without flooding the terminal with compiler, test-runner, and bundler output. Each stage writes directly to an overwritten, Git-ignored log, and the wrapper stops at the first failure while exposing only a small diagnostic excerpt and the relevant log path.
+
+`AGENTS.md` establishes the repository workflow: use `npm run agent:check` for final validation, inspect only the failed log when diagnosing, and leave the normal human-visible `npm run check` path intact. The second TypeScript compilation inside `build` remains deliberately preserved.
+
+### Validation and limits
+
+`npm run agent:check` passed typechecking, the complete test suite, and the production build. Successful runs produce only stage timings and a final result in the terminal; detailed output remains available in `.agent-logs/`. No simulation behavior, tests, validation semantics, or application functionality was changed. A separate intentional failure-path test was not performed.
+
+## [MVP8-Population_Scaling-010.1] - (2026-08-14)
+
+### Motivation and problem
+
+The original single-page observer worked while the model had few agents and experiments. At N=100, live markets, employment/payroll, Government, geography, repeated firm charts, long-horizon research, configuration controls, and a 100-household observer formed one vertical report. Live operation and historical diagnostics competed for attention, low-frequency initialization inputs occupied the primary control surface, and household inspection required scanning dense unfiltered output. The UI also used “Profit” for both the price learner's zero-cost revenue signal and MVP7 residual post-payroll profit.
+
+A positional `.market-overview tbody tr:nth-child(5)` rule silently hid whichever economic row happened to render fifth. Presentation must never infer semantic identity from row position.
+
+### Design decision and observer hierarchy
+
+The application now uses Overview, Markets, Households & Labor, Government, and Research. Overview answers economy-wide current-state questions. Markets joins one selected industry's state, pricing intelligence, price trajectory, operating-earnings trajectory, and capacity flow. Households & Labor combines all nine firms' payroll, a bounded searchable/sortable 100-household table, and unchanged geography. Government contains live fiscal state and distribution charts. Research contains explicit user-triggered population, employment, Government, competition, and labelled legacy diagnostics.
+
+This establishes `summary → domain detail → individual inspection → research analysis`. Hidden tabs are unmounted, preventing zero-width charts and avoiding expensive hidden household, map, and research rendering. Simulation settings are collapsible and group A/B starting prices by industry; their draft/apply-on-reset semantics are unchanged.
+
+### Terminology and economic boundary
+
+Observer copy calls legacy `preTaxProfit` **operating earnings**, the pre-payroll zero-cost signal used by the unchanged learner. **Residual profit** identifies revenue remaining after actual payroll and before fixed corporate-profit tax. Internal behavioral fields were not renamed.
+
+This refinement changes React state, markup, CSS, and observer organization only. Tab selection, industry selection, settings expansion, search, and sort neither enter simulation state nor consume RNG. Economic rules, ordering, seeds, configuration parsing/clamping, fast-mode batching, accounting, and trajectories remain unchanged.
+
+### Validation
+
+`npm run check` passed 94 tests across 17 files, TypeScript checking, and the production build. Canonical seed `20260813` produced identical state through the reset configuration values used by the UI. Presentation coverage verified 100 households before filtering, ID/employer search, deterministic non-mutating sorting, all nine firms including fifth-row Transport, and unchanged reset-path determinism.
+
+At 1,280px and 390px, all five tabs remained within the page width. Wide market, household, research, and map surfaces scrolled internally. The live Households & Labor surface exposed 100 household rows and 108 map entities; Simulation settings exposed all eight independent firm-price inputs on mobile. No browser console warnings or errors were recorded, and active-tab mounting produced no Recharts sizing warnings.
+
+Fast mode remained economically unchanged and advanced to day 280 during the browser run. At that point continuous N=100 stepping could temporarily delay browser-driver interaction with the pause control, confirming the existing practical UI contention under sustained maximum speed. No batching or execution semantic was changed in this presentation refinement.
+
 ## [MVP8-Population_Scaling-010] - (2026-08-14)
 
 ### Design rationale

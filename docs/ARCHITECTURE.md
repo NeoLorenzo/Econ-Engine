@@ -2,6 +2,12 @@
 
 Econ-Engine separates economic rules, agent strategies, state, events, observer analytics, experiments, and React presentation so causal boundaries remain inspectable.
 
+## MVP8.1 observer architecture
+
+React conditionally mounts Overview, Markets, Households & Labor, Government, and Research. Persistent controls own execution and draft initialization values. Tabs, selected industry, settings disclosure, household query, and deterministic sort order are local UI state only; none enters `stepSimulation` or an RNG source. Hidden charts and large observers are unmounted rather than visually concealed.
+
+Overview provides economy-wide state; domain tabs provide detailed live state; Research hosts explicit independent experiment harnesses. Markets calls legacy `preTaxProfit` operating earnings, while payroll tables call `residualProfit` residual profit. Tables select agents semantically in React and never hide rows by CSS position.
+
 ## Simulation core
 
 `types.ts` defines household, firm, Government, event, and bounded daily metric state. `engine.ts` performs immutable daily steps: labor-derived production, spatial consumer markets and Transport payments, inventory expiration, firm pricing decisions, complete payroll, and finally Government tax/transfer policy. `invariants.ts` validates entity structure and exact stock/flow accounting after each completed day.

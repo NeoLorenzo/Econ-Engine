@@ -2,6 +2,44 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Population_Scaling-010.2] - (2026-08-17)
+
+### Added
+
+- Added `npm run agent:check`, a cross-platform Node validation wrapper that runs typecheck, tests, and build sequentially while routing full output to `.agent-logs/typecheck.log`, `.agent-logs/tests.log`, and `.agent-logs/build.log`.
+- Added concise terminal PASS/FAIL summaries, bounded failure excerpts, first-failure stopping, and root-level Codex validation guidance in `AGENTS.md`.
+
+### Changed
+
+- Added `.agent-logs/` to `.gitignore`; existing `check`, `typecheck`, `test:run`, and `build` commands remain unchanged.
+
+### Validation
+
+- `npm run agent:check` passed TypeScript checking, all tests, and the production build. Full stage output was captured in the ignored logs.
+
+## [MVP8-Population_Scaling-010.1] - (2026-08-14)
+
+### Added
+
+- Added persistent Overview, Markets, Households & Labor, Government, and Research tabs with active-tab-only observer rendering.
+- Added collapsible Simulation settings, an industry-focused market observer, household search and deterministic sorting, and a user-triggered N=10/N=100 Research panel.
+- Added presentation regression coverage for 100-household availability, search, sorting, nine-firm inclusion, and canonical UI-configuration determinism.
+
+### Changed
+
+- Reorganized live summary, market, labor, geography, fiscal, event, and research surfaces into a summary-to-detail hierarchy.
+- Moved initialization parameters out of primary run controls; draft values still apply only through reset.
+- Renamed the legacy `preTaxProfit` observer signal to operating earnings while reserving residual profit for post-payroll accounting.
+
+### Fixed
+
+- Removed the positional fifth-row CSS rule that could hide legitimate economic agents from reused market tables.
+
+### Validation
+
+- Passed `npm run check`: 94 tests across 17 files, TypeScript checking, and the production build.
+- Verified canonical UI-configuration equivalence, all five tabs at 1,280 and 390 pixels, 100 household rows, 108 map markers, no page overflow, and no browser console warnings/errors.
+
 ## [MVP8-Population_Scaling-010] - (2026-08-14)
 
 ### Added
