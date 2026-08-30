@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { TOTAL_MONEY_CENTS } from './config'
+import { DEFAULT_SEED, MAX_HISTORY, TOTAL_MONEY_CENTS } from './config'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
-import { runPopulationScaleComparison } from './populationScaleExperiment'
+import { runPopulationScale, runPopulationScaleComparison } from './populationScaleExperiment'
 
 describe('[MVP8-Population_Scaling-010]', () => {
   it('creates the canonical 100-household employment and production scale', () => {
@@ -27,5 +27,31 @@ describe('[MVP8-Population_Scaling-010]', () => {
   it('retains canonical closure over a long run', () => {
     const state = runDays(createSimulation({ seed: 123 }), 1_000)
     expect(totalMoney(state)).toBe(500_000); expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true); expect(state.government.cashCents).toBe(0)
+  }, 30_000)
+
+  it('reports transport revenue across the full horizon after history retention truncates', () => {
+    const householdCount = 10
+    const horizonDays = MAX_HISTORY + 25
+    const seed = DEFAULT_SEED
+    let state = createSimulation({ seed, householdCount })
+    let fullHorizonTransportRevenueCents = 0
+
+    for (let index = 0; index < horizonDays; index++) {
+      state = stepSimulation(state)
+      const metric = state.metrics.at(-1)!
+      fullHorizonTransportRevenueCents += metric.totalTransportRevenueCents
+    }
+
+    const expectedFullHorizon = fullHorizonTransportRevenueCents / horizonDays / householdCount
+    expect(state.metrics).toHaveLength(MAX_HISTORY)
+    const retainedWindowValue = state.metrics.reduce(
+      (sum, metric) => sum + metric.totalTransportRevenueCents,
+      0,
+    ) / state.metrics.length / householdCount
+    expect(expectedFullHorizon).not.toBe(retainedWindowValue)
+
+    const result = runPopulationScale(seed, householdCount, horizonDays)
+    expect(result.terminalState.metrics).toHaveLength(MAX_HISTORY)
+    expect(result.normalized.transportRevenuePerHouseholdCents).toBe(expectedFullHorizon)
   }, 30_000)
 })
