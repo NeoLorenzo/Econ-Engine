@@ -10,9 +10,9 @@ Overview provides economy-wide state; domain tabs provide detailed live state; R
 
 ## Simulation core
 
-`types.ts` defines household, firm, Government, event, and bounded daily metric state. `engine.ts` performs immutable daily steps: labor-derived production, spatial consumer markets and Transport payments, inventory expiration, firm pricing decisions, complete payroll, and finally Government tax/transfer policy. `invariants.ts` validates entity structure and exact stock/flow accounting after each completed day.
+`types.ts` defines household, firm, Government, event, and bounded daily metric state. `engine.ts` performs immutable daily steps: labor-derived production, spatial consumer markets and Transport payments, inventory expiration, firm pricing decisions, cash-constrained contractual payroll, and finally Government tax/transfer policy. `invariants.ts` validates entity structure and exact stock/flow accounting after each completed day.
 
-Ten households each have one fixed seeded employer. Eight consumer firms employ one worker each; monopoly Transport employs two. Consumer output is worker count times five. Households choose available suppliers by delivered cost under percentage expenditure budgets. Firm cash is complete daily operating revenue and is fully paid to workers after the pricing learner observes it.
+`SimulationConfig.householdCount` is the population authority. The canonical MVP8 economy has `N=100` households, while research configurations use complete ten-household blocks, including `N=10`. It has five industries and nine firms: two each in Food, Utilities, Healthcare, and Entertainment, plus one Transport firm. Each non-Transport consumer firm employs `N/10` workers and Transport employs `N/5`; canonically those counts are 10 and 20. Consumer output is employee count times `laborProductivityUnitsPerWorker`; at the default productivity of five, each consumer firm produces 50 units per day at `N=100`. Transport does not use consumer-production units. Households choose available suppliers by delivered cost under percentage expenditure budgets.
 
 ## Strategy boundaries and RNG
 
@@ -22,7 +22,7 @@ Ten households each have one fixed seeded employer. Eight consumer firms employ 
 
 ## Fiscal accounting
 
-The authoritative tax rate is integer basis points. Wealth-tax liabilities floor to integer cents and are explicit Household → Government transfers. Deterministic water filling returns the exact pool through Government → Household transfers. Seeded tied-group ordering allocates indivisible remainder cents. After the fiscal phase firms and Government hold zero, households hold 50,000 cents, and total money is exactly 50,000 cents.
+The authoritative tax rate is integer basis points. Contractual payroll is cash-constrained, so firms can leave wages unpaid. After payroll, each firm's residual profit is explicitly transferred to Government as the fixed 100% corporate-profit tax. Independently, wealth-tax liabilities floor to integer cents and are explicit Household → Government transfers. Deterministic water filling returns the combined Government pool through Government → Household transfers; seeded tied-group ordering allocates indivisible remainder cents. After a completed day, firms and Government hold zero cash, while households collectively hold the full population-derived supply: `householdCount × 5,000 cents` (500,000 cents at canonical `N=100`).
 
 Household state distinguishes pre-tax cash, gross tax, gross transfer, net fiscal transfer, post-fiscal cash, and cumulative fiscal positions. Government state retains incumbent/applied rates, current reference, experiment category/outcome, receipts, transfers, and pre/post Gini.
 
@@ -33,9 +33,9 @@ Live event and metric histories are bounded. `employmentDynamics.ts` preserves t
 ## Interface boundary
 
 React controls configuration and time and renders Government, household fiscal positions, markets, trajectories, and experiment reports. Horizontal table scrolling preserves compact mobile layouts. No economic rule exists in React.
-# MVP7 settlement boundary
+## Retained MVP7 settlement boundary
 
 After markets and the unchanged price-learning evaluation, firms pay fixed cash-constrained contractual payroll. Residual cash is explicit profit and is transferred to Government as fixed 100% corporate profit tax. Government then collects its independently adaptive household wealth tax and redistributes the combined balance once. Monetary amounts use integer cents; payroll remainder ordering is derived independently from stable seed/day/entity identities.
-# MVP8 configurable population
+## MVP8 configurable population
 
 `SimulationConfig.householdCount` is the population authority. Canonical MVP8 uses 100; the scale harness also uses 10. Initial money, household generation, spatial entities, employment slots, production, payroll, demand denominators, and invariants derive from that value. Employment permits complete ten-household blocks, assigning `N/10` workers to every consumer firm and `N/5` to Transport through its isolated subseed.
