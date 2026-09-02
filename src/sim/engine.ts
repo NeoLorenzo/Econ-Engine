@@ -1,4 +1,4 @@
-import { countAffordableAtPrice, summarizeCashDistribution } from './analytics'
+import { summarizeCashDistribution } from './analytics'
 import { CONTRACTUAL_WAGE_CENTS, DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_LABOR_PRODUCTIVITY, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
 import { assignEmployment, deriveEmploymentSeed, payrollOrder } from './employment'
 import { chooseGovernmentExperiment, collectWealthTax, deriveGovernmentPolicySeed, householdCashGini, isEffectivelyEqual, redistributeByWaterFilling, shouldAdoptGovernmentExperiment } from './government'
@@ -19,6 +19,16 @@ function safeProcessingOrder(config: SimulationConfig): IndustryId[] {
   const defaults = DEFAULT_INDUSTRIES.map(({ id }) => id)
   const proposed = config.industryProcessingOrder
   return proposed?.length === defaults.length && new Set(proposed).size === defaults.length && defaults.every((id) => proposed.includes(id)) ? [...proposed] : defaults
+}
+
+function countHouseholdsAffordableAtMarketOpen(households: SimulationState['households'], industryId: IndustryId, industryFirms: Firm[], transportCostPerTileCents: number): number {
+  return households.filter((household) => {
+    const { budgetCents } = household.industryOutcomes[industryId]
+    return industryFirms.some((firm) => {
+      const deliveredCostCents = firm.postedPriceCents + transportQuote(household.coordinate, firm.coordinate!, transportCostPerTileCents).transportFeeCents
+      return deliveredCostCents <= budgetCents && deliveredCostCents <= household.cashCents
+    })
+  }).length
 }
 
 export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CONFIG): SimulationState {
@@ -165,7 +175,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
       })
       purchasingOrder = [...primary, ...fallback].map(({ household }) => household)
     }
-    const affordableAtOpen = countAffordableAtPrice(state.households.map((household) => Math.min(household.cashCents, household.industryOutcomes[industryId].budgetCents)), minimumPostedPrice)
+    const affordableAtOpen = countHouseholdsAffordableAtMarketOpen(state.households, industryId, industryFirms, state.config.transportCostPerTileCents!)
     for (const firm of industryFirms) {
       pushEvent(state, 'PRICE_POSTED', `${firm.id} posted ${dollars(firm.postedPriceCents)} in ${industry.name}.`, { actorId: firm.id, firmId: firm.id, industryId, priceCents: firm.postedPriceCents })
     }

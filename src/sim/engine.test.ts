@@ -3,7 +3,7 @@ import { DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, MAX_EVENTS, MAX_HISTORY, deriveIndu
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
 import type { IndustryId } from './types'
-import { manhattanDistance } from './spatial'
+import { manhattanDistance, transportQuote } from './spatial'
 
 const consumerIds = ['food', 'utilities', 'healthcare', 'entertainment'] as const
 const base = { startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 20260813 }
@@ -54,6 +54,58 @@ describe('MVP4 full spatial competition', () => {
     closer.postedPriceCents = 101; farther.postedPriceCents = 100
     const day = stepSimulation(state)
     expect(day.households.find(({ id }) => id === household.id)!.spatialPurchasesToday[industryId]?.chosenFirmId).toBe(closer.id)
+  })
+
+  it('excludes a household when sticker price fits but every delivered food cost exceeds its opening limits', () => {
+    const state = createSimulation({ ...base, transportCostPerTileCents: 100 })
+    const industryId = 'food'
+    const firms = state.firms.filter((firm) => firm.industryId === industryId)
+    const household = state.households[0]
+    const postedPriceCents = 100
+    firms.forEach((firm) => { firm.postedPriceCents = postedPriceCents })
+    const cheapestDeliveredCostCents = Math.min(...firms.map((firm) => postedPriceCents + transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!).transportFeeCents))
+    const openingLimitCents = cheapestDeliveredCostCents - 1
+    state.households.forEach((candidate) => {
+      candidate.cashCents = 0
+      candidate.industryOutcomes[industryId].budgetCents = 0
+    })
+    household.cashCents = openingLimitCents
+    household.industryOutcomes[industryId].budgetCents = openingLimitCents
+    state.households.find((candidate) => candidate.id !== household.id)!.cashCents = 500_000 - openingLimitCents
+
+    const day = stepSimulation(state)
+    const affordable = day.metrics[0].markets.filter((metric) => metric.industryId === industryId).map((metric) => metric.householdsAffordableAtMarketOpen)
+
+    expect(postedPriceCents).toBeLessThanOrEqual(openingLimitCents)
+    expect(cheapestDeliveredCostCents).toBeGreaterThan(openingLimitCents)
+    expect(affordable).toEqual([0, 0])
+  })
+
+  it('counts a household once when exactly one of two different delivered food costs fits its opening cash and budget', () => {
+    const state = createSimulation({ ...base, transportCostPerTileCents: 100 })
+    const industryId = 'food'
+    const firms = state.firms.filter((firm) => firm.industryId === industryId)
+    const household = state.households.find((candidate) => {
+      const fees = firms.map((firm) => transportQuote(candidate.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!).transportFeeCents)
+      return fees[0] !== fees[1]
+    })!
+    firms.forEach((firm) => { firm.postedPriceCents = 100 })
+    const deliveredCosts = firms.map((firm) => firm.postedPriceCents + transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!).transportFeeCents)
+    const openingLimitCents = Math.min(...deliveredCosts)
+    state.households.forEach((candidate) => {
+      candidate.cashCents = 0
+      candidate.industryOutcomes[industryId].budgetCents = 0
+    })
+    household.cashCents = openingLimitCents
+    household.industryOutcomes[industryId].budgetCents = openingLimitCents
+    state.households.find((candidate) => candidate.id !== household.id)!.cashCents = 500_000 - openingLimitCents
+
+    const day = stepSimulation(state)
+    const affordable = day.metrics[0].markets.filter((metric) => metric.industryId === industryId).map((metric) => metric.householdsAffordableAtMarketOpen)
+
+    expect(new Set(deliveredCosts).size).toBe(2)
+    expect(deliveredCosts.filter((cost) => cost <= openingLimitCents)).toHaveLength(1)
+    expect(affordable).toEqual([1, 1])
   })
 
   it('keeps category boundaries behavioral and leaves unused cash in the single persistent household balance', () => {
