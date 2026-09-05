@@ -1,0 +1,31 @@
+name: Validate issue 2 browser behavior
+
+on:
+  push:
+    branches: [fix/decouple-simulation-runner-review]
+
+permissions:
+  contents: read
+
+jobs:
+  browser-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --package-lock=false playwright@latest
+      - run: npx playwright install chromium
+      - run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/econ-preview.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/Econ-Engine/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/econ-preview.log
+          exit 1
+      - run: node scripts/validate-fast-mode.mjs
