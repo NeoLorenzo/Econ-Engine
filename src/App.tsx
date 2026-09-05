@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DEFAULT_INDUSTRIES as ALL_INDUSTRIES, DEFAULT_SEED, TOTAL_MONEY_CENTS } from './sim/config'
 import { createSimulation, stepSimulation } from './sim/engine'
@@ -8,6 +8,7 @@ import { runGeneralizedSpatialExperiment, type GeneralizedSpatialResult } from '
 import { runEmploymentDynamics, type EmploymentDynamicsReport } from './sim/employmentDynamics'
 import { runGovernmentBaselineComparison, type GovernmentTrajectorySummary } from './sim/governmentExperiment'
 import { runPopulationScaleComparison } from './sim/populationScaleExperiment'
+import { SimulationRunner } from './sim/simulationRunner'
 import type { IndustryId, SimulationConfig, SimulationState } from './sim/types'
 import { groupEventsForDisplay } from './ui/groupEventsForDisplay'
 import { transportQuote } from './sim/spatial'
@@ -114,6 +115,9 @@ export function filterAndSortHouseholds(households: SimulationState['households'
 export default function App() {
   const [draft, setDraft] = useState({ firmStarts: DEFAULT_FIRM_START_DRAFT, step: '1.00', seed: String(DEFAULT_SEED), transportRate: '0.02', expenditureBase: '50.00' })
   const [state, setState] = useState(() => createSimulation())
+  const runnerRef = useRef<SimulationRunner<SimulationState> | null>(null)
+  if (runnerRef.current === null) runnerRef.current = new SimulationRunner(state, stepSimulation, setState)
+  const runner = runnerRef.current
   const [running, setRunning] = useState(false)
   const [speed, setSpeed] = useState(5)
   const [activeTab, setActiveTab] = useState<AppTab>('overview')
@@ -127,17 +131,18 @@ export default function App() {
   const [employmentDynamics, setEmploymentDynamics] = useState<EmploymentDynamicsReport | null>(null)
   const [governmentAnalysis, setGovernmentAnalysis] = useState<{ adaptive: GovernmentTrajectorySummary; baseline: GovernmentTrajectorySummary } | null>(null)
   const [populationAnalysis, setPopulationAnalysis] = useState<ReturnType<typeof runPopulationScaleComparison> | null>(null)
-  const step = () => setState((current) => stepSimulation(current))
+  const step = () => runner.stepOnce()
   const reset = () => {
     const firmStartingPricesCents = Object.fromEntries(Object.entries(draft.firmStarts).map(([firmId, value]) => [firmId, Math.max(1, Math.round(Number(value || 0) * 100))]))
     const config: SimulationConfig = { startingPriceCents: 200, firmStartingPricesCents, initialStepCents: Math.max(1, Math.round(Number(draft.step || 0) * 100)), laborProductivityUnitsPerWorker: 5, seed: Math.round(Number(draft.seed || DEFAULT_SEED)), transportCostPerTileCents: Math.max(0, Math.round(Number(draft.transportRate || 0) * 100)), dailyExpenditureBudgetCents: Math.max(0, Math.round(Number(draft.expenditureBase || 0) * 100)) }
-    setRunning(false); setState(createSimulation(config))
+    setRunning(false); runner.reset(createSimulation(config))
   }
   useEffect(() => {
-    if (!running) return
-    const timer = window.setInterval(() => setState((current) => { let next = current; for (let index = 0; index < (speed === 100 ? 20 : 1); index += 1) next = stepSimulation(next); return next }), speed === 100 ? 200 : 1000 / speed)
-    return () => window.clearInterval(timer)
-  }, [running, speed])
+    if (!running) { runner.stop(); return }
+    runner.start(speed)
+    return () => runner.stop(false)
+  }, [runner, running, speed])
+  useEffect(() => () => runner.destroy(), [runner])
   const latest = state.metrics.at(-1)
   const recentEvents = useMemo(() => groupEventsForDisplay(state.events).reverse().slice(0, 30), [state.events])
   const settledCount = state.firms.filter(({ industryId, pricing }) => industryId !== 'transport' && pricing.locallySettled).length
