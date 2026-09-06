@@ -8,7 +8,9 @@ Responsive browser checks exercise every tab at approximately 1280px and 390px, 
 
 Verified on 2026-08-14: `npm run check` passed 94 tests across 17 files, typecheck, and production build. At 1280px and 390px, every tab had no page-level horizontal overflow; tables and the 20×20 map scrolled internally. The household table exposed all 100 households before filtering, geography exposed 108 entities, settings exposed eight firm-price inputs, and the browser console contained no warning/error entries. Fast mode advanced to day 280, although sustained N=100 stepping temporarily delayed automated pause interaction; execution batching was left unchanged.
 
-Issue #2 follow-up (2026-09-05): runtime stepping is now owned by `SimulationRunner` rather than repeated `stepSimulation()` calls inside a React state updater. The runner schedules one simulation day at a time so the browser regains control between days, publishes only the latest completed state at a bounded observer cadence, and cancels obsolete scheduled work on pause, speed changes, reset, or teardown. Focused regression coverage checks exact-state equivalence with direct sequential stepping, cancellation, non-overlapping speed changes, reset synchronization, and render-cadence independence. The historical pause-delay observation above is retained as the pre-fix browser result; a fresh browser-level responsiveness check remains part of final validation.
+Issue #2 follow-up (2026-09-05): runtime stepping is now owned by `SimulationRunner` rather than repeated `stepSimulation()` calls inside a React state updater. The runner schedules one simulation day at a time so the browser regains control between days, publishes only the latest completed state at a bounded observer cadence, and cancels obsolete scheduled work on pause, speed changes, reset, or teardown. Focused regression coverage checks exact-state equivalence with direct sequential stepping, cancellation, non-overlapping speed changes, reset synchronization, and render-cadence independence. The historical pause-delay observation above is retained as the pre-fix browser result.
+
+Issue #8 makes the browser-level regression check durable. `.github/workflows/fast-mode-browser-validation.yml` builds the production application and runs `scripts/validate-fast-mode.mjs` in headless Chromium on pull requests targeting `main` and pushes to `main`. The smoke test verifies canonical N=100, confirms that 100× fast mode advances, requires Pause to become observable within 1.5 seconds, and verifies that the visible simulation day does not continue advancing after Pause. The bound is intentionally looser than the original 500 ms review measurement to reduce CI flakiness while still detecting the original main-thread-stall failure mode.
 
 MVP2 historical validation combines analytical benchmarks, runtime invariants from that stage, deterministic black-box tests, a controlled five-firm experiment, and browser checks. The [design rules](../SIMULATION_DESIGN_RULES.md) remain authoritative.
 
@@ -74,6 +76,8 @@ npm run typecheck
 npm run build
 npm run check
 ```
+
+The durable browser check runs through `.github/workflows/fast-mode-browser-validation.yml` from a production build. It intentionally remains separate from the local `npm run check` command because it installs Chromium and is meant as focused browser-level CI coverage.
 
 Final command and browser results are recorded in the newest changelog and lab-note entries. Validation establishes accounting, causality, reproducibility, and the known controlled benchmark; it does not establish realism, welfare, or general equilibrium.
 
