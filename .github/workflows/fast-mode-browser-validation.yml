@@ -19,6 +19,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run test:run
       - run: npm run build
       - name: Install browser test dependency
         run: npm install --no-save --package-lock=false playwright@1.55.0
