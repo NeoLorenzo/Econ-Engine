@@ -2,6 +2,62 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Simulation_Runner-015] - (2026-09-06)
+
+### Added
+
+- Added a durable production-browser fast-mode regression check in `scripts/validate-fast-mode.mjs` using headless Chromium.
+- Added `.github/workflows/fast-mode-browser-validation.yml` so pull requests targeting `main` and pushes to `main` build the production application and exercise canonical fast-mode responsiveness automatically.
+
+### Validation
+
+- The browser check verifies canonical N=100, confirms 100× fast mode advances, requires Pause to become observable within 1.5 seconds, and verifies that the visible day stops advancing after Pause.
+- The CI path runs the unit suite and production build before the focused browser check; the browser dependency remains intentionally separate from local `npm run check`.
+
+## [MVP8-Simulation_Runner-014] - (2026-09-05)
+
+### Changed
+
+- Moved runtime simulation stepping out of React state-updater batching into `SimulationRunner`.
+- The runner advances one economic day at a time, yields browser control between days, publishes the latest completed state at a bounded observer cadence, and cancels obsolete scheduled work on pause, speed changes, reset, or teardown.
+- Preserved sequential simulation semantics while decoupling economic stepping frequency from React rendering frequency.
+
+### Validation
+
+- Added focused regression coverage for exact-state equivalence with direct sequential stepping, cancellation, non-overlapping speed changes, reset synchronization, and render-cadence independence.
+- Retained the August 14 fast-mode pause-delay observation in `docs/VALIDATION.md` as the pre-fix browser result rather than rewriting it as though the runner had already been present.
+
+## [MVP8-Spatial_Affordability-013] - (2026-09-02)
+
+### Fixed
+
+- Corrected `householdsAffordableAtMarketOpen` to test whether at least one supplier's delivered cost—posted price plus household-specific transport fee—fits both the household's industry budget and current cash.
+- Removed the prior observer calculation that compared only the minimum posted sticker price against household limits and could therefore classify spatially unaffordable households as affordable.
+
+### Validation
+
+- Added regression cases where sticker price fits but every delivered cost exceeds the opening limit, and where exactly one supplier's delivered cost fits.
+- The correction changes observer/research measurement only; household purchase choice already used delivered cost.
+
+## [MVP8-Documentation-012] - (2026-09-01)
+
+### Changed
+
+- Aligned `docs/ARCHITECTURE.md` and `docs/VALIDATION.md` with the implemented MVP8 population model, nine-firm structure, cash-constrained payroll, residual-profit taxation, population-derived money supply, and current runtime invariants.
+- Reclassified older N=10/MVP2 validation material as historical where appropriate instead of presenting it as the current canonical model.
+
+## [MVP8-Population_Scaling-011] - (2026-08-30)
+
+### Fixed
+
+- Corrected population-scale `transportRevenuePerHouseholdCents` to use transport revenue accumulated across the complete requested experiment horizon.
+- The previous calculation averaged only `state.metrics`, whose bounded retention window truncates older days once the horizon exceeds `MAX_HISTORY`.
+
+### Validation
+
+- Added a regression that deliberately runs beyond retained metric history, proves the retained-window value differs from the full-horizon value, and verifies the experiment reports the full-horizon result.
+- Historical population-scale results produced before this correction remain historical outputs; this change does not retroactively relabel them as post-fix measurements.
+
 ## [MVP8-Population_Scaling-010.2] - (2026-08-17)
 
 ### Added

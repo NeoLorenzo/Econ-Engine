@@ -6,6 +6,60 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Simulation_Runner-015] - (2026-09-06)
+
+### Validation boundary
+
+The `SimulationRunner` change solved the architectural cause of the fast-mode pause problem, but unit-level equivalence and scheduler tests alone could not permanently prove that the production browser remained responsive. A regression in React integration, production bundling, or event-loop behavior could reintroduce the user-visible failure while pure simulation tests stayed green.
+
+A focused Playwright smoke test now treats browser responsiveness as a durable validation boundary. It loads the production build at canonical N=100, starts 100× mode, verifies visible progress, requires Pause to become observable within 1.5 seconds, and confirms the visible simulation day stops advancing afterward. The threshold is intentionally looser than the approximately 500 ms review measurement so ordinary CI variance does not turn the check into a timing-flake detector.
+
+The browser dependency is intentionally not folded into `npm run check`: local deterministic simulation validation remains lightweight, while GitHub Actions owns the heavier production-browser regression. This update adds validation infrastructure only and does not change economic behavior.
+
+## [MVP8-Simulation_Runner-014] - (2026-09-05)
+
+### Problem and architecture decision
+
+The August 14 browser validation exposed a real separation-of-concerns failure: at canonical N=100 and maximum speed, repeated `stepSimulation()` work inside React state updates could occupy the main thread long enough that automated interaction with Pause was delayed. The economic step itself was deterministic, but execution cadence and observer rendering were coupled too tightly.
+
+`SimulationRunner` now owns runtime stepping outside React's state-updater batching. It schedules one complete economic day at a time, yields control between days, and publishes only the latest completed state at a bounded observer cadence. Pause, speed changes, reset, and teardown invalidate obsolete scheduled work. This preserves the model's sequential day semantics while making React an observer of completed states rather than the owner of the simulation clock.
+
+### Validation and interpretation
+
+Focused tests compare runner output with direct sequential stepping and cover cancellation, speed changes, reset synchronization, and render-cadence independence. `docs/VALIDATION.md` deliberately preserves the August 14 pause-delay result as evidence about the pre-fix architecture; it is not rewritten as if the runner had existed during that historical validation.
+
+## [MVP8-Spatial_Affordability-013] - (2026-09-02)
+
+### Observer correctness
+
+Market-open affordability is an observer metric, but in a spatial market it must use the same economic cost concept that defines whether a supplier is actually reachable within a household's limits. The prior calculation compared household cash/budget with the cheapest posted sticker price. That ignored transport fees and could count a household as affordable even when every available firm's delivered cost exceeded its opening cash or category budget.
+
+The corrected metric asks whether each household has at least one industry firm whose posted price plus household-specific transport fee fits both constraints. Purchase behavior itself already used delivered cost; the defect was therefore in measurement/interpretation rather than household choice.
+
+### Historical boundary
+
+Research summaries or screenshots generated before this correction should be interpreted as containing the old sticker-price affordability observer. The fix should not be used to silently reinterpret those historical measurements as delivered-cost affordability.
+
+## [MVP8-Documentation-012] - (2026-09-01)
+
+### Documentation source-of-truth repair
+
+Architecture and validation documentation still mixed older N=10/MVP2 assumptions with the implemented MVP8 model. The September documentation pass made `SimulationConfig.householdCount` explicit as the population authority, documented canonical N=100 employment/production and population-derived money, described cash-constrained payroll and residual-profit taxation, and separated historical MVP2 validation statements from current runtime invariants.
+
+This was a documentation correction rather than a model change. The value is interpretive: later readers should be able to distinguish historical stage-specific evidence from properties of the current simulation instead of treating superseded cardinalities or settlement rules as current behavior.
+
+## [MVP8-Population_Scaling-011] - (2026-08-30)
+
+### Research-metric correctness
+
+The population-scaling harness is intended to report normalized statistics over the complete requested horizon, while interactive `state.metrics` is intentionally bounded to keep runtime history finite. `transportRevenuePerHouseholdCents` accidentally crossed that boundary: it was computed from retained `state.metrics`, so horizons longer than `MAX_HISTORY` summarized only the retained tail even though the rest of the scale experiment accumulated full-horizon quantities directly.
+
+The fix uses the transport-revenue accumulator already collected during every experiment day and divides it by the requested horizon and household count. A regression explicitly runs past `MAX_HISTORY`, establishes that the retained-window average differs from the complete-horizon value, and verifies that the reported scale metric matches the complete horizon.
+
+### Historical interpretation
+
+The correction changes how that research metric is measured, not the underlying simulation trajectory. Results produced before 2026-08-30 retain their historical provenance and should not be described as though they were generated by the corrected full-horizon implementation.
+
 ## [MVP8-Population_Scaling-010.2] - (2026-08-17)
 
 ### Infrastructure refinement
