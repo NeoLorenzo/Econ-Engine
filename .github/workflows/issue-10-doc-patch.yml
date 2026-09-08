@@ -11,6 +11,9 @@ permissions:
 jobs:
   patch-docs:
     runs-on: ubuntu-latest
+    env:
+      CHANGELOG_B64: IyMgW01WUDgtU2ltdWxhdGlvbl9SdW5uZXItMDE1XSAtICgyMDI2LTA5LTA2KQoKIyMjIEFkZGVkCgotIEFkZGVkIGEgZHVyYWJsZSBwcm9kdWN0aW9uLWJyb3dzZXIgZmFzdC1tb2RlIHJlZ3Jlc3Npb24gY2hlY2sgaW4gYHNjcmlwdHMvdmFsaWRhdGUtZmFzdC1tb2RlLm1qc2AgdXNpbmcgaGVhZGxlc3MgQ2hyb21pdW0uCi0gQWRkZWQgYC5naXRodWIvd29ya2Zsb3dzL2Zhc3QtbW9kZS1icm93c2VyLXZhbGlkYXRpb24ueW1sYCBzbyBwdWxsIHJlcXVlc3RzIHRhcmdldGluZyBgbWFpbmAgYW5kIHB1c2hlcyB0byBgbWFpbmAgYnVpbGQgdGhlIHByb2R1Y3Rpb24gYXBwbGljYXRpb24gYW5kIGV4ZXJjaXNlIGNhbm9uaWNhbCBmYXN0LW1vZGUgcmVzcG9uc2l2ZW5lc3MgYXV0b21hdGljYWxseS4KCiMjIyBWYWxpZGF0aW9uCgotIFRoZSBicm93c2VyIGNoZWNrIHZlcmlmaWVzIGNhbm9uaWNhbCBOPTEwMCwgY29uZmlybXMgMTAww5cgZmFzdCBtb2RlIGFkdmFuY2VzLCByZXF1aXJlcyBQYXVzZSB0byBiZWNvbWUgb2JzZXJ2YWJsZSB3aXRoaW4gMS41IHNlY29uZHMsIGFuZCB2ZXJpZmllcyB0aGF0IHRoZSB2aXNpYmxlIGRheSBzdG9wcyBhZHZhbmNpbmcgYWZ0ZXIgUGF1c2UuCi0gVGhlIENJIHBhdGggcnVucyB0aGUgdW5pdCBzdWl0ZSBhbmQgcHJvZHVjdGlvbiBidWlsZCBiZWZvcmUgdGhlIGZvY3VzZWQgYnJvd3NlciBjaGVjazsgdGhlIGJyb3dzZXIgZGVwZW5kZW5jeSByZW1haW5zIGludGVudGlvbmFsbHkgc2VwYXJhdGUgZnJvbSBsb2NhbCBgbnBtIHJ1biBjaGVja2AuCgojIyBbTVZQOC1TaW11bGF0aW9uX1J1bm5lci0wMTRdIC0gKDIwMjYtMDktMDUpCgojIyMgQ2hhbmdlZAoKLSBNb3ZlZCBydW50aW1lIHNpbXVsYXRpb24gc3RlcHBpbmcgb3V0IG9mIFJlYWN0IHN0YXRlLXVwZGF0ZXIgYmF0Y2hpbmcgaW50byBgU2ltdWxhdGlvblJ1bm5lcmAuCi0gVGhlIHJ1bm5lciBhZHZhbmNlcyBvbmUgZWNvbm9taWMgZGF5IGF0IGEgdGltZSwgeWllbGRzIGJyb3dzZXIgY29udHJvbCBiZXR3ZWVuIGRheXMsIHB1Ymxpc2hlcyB0aGUgbGF0ZXN0IGNvbXBsZXRlZCBzdGF0ZSBhdCBhIGJvdW5kZWQgb2JzZXJ2ZXIgY2FkZW5jZSwgYW5kIGNhbmNlbHMgb2Jzb2xldGUgc2NoZWR1bGVkIHdvcmsgb24gcGF1c2UsIHNwZWVkIGNoYW5nZXMsIHJlc2V0LCBvciB0ZWFyZG93bi4KLSBQcmVzZXJ2ZWQgc2VxdWVudGlhbCBzaW11bGF0aW9uIHNlbWFudGljcyB3aGlsZSBkZWNvdXBsaW5nIGVjb25vbWljIHN0ZXBwaW5nIGZyZXF1ZW5jeSBmcm9tIFJlYWN0IHJlbmRlcmluZyBmcmVxdWVuY3kuCgojIyMgVmFsaWRhdGlvbgoKLSBBZGRlZCBmb2N1c2VkIHJlZ3Jlc3Npb24gY292ZXJhZ2UgZm9yIGV4YWN0LXN0YXRlIGVxdWl2YWxlbmNlIHdpdGggZGlyZWN0IHNlcXVlbnRpYWwgc3RlcHBpbmcsIGNhbmNlbGxhdGlvbiwgbm9uLW92ZXJsYXBwaW5nIHNwZWVkIGNoYW5nZXMsIHJlc2V0IHN5bmNocm9uaXphdGlvbiwgYW5kIHJlbmRlci1jYWRlbmNlIGluZGVwZW5kZW5jZS4KLSBSZXRhaW5lZCB0aGUgQXVndXN0IDE0IGZhc3QtbW9kZSBwYXVzZS1kZWxheSBvYnNlcnZhdGlvbiBpbiBgZG9jcy9WQUxJREFUSU9OLm1kYCBhcyB0aGUgcHJlLWZpeCBicm93c2VyIHJlc3VsdCByYXRoZXIgdGhhbiByZXdyaXRpbmcgaXQgYXMgdGhvdWdoIHRoZSBydW5uZXIgaGFkIGFscmVhZHkgYmVlbiBwcmVzZW50LgoKIyMgW01WUDgtU3BhdGlhbF9BZmZvcmRhYmlsaXR5LTAxM10gLSAoMjAyNi0wOS0wMikKCiMjIyBGaXhlZAoKLSBDb3JyZWN0ZWQgYGhvdXNlaG9sZHNBZmZvcmRhYmxlQXRNYXJrZXRPcGVuYCB0byB0ZXN0IHdoZXRoZXIgYXQgbGVhc3Qgb25lIHN1cHBsaWVyJ3MgZGVsaXZlcmVkIGNvc3TigJRwb3N0ZWQgcHJpY2UgcGx1cyBob3VzZWhvbGQtc3BlY2lmaWMgdHJhbnNwb3J0IGZlZeKAlGZpdHMgYm90aCB0aGUgaG91c2Vob2xkJ3MgaW5kdXN0cnkgYnVkZ2V0IGFuZCBjdXJyZW50IGNhc2guCi0gUmVtb3ZlZCB0aGUgcHJpb3Igb2JzZXJ2ZXIgY2FsY3VsYXRpb24gdGhhdCBjb21wYXJlZCBvbmx5IHRoZSBtaW5pbXVtIHBvc3RlZCBzdGlja2VyIHByaWNlIGFnYWluc3QgaG91c2Vob2xkIGxpbWl0cyBhbmQgY291bGQgdGhlcmVmb3JlIGNsYXNzaWZ5IHNwYXRpYWxseSB1bmFmZm9yZGFibGUgaG91c2Vob2xkcyBhcyBhZmZvcmRhYmxlLgoKIyMjIFZhbGlkYXRpb24KCi0gQWRkZWQgcmVncmVzc2lvbiBjYXNlcyB3aGVyZSBzdGlja2VyIHByaWNlIGZpdHMgYnV0IGV2ZXJ5IGRlbGl2ZXJlZCBjb3N0IGV4Y2VlZHMgdGhlIG9wZW5pbmcgbGltaXQsIGFuZCB3aGVyZSBleGFjdGx5IG9uZSBzdXBwbGllcidzIGRlbGl2ZXJlZCBjb3N0IGZpdHMuCi0gVGhlIGNvcnJlY3Rpb24gY2hhbmdlcyBvYnNlcnZlci9yZXNlYXJjaCBtZWFzdXJlbWVudCBvbmx5OyBob3VzZWhvbGQgcHVyY2hhc2UgY2hvaWNlIGFscmVhZHkgdXNlZCBkZWxpdmVyZWQgY29zdC4KCiMjIFtNVlA4LURvY3VtZW50YXRpb24tMDEyXSAtICgyMDI2LTA5LTAxKQoKIyMjIENoYW5nZWQKCi0gQWxpZ25lZCBgZG9jcy9BUkNISVRFQ1RVUkUubWRgIGFuZCBgZG9jcy9WQUxJREFUSU9OLm1kYCB3aXRoIHRoZSBpbXBsZW1lbnRlZCBNVlA4IHBvcHVsYXRpb24gbW9kZWwsIG5pbmUtZmlybSBzdHJ1Y3R1cmUsIGNhc2gtY29uc3RyYWluZWQgcGF5cm9sbCwgcmVzaWR1YWwtcHJvZml0IHRheGF0aW9uLCBwb3B1bGF0aW9uLWRlcml2ZWQgbW9uZXkgc3VwcGx5LCBhbmQgY3VycmVudCBydW50aW1lIGludmFyaWFudHMuCi0gUmVjbGFzc2lmaWVkIG9sZGVyIE49MTAvTVZQMiB2YWxpZGF0aW9uIG1hdGVyaWFsIGFzIGhpc3RvcmljYWwgd2hlcmUgYXBwcm9wcmlhdGUgaW5zdGVhZCBvZiBwcmVzZW50aW5nIGl0IGFzIHRoZSBjdXJyZW50IGNhbm9uaWNhbCBtb2RlbC4KCiMjIFtNVlA4LVBvcHVsYXRpb25fU2NhbGluZy0wMTFdIC0gKDIwMjYtMDgtMzApCgojIyMgRml4ZWQKCi0gQ29ycmVjdGVkIHBvcHVsYXRpb24tc2NhbGUgYHRyYW5zcG9ydFJldmVudWVQZXJIb3VzZWhvbGRDZW50c2AgdG8gdXNlIHRyYW5zcG9ydCByZXZlbnVlIGFjY3VtdWxhdGVkIGFjcm9zcyB0aGUgY29tcGxldGUgcmVxdWVzdGVkIGV4cGVyaW1lbnQgaG9yaXpvbi4KLSBUaGUgcHJldmlvdXMgY2FsY3VsYXRpb24gYXZlcmFnZWQgb25seSBgc3RhdGUubWV0cmljc2AsIHdob3NlIGJvdW5kZWQgcmV0ZW50aW9uIHdpbmRvdyB0cnVuY2F0ZXMgb2xkZXIgZGF5cyBvbmNlIHRoZSBob3Jpem9uIGV4Y2VlZHMgYE1BWF9ISVNUT1JZYC4KCiMjIyBWYWxpZGF0aW9uCgotIEFkZGVkIGEgcmVncmVzc2lvbiB0aGF0IGRlbGliZXJhdGVseSBydW5zIGJleW9uZCByZXRhaW5lZCBtZXRyaWMgaGlzdG9yeSwgcHJvdmVzIHRoZSByZXRhaW5lZC13aW5kb3cgdmFsdWUgZGlmZmVycyBmcm9tIHRoZSBmdWxsLWhvcml6b24gdmFsdWUsIGFuZCB2ZXJpZmllcyB0aGUgZXhwZXJpbWVudCByZXBvcnRzIHRoZSBmdWxsLWhvcml6b24gcmVzdWx0LgotIEhpc3RvcmljYWwgcG9wdWxhdGlvbi1zY2FsZSByZXN1bHRzIHByb2R1Y2VkIGJlZm9yZSB0aGlzIGNvcnJlY3Rpb24gcmVtYWluIGhpc3RvcmljYWwgb3V0cHV0czsgdGhpcyBjaGFuZ2UgZG9lcyBub3QgcmV0cm9hY3RpdmVseSByZWxhYmVsIHRoZW0gYXMgcG9zdC1maXggbWVhc3VyZW1lbnRzLgoK
+      LAB_B64: IyMgW01WUDgtU2ltdWxhdGlvbl9SdW5uZXItMDE1XSAtICgyMDI2LTA5LTA2KQoKIyMjIFZhbGlkYXRpb24gYm91bmRhcnkKClRoZSBgU2ltdWxhdGlvblJ1bm5lcmAgY2hhbmdlIHNvbHZlZCB0aGUgYXJjaGl0ZWN0dXJhbCBjYXVzZSBvZiB0aGUgZmFzdC1tb2RlIHBhdXNlIHByb2JsZW0sIGJ1dCB1bml0LWxldmVsIGVxdWl2YWxlbmNlIGFuZCBzY2hlZHVsZXIgdGVzdHMgYWxvbmUgY291bGQgbm90IHBlcm1hbmVudGx5IHByb3ZlIHRoYXQgdGhlIHByb2R1Y3Rpb24gYnJvd3NlciByZW1haW5lZCByZXNwb25zaXZlLiBBIHJlZ3Jlc3Npb24gaW4gUmVhY3QgaW50ZWdyYXRpb24sIHByb2R1Y3Rpb24gYnVuZGxpbmcsIG9yIGV2ZW50LWxvb3AgYmVoYXZpb3IgY291bGQgcmVpbnRyb2R1Y2UgdGhlIHVzZXItdmlzaWJsZSBmYWlsdXJlIHdoaWxlIHB1cmUgc2ltdWxhdGlvbiB0ZXN0cyBzdGF5ZWQgZ3JlZW4uCgpBIGZvY3VzZWQgUGxheXdyaWdodCBzbW9rZSB0ZXN0IG5vdyB0cmVhdHMgYnJvd3NlciByZXNwb25zaXZlbmVzcyBhcyBhIGR1cmFibGUgdmFsaWRhdGlvbiBib3VuZGFyeS4gSXQgbG9hZHMgdGhlIHByb2R1Y3Rpb24gYnVpbGQgYXQgY2Fub25pY2FsIE49MTAwLCBzdGFydHMgMTAww5cgbW9kZSwgdmVyaWZpZXMgdmlzaWJsZSBwcm9ncmVzcywgcmVxdWlyZXMgUGF1c2UgdG8gYmVjb21lIG9ic2VydmFibGUgd2l0aGluIDEuNSBzZWNvbmRzLCBhbmQgY29uZmlybXMgdGhlIHZpc2libGUgc2ltdWxhdGlvbiBkYXkgc3RvcHMgYWR2YW5jaW5nIGFmdGVyd2FyZC4gVGhlIHRocmVzaG9sZCBpcyBpbnRlbnRpb25hbGx5IGxvb3NlciB0aGFuIHRoZSBhcHByb3hpbWF0ZWx5IDUwMCBtcyByZXZpZXcgbWVhc3VyZW1lbnQgc28gb3JkaW5hcnkgQ0kgdmFyaWFuY2UgZG9lcyBub3QgdHVybiB0aGUgY2hlY2sgaW50byBhIHRpbWluZy1mbGFrZSBkZXRlY3Rvci4KClRoZSBicm93c2VyIGRlcGVuZGVuY3kgaXMgaW50ZW50aW9uYWxseSBub3QgZm9sZGVkIGludG8gYG5wbSBydW4gY2hlY2tgOiBsb2NhbCBkZXRlcm1pbmlzdGljIHNpbXVsYXRpb24gdmFsaWRhdGlvbiByZW1haW5zIGxpZ2h0d2VpZ2h0LCB3aGlsZSBHaXRIdWIgQWN0aW9ucyBvd25zIHRoZSBoZWF2aWVyIHByb2R1Y3Rpb24tYnJvd3NlciByZWdyZXNzaW9uLiBUaGlzIHVwZGF0ZSBhZGRzIHZhbGlkYXRpb24gaW5mcmFzdHJ1Y3R1cmUgb25seSBhbmQgZG9lcyBub3QgY2hhbmdlIGVjb25vbWljIGJlaGF2aW9yLgoKIyMgW01WUDgtU2ltdWxhdGlvbl9SdW5uZXItMDE0XSAtICgyMDI2LTA5LTA1KQoKIyMjIFByb2JsZW0gYW5kIGFyY2hpdGVjdHVyZSBkZWNpc2lvbgoKVGhlIEF1Z3VzdCAxNCBicm93c2VyIHZhbGlkYXRpb24gZXhwb3NlZCBhIHJlYWwgc2VwYXJhdGlvbi1vZi1jb25jZXJucyBmYWlsdXJlOiBhdCBjYW5vbmljYWwgTj0xMDAgYW5kIG1heGltdW0gc3BlZWQsIHJlcGVhdGVkIGBzdGVwU2ltdWxhdGlvbigpYCB3b3JrIGluc2lkZSBSZWFjdCBzdGF0ZSB1cGRhdGVzIGNvdWxkIG9jY3VweSB0aGUgbWFpbiB0aHJlYWQgbG9uZyBlbm91Z2ggdGhhdCBhdXRvbWF0ZWQgaW50ZXJhY3Rpb24gd2l0aCBQYXVzZSB3YXMgZGVsYXllZC4gVGhlIGVjb25vbWljIHN0ZXAgaXRzZWxmIHdhcyBkZXRlcm1pbmlzdGljLCBidXQgZXhlY3V0aW9uIGNhZGVuY2UgYW5kIG9ic2VydmVyIHJlbmRlcmluZyB3ZXJlIGNvdXBsZWQgdG9vIHRpZ2h0bHkuCgpgU2ltdWxhdGlvblJ1bm5lcmAgbm93IG93bnMgcnVudGltZSBzdGVwcGluZyBvdXRzaWRlIFJlYWN0J3Mgc3RhdGUtdXBkYXRlciBiYXRjaGluZy4gSXQgc2NoZWR1bGVzIG9uZSBjb21wbGV0ZSBlY29ub21pYyBkYXkgYXQgYSB0aW1lLCB5aWVsZHMgY29udHJvbCBiZXR3ZWVuIGRheXMsIGFuZCBwdWJsaXNoZXMgb25seSB0aGUgbGF0ZXN0IGNvbXBsZXRlZCBzdGF0ZSBhdCBhIGJvdW5kZWQgb2JzZXJ2ZXIgY2FkZW5jZS4gUGF1c2UsIHNwZWVkIGNoYW5nZXMsIHJlc2V0LCBhbmQgdGVhcmRvd24gaW52YWxpZGF0ZSBvYnNvbGV0ZSBzY2hlZHVsZWQgd29yay4gVGhpcyBwcmVzZXJ2ZXMgdGhlIG1vZGVsJ3Mgc2VxdWVudGlhbCBkYXkgc2VtYW50aWNzIHdoaWxlIG1ha2luZyBSZWFjdCBhbiBvYnNlcnZlciBvZiBjb21wbGV0ZWQgc3RhdGVzIHJhdGhlciB0aGFuIHRoZSBvd25lciBvZiB0aGUgc2ltdWxhdGlvbiBjbG9jay4KCiMjIyBWYWxpZGF0aW9uIGFuZCBpbnRlcnByZXRhdGlvbgoKRm9jdXNlZCB0ZXN0cyBjb21wYXJlIHJ1bm5lciBvdXRwdXQgd2l0aCBkaXJlY3Qgc2VxdWVudGlhbCBzdGVwcGluZyBhbmQgY292ZXIgY2FuY2VsbGF0aW9uLCBzcGVlZCBjaGFuZ2VzLCByZXNldCBzeW5jaHJvbml6YXRpb24sIGFuZCByZW5kZXItY2FkZW5jZSBpbmRlcGVuZGVuY2UuIGBkb2NzL1ZBTElEQVRJT04ubWRgIGRlbGliZXJhdGVseSBwcmVzZXJ2ZXMgdGhlIEF1Z3VzdCAxNCBwYXVzZS1kZWxheSByZXN1bHQgYXMgZXZpZGVuY2UgYWJvdXQgdGhlIHByZS1maXggYXJjaGl0ZWN0dXJlOyBpdCBpcyBub3QgcmV3cml0dGVuIGFzIGlmIHRoZSBydW5uZXIgaGFkIGV4aXN0ZWQgZHVyaW5nIHRoYXQgaGlzdG9yaWNhbCB2YWxpZGF0aW9uLgoKIyMgW01WUDgtU3BhdGlhbF9BZmZvcmRhYmlsaXR5LTAxM10gLSAoMjAyNi0wOS0wMikKCiMjIyBPYnNlcnZlciBjb3JyZWN0bmVzcwoKTWFya2V0LW9wZW4gYWZmb3JkYWJpbGl0eSBpcyBhbiBvYnNlcnZlciBtZXRyaWMsIGJ1dCBpbiBhIHNwYXRpYWwgbWFya2V0IGl0IG11c3QgdXNlIHRoZSBzYW1lIGVjb25vbWljIGNvc3QgY29uY2VwdCB0aGF0IGRlZmluZXMgd2hldGhlciBhIHN1cHBsaWVyIGlzIGFjdHVhbGx5IHJlYWNoYWJsZSB3aXRoaW4gYSBob3VzZWhvbGQncyBsaW1pdHMuIFRoZSBwcmlvciBjYWxjdWxhdGlvbiBjb21wYXJlZCBob3VzZWhvbGQgY2FzaC9idWRnZXQgd2l0aCB0aGUgY2hlYXBlc3QgcG9zdGVkIHN0aWNrZXIgcHJpY2UuIFRoYXQgaWdub3JlZCB0cmFuc3BvcnQgZmVlcyBhbmQgY291bGQgY291bnQgYSBob3VzZWhvbGQgYXMgYWZmb3JkYWJsZSBldmVuIHdoZW4gZXZlcnkgYXZhaWxhYmxlIGZpcm0ncyBkZWxpdmVyZWQgY29zdCBleGNlZWRlZCBpdHMgb3BlbmluZyBjYXNoIG9yIGNhdGVnb3J5IGJ1ZGdldC4KClRoZSBjb3JyZWN0ZWQgbWV0cmljIGFza3Mgd2hldGhlciBlYWNoIGhvdXNlaG9sZCBoYXMgYXQgbGVhc3Qgb25lIGluZHVzdHJ5IGZpcm0gd2hvc2UgcG9zdGVkIHByaWNlIHBsdXMgaG91c2Vob2xkLXNwZWNpZmljIHRyYW5zcG9ydCBmZWUgZml0cyBib3RoIGNvbnN0cmFpbnRzLiBQdXJjaGFzZSBiZWhhdmlvciBpdHNlbGYgYWxyZWFkeSB1c2VkIGRlbGl2ZXJlZCBjb3N0OyB0aGUgZGVmZWN0IHdhcyB0aGVyZWZvcmUgaW4gbWVhc3VyZW1lbnQvaW50ZXJwcmV0YXRpb24gcmF0aGVyIHRoYW4gaG91c2Vob2xkIGNob2ljZS4KCiMjIyBIaXN0b3JpY2FsIGJvdW5kYXJ5CgpSZXNlYXJjaCBzdW1tYXJpZXMgb3Igc2NyZWVuc2hvdHMgZ2VuZXJhdGVkIGJlZm9yZSB0aGlzIGNvcnJlY3Rpb24gc2hvdWxkIGJlIGludGVycHJldGVkIGFzIGNvbnRhaW5pbmcgdGhlIG9sZCBzdGlja2VyLXByaWNlIGFmZm9yZGFiaWxpdHkgb2JzZXJ2ZXIuIFRoZSBmaXggc2hvdWxkIG5vdCBiZSB1c2VkIHRvIHNpbGVudGx5IHJlaW50ZXJwcmV0IHRob3NlIGhpc3RvcmljYWwgbWVhc3VyZW1lbnRzIGFzIGRlbGl2ZXJlZC1jb3N0IGFmZm9yZGFiaWxpdHkuCgojIyBbTVZQOC1Eb2N1bWVudGF0aW9uLTAxMl0gLSAoMjAyNi0wOS0wMSkKCiMjIyBEb2N1bWVudGF0aW9uIHNvdXJjZS1vZi10cnV0aCByZXBhaXIKCkFyY2hpdGVjdHVyZSBhbmQgdmFsaWRhdGlvbiBkb2N1bWVudGF0aW9uIHN0aWxsIG1peGVkIG9sZGVyIE49MTAvTVZQMiBhc3N1bXB0aW9ucyB3aXRoIHRoZSBpbXBsZW1lbnRlZCBNVlA4IG1vZGVsLiBUaGUgU2VwdGVtYmVyIGRvY3VtZW50YXRpb24gcGFzcyBtYWRlIGBTaW11bGF0aW9uQ29uZmlnLmhvdXNlaG9sZENvdW50YCBleHBsaWNpdCBhcyB0aGUgcG9wdWxhdGlvbiBhdXRob3JpdHksIGRvY3VtZW50ZWQgY2Fub25pY2FsIE49MTAwIGVtcGxveW1lbnQvcHJvZHVjdGlvbiBhbmQgcG9wdWxhdGlvbi1kZXJpdmVkIG1vbmV5LCBkZXNjcmliZWQgY2FzaC1jb25zdHJhaW5lZCBwYXlyb2xsIGFuZCByZXNpZHVhbC1wcm9maXQgdGF4YXRpb24sIGFuZCBzZXBhcmF0ZWQgaGlzdG9yaWNhbCBNVlAyIHZhbGlkYXRpb24gc3RhdGVtZW50cyBmcm9tIGN1cnJlbnQgcnVudGltZSBpbnZhcmlhbnRzLgoKVGhpcyB3YXMgYSBkb2N1bWVudGF0aW9uIGNvcnJlY3Rpb24gcmF0aGVyIHRoYW4gYSBtb2RlbCBjaGFuZ2UuIFRoZSB2YWx1ZSBpcyBpbnRlcnByZXRpdmU6IGxhdGVyIHJlYWRlcnMgc2hvdWxkIGJlIGFibGUgdG8gZGlzdGluZ3Vpc2ggaGlzdG9yaWNhbCBzdGFnZS1zcGVjaWZpYyBldmlkZW5jZSBmcm9tIHByb3BlcnRpZXMgb2YgdGhlIGN1cnJlbnQgc2ltdWxhdGlvbiBpbnN0ZWFkIG9mIHRyZWF0aW5nIHN1cGVyc2VkZWQgY2FyZGluYWxpdGllcyBvciBzZXR0bGVtZW50IHJ1bGVzIGFzIGN1cnJlbnQgYmVoYXZpb3IuCgojIyBbTVZQOC1Qb3B1bGF0aW9uX1NjYWxpbmctMDExXSAtICgyMDI2LTA4LTMwKQoKIyMjIFJlc2VhcmNoLW1ldHJpYyBjb3JyZWN0bmVzcwoKVGhlIHBvcHVsYXRpb24tc2NhbGluZyBoYXJuZXNzIGlzIGludGVuZGVkIHRvIHJlcG9ydCBub3JtYWxpemVkIHN0YXRpc3RpY3Mgb3ZlciB0aGUgY29tcGxldGUgcmVxdWVzdGVkIGhvcml6b24sIHdoaWxlIGludGVyYWN0aXZlIGBzdGF0ZS5tZXRyaWNzYCBpcyBpbnRlbnRpb25hbGx5IGJvdW5kZWQgdG8ga2VlcCBydW50aW1lIGhpc3RvcnkgZmluaXRlLiBgdHJhbnNwb3J0UmV2ZW51ZVBlckhvdXNlaG9sZENlbnRzYCBhY2NpZGVudGFsbHkgY3Jvc3NlZCB0aGF0IGJvdW5kYXJ5OiBpdCB3YXMgY29tcHV0ZWQgZnJvbSByZXRhaW5lZCBgc3RhdGUubWV0cmljc2AsIHNvIGhvcml6b25zIGxvbmdlciB0aGFuIGBNQVhfSElTVE9SWWAgc3VtbWFyaXplZCBvbmx5IHRoZSByZXRhaW5lZCB0YWlsIGV2ZW4gdGhvdWdoIHRoZSByZXN0IG9mIHRoZSBzY2FsZSBleHBlcmltZW50IGFjY3VtdWxhdGVkIGZ1bGwtaG9yaXpvbiBxdWFudGl0aWVzIGRpcmVjdGx5LgoKVGhlIGZpeCB1c2VzIHRoZSB0cmFuc3BvcnQtcmV2ZW51ZSBhY2N1bXVsYXRvciBhbHJlYWR5IGNvbGxlY3RlZCBkdXJpbmcgZXZlcnkgZXhwZXJpbWVudCBkYXkgYW5kIGRpdmlkZXMgaXQgYnkgdGhlIHJlcXVlc3RlZCBob3Jpem9uIGFuZCBob3VzZWhvbGQgY291bnQuIEEgcmVncmVzc2lvbiBleHBsaWNpdGx5IHJ1bnMgcGFzdCBgTUFYX0hJU1RPUllgLCBlc3RhYmxpc2hlcyB0aGF0IHRoZSByZXRhaW5lZC13aW5kb3cgYXZlcmFnZSBkaWZmZXJzIGZyb20gdGhlIGNvbXBsZXRlLWhvcml6b24gdmFsdWUsIGFuZCB2ZXJpZmllcyB0aGF0IHRoZSByZXBvcnRlZCBzY2FsZSBtZXRyaWMgbWF0Y2hlcyB0aGUgY29tcGxldGUgaG9yaXpvbi4KCiMjIyBIaXN0b3JpY2FsIGludGVycHJldGF0aW9uCgpUaGUgY29ycmVjdGlvbiBjaGFuZ2VzIGhvdyB0aGF0IHJlc2VhcmNoIG1ldHJpYyBpcyBtZWFzdXJlZCwgbm90IHRoZSB1bmRlcmx5aW5nIHNpbXVsYXRpb24gdHJhamVjdG9yeS4gUmVzdWx0cyBwcm9kdWNlZCBiZWZvcmUgMjAyNi0wOC0zMCByZXRhaW4gdGhlaXIgaGlzdG9yaWNhbCBwcm92ZW5hbmNlIGFuZCBzaG91bGQgbm90IGJlIGRlc2NyaWJlZCBhcyB0aG91Z2ggdGhleSB3ZXJlIGdlbmVyYXRlZCBieSB0aGUgY29ycmVjdGVkIGZ1bGwtaG9yaXpvbiBpbXBsZW1lbnRhdGlvbi4KCg==
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,133 +21,20 @@ jobs:
       - name: Insert development record entries
         run: |
           python - <<'PY'
+          import base64
+          import os
           from pathlib import Path
 
           marker = "## [MVP8-Population_Scaling-010.2] - (2026-08-17)"
-
-          changelog_entries = r'''## [MVP8-Simulation_Runner-015] - (2026-09-06)
-
-### Added
-
-- Added a durable production-browser fast-mode regression check in `scripts/validate-fast-mode.mjs` using headless Chromium.
-- Added `.github/workflows/fast-mode-browser-validation.yml` so pull requests targeting `main` and pushes to `main` build the production application and exercise canonical fast-mode responsiveness automatically.
-
-### Validation
-
-- The browser check verifies canonical N=100, confirms 100× fast mode advances, requires Pause to become observable within 1.5 seconds, and verifies that the visible day stops advancing after Pause.
-- The CI path runs the unit suite and production build before the focused browser check; the browser dependency remains intentionally separate from local `npm run check`.
-
-## [MVP8-Simulation_Runner-014] - (2026-09-05)
-
-### Changed
-
-- Moved runtime simulation stepping out of React state-updater batching into `SimulationRunner`.
-- The runner advances one economic day at a time, yields browser control between days, publishes the latest completed state at a bounded observer cadence, and cancels obsolete scheduled work on pause, speed changes, reset, or teardown.
-- Preserved sequential simulation semantics while decoupling economic stepping frequency from React rendering frequency.
-
-### Validation
-
-- Added focused regression coverage for exact-state equivalence with direct sequential stepping, cancellation, non-overlapping speed changes, reset synchronization, and render-cadence independence.
-- Retained the August 14 fast-mode pause-delay observation in `docs/VALIDATION.md` as the pre-fix browser result rather than rewriting it as though the runner had already been present.
-
-## [MVP8-Spatial_Affordability-013] - (2026-09-02)
-
-### Fixed
-
-- Corrected `householdsAffordableAtMarketOpen` to test whether at least one supplier's delivered cost—posted price plus household-specific transport fee—fits both the household's industry budget and current cash.
-- Removed the prior observer calculation that compared only the minimum posted sticker price against household limits and could therefore classify spatially unaffordable households as affordable.
-
-### Validation
-
-- Added regression cases where sticker price fits but every delivered cost exceeds the opening limit, and where exactly one supplier's delivered cost fits.
-- The correction changes observer/research measurement only; household purchase choice already used delivered cost.
-
-## [MVP8-Documentation-012] - (2026-09-01)
-
-### Changed
-
-- Aligned `docs/ARCHITECTURE.md` and `docs/VALIDATION.md` with the implemented MVP8 population model, nine-firm structure, cash-constrained payroll, residual-profit taxation, population-derived money supply, and current runtime invariants.
-- Reclassified older N=10/MVP2 validation material as historical where appropriate instead of presenting it as the current canonical model.
-
-## [MVP8-Population_Scaling-011] - (2026-08-30)
-
-### Fixed
-
-- Corrected population-scale `transportRevenuePerHouseholdCents` to use transport revenue accumulated across the complete requested experiment horizon.
-- The previous calculation averaged only `state.metrics`, whose bounded retention window truncates older days once the horizon exceeds `MAX_HISTORY`.
-
-### Validation
-
-- Added a regression that deliberately runs beyond retained metric history, proves the retained-window value differs from the full-horizon value, and verifies the experiment reports the full-horizon result.
-- Historical population-scale results produced before this correction remain historical outputs; this change does not retroactively relabel them as post-fix measurements.
-
-'''
-
-          lab_entries = r'''## [MVP8-Simulation_Runner-015] - (2026-09-06)
-
-### Validation boundary
-
-The `SimulationRunner` change solved the architectural cause of the fast-mode pause problem, but unit-level equivalence and scheduler tests alone could not permanently prove that the production browser remained responsive. A regression in React integration, production bundling, or event-loop behavior could reintroduce the user-visible failure while pure simulation tests stayed green.
-
-A focused Playwright smoke test now treats browser responsiveness as a durable validation boundary. It loads the production build at canonical N=100, starts 100× mode, verifies visible progress, requires Pause to become observable within 1.5 seconds, and confirms the visible simulation day stops advancing afterward. The threshold is intentionally looser than the approximately 500 ms review measurement so ordinary CI variance does not turn the check into a timing-flake detector.
-
-The browser dependency is intentionally not folded into `npm run check`: local deterministic simulation validation remains lightweight, while GitHub Actions owns the heavier production-browser regression. This update adds validation infrastructure only and does not change economic behavior.
-
-## [MVP8-Simulation_Runner-014] - (2026-09-05)
-
-### Problem and architecture decision
-
-The August 14 browser validation exposed a real separation-of-concerns failure: at canonical N=100 and maximum speed, repeated `stepSimulation()` work inside React state updates could occupy the main thread long enough that automated interaction with Pause was delayed. The economic step itself was deterministic, but execution cadence and observer rendering were coupled too tightly.
-
-`SimulationRunner` now owns runtime stepping outside React's state-updater batching. It schedules one complete economic day at a time, yields control between days, and publishes only the latest completed state at a bounded observer cadence. Pause, speed changes, reset, and teardown invalidate obsolete scheduled work. This preserves the model's sequential day semantics while making React an observer of completed states rather than the owner of the simulation clock.
-
-### Validation and interpretation
-
-Focused tests compare runner output with direct sequential stepping and cover cancellation, speed changes, reset synchronization, and render-cadence independence. `docs/VALIDATION.md` deliberately preserves the August 14 pause-delay result as evidence about the pre-fix architecture; it is not rewritten as if the runner had existed during that historical validation.
-
-## [MVP8-Spatial_Affordability-013] - (2026-09-02)
-
-### Observer correctness
-
-Market-open affordability is an observer metric, but in a spatial market it must use the same economic cost concept that defines whether a supplier is actually reachable within a household's limits. The prior calculation compared household cash/budget with the cheapest posted sticker price. That ignored transport fees and could count a household as affordable even when every available firm's delivered cost exceeded its opening cash or category budget.
-
-The corrected metric asks whether each household has at least one industry firm whose posted price plus household-specific transport fee fits both constraints. Purchase behavior itself already used delivered cost; the defect was therefore in measurement/interpretation rather than household choice.
-
-### Historical boundary
-
-Research summaries or screenshots generated before this correction should be interpreted as containing the old sticker-price affordability observer. The fix should not be used to silently reinterpret those historical measurements as delivered-cost affordability.
-
-## [MVP8-Documentation-012] - (2026-09-01)
-
-### Documentation source-of-truth repair
-
-Architecture and validation documentation still mixed older N=10/MVP2 assumptions with the implemented MVP8 model. The September documentation pass made `SimulationConfig.householdCount` explicit as the population authority, documented canonical N=100 employment/production and population-derived money, described cash-constrained payroll and residual-profit taxation, and separated historical MVP2 validation statements from current runtime invariants.
-
-This was a documentation correction rather than a model change. The value is interpretive: later readers should be able to distinguish historical stage-specific evidence from properties of the current simulation instead of treating superseded cardinalities or settlement rules as current behavior.
-
-## [MVP8-Population_Scaling-011] - (2026-08-30)
-
-### Research-metric correctness
-
-The population-scaling harness is intended to report normalized statistics over the complete requested horizon, while interactive `state.metrics` is intentionally bounded to keep runtime history finite. `transportRevenuePerHouseholdCents` accidentally crossed that boundary: it was computed from retained `state.metrics`, so horizons longer than `MAX_HISTORY` summarized only the retained tail even though the rest of the scale experiment accumulated full-horizon quantities directly.
-
-The fix uses the transport-revenue accumulator already collected during every experiment day and divides it by the requested horizon and household count. A regression explicitly runs past `MAX_HISTORY`, establishes that the retained-window average differs from the complete-horizon value, and verifies that the reported scale metric matches the complete horizon.
-
-### Historical interpretation
-
-The correction changes how that research metric is measured, not the underlying simulation trajectory. Results produced before 2026-08-30 retain their historical provenance and should not be described as though they were generated by the corrected full-horizon implementation.
-
-'''
-
-          for filename, entries in (("CHANGELOG.md", changelog_entries), ("LAB_NOTES.md", lab_entries)):
+          for filename, env_name in (("CHANGELOG.md", "CHANGELOG_B64"), ("LAB_NOTES.md", "LAB_B64")):
               path = Path(filename)
               text = path.read_text()
               if marker not in text:
                   raise SystemExit(f"marker missing in {filename}")
               if "MVP8-Simulation_Runner-015" in text:
                   raise SystemExit(f"entries already present in {filename}")
+              entries = base64.b64decode(os.environ[env_name]).decode()
               path.write_text(text.replace(marker, entries + marker, 1))
-
           Path('.github/workflows/issue-10-doc-patch.yml').unlink()
           PY
       - name: Commit documentation update
