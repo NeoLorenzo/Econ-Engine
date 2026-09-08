@@ -1,0 +1,156 @@
+name: Apply issue 10 documentation patch
+
+on:
+  push:
+    branches:
+      - docs/issue-10-development-record
+
+permissions:
+  contents: write
+
+jobs:
+  patch-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/issue-10-development-record
+      - name: Insert development record entries
+        shell: python
+        run: |
+          from pathlib import Path
+
+          marker = "## [MVP8-Population_Scaling-010.2] - (2026-08-17)"
+
+          changelog_entries = r'''## [MVP8-Simulation_Runner-015] - (2026-09-06)
+
+### Added
+
+- Added a durable production-browser fast-mode regression check in `scripts/validate-fast-mode.mjs` using headless Chromium.
+- Added `.github/workflows/fast-mode-browser-validation.yml` so pull requests targeting `main` and pushes to `main` build the production application and exercise canonical fast-mode responsiveness automatically.
+
+### Validation
+
+- The browser check verifies canonical N=100, confirms 100× fast mode advances, requires Pause to become observable within 1.5 seconds, and verifies that the visible day stops advancing after Pause.
+- The CI path runs the unit suite and production build before the focused browser check; the browser dependency remains intentionally separate from local `npm run check`.
+
+## [MVP8-Simulation_Runner-014] - (2026-09-05)
+
+### Changed
+
+- Moved runtime simulation stepping out of React state-updater batching into `SimulationRunner`.
+- The runner advances one economic day at a time, yields browser control between days, publishes the latest completed state at a bounded observer cadence, and cancels obsolete scheduled work on pause, speed changes, reset, or teardown.
+- Preserved sequential simulation semantics while decoupling economic stepping frequency from React rendering frequency.
+
+### Validation
+
+- Added focused regression coverage for exact-state equivalence with direct sequential stepping, cancellation, non-overlapping speed changes, reset synchronization, and render-cadence independence.
+- Retained the August 14 fast-mode pause-delay observation in `docs/VALIDATION.md` as the pre-fix browser result rather than rewriting it as though the runner had already been present.
+
+## [MVP8-Spatial_Affordability-013] - (2026-09-02)
+
+### Fixed
+
+- Corrected `householdsAffordableAtMarketOpen` to test whether at least one supplier's delivered cost—posted price plus household-specific transport fee—fits both the household's industry budget and current cash.
+- Removed the prior observer calculation that compared only the minimum posted sticker price against household limits and could therefore classify spatially unaffordable households as affordable.
+
+### Validation
+
+- Added regression cases where sticker price fits but every delivered cost exceeds the opening limit, and where exactly one supplier's delivered cost fits.
+- The correction changes observer/research measurement only; household purchase choice already used delivered cost.
+
+## [MVP8-Documentation-012] - (2026-09-01)
+
+### Changed
+
+- Aligned `docs/ARCHITECTURE.md` and `docs/VALIDATION.md` with the implemented MVP8 population model, nine-firm structure, cash-constrained payroll, residual-profit taxation, population-derived money supply, and current runtime invariants.
+- Reclassified older N=10/MVP2 validation material as historical where appropriate instead of presenting it as the current canonical model.
+
+## [MVP8-Population_Scaling-011] - (2026-08-30)
+
+### Fixed
+
+- Corrected population-scale `transportRevenuePerHouseholdCents` to use transport revenue accumulated across the complete requested experiment horizon.
+- The previous calculation averaged only `state.metrics`, whose bounded retention window truncates older days once the horizon exceeds `MAX_HISTORY`.
+
+### Validation
+
+- Added a regression that deliberately runs beyond retained metric history, proves the retained-window value differs from the full-horizon value, and verifies the experiment reports the full-horizon result.
+- Historical population-scale results produced before this correction remain historical outputs; this change does not retroactively relabel them as post-fix measurements.
+
+'''
+
+          lab_entries = r'''## [MVP8-Simulation_Runner-015] - (2026-09-06)
+
+### Validation boundary
+
+The `SimulationRunner` change solved the architectural cause of the fast-mode pause problem, but unit-level equivalence and scheduler tests alone could not permanently prove that the production browser remained responsive. A regression in React integration, production bundling, or event-loop behavior could reintroduce the user-visible failure while pure simulation tests stayed green.
+
+A focused Playwright smoke test now treats browser responsiveness as a durable validation boundary. It loads the production build at canonical N=100, starts 100× mode, verifies visible progress, requires Pause to become observable within 1.5 seconds, and confirms the visible simulation day stops advancing afterward. The threshold is intentionally looser than the approximately 500 ms review measurement so ordinary CI variance does not turn the check into a timing-flake detector.
+
+The browser dependency is intentionally not folded into `npm run check`: local deterministic simulation validation remains lightweight, while GitHub Actions owns the heavier production-browser regression. This update adds validation infrastructure only and does not change economic behavior.
+
+## [MVP8-Simulation_Runner-014] - (2026-09-05)
+
+### Problem and architecture decision
+
+The August 14 browser validation exposed a real separation-of-concerns failure: at canonical N=100 and maximum speed, repeated `stepSimulation()` work inside React state updates could occupy the main thread long enough that automated interaction with Pause was delayed. The economic step itself was deterministic, but execution cadence and observer rendering were coupled too tightly.
+
+`SimulationRunner` now owns runtime stepping outside React's state-updater batching. It schedules one complete economic day at a time, yields control between days, and publishes only the latest completed state at a bounded observer cadence. Pause, speed changes, reset, and teardown invalidate obsolete scheduled work. This preserves the model's sequential day semantics while making React an observer of completed states rather than the owner of the simulation clock.
+
+### Validation and interpretation
+
+Focused tests compare runner output with direct sequential stepping and cover cancellation, speed changes, reset synchronization, and render-cadence independence. `docs/VALIDATION.md` deliberately preserves the August 14 pause-delay result as evidence about the pre-fix architecture; it is not rewritten as if the runner had existed during that historical validation.
+
+## [MVP8-Spatial_Affordability-013] - (2026-09-02)
+
+### Observer correctness
+
+Market-open affordability is an observer metric, but in a spatial market it must use the same economic cost concept that defines whether a supplier is actually reachable within a household's limits. The prior calculation compared household cash/budget with the cheapest posted sticker price. That ignored transport fees and could count a household as affordable even when every available firm's delivered cost exceeded its opening cash or category budget.
+
+The corrected metric asks whether each household has at least one industry firm whose posted price plus household-specific transport fee fits both constraints. Purchase behavior itself already used delivered cost; the defect was therefore in measurement/interpretation rather than household choice.
+
+### Historical boundary
+
+Research summaries or screenshots generated before this correction should be interpreted as containing the old sticker-price affordability observer. The fix should not be used to silently reinterpret those historical measurements as delivered-cost affordability.
+
+## [MVP8-Documentation-012] - (2026-09-01)
+
+### Documentation source-of-truth repair
+
+Architecture and validation documentation still mixed older N=10/MVP2 assumptions with the implemented MVP8 model. The September documentation pass made `SimulationConfig.householdCount` explicit as the population authority, documented canonical N=100 employment/production and population-derived money, described cash-constrained payroll and residual-profit taxation, and separated historical MVP2 validation statements from current runtime invariants.
+
+This was a documentation correction rather than a model change. The value is interpretive: later readers should be able to distinguish historical stage-specific evidence from properties of the current simulation instead of treating superseded cardinalities or settlement rules as current behavior.
+
+## [MVP8-Population_Scaling-011] - (2026-08-30)
+
+### Research-metric correctness
+
+The population-scaling harness is intended to report normalized statistics over the complete requested horizon, while interactive `state.metrics` is intentionally bounded to keep runtime history finite. `transportRevenuePerHouseholdCents` accidentally crossed that boundary: it was computed from retained `state.metrics`, so horizons longer than `MAX_HISTORY` summarized only the retained tail even though the rest of the scale experiment accumulated full-horizon quantities directly.
+
+The fix uses the transport-revenue accumulator already collected during every experiment day and divides it by the requested horizon and household count. A regression explicitly runs past `MAX_HISTORY`, establishes that the retained-window average differs from the complete-horizon value, and verifies that the reported scale metric matches the complete horizon.
+
+### Historical interpretation
+
+The correction changes how that research metric is measured, not the underlying simulation trajectory. Results produced before 2026-08-30 retain their historical provenance and should not be described as though they were generated by the corrected full-horizon implementation.
+
+'''
+
+          for filename, entries in (("CHANGELOG.md", changelog_entries), ("LAB_NOTES.md", lab_entries)):
+              path = Path(filename)
+              text = path.read_text()
+              if marker not in text:
+                  raise SystemExit(f"marker missing in {filename}")
+              if "MVP8-Simulation_Runner-015" in text:
+                  raise SystemExit(f"entries already present in {filename}")
+              path.write_text(text.replace(marker, entries + marker, 1))
+
+          Path('.github/workflows/issue-10-doc-patch.yml').unlink()
+      - name: Commit documentation update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md LAB_NOTES.md .github/workflows/issue-10-doc-patch.yml
+          git commit -m "docs: restore recent development record"
+          git push origin HEAD:docs/issue-10-development-record
