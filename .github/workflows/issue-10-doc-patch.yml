@@ -10,15 +10,14 @@ permissions:
 
 jobs:
   patch-docs:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: docs/issue-10-development-record
       - name: Insert development record entries
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           marker = "## [MVP8-Population_Scaling-010.2] - (2026-08-17)"
@@ -147,6 +146,7 @@ The correction changes how that research metric is measured, not the underlying 
               path.write_text(text.replace(marker, entries + marker, 1))
 
           Path('.github/workflows/issue-10-doc-patch.yml').unlink()
+          PY
       - name: Commit documentation update
         run: |
           git config user.name "github-actions[bot]"
