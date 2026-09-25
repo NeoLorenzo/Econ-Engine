@@ -11,6 +11,7 @@ describe('3D world observer model', () => {
     expect(entities.filter(({ kind }) => kind === 'household')).toHaveLength(100)
     expect(entities.filter(({ kind }) => kind === 'firm')).toHaveLength(8)
     expect(entities.some(({ id }) => id === 'firm-transport')).toBe(false)
+    expect(buildMarketTerritory(state, 'food').cells).toHaveLength(400)
   })
 
   it('centres authoritative grid coordinates without mutating them', () => {
