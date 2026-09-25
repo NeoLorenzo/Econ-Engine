@@ -1,15 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { IndustryId, SimulationState } from '../sim/types'
-import { buildWorldEntities } from './worldViewModel'
+import { buildMarketTerritory, buildWorldEntities, type CompetitiveIndustryId } from './worldViewModel'
 
 const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm'
 
-const INDUSTRY_COLORS: Record<Exclude<IndustryId, 'transport'>, { a: number; b: number }> = {
+const INDUSTRY_COLORS: Record<CompetitiveIndustryId, { a: number; b: number }> = {
   food: { a: 0xdeff75, b: 0xf09a63 },
   utilities: { a: 0x65bfa1, b: 0x63b9d5 },
   healthcare: { a: 0xd6a866, b: 0xb997e8 },
   entertainment: { a: 0xd47c9b, b: 0xf09a63 },
 }
+
+const COMPETITIVE_INDUSTRIES: { id: CompetitiveIndustryId; label: string }[] = [
+  { id: 'food', label: 'Food' },
+  { id: 'utilities', label: 'Utilities' },
+  { id: 'healthcare', label: 'Healthcare' },
+  { id: 'entertainment', label: 'Entertainment' },
+]
 
 type Runtime = {
   THREE: any
@@ -17,6 +24,8 @@ type Runtime = {
   camera: any
   renderer: any
   entities: Map<string, any>
+  territoryMeshes: any[]
+  territoryKey: string | null
   ground: any | null
   grid: any | null
   gridWidth: number
@@ -90,7 +99,7 @@ function syncGround(runtime: Runtime, state: SimulationState) {
   runtime.gridHeight = height
 }
 
-function syncEntities(runtime: Runtime, state: SimulationState, selectedId: string | null) {
+function syncEntities(runtime: Runtime, state: SimulationState, selectedId: string | null, territoryIndustry: CompetitiveIndustryId) {
   const descriptors = buildWorldEntities(state)
   const liveIds = new Set(descriptors.map(({ id }) => id))
 
@@ -125,12 +134,73 @@ function syncEntities(runtime: Runtime, state: SimulationState, selectedId: stri
     }
 
     const selected = descriptor.id === selectedId
+    const territoryFirm = descriptor.kind === 'firm' && descriptor.industryId === territoryIndustry
     const visualHeight = descriptor.height
+    const horizontalScale = selected ? 1.22 : territoryFirm ? 1.1 : 1
     mesh.position.set(descriptor.x, visualHeight / 2, descriptor.z)
-    mesh.scale.set(selected ? 1.18 : 1, visualHeight, selected ? 1.18 : 1)
-    mesh.material.emissive?.setHex(selected ? 0x596528 : 0x000000)
-    mesh.material.emissiveIntensity = selected ? 0.75 : 0
+    mesh.scale.set(horizontalScale, visualHeight, horizontalScale)
+    const territoryColor = territoryFirm ? INDUSTRY_COLORS[descriptor.industryId!][descriptor.firmVariant ?? 'a'] : 0x000000
+    mesh.material.emissive?.setHex(selected ? 0x596528 : territoryColor)
+    mesh.material.emissiveIntensity = selected ? 0.75 : territoryFirm ? 0.22 : 0
   }
+}
+
+function territoryRenderKey(state: SimulationState, industryId: CompetitiveIndustryId) {
+  const firms = state.firms
+    .filter((firm) => firm.industryId === industryId && firm.coordinate)
+    .sort((a, b) => a.id.localeCompare(b.id))
+  return [
+    industryId,
+    state.config.gridWidth ?? 20,
+    state.config.gridHeight ?? 20,
+    state.config.transportCostPerTileCents ?? 0,
+    ...firms.flatMap((firm) => [firm.id, firm.postedPriceCents, firm.coordinate!.x, firm.coordinate!.y]),
+  ].join('|')
+}
+
+function clearTerritory(runtime: Runtime) {
+  for (const mesh of runtime.territoryMeshes) {
+    runtime.scene.remove(mesh)
+    disposeObject(mesh)
+  }
+  runtime.territoryMeshes = []
+}
+
+function syncTerritory(runtime: Runtime, state: SimulationState, industryId: CompetitiveIndustryId) {
+  const nextKey = territoryRenderKey(state, industryId)
+  if (runtime.territoryKey === nextKey) return
+
+  clearTerritory(runtime)
+  const territory = buildMarketTerritory(state, industryId)
+  const THREE = runtime.THREE
+
+  for (const variant of ['a', 'b'] as const) {
+    const cells = territory.cells.filter((cell) => cell.ownerVariant === variant)
+    if (!cells.length) continue
+
+    const geometry = new THREE.BoxGeometry(0.94, 0.025, 0.94)
+    const material = new THREE.MeshStandardMaterial({
+      color: INDUSTRY_COLORS[industryId][variant],
+      transparent: true,
+      opacity: 0.3,
+      roughness: 0.95,
+      metalness: 0,
+      depthWrite: false,
+    })
+    const mesh = new THREE.InstancedMesh(geometry, material, cells.length)
+    mesh.renderOrder = -1
+    const dummy = new THREE.Object3D()
+    cells.forEach((cell, index) => {
+      dummy.position.set(cell.x, 0.0125, cell.z)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(index, dummy.matrix)
+    })
+    mesh.instanceMatrix.needsUpdate = true
+    runtime.scene.add(mesh)
+    runtime.territoryMeshes.push(mesh)
+  }
+
+  runtime.territoryKey = nextKey
 }
 
 function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) => void) {
@@ -269,14 +339,19 @@ export function WorldView({ state }: { state: SimulationState }) {
   const runtimeRef = useRef<Runtime | null>(null)
   const stateRef = useRef(state)
   const selectedIdRef = useRef<string | null>(null)
+  const territoryIndustryRef = useRef<CompetitiveIndustryId>('food')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [territoryIndustry, setTerritoryIndustry] = useState<CompetitiveIndustryId>('food')
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   stateRef.current = state
   selectedIdRef.current = selectedId
+  territoryIndustryRef.current = territoryIndustry
 
   const spatialFirms = useMemo(() => state.firms.filter((firm) => firm.industryId !== 'transport' && firm.coordinate), [state.firms])
   const selectedHousehold = selectedId ? state.households.find(({ id }) => id === selectedId) ?? null : null
   const selectedFirm = selectedId ? spatialFirms.find(({ id }) => id === selectedId) ?? null : null
+  const territory = useMemo(() => buildMarketTerritory(state, territoryIndustry), [state, territoryIndustry])
+  const territoryFirms = useMemo(() => spatialFirms.filter((firm) => firm.industryId === territoryIndustry).sort((a, b) => a.id.localeCompare(b.id)), [spatialFirms, territoryIndustry])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -315,6 +390,8 @@ export function WorldView({ state }: { state: SimulationState }) {
           camera,
           renderer,
           entities: new Map<string, any>(),
+          territoryMeshes: [],
+          territoryKey: null,
           ground: null,
           grid: null,
           gridWidth: 0,
@@ -344,7 +421,8 @@ export function WorldView({ state }: { state: SimulationState }) {
         runtimeRef.current = runtime
 
         syncGround(runtime, stateRef.current)
-        syncEntities(runtime, stateRef.current, selectedIdRef.current)
+        syncTerritory(runtime, stateRef.current, territoryIndustryRef.current)
+        syncEntities(runtime, stateRef.current, selectedIdRef.current, territoryIndustryRef.current)
         resetCamera(runtime)
         resize()
 
@@ -369,6 +447,7 @@ export function WorldView({ state }: { state: SimulationState }) {
       if (runtime.frame !== null) cancelAnimationFrame(runtime.frame)
       runtime.disposeControls()
       runtime.resizeObserver.disconnect()
+      clearTerritory(runtime)
       for (const mesh of runtime.entities.values()) {
         runtime.scene.remove(mesh)
         disposeObject(mesh)
@@ -385,8 +464,9 @@ export function WorldView({ state }: { state: SimulationState }) {
     const runtime = runtimeRef.current
     if (!runtime) return
     syncGround(runtime, state)
-    syncEntities(runtime, state, selectedId)
-  }, [state, selectedId])
+    syncTerritory(runtime, state, territoryIndustry)
+    syncEntities(runtime, state, selectedId, territoryIndustry)
+  }, [state, selectedId, territoryIndustry])
 
   const selectedLabel = selectedHousehold
     ? selectedHousehold.id.replace('household-', 'Household ')
@@ -398,6 +478,9 @@ export function WorldView({ state }: { state: SimulationState }) {
     <div className="panel-heading world-heading">
       <div><h2>3D Econ Engine World View</h2><p>{state.households.length} households · {spatialFirms.length} competitive firms · household height encodes current cash</p></div>
       <div className="world-actions">
+        <label>Market territory<select aria-label="Market territory industry" value={territoryIndustry} onChange={(event) => setTerritoryIndustry(event.target.value as CompetitiveIndustryId)}>
+          {COMPETITIVE_INDUSTRIES.map((industry) => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
+        </select></label>
         <label>Inspect entity<select aria-label="Inspect world entity" value={selectedId ?? ''} onChange={(event) => setSelectedId(event.target.value || null)}>
           <option value="">None</option>
           <optgroup label="Firms">{spatialFirms.map((firm) => <option key={firm.id} value={firm.id}>{firm.id.replace('firm-', '')}</option>)}</optgroup>
@@ -416,11 +499,13 @@ export function WorldView({ state }: { state: SimulationState }) {
         </div>
         <div className="world-legend" aria-label="World legend">
           <span><i className="world-swatch household" />Households · height = cash</span>
-          <span><i className="world-swatch food" />Food</span>
-          <span><i className="world-swatch utilities" />Utilities</span>
-          <span><i className="world-swatch healthcare" />Healthcare</span>
-          <span><i className="world-swatch entertainment" />Entertainment</span>
+          {territoryFirms.map((firm, index) => {
+            const variant = index === 0 ? 'a' : 'b'
+            const count = territory.cellCounts[firm.id] ?? 0
+            return <span key={firm.id}><i className="world-swatch" style={{ background: `#${INDUSTRY_COLORS[territoryIndustry][variant].toString(16).padStart(6, '0')}` }} />{COMPETITIVE_INDUSTRIES.find(({ id }) => id === territoryIndustry)?.label} Firm {variant.toUpperCase()} · {count} cells · {(firm.postedPriceCents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })}</span>
+          })}
         </div>
+        <p className="world-help">Territory = lowest posted price + round-trip Manhattan transport cost at each grid cell. Exact ties go to the lexicographically earlier firm ID (Firm A in the canonical economy); this is observer-only. {territory.tieCount} tied cell{territory.tieCount === 1 ? '' : 's'} currently.</p>
         <p className="world-help">Drag to orbit · Shift-drag/right-drag to pan · wheel or +/- to zoom · click a pillar/building to inspect.</p>
       </div>
 
