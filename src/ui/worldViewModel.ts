@@ -83,20 +83,24 @@ export function buildWorldEntities(state: SimulationState): WorldEntity[] {
     }
   })
 
-  const firms: WorldEntity[] = state.firms
-    .filter((firm): firm is typeof firm & { coordinate: Coordinate } => firm.coordinate !== undefined)
-    .map((firm) => {
-      const point = worldPoint(firm.coordinate, width, height)
-      return {
-        id: firm.id,
-        kind: 'firm',
-        x: point.x,
-        z: point.z,
-        height: firm.industryId === 'transport' ? 2.8 : 2.4,
-        industryId: firm.industryId,
-        firmVariant: firm.industryId === 'transport' ? undefined : firm.id.endsWith('-b') ? 'b' : 'a',
-      }
-    })
+  const firms: WorldEntity[] = state.firms.map((firm) => {
+    if (!firm.coordinate && firm.industryId !== 'transport') {
+      throw new Error(`Spatial consumer firm ${firm.id} is missing its authoritative coordinate`)
+    }
+    const point = firm.coordinate
+      ? worldPoint(firm.coordinate, width, height)
+      : { x: -(width / 2) - 1.6, z: 0 }
+
+    return {
+      id: firm.id,
+      kind: 'firm',
+      x: point.x,
+      z: point.z,
+      height: firm.industryId === 'transport' ? 2.8 : 2.4,
+      industryId: firm.industryId,
+      firmVariant: firm.industryId === 'transport' ? undefined : firm.id.endsWith('-b') ? 'b' : 'a',
+    }
+  })
 
   return [...households, ...firms]
 }
