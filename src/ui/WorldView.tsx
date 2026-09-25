@@ -467,14 +467,21 @@ function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) =>
   }
 }
 
+function displayMoney(cents: number) {
+  return (cents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })
+}
+
 function HouseholdDetails({ household }: { household: SimulationState['households'][number] }) {
   return <dl className="world-inspector-data">
     <div><dt>Coordinate</dt><dd>({household.coordinate.x}, {household.coordinate.y})</dd></div>
-    <div><dt>Cash</dt><dd>{(household.postFiscalCashCents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })}</dd></div>
+    <div><dt>Current cash</dt><dd>{displayMoney(household.postFiscalCashCents)}</dd></div>
     <div><dt>Employer</dt><dd>{household.employerFirmId.replace('firm-', '')}</dd></div>
-    <div><dt>Wage today</dt><dd>{(household.wageTodayCents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })}</dd></div>
-    <div><dt>Tax today</dt><dd>{(household.taxPaidTodayCents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })}</dd></div>
-    <div><dt>Transfer today</dt><dd>{(household.transferReceivedTodayCents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })}</dd></div>
+    <div><dt>Contractual wage</dt><dd>{displayMoney(household.contractualWageTodayCents)}</dd></div>
+    <div><dt>Wage paid today</dt><dd>{displayMoney(household.wageTodayCents)}</dd></div>
+    <div><dt>Unpaid wage</dt><dd>{displayMoney(household.unpaidWageTodayCents)}</dd></div>
+    <div><dt>Cumulative wages</dt><dd>{displayMoney(household.cumulativeWagesCents)}</dd></div>
+    <div><dt>Tax today</dt><dd>{displayMoney(household.taxPaidTodayCents)}</dd></div>
+    <div><dt>Transfer today</dt><dd>{displayMoney(household.transferReceivedTodayCents)}</dd></div>
   </dl>
 }
 
@@ -482,12 +489,55 @@ function FirmDetails({ firm }: { firm: SimulationState['firms'][number] }) {
   return <dl className="world-inspector-data">
     <div><dt>Industry</dt><dd>{firm.industryId}</dd></div>
     <div><dt>Coordinate</dt><dd>{firm.coordinate ? `(${firm.coordinate.x}, ${firm.coordinate.y})` : '—'}</dd></div>
-    <div><dt>Posted price</dt><dd>{(firm.postedPriceCents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })}</dd></div>
-    <div><dt>Workers</dt><dd>{firm.employeeIds.length}</dd></div>
-    <div><dt>Sold today</dt><dd>{firm.unitsSoldToday}</dd></div>
-    <div><dt>Available units</dt><dd>{firm.availableUnitsToday}</dd></div>
+    <div><dt>Posted price</dt><dd>{displayMoney(firm.postedPriceCents)}</dd></div>
+    <div><dt>Employees</dt><dd>{firm.employeeIds.length}</dd></div>
+    <div><dt>Productivity / worker</dt><dd>{firm.productivityPerWorker ?? 'Service capacity unconstrained'}</dd></div>
+    <div><dt>Units produced today</dt><dd>{firm.industryId === 'transport' ? '—' : firm.unitsProducedToday}</dd></div>
+    <div><dt>Contractual payroll</dt><dd>{displayMoney(firm.contractualPayrollTodayCents)}</dd></div>
+    <div><dt>Wages paid</dt><dd>{displayMoney(firm.wagesPaidTodayCents)}</dd></div>
+    <div><dt>Unpaid wages</dt><dd>{displayMoney(firm.unpaidWagesTodayCents)}</dd></div>
     <div><dt>Payroll fulfilled</dt><dd>{(firm.payrollFulfillmentRate * 100).toFixed(1)}%</dd></div>
+    <div><dt>Mean wage</dt><dd>{displayMoney(firm.meanWageTodayCents)}</dd></div>
+    <div><dt>Residual profit</dt><dd>{displayMoney(firm.residualProfitTodayCents)}</dd></div>
   </dl>
+}
+
+function EmploymentDetails({
+  state,
+  employment,
+  selectedFirm,
+  selectedHousehold,
+  onSelect,
+}: {
+  state: SimulationState
+  employment: EmploymentNetworkObservation
+  selectedFirm: SimulationState['firms'][number] | null
+  selectedHousehold: SimulationState['households'][number] | null
+  onSelect: (id: string) => void
+}) {
+  const employer = state.firms.find(({ id }) => id === employment.firmId)!
+  return <section className="employment-inspector">
+    <div className="choice-heading">
+      <span>Employment network</span>
+      <strong className="employment-count">{selectedFirm ? `${employment.workerIds.length} workers` : 'Employer link'}</strong>
+    </div>
+    <p className="choice-note">
+      {selectedFirm
+        ? `${employer.id.replace('firm-', '')} is connected to its authoritative employeeIds. Select a worker to inspect that household.`
+        : `${selectedHousehold?.id.replace('household-', 'Household ')} is connected only to its authoritative employer, ${employer.id.replace('firm-', '')}.`}
+    </p>
+    {selectedFirm && <div className="employment-workers" aria-label={`Workers employed by ${selectedFirm.id}`}>
+      {employment.workerIds.map((workerId) => {
+        const worker = state.households.find(({ id }) => id === workerId)!
+        return <button type="button" key={workerId} onClick={() => onSelect(workerId)}>
+          <strong>{workerId.replace('household-', 'H')}</strong>
+          <span>{displayMoney(worker.wageTodayCents)} wage</span>
+          <small>{displayMoney(worker.postFiscalCashCents)} cash</small>
+        </button>
+      })}
+    </div>}
+    <p className="choice-note">Green lines are schematic employment relationships, not commuting or travel routes.</p>
+  </section>
 }
 
 function choiceOutcomeLabel(outcome: HouseholdChoiceObservation['outcome']) {
@@ -498,7 +548,7 @@ function choiceOutcomeLabel(outcome: HouseholdChoiceObservation['outcome']) {
 }
 
 function formatChoiceMoney(cents: number | null) {
-  return cents === null ? '—' : (cents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })
+  return cents === null ? '—' : displayMoney(cents)
 }
 
 function HouseholdChoiceDetails({
@@ -775,8 +825,9 @@ export function WorldView({ state }: { state: SimulationState }) {
         <span className="eyebrow">Selected entity</span>
         <h3>{selectedLabel}</h3>
         {selectedHousehold && <HouseholdDetails household={selectedHousehold} />}
-        {selectedHousehold && selectedChoice && <HouseholdChoiceDetails choice={selectedChoice} choices={allSelectedChoices} industryId={choiceIndustry} onIndustryChange={setChoiceIndustry} />}
+        {relationshipMode === 'purchases' && selectedHousehold && selectedChoice && <HouseholdChoiceDetails choice={selectedChoice} choices={allSelectedChoices} industryId={choiceIndustry} onIndustryChange={setChoiceIndustry} />}
         {selectedFirm && <FirmDetails firm={selectedFirm} />}
+        {relationshipMode === 'employment' && employment && <EmploymentDetails state={state} employment={employment} selectedFirm={selectedFirm} selectedHousehold={selectedHousehold} onSelect={setSelectedId} />}
         {!selectedHousehold && !selectedFirm && <p>Select a household or firm in the world or from the entity selector. The renderer reads the current presented simulation snapshot only.</p>}
       </aside>
     </div>
