@@ -7,6 +7,7 @@
 .world-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 16px; margin-top: 18px; }
 .world-layout > * { min-width: 0; }
 .world-canvas { position: relative; width: 100%; height: 520px; overflow: hidden; border: 1px solid #2a3530; border-radius: 8px; background: #0a0f0d; }
+.world-canvas-mount { width: 100%; height: 100%; }
 .world-canvas canvas { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
 .world-canvas canvas:focus-visible { box-shadow: inset 0 0 0 2px #dfff74; }
 .world-status { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; padding: 24px; color: #89968f; font: .72rem 'DM Mono', monospace; text-align: center; pointer-events: none; }
