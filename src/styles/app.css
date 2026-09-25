@@ -19,6 +19,7 @@
 .world-swatch.utilities { background: #65bfa1; }
 .world-swatch.healthcare { background: #d6a866; }
 .world-swatch.entertainment { background: #d47c9b; }
+.world-swatch.transport { background: #97a3ff; }
 .world-help { margin: 9px 0 0; color: #66736d; font: .66rem 'DM Mono', monospace; }
 .world-inspector { min-height: 240px; padding: 18px; border: 1px solid #26302b; border-radius: 8px; background: #0b100e; }
 .world-inspector .eyebrow { margin-bottom: 9px; }
@@ -41,6 +42,14 @@
 .choice-outcome--insufficient_funds, .choice-outcome--stockout { color: #d8a06d; }
 .choice-outcome--not_run { color: #87938d; }
 .choice-note { margin: 11px 0 0; color: #718079; font-size: .67rem; line-height: 1.55; }
+.employment-inspector { margin-top: 18px; padding-top: 16px; border-top: 1px solid #26302b; }
+.employment-count { color: #78d1a8; font-size: .66rem; font-weight: 600; }
+.employment-workers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; max-height: 260px; margin-top: 12px; overflow-y: auto; }
+.employment-workers button { min-width: 0; padding: 9px; text-align: left; background: #0d1511; }
+.employment-workers strong, .employment-workers span, .employment-workers small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.employment-workers strong { color: #d9e2dd; font: 500 .66rem 'DM Mono', monospace; }
+.employment-workers span { margin-top: 5px; color: #91a099; font-size: .65rem; }
+.employment-workers small { margin-top: 3px; color: #65736c; font-size: .6rem; }
 @media (max-width: 900px) {
   .world-heading { align-items: flex-start; flex-direction: column; }
   .world-actions { width: 100%; justify-content: flex-start; }

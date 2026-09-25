@@ -1,17 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SEED } from '../sim/config'
 import { createSimulation, stepSimulation } from '../sim/engine'
-import { buildMarketTerritory, buildWorldEntities, getHouseholdChoiceObservation, householdWealthHeight, worldPoint } from './worldViewModel'
+import { buildMarketTerritory, buildWorldEntities, getEmploymentNetworkObservation, getHouseholdChoiceObservation, householdWealthHeight, worldPoint } from './worldViewModel'
 
 describe('3D world observer model', () => {
-  it('maps the canonical simulation to 100 households and 8 spatial firms', () => {
+  it('maps the canonical simulation to 100 households, 8 consumer firms, and Transport', () => {
     const state = createSimulation({ seed: DEFAULT_SEED })
     const entities = buildWorldEntities(state)
+    const firmEntities = entities.filter(({ kind }) => kind === 'firm')
 
     expect(entities.filter(({ kind }) => kind === 'household')).toHaveLength(100)
-    expect(entities.filter(({ kind }) => kind === 'firm')).toHaveLength(8)
-    expect(entities.some(({ id }) => id === 'firm-transport')).toBe(false)
+    expect(firmEntities).toHaveLength(9)
+    expect(firmEntities.filter(({ industryId }) => industryId !== 'transport')).toHaveLength(8)
+    expect(firmEntities.some(({ id }) => id === 'firm-transport')).toBe(true)
     expect(buildMarketTerritory(state, 'food').cells).toHaveLength(400)
+  })
+
+  it('renders Transport as an explicitly non-spatial observer hub', () => {
+    const state = createSimulation({ seed: DEFAULT_SEED })
+    const transport = state.firms.find(({ id }) => id === 'firm-transport')!
+    const descriptor = buildWorldEntities(state).find(({ id }) => id === transport.id)!
+
+    expect(transport.coordinate).toBeUndefined()
+    expect(descriptor.industryId).toBe('transport')
+    expect(descriptor.x).toBeLessThan(-(state.config.gridWidth ?? 20) / 2)
   })
 
   it('centres authoritative grid coordinates without mutating them', () => {
@@ -142,6 +154,40 @@ describe('3D world observer model', () => {
       productPriceCents: null,
       deliveredCostCents: null,
     })
+  })
+
+  it('maps a selected firm to its authoritative worker set', () => {
+    const state = createSimulation({ seed: DEFAULT_SEED })
+    const transport = state.firms.find(({ id }) => id === 'firm-transport')!
+    const observation = getEmploymentNetworkObservation(state, transport.id)
+
+    expect(observation.firmId).toBe(transport.id)
+    expect(observation.workerIds).toEqual(transport.employeeIds)
+    expect(observation.workerIds).toHaveLength(20)
+    expect(observation.selectedHouseholdId).toBeNull()
+  })
+
+  it('maps a selected household to its authoritative employer only', () => {
+    const state = createSimulation({ seed: DEFAULT_SEED })
+    const household = state.households[0]!
+    const observation = getEmploymentNetworkObservation(state, household.id)
+
+    expect(observation).toEqual({
+      selectedEntityId: household.id,
+      firmId: household.employerFirmId,
+      workerIds: [household.id],
+      selectedHouseholdId: household.id,
+    })
+  })
+
+  it('preserves canonical employment cardinality across all firms', () => {
+    const state = createSimulation({ seed: DEFAULT_SEED })
+    const workerIds = state.firms.flatMap((firm) => getEmploymentNetworkObservation(state, firm.id).workerIds)
+
+    expect(workerIds).toHaveLength(100)
+    expect(new Set(workerIds).size).toBe(100)
+    expect(state.firms.filter(({ industryId }) => industryId !== 'transport').every(({ employeeIds }) => employeeIds.length === 10)).toBe(true)
+    expect(state.firms.find(({ id }) => id === 'firm-transport')?.employeeIds).toHaveLength(20)
   })
 
   it('encodes household cash monotonically with bounded pillar height', () => {
