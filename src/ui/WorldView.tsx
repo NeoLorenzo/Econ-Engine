@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { IndustryId, SimulationState } from '../sim/types'
-import { buildMarketTerritory, buildWorldEntities, getHouseholdChoiceObservation, type CompetitiveIndustryId, type HouseholdChoiceObservation } from './worldViewModel'
+import { buildMarketTerritory, buildWorldEntities, getEmploymentNetworkObservation, getHouseholdChoiceObservation, type CompetitiveIndustryId, type EmploymentNetworkObservation, type HouseholdChoiceObservation } from './worldViewModel'
 
 const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm'
 
@@ -9,6 +9,13 @@ const INDUSTRY_COLORS: Record<CompetitiveIndustryId, { a: number; b: number }> =
   utilities: { a: 0x65bfa1, b: 0x63b9d5 },
   healthcare: { a: 0xd6a866, b: 0xb997e8 },
   entertainment: { a: 0xd47c9b, b: 0xf09a63 },
+}
+
+const TRANSPORT_COLOR = 0x97a3ff
+type RelationshipMode = 'purchases' | 'employment'
+
+function firmDisplayColor(industryId: IndustryId, variant: 'a' | 'b' = 'a') {
+  return industryId === 'transport' ? TRANSPORT_COLOR : INDUSTRY_COLORS[industryId][variant]
 }
 
 const COMPETITIVE_INDUSTRIES: { id: CompetitiveIndustryId; label: string }[] = [
@@ -28,6 +35,8 @@ type Runtime = {
   territoryKey: string | null
   choiceLine: any | null
   choiceLineKey: string | null
+  employmentLines: any[]
+  employmentKey: string | null
   ground: any | null
   grid: any | null
   gridWidth: number
@@ -101,7 +110,15 @@ function syncGround(runtime: Runtime, state: SimulationState) {
   runtime.gridHeight = height
 }
 
-function syncEntities(runtime: Runtime, state: SimulationState, selectedId: string | null, territoryIndustry: CompetitiveIndustryId, chosenFirmId: string | null) {
+function syncEntities(
+  runtime: Runtime,
+  state: SimulationState,
+  selectedId: string | null,
+  territoryIndustry: CompetitiveIndustryId,
+  chosenFirmId: string | null,
+  employment: EmploymentNetworkObservation | null,
+  relationshipMode: RelationshipMode,
+) {
   const descriptors = buildWorldEntities(state)
   const liveIds = new Set(descriptors.map(({ id }) => id))
 
@@ -118,7 +135,7 @@ function syncEntities(runtime: Runtime, state: SimulationState, selectedId: stri
       const isHousehold = descriptor.kind === 'household'
       const color = isHousehold
         ? 0xdfff74
-        : INDUSTRY_COLORS[descriptor.industryId!][descriptor.firmVariant ?? 'a']
+        : firmDisplayColor(descriptor.industryId!, descriptor.firmVariant ?? 'a')
       mesh = new runtime.THREE.Mesh(
         new runtime.THREE.BoxGeometry(isHousehold ? 0.46 : 0.82, 1, isHousehold ? 0.46 : 0.82),
         new runtime.THREE.MeshStandardMaterial({
@@ -136,17 +153,19 @@ function syncEntities(runtime: Runtime, state: SimulationState, selectedId: stri
     }
 
     const selected = descriptor.id === selectedId
-    const chosenFirm = descriptor.id === chosenFirmId
+    const chosenFirm = relationshipMode === 'purchases' && descriptor.id === chosenFirmId
+    const employmentLinked = relationshipMode === 'employment' && employment !== null
+      && (descriptor.id === employment.firmId || employment.workerIds.includes(descriptor.id))
     const territoryFirm = descriptor.kind === 'firm' && descriptor.industryId === territoryIndustry
     const visualHeight = descriptor.height
-    const horizontalScale = selected ? 1.22 : chosenFirm ? 1.18 : territoryFirm ? 1.1 : 1
+    const horizontalScale = selected ? 1.22 : employmentLinked ? 1.18 : chosenFirm ? 1.18 : territoryFirm ? 1.1 : 1
     mesh.position.set(descriptor.x, visualHeight / 2, descriptor.z)
     mesh.scale.set(horizontalScale, visualHeight, horizontalScale)
-    const territoryColor = descriptor.kind === 'firm' && descriptor.industryId
-      ? INDUSTRY_COLORS[descriptor.industryId][descriptor.firmVariant ?? 'a']
-      : 0x000000
-    mesh.material.emissive?.setHex(selected ? 0x596528 : chosenFirm ? territoryColor : territoryFirm ? territoryColor : 0x000000)
-    mesh.material.emissiveIntensity = selected ? 0.75 : chosenFirm ? 0.8 : territoryFirm ? 0.22 : 0
+    const entityColor = descriptor.kind === 'firm' && descriptor.industryId
+      ? firmDisplayColor(descriptor.industryId, descriptor.firmVariant ?? 'a')
+      : 0x78d1a8
+    mesh.material.emissive?.setHex(selected ? 0x596528 : employmentLinked ? 0x47735f : chosenFirm ? entityColor : territoryFirm ? entityColor : 0x000000)
+    mesh.material.emissiveIntensity = selected ? 0.75 : employmentLinked ? 0.75 : chosenFirm ? 0.8 : territoryFirm ? 0.22 : 0
   }
 }
 
@@ -277,6 +296,67 @@ function syncChoiceConnection(
   runtime.scene.add(line)
   runtime.choiceLine = line
   runtime.choiceLineKey = nextKey
+}
+
+function clearEmploymentConnections(runtime: Runtime) {
+  for (const line of runtime.employmentLines) {
+    runtime.scene.remove(line)
+    disposeObject(line)
+  }
+  runtime.employmentLines = []
+  runtime.employmentKey = null
+}
+
+function selectedEmploymentObservation(
+  state: SimulationState,
+  selectedId: string | null,
+): EmploymentNetworkObservation | null {
+  if (!selectedId) return null
+  if (!state.households.some(({ id }) => id === selectedId) && !state.firms.some(({ id }) => id === selectedId)) return null
+  return getEmploymentNetworkObservation(state, selectedId)
+}
+
+function syncEmploymentConnections(
+  runtime: Runtime,
+  state: SimulationState,
+  selectedId: string | null,
+) {
+  const employment = selectedEmploymentObservation(state, selectedId)
+  if (!employment) {
+    clearEmploymentConnections(runtime)
+    return
+  }
+
+  const firmMesh = runtime.entities.get(employment.firmId)
+  if (!firmMesh) {
+    clearEmploymentConnections(runtime)
+    return
+  }
+
+  const workerMeshes = employment.workerIds
+    .map((workerId) => [workerId, runtime.entities.get(workerId)] as const)
+    .filter((entry): entry is readonly [string, any] => Boolean(entry[1]))
+
+  const nextKey = [
+    employment.selectedEntityId,
+    employment.firmId,
+    ...workerMeshes.flatMap(([workerId, mesh]) => [workerId, mesh.position.x, mesh.position.y, mesh.position.z]),
+  ].join('|')
+  if (runtime.employmentKey === nextKey) return
+
+  clearEmploymentConnections(runtime)
+  const THREE = runtime.THREE
+  for (const [, workerMesh] of workerMeshes) {
+    const start = new THREE.Vector3(firmMesh.position.x, Math.max(0.75, firmMesh.position.y + 0.4), firmMesh.position.z)
+    const end = new THREE.Vector3(workerMesh.position.x, Math.max(0.4, workerMesh.position.y + 0.3), workerMesh.position.z)
+    const geometry = new THREE.BufferGeometry().setFromPoints([start, end])
+    const material = new THREE.LineBasicMaterial({ color: 0x78d1a8, transparent: true, opacity: 0.68 })
+    const line = new THREE.Line(geometry, material)
+    line.renderOrder = 4
+    runtime.scene.add(line)
+    runtime.employmentLines.push(line)
+  }
+  runtime.employmentKey = nextKey
 }
 
 function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) => void) {
@@ -477,18 +557,21 @@ export function WorldView({ state }: { state: SimulationState }) {
   const selectedIdRef = useRef<string | null>(null)
   const territoryIndustryRef = useRef<CompetitiveIndustryId>('food')
   const choiceIndustryRef = useRef<CompetitiveIndustryId>('food')
+  const relationshipModeRef = useRef<RelationshipMode>('purchases')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [territoryIndustry, setTerritoryIndustry] = useState<CompetitiveIndustryId>('food')
   const [choiceIndustry, setChoiceIndustry] = useState<CompetitiveIndustryId>('food')
+  const [relationshipMode, setRelationshipMode] = useState<RelationshipMode>('purchases')
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   stateRef.current = state
   selectedIdRef.current = selectedId
   territoryIndustryRef.current = territoryIndustry
   choiceIndustryRef.current = choiceIndustry
+  relationshipModeRef.current = relationshipMode
 
-  const spatialFirms = useMemo(() => state.firms.filter((firm) => firm.industryId !== 'transport' && firm.coordinate), [state.firms])
+  const worldFirms = useMemo(() => state.firms.filter((firm) => firm.coordinate), [state.firms])
   const selectedHousehold = selectedId ? state.households.find(({ id }) => id === selectedId) ?? null : null
-  const selectedFirm = selectedId ? spatialFirms.find(({ id }) => id === selectedId) ?? null : null
+  const selectedFirm = selectedId ? worldFirms.find(({ id }) => id === selectedId) ?? null : null
   const selectedChoice = useMemo(
     () => selectedHousehold ? getHouseholdChoiceObservation(state, selectedHousehold.id, choiceIndustry) : null,
     [state, selectedHousehold, choiceIndustry],
@@ -498,7 +581,11 @@ export function WorldView({ state }: { state: SimulationState }) {
     [state, selectedHousehold],
   )
   const territory = useMemo(() => buildMarketTerritory(state, territoryIndustry), [state, territoryIndustry])
-  const territoryFirms = useMemo(() => spatialFirms.filter((firm) => firm.industryId === territoryIndustry).sort((a, b) => a.id.localeCompare(b.id)), [spatialFirms, territoryIndustry])
+  const territoryFirms = useMemo(() => worldFirms.filter((firm) => firm.industryId === territoryIndustry).sort((a, b) => a.id.localeCompare(b.id)), [worldFirms, territoryIndustry])
+  const employment = useMemo(
+    () => relationshipMode === 'employment' && selectedId ? selectedEmploymentObservation(state, selectedId) : null,
+    [state, selectedId, relationshipMode],
+  )
 
   useEffect(() => {
     const mount = mountRef.current
@@ -541,6 +628,8 @@ export function WorldView({ state }: { state: SimulationState }) {
           territoryKey: null,
           choiceLine: null,
           choiceLineKey: null,
+          employmentLines: [],
+          employmentKey: null,
           ground: null,
           grid: null,
           gridWidth: 0,
@@ -571,9 +660,15 @@ export function WorldView({ state }: { state: SimulationState }) {
 
         syncGround(runtime, stateRef.current)
         syncTerritory(runtime, stateRef.current, territoryIndustryRef.current)
-        const initialChoice = selectedHouseholdChoice(stateRef.current, selectedIdRef.current, choiceIndustryRef.current)
-        syncEntities(runtime, stateRef.current, selectedIdRef.current, territoryIndustryRef.current, initialChoice?.chosenFirmId ?? null)
-        syncChoiceConnection(runtime, stateRef.current, selectedIdRef.current, choiceIndustryRef.current)
+        const initialChoice = relationshipModeRef.current === 'purchases'
+          ? selectedHouseholdChoice(stateRef.current, selectedIdRef.current, choiceIndustryRef.current)
+          : null
+        const initialEmployment = relationshipModeRef.current === 'employment'
+          ? selectedEmploymentObservation(stateRef.current, selectedIdRef.current)
+          : null
+        syncEntities(runtime, stateRef.current, selectedIdRef.current, territoryIndustryRef.current, initialChoice?.chosenFirmId ?? null, initialEmployment, relationshipModeRef.current)
+        if (relationshipModeRef.current === 'purchases') syncChoiceConnection(runtime, stateRef.current, selectedIdRef.current, choiceIndustryRef.current)
+        else syncEmploymentConnections(runtime, stateRef.current, selectedIdRef.current)
         resetCamera(runtime)
         resize()
 
@@ -599,6 +694,7 @@ export function WorldView({ state }: { state: SimulationState }) {
       runtime.disposeControls()
       runtime.resizeObserver.disconnect()
       clearChoiceConnection(runtime)
+      clearEmploymentConnections(runtime)
       clearTerritory(runtime)
       for (const mesh of runtime.entities.values()) {
         runtime.scene.remove(mesh)
@@ -615,12 +711,19 @@ export function WorldView({ state }: { state: SimulationState }) {
   useEffect(() => {
     const runtime = runtimeRef.current
     if (!runtime) return
-    const choice = selectedHouseholdChoice(state, selectedId, choiceIndustry)
+    const choice = relationshipMode === 'purchases' ? selectedHouseholdChoice(state, selectedId, choiceIndustry) : null
+    const employmentObservation = relationshipMode === 'employment' ? selectedEmploymentObservation(state, selectedId) : null
     syncGround(runtime, state)
     syncTerritory(runtime, state, territoryIndustry)
-    syncEntities(runtime, state, selectedId, territoryIndustry, choice?.chosenFirmId ?? null)
-    syncChoiceConnection(runtime, state, selectedId, choiceIndustry)
-  }, [state, selectedId, territoryIndustry, choiceIndustry])
+    syncEntities(runtime, state, selectedId, territoryIndustry, choice?.chosenFirmId ?? null, employmentObservation, relationshipMode)
+    if (relationshipMode === 'purchases') {
+      clearEmploymentConnections(runtime)
+      syncChoiceConnection(runtime, state, selectedId, choiceIndustry)
+    } else {
+      clearChoiceConnection(runtime)
+      syncEmploymentConnections(runtime, state, selectedId)
+    }
+  }, [state, selectedId, territoryIndustry, choiceIndustry, relationshipMode])
 
   const selectedLabel = selectedHousehold
     ? selectedHousehold.id.replace('household-', 'Household ')
@@ -630,14 +733,18 @@ export function WorldView({ state }: { state: SimulationState }) {
 
   return <section className="panel world-panel">
     <div className="panel-heading world-heading">
-      <div><h2>3D Econ Engine World View</h2><p>{state.households.length} households · {spatialFirms.length} competitive firms · household height encodes current cash</p></div>
+      <div><h2>3D Econ Engine World View</h2><p>{state.households.length} households · {worldFirms.length} employers · 8 consumer competitors + Transport · household height encodes current cash</p></div>
       <div className="world-actions">
+        <label>Relationship overlay<select aria-label="Relationship overlay" value={relationshipMode} onChange={(event) => setRelationshipMode(event.target.value as RelationshipMode)}>
+          <option value="purchases">Household choices</option>
+          <option value="employment">Employment network</option>
+        </select></label>
         <label>Market territory<select aria-label="Market territory industry" value={territoryIndustry} onChange={(event) => setTerritoryIndustry(event.target.value as CompetitiveIndustryId)}>
           {COMPETITIVE_INDUSTRIES.map((industry) => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
         </select></label>
         <label>Inspect entity<select aria-label="Inspect world entity" value={selectedId ?? ''} onChange={(event) => setSelectedId(event.target.value || null)}>
           <option value="">None</option>
-          <optgroup label="Firms">{spatialFirms.map((firm) => <option key={firm.id} value={firm.id}>{firm.id.replace('firm-', '')}</option>)}</optgroup>
+          <optgroup label="Firms">{worldFirms.map((firm) => <option key={firm.id} value={firm.id}>{firm.id.replace('firm-', '')}</option>)}</optgroup>
           <optgroup label="Households">{state.households.map((household) => <option key={household.id} value={household.id}>{household.id.replace('household-', 'Household ')}</option>)}</optgroup>
         </select></label>
         <button type="button" onClick={() => runtimeRef.current && resetCamera(runtimeRef.current)} disabled={status !== 'ready'}>Reset camera</button>
@@ -653,6 +760,7 @@ export function WorldView({ state }: { state: SimulationState }) {
         </div>
         <div className="world-legend" aria-label="World legend">
           <span><i className="world-swatch household" />Households · height = cash</span>
+          {relationshipMode === 'employment' && <span><i className="world-swatch transport" />Employment links · Transport employer included</span>}
           {territoryFirms.map((firm, index) => {
             const variant = index === 0 ? 'a' : 'b'
             const count = territory.cellCounts[firm.id] ?? 0
