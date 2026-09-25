@@ -619,7 +619,7 @@ export function WorldView({ state }: { state: SimulationState }) {
   choiceIndustryRef.current = choiceIndustry
   relationshipModeRef.current = relationshipMode
 
-  const worldFirms = useMemo(() => state.firms.filter((firm) => firm.coordinate), [state.firms])
+  const worldFirms = useMemo(() => state.firms, [state.firms])
   const selectedHousehold = selectedId ? state.households.find(({ id }) => id === selectedId) ?? null : null
   const selectedFirm = selectedId ? worldFirms.find(({ id }) => id === selectedId) ?? null : null
   const selectedChoice = useMemo(
@@ -810,7 +810,7 @@ export function WorldView({ state }: { state: SimulationState }) {
         </div>
         <div className="world-legend" aria-label="World legend">
           <span><i className="world-swatch household" />Households · height = cash</span>
-          {relationshipMode === 'employment' && <span><i className="world-swatch transport" />Employment links · Transport employer included</span>}
+          {relationshipMode === 'employment' && <span><i className="world-swatch transport" />Employment links · Transport shown as a non-spatial observer hub</span>}
           {territoryFirms.map((firm, index) => {
             const variant = index === 0 ? 'a' : 'b'
             const count = territory.cellCounts[firm.id] ?? 0
@@ -818,6 +818,7 @@ export function WorldView({ state }: { state: SimulationState }) {
           })}
         </div>
         <p className="world-help">Territory = lowest posted price + round-trip Manhattan transport cost at each grid cell. Exact ties go to the lexicographically earlier firm ID (Firm A in the canonical economy); this is observer-only. {territory.tieCount} tied cell{territory.tieCount === 1 ? '' : 's'} currently.</p>
+        {relationshipMode === 'employment' && <p className="world-help">Transport has no economic grid coordinate; its off-grid hub position exists only to make its employment relationships inspectable.</p>}
         <p className="world-help">Drag to orbit · Shift-drag/right-drag to pan · wheel or +/- to zoom · click a pillar/building to inspect.</p>
       </div>
 
