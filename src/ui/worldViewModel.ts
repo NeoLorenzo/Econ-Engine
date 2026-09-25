@@ -43,8 +43,15 @@ export interface WorldEntity {
   x: number
   z: number
   height: number
-  industryId?: CompetitiveIndustryId
+  industryId?: IndustryId
   firmVariant?: 'a' | 'b'
+}
+
+export interface EmploymentNetworkObservation {
+  selectedEntityId: string
+  firmId: string
+  workerIds: string[]
+  selectedHouseholdId: string | null
 }
 
 export function worldPoint(coordinate: Coordinate, gridWidth: number, gridHeight: number) {
@@ -77,7 +84,7 @@ export function buildWorldEntities(state: SimulationState): WorldEntity[] {
   })
 
   const firms: WorldEntity[] = state.firms
-    .filter((firm): firm is typeof firm & { industryId: CompetitiveIndustryId; coordinate: Coordinate } => firm.industryId !== 'transport' && firm.coordinate !== undefined)
+    .filter((firm): firm is typeof firm & { coordinate: Coordinate } => firm.coordinate !== undefined)
     .map((firm) => {
       const point = worldPoint(firm.coordinate, width, height)
       return {
@@ -85,9 +92,9 @@ export function buildWorldEntities(state: SimulationState): WorldEntity[] {
         kind: 'firm',
         x: point.x,
         z: point.z,
-        height: 2.4,
+        height: firm.industryId === 'transport' ? 2.8 : 2.4,
         industryId: firm.industryId,
-        firmVariant: firm.id.endsWith('-b') ? 'b' : 'a',
+        firmVariant: firm.industryId === 'transport' ? undefined : firm.id.endsWith('-b') ? 'b' : 'a',
       }
     })
 
@@ -182,5 +189,33 @@ export function getHouseholdChoiceObservation(
     deliveredCostCents: spatial.chosenFirmId ? spatial.deliveredCostCents : null,
     distanceToA: spatial.distanceToA,
     distanceToB: spatial.distanceToB,
+  }
+}
+
+export function getEmploymentNetworkObservation(
+  state: SimulationState,
+  selectedEntityId: string,
+): EmploymentNetworkObservation {
+  const firm = state.firms.find(({ id }) => id === selectedEntityId)
+  if (firm) {
+    return {
+      selectedEntityId,
+      firmId: firm.id,
+      workerIds: [...firm.employeeIds],
+      selectedHouseholdId: null,
+    }
+  }
+
+  const household = state.households.find(({ id }) => id === selectedEntityId)
+  if (!household) throw new Error(`Unknown employment-network entity ${selectedEntityId}`)
+
+  const employer = state.firms.find(({ id }) => id === household.employerFirmId)
+  if (!employer) throw new Error(`Unknown employer ${household.employerFirmId} for ${household.id}`)
+
+  return {
+    selectedEntityId,
+    firmId: employer.id,
+    workerIds: [household.id],
+    selectedHouseholdId: household.id,
   }
 }
