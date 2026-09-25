@@ -16,6 +16,16 @@ describe('3D world observer model', () => {
     expect(buildMarketTerritory(state, 'food').cells).toHaveLength(400)
   })
 
+  it('renders Transport as an explicitly non-spatial observer hub', () => {
+    const state = createSimulation({ seed: DEFAULT_SEED })
+    const transport = state.firms.find(({ id }) => id === 'firm-transport')!
+    const descriptor = buildWorldEntities(state).find(({ id }) => id === transport.id)!
+
+    expect(transport.coordinate).toBeUndefined()
+    expect(descriptor.industryId).toBe('transport')
+    expect(descriptor.x).toBeLessThan(-(state.config.gridWidth ?? 20) / 2)
+  })
+
   it('centres authoritative grid coordinates without mutating them', () => {
     const state = createSimulation({ seed: DEFAULT_SEED })
     const household = state.households[0]!
