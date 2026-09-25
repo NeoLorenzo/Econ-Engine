@@ -1,6 +1,27 @@
+import { transportQuote } from '../sim/spatial'
 import type { Coordinate, IndustryId, SimulationState } from '../sim/types'
 
 export type WorldEntityKind = 'household' | 'firm'
+export type CompetitiveIndustryId = Exclude<IndustryId, 'transport'>
+
+export interface MarketTerritoryCell {
+  coordinate: Coordinate
+  x: number
+  z: number
+  ownerFirmId: string
+  ownerVariant: 'a' | 'b'
+  deliveredCostCents: number
+  competingDeliveredCostCents: number
+  tie: boolean
+}
+
+export interface MarketTerritory {
+  industryId: CompetitiveIndustryId
+  firmIds: [string, string]
+  cells: MarketTerritoryCell[]
+  cellCounts: Record<string, number>
+  tieCount: number
+}
 
 export interface WorldEntity {
   id: string
@@ -8,7 +29,7 @@ export interface WorldEntity {
   x: number
   z: number
   height: number
-  industryId?: Exclude<IndustryId, 'transport'>
+  industryId?: CompetitiveIndustryId
   firmVariant?: 'a' | 'b'
 }
 
@@ -42,7 +63,7 @@ export function buildWorldEntities(state: SimulationState): WorldEntity[] {
   })
 
   const firms: WorldEntity[] = state.firms
-    .filter((firm): firm is typeof firm & { industryId: Exclude<IndustryId, 'transport'>; coordinate: Coordinate } => firm.industryId !== 'transport' && firm.coordinate !== undefined)
+    .filter((firm): firm is typeof firm & { industryId: CompetitiveIndustryId; coordinate: Coordinate } => firm.industryId !== 'transport' && firm.coordinate !== undefined)
     .map((firm) => {
       const point = worldPoint(firm.coordinate, width, height)
       return {
@@ -57,4 +78,52 @@ export function buildWorldEntities(state: SimulationState): WorldEntity[] {
     })
 
   return [...households, ...firms]
+}
+
+export function buildMarketTerritory(state: SimulationState, industryId: CompetitiveIndustryId): MarketTerritory {
+  const width = state.config.gridWidth ?? 20
+  const height = state.config.gridHeight ?? 20
+  const transportRateCents = state.config.transportCostPerTileCents ?? 0
+  const firms = state.firms
+    .filter((firm): firm is typeof firm & { industryId: CompetitiveIndustryId; coordinate: Coordinate } => firm.industryId === industryId && firm.coordinate !== undefined)
+    .sort((a, b) => a.id.localeCompare(b.id))
+
+  if (firms.length !== 2) throw new Error(`Market territory requires exactly two spatial firms for ${industryId}`)
+
+  const [firmA, firmB] = firms
+  const cellCounts: Record<string, number> = { [firmA.id]: 0, [firmB.id]: 0 }
+  let tieCount = 0
+  const cells: MarketTerritoryCell[] = []
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const coordinate = { x, y }
+      const aCost = firmA.postedPriceCents + transportQuote(coordinate, firmA.coordinate, transportRateCents).transportFeeCents
+      const bCost = firmB.postedPriceCents + transportQuote(coordinate, firmB.coordinate, transportRateCents).transportFeeCents
+      const tie = aCost === bCost
+      const owner = aCost <= bCost ? firmA : firmB
+      const competingCost = owner.id === firmA.id ? bCost : aCost
+      if (tie) tieCount += 1
+      cellCounts[owner.id] += 1
+      const point = worldPoint(coordinate, width, height)
+      cells.push({
+        coordinate,
+        x: point.x,
+        z: point.z,
+        ownerFirmId: owner.id,
+        ownerVariant: owner.id === firmA.id ? 'a' : 'b',
+        deliveredCostCents: Math.min(aCost, bCost),
+        competingDeliveredCostCents: competingCost,
+        tie,
+      })
+    }
+  }
+
+  return {
+    industryId,
+    firmIds: [firmA.id, firmB.id],
+    cells,
+    cellCounts,
+    tieCount,
+  }
 }
