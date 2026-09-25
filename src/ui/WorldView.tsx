@@ -299,7 +299,7 @@ export function WorldView({ state }: { state: SimulationState }) {
         renderer.shadowMap.type = THREE.PCFSoftShadowMap
         renderer.domElement.tabIndex = 0
         renderer.domElement.setAttribute('aria-label', '3D Econ Engine world. Drag to orbit, Shift-drag or right-drag to pan, and use the mouse wheel or plus and minus keys to zoom.')
-        mount.replaceChildren(renderer.domElement)
+        mount.appendChild(renderer.domElement)
 
         const ambient = new THREE.HemisphereLight(0xdcece4, 0x1c211f, 1.55)
         scene.add(ambient)
@@ -409,7 +409,8 @@ export function WorldView({ state }: { state: SimulationState }) {
 
     <div className="world-layout">
       <div>
-        <div ref={mountRef} className="world-canvas" data-status={status} role="img" aria-label="Interactive three-dimensional view of the current Econ Engine spatial economy">
+        <div className="world-canvas" data-status={status} role="group" aria-label="Interactive three-dimensional view of the current Econ Engine spatial economy">
+          <div ref={mountRef} className="world-canvas-mount" />
           {status === 'loading' && <div className="world-status">Loading Three.js world…</div>}
           {status === 'error' && <div className="world-status world-status--error">3D renderer unavailable. Entity inspection remains available.</div>}
         </div>
