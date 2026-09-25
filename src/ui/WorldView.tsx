@@ -309,7 +309,7 @@ export function WorldView({ state }: { state: SimulationState }) {
         key.shadow.mapSize.set(1024, 1024)
         scene.add(key)
 
-        const runtime = {
+        const runtime: Runtime = {
           THREE,
           scene,
           camera,
@@ -328,7 +328,7 @@ export function WorldView({ state }: { state: SimulationState }) {
             theta: Math.PI / 4,
             phi: 0.92,
           },
-        } satisfies Runtime
+        }
 
         const resize = () => {
           const width = Math.max(1, mount.clientWidth)
