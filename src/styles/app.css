@@ -27,6 +27,20 @@
 .world-inspector-data div { padding: 8px 0; }
 .world-inspector-data dt { color: #718079; }
 .world-inspector-data dd { max-width: 58%; text-align: right; overflow-wrap: anywhere; }
+.household-choice-inspector { margin-top: 18px; padding-top: 16px; border-top: 1px solid #26302b; }
+.choice-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
+.choice-tabs button { min-width: 0; padding: 8px 9px; text-align: left; background: #0e1512; }
+.choice-tabs button.active { border-color: #70843e; background: #182016; }
+.choice-tabs span, .choice-tabs small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-tabs span { color: #c2ccc7; font-size: .68rem; }
+.choice-tabs small { margin-top: 4px; color: #728078; font: .58rem 'DM Mono', monospace; }
+.choice-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.choice-heading > span { color: #75817b; font: .61rem 'DM Mono', monospace; text-transform: uppercase; }
+.choice-outcome { font-size: .65rem; font-weight: 600; }
+.choice-outcome--purchased { color: #78d1a8; }
+.choice-outcome--insufficient_funds, .choice-outcome--stockout { color: #d8a06d; }
+.choice-outcome--not_run { color: #87938d; }
+.choice-note { margin: 11px 0 0; color: #718079; font-size: .67rem; line-height: 1.55; }
 @media (max-width: 900px) {
   .world-heading { align-items: flex-start; flex-direction: column; }
   .world-actions { width: 100%; justify-content: flex-start; }

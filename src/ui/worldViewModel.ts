@@ -15,6 +15,20 @@ export interface MarketTerritoryCell {
   tie: boolean
 }
 
+export interface HouseholdChoiceObservation {
+  householdId: string
+  industryId: CompetitiveIndustryId
+  outcome: 'not_run' | 'purchased' | 'insufficient_funds' | 'stockout'
+  chosenFirmId: string | null
+  productPriceCents: number | null
+  oneWayDistance: number | null
+  roundTripTiles: number | null
+  transportFeeCents: number | null
+  deliveredCostCents: number | null
+  distanceToA: number | null
+  distanceToB: number | null
+}
+
 export interface MarketTerritory {
   industryId: CompetitiveIndustryId
   firmIds: [string, string]
@@ -125,5 +139,48 @@ export function buildMarketTerritory(state: SimulationState, industryId: Competi
     cells,
     cellCounts,
     tieCount,
+  }
+}
+
+export function getHouseholdChoiceObservation(
+  state: SimulationState,
+  householdId: string,
+  industryId: CompetitiveIndustryId,
+): HouseholdChoiceObservation {
+  const household = state.households.find(({ id }) => id === householdId)
+  if (!household) throw new Error(`Unknown household ${householdId}`)
+
+  const outcome = household.industryOutcomes[industryId]
+  const spatial = household.spatialPurchasesToday[industryId]
+  const normalizedOutcome = outcome.purchaseOutcomeToday ?? 'not_run'
+
+  if (!spatial) {
+    return {
+      householdId,
+      industryId,
+      outcome: normalizedOutcome,
+      chosenFirmId: null,
+      productPriceCents: null,
+      oneWayDistance: null,
+      roundTripTiles: null,
+      transportFeeCents: null,
+      deliveredCostCents: null,
+      distanceToA: null,
+      distanceToB: null,
+    }
+  }
+
+  return {
+    householdId,
+    industryId,
+    outcome: normalizedOutcome,
+    chosenFirmId: spatial.chosenFirmId,
+    productPriceCents: spatial.chosenFirmId ? spatial.productPriceCents : null,
+    oneWayDistance: spatial.chosenOneWayDistance,
+    roundTripTiles: spatial.chosenFirmId ? spatial.roundTripTiles : null,
+    transportFeeCents: spatial.chosenFirmId ? spatial.transportFeeCents : null,
+    deliveredCostCents: spatial.chosenFirmId ? spatial.deliveredCostCents : null,
+    distanceToA: spatial.distanceToA,
+    distanceToB: spatial.distanceToB,
   }
 }

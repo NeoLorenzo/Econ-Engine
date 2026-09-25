@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SEED } from '../sim/config'
-import { createSimulation } from '../sim/engine'
-import { buildMarketTerritory, buildWorldEntities, householdWealthHeight, worldPoint } from './worldViewModel'
+import { createSimulation, stepSimulation } from '../sim/engine'
+import { buildMarketTerritory, buildWorldEntities, getHouseholdChoiceObservation, householdWealthHeight, worldPoint } from './worldViewModel'
 
 describe('3D world observer model', () => {
   it('maps the canonical simulation to 100 households and 8 spatial firms', () => {
@@ -66,6 +66,82 @@ describe('3D world observer model', () => {
     const territory = buildMarketTerritory(state, 'food')
     expect(territory.cells.every(({ ownerFirmId }) => ownerFirmId === 'firm-food-b')).toBe(true)
     expect(territory.cells[0]?.deliveredCostCents).toBe(198)
+  })
+
+
+  it('reads a purchased household choice directly from authoritative current-day state', () => {
+    const state = stepSimulation(createSimulation({ seed: DEFAULT_SEED }))
+    const household = state.households.find(({ industryOutcomes }) => industryOutcomes.food.purchaseOutcomeToday === 'purchased')!
+    const spatial = household.spatialPurchasesToday.food!
+
+    const observation = getHouseholdChoiceObservation(state, household.id, 'food')
+
+    expect(observation).toEqual({
+      householdId: household.id,
+      industryId: 'food',
+      outcome: 'purchased',
+      chosenFirmId: spatial.chosenFirmId,
+      productPriceCents: spatial.productPriceCents,
+      oneWayDistance: spatial.chosenOneWayDistance,
+      roundTripTiles: spatial.roundTripTiles,
+      transportFeeCents: spatial.transportFeeCents,
+      deliveredCostCents: spatial.deliveredCostCents,
+      distanceToA: spatial.distanceToA,
+      distanceToB: spatial.distanceToB,
+    })
+  })
+
+  it('represents a failed purchase without inventing a firm or transaction values', () => {
+    const state = stepSimulation(createSimulation({ seed: DEFAULT_SEED }))
+    const household = state.households[0]!
+    const failedState = {
+      ...state,
+      households: state.households.map((candidate) => candidate.id === household.id ? {
+        ...candidate,
+        industryOutcomes: {
+          ...candidate.industryOutcomes,
+          food: { ...candidate.industryOutcomes.food, purchasedToday: false, purchaseOutcomeToday: 'stockout' as const, spentTodayCents: 0 },
+        },
+        spatialPurchasesToday: {
+          ...candidate.spatialPurchasesToday,
+          food: {
+            chosenFirmId: null,
+            distanceToA: 3,
+            distanceToB: 7,
+            chosenOneWayDistance: null,
+            roundTripTiles: 0,
+            productPriceCents: 0,
+            transportFeeCents: 0,
+            deliveredCostCents: 0,
+          },
+        },
+      } : candidate),
+    }
+
+    expect(getHouseholdChoiceObservation(failedState, household.id, 'food')).toEqual({
+      householdId: household.id,
+      industryId: 'food',
+      outcome: 'stockout',
+      chosenFirmId: null,
+      productPriceCents: null,
+      oneWayDistance: null,
+      roundTripTiles: null,
+      transportFeeCents: null,
+      deliveredCostCents: null,
+      distanceToA: 3,
+      distanceToB: 7,
+    })
+  })
+
+  it('represents an unprocessed day without inventing spatial choice data', () => {
+    const state = createSimulation({ seed: DEFAULT_SEED })
+    const household = state.households[0]!
+    expect(getHouseholdChoiceObservation(state, household.id, 'food')).toMatchObject({
+      outcome: 'not_run',
+      chosenFirmId: null,
+      productPriceCents: null,
+      deliveredCostCents: null,
+    })
   })
 
   it('encodes household cash monotonically with bounded pillar height', () => {
