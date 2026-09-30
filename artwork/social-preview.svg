@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<defs>
+<radialGradient id="bg" cx="78%" cy="50%" r="70%"><stop offset="0" stop-color="#122019"/><stop offset=".58" stop-color="#080d0b"/><stop offset="1" stop-color="#030504"/></radialGradient>
+<filter id="g"><feGaussianBlur stdDeviation="6"/></filter>
+</defs>
+<rect width="1280" height="640" fill="url(#bg)"/><rect width="1280" height="640" fill="none" stroke="#1b2521" stroke-width="2"/>
+<text x="84" y="106" font-family="Inter,Arial" font-size="30" font-weight="700" letter-spacing="7" fill="#deff75">ECON-ENGINE</text>
+<text x="84" y="255" font-family="Inter,Arial" font-size="63" font-weight="850" fill="#f4f7f5">MARKETS,</text>
+<text x="84" y="328" font-family="Inter,Arial" font-size="63" font-weight="850" fill="#f4f7f5">MADE INSPECTABLE.</text>
+<rect x="84" y="360" width="74" height="5" rx="2.5" fill="#deff75"/>
+<text x="84" y="409" font-family="Inter,Arial" font-size="22" fill="#9ca7a1">Deterministic agent economic simulation</text>
+<text x="84" y="529" font-family="Inter,Arial" font-size="13" font-weight="650" letter-spacing="2.4" fill="#68736e">100 HOUSEHOLDS · 8 COMPETITIVE FIRMS · GOVERNMENT</text>
+<g transform="translate(800 82)">
+  <g opacity=".5" stroke="#28322e" stroke-width="1"><line x1="0" y1="430" x2="390" y2="430"/><line x1="0" y1="350" x2="390" y2="350"/><line x1="0" y1="270" x2="390" y2="270"/><line x1="0" y1="190" x2="390" y2="190"/><line x1="0" y1="110" x2="390" y2="110"/></g>
+  <path d="M12 370 C70 338 108 346 150 304 S232 245 279 258 S340 188 382 140" fill="none" stroke="#deff75" stroke-opacity=".2" stroke-width="15" filter="url(#g)"/>
+  <path d="M12 370 C70 338 108 346 150 304 S232 245 279 258 S340 188 382 140" fill="none" stroke="#deff75" stroke-width="3.5"/>
+  <path d="M12 405 C80 392 121 371 166 380 S251 336 300 320 S350 301 382 286" fill="none" stroke="#65bfa1" stroke-width="3"/>
+  <path d="M12 325 C61 340 110 312 160 318 S250 286 296 270 S350 249 382 229" fill="none" stroke="#97a3ff" stroke-width="2.5" stroke-dasharray="7 7"/>
+  <g fill="#deff75"><circle cx="12" cy="370" r="5"/><circle cx="150" cy="304" r="5"/><circle cx="279" cy="258" r="5"/><circle cx="382" cy="140" r="6"/></g>
+  <g fill="#65bfa1" opacity=".9">
+    <circle cx="55" cy="62" r="5"/><circle cx="93" cy="84" r="5"/><circle cx="129" cy="58" r="5"/><circle cx="165" cy="88" r="5"/>
+    <circle cx="201" cy="61" r="5"/><circle cx="238" cy="86" r="5"/><circle cx="274" cy="57" r="5"/><circle cx="311" cy="82" r="5"/>
+  </g>
+</g>
+</svg>
