@@ -25,7 +25,7 @@ Phase 3 of the audit backlog was structural: no formatter or linter, a ~290-line
 
 ### Measurements
 
-Median of one run each, warm, on the development machine: canonical N=100 step 1.98 → 1.67 ms; N=1,000 (40×40 grid) step 37.4 → 27.2 ms.
+A single warm run of each, on the development machine: canonical N=100 step 1.98 → 1.67 ms; N=1,000 (40×40 grid) step 37.4 → 27.2 ms.
 
 ## [MVP8-Maintenance-020] - (2026-10-07)
 

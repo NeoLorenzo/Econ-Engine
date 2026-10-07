@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { firmLetter } from '../sim/config'
 import type { SimulationState } from '../sim/types'
 import { firmShortName, firmSlot, INDUSTRY_NAMES } from './format'
 import { firmColor, palette } from './theme'
@@ -36,7 +37,7 @@ export function MarketMap({
   )
   const missed = households.filter((household) => household.missed).length
   const fill = (firmId: string | null) => (firmId ? firmColor(firmSlot(firmId)) : palette.neutral)
-  const letter = (firmId: string) => firmShortName(firmId).replace('Firm ', '')
+  const letter = (firmId: string) => firmLetter(firmSlot(firmId) ?? 0)
   const cheaperOn = territory.firmIds
     .map((id) => `${firmShortName(id)} is cheaper on ${territory.cellCounts[id] ?? 0} tiles`)
     .join(', ')
