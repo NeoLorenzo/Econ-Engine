@@ -7,6 +7,7 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 ### Changed
 
 - **Dependencies** are pinned to caret ranges of the versions already in `package-lock.json` instead of `latest`. Vite, TypeScript and the React plugin moved to `devDependencies`, and `engines.node` is `>=22` to match CI. Installed versions are unchanged (#33).
+- **Browser check:** Playwright is now an exact devDependency (`1.55.0`, the version CI already used), installed by `npm ci`. The ad-hoc `npm install --no-save --package-lock=false playwright` step is removed: once versions were pinned it crashed with an npm peer-resolution bug, and without a lockfile it could also replace the locked Vite and React versions before the preview server ran.
 - **Configuration:** removed `SimulationConfig` fields the engine ignored (`dailySupplyPerIndustry`, `targetHouseholdCashCents`, `firmTaxRateBps`, `householdParityEnabled`) and the unused `countAffordableAtPrice` helper. The multi-industry pricing probe no longer accepts or reports a `dailySupplyPerIndustry` option that had no effect. The UI reads the starting household cash from `INITIAL_HOUSEHOLD_CASH_CENTS` (#32).
 - **Config validation:** `createSimulation` rejects a `householdCount` that is not a whole multiple of 10 of at least 10, and a grid with fewer cells than households plus consumer firms, with messages naming the field. Previously, values such as `15` threw deep inside employment assignment and values such as `5` or `100.5` were silently clamped or rounded (#35).
 
