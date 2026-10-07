@@ -32,6 +32,8 @@ class WorkerPool {
   private idle: Worker[] = []
   private queue: Job[] = []
   private running = new Map<number, Job>()
+  /** The request each busy worker is running, so a crashed worker can fail exactly that job. */
+  private assigned = new Map<Worker, number>()
   private readonly available: boolean
   private created = 0
   private readonly size: number
@@ -68,6 +70,7 @@ class WorkerPool {
       if (!worker) return
       const job = this.queue.shift()!
       this.running.set(job.request.id, job)
+      this.assigned.set(worker, job.request.id)
       worker.postMessage(job.request)
     }
   }
@@ -79,11 +82,25 @@ class WorkerPool {
     worker.addEventListener('message', (event: MessageEvent<ExperimentResponse>) => {
       const job = this.running.get(event.data.id)
       this.running.delete(event.data.id)
+      this.assigned.delete(worker)
       this.idle.push(worker)
       if (job) {
         if (event.data.ok) job.resolve(event.data.result)
         else job.reject(new Error(event.data.error))
       }
+      this.dispatch()
+    })
+    // A worker that fails to load or crashes never replies: fail its job, discard it, and let a fresh one take over.
+    worker.addEventListener('error', (event: ErrorEvent) => {
+      event.preventDefault()
+      const id = this.assigned.get(worker)
+      const job = id === undefined ? undefined : this.running.get(id)
+      if (id !== undefined) this.running.delete(id)
+      this.assigned.delete(worker)
+      this.idle = this.idle.filter((candidate) => candidate !== worker)
+      worker.terminate()
+      this.created -= 1
+      job?.reject(new Error(event.message || 'The experiment worker stopped unexpectedly'))
       this.dispatch()
     })
     return worker

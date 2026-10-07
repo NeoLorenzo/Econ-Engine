@@ -4,7 +4,7 @@ A deterministic agent-based economy you can watch and inspect in the browser: 10
 
 **[▶ Open the live simulator](https://neolorenzo.github.io/Econ-Engine/)**. It runs entirely in your browser; there is nothing to install.
 
-Current model: MVP8, population scaling (`[MVP8-Population_Scaling-010.1]`). The [changelog](CHANGELOG.md) records every update.
+Current model: MVP8, population scaling. The [changelog](CHANGELOG.md) records every update.
 
 ![The Overview: a 3D map of households and firms, the day's money circuit between households, firms and Government, and a feed of notable changes](docs/images/overview.png)
 

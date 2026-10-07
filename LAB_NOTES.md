@@ -26,7 +26,7 @@ Every Research result described one seed. Seeded runs are reproducible but path-
 On 8 seeds from the canonical base seed, two findings are robust and one is strongly path-dependent:
 
 - The 100-household economy met more needs than the 10-household one on every seed: +0.8 to +4.6 percentage points, mean +2.5.
-- With the adaptive Government, mean post-fiscal inequality stayed below 0.001 on every seed.
+- With the adaptive Government, mean post-fiscal inequality stayed between 0.0004 and 0.0010 on every seed.
 - Without a Government, mean inequality ranged from 0.08 to 0.63, and needs met from 83% to 97%, depending on the seed.
 
 These are descriptive results from one 8-seed set.
