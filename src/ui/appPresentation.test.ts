@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { filterAndSortHouseholds } from '../App'
 import { DEFAULT_SEED } from '../sim/config'
 import { createSimulation, stepSimulation } from '../sim/engine'
+import { DEFAULT_SETTINGS_DRAFT, parseSimulationSettings } from './simulationSettings'
 
 describe('MVP8.1 observer presentation', () => {
   it('keeps every household available before filtering and filters by ID or employer', () => {
@@ -27,10 +28,11 @@ describe('MVP8.1 observer presentation', () => {
     expect(rows).toContain('firm-transport')
   })
 
-  it('preserves the canonical deterministic trajectory through the UI configuration values', () => {
-    const uiConfig = { startingPriceCents: 200, initialStepCents: 100, laborProductivityUnitsPerWorker: 5, seed: DEFAULT_SEED, transportCostPerTileCents: 2, dailyExpenditureBudgetCents: 5_000 }
-    let direct = createSimulation(uiConfig), throughUi = createSimulation({ ...uiConfig })
+  it('preserves the canonical deterministic trajectory through the UI settings parser', () => {
+    const parsed = parseSimulationSettings(DEFAULT_SETTINGS_DRAFT)
+    if (!parsed.ok) throw new Error('Default settings draft must be valid')
+    let direct = createSimulation({ seed: DEFAULT_SEED }), throughUi = createSimulation(parsed.config)
     for (let day = 0; day < 20; day++) { direct = stepSimulation(direct); throughUi = stepSimulation(throughUi) }
-    expect(throughUi).toEqual(direct)
+    expect({ ...throughUi, config: undefined }).toEqual({ ...direct, config: undefined })
   })
 })
