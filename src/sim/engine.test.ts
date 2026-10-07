@@ -46,6 +46,14 @@ describe('MVP4 full spatial competition', () => {
     expect(Object.keys(day.metrics[0].transportRevenueByIndustryCents).sort()).toEqual([...consumerIds].sort())
   })
 
+  it('describes each transport trip with the consumer industry that caused it', () => {
+    const day = stepSimulation(createSimulation(base))
+    const names = Object.fromEntries(day.industries.map(({ id, name }) => [id, name]))
+    const trips = day.events.filter(({ type }) => type === 'TRANSPORT_SERVICE_PURCHASED')
+    expect(new Set(trips.map(({ industryId }) => industryId))).toEqual(new Set(consumerIds))
+    for (const trip of trips) expect(trip.description.endsWith(`tiles of ${names[trip.industryId!]} travel.`)).toBe(true)
+  })
+
   it.each(consumerIds)('uses delivered cost and derived affordability in %s', (industryId) => {
     const state = createSimulation(base)
     const firms = state.firms.filter((firm) => firm.industryId === industryId)

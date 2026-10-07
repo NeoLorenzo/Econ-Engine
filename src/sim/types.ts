@@ -317,6 +317,8 @@ export interface DayMetrics {
   entertainmentTrips: number
   totalTilesTravelled: number
   totalTransportRevenueCents: number
+  /** Today's failed consumer purchases by cause, counted from complete state rather than the bounded event ledger. */
+  purchaseFailuresByCause: { cash: number; category_budget: number; inventory: number }
   averageTransportFeeCents: number
   transportRevenueByIndustryCents: Partial<Record<Exclude<IndustryId, 'transport'>, number>>
   totalWagesPaidCents: number

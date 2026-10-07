@@ -46,6 +46,16 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
     expect(() => validateState(state, true)).not.toThrow()
   }, 180_000)
 
+  it('retains exactly the newest MAX_EVENTS events, in order, after each day', () => {
+    let state = createSimulation()
+    for (let day = 0; day < 4; day++) {
+      state = stepSimulation(state)
+      const retained = Math.min(MAX_EVENTS, state.nextEventId - 1)
+      expect(state.events.map(({ id }) => id)).toEqual(Array.from({ length: retained }, (_, index) => state.nextEventId - retained + index))
+      expect(state.events.at(-1)!.type).toBe('DAY_ENDED')
+    }
+  })
+
   it('reproduces the complete 1,000-day state exactly', () => {
     const config = { startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 61 }
     expect(runDays(createSimulation(config), 1_000)).toEqual(runDays(createSimulation(config), 1_000))

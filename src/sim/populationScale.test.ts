@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SEED, MAX_HISTORY, TOTAL_MONEY_CENTS } from './config'
+import { DEFAULT_SEED, MAX_EVENTS, MAX_HISTORY, TOTAL_MONEY_CENTS } from './config'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
-import { runPopulationScale, runPopulationScaleComparison } from './populationScaleExperiment'
+import { populationShareOfWealth, runPopulationScale, runPopulationScaleComparison } from './populationScaleExperiment'
 
 describe('[MVP8-Population_Scaling-010]', () => {
   it('creates the canonical 100-household employment and production scale', () => {
@@ -53,5 +53,46 @@ describe('[MVP8-Population_Scaling-010]', () => {
     const result = runPopulationScale(seed, householdCount, horizonDays)
     expect(result.terminalState.metrics).toHaveLength(MAX_HISTORY)
     expect(result.normalized.transportRevenuePerHouseholdCents).toBe(expectedFullHorizon)
+  }, 30_000)
+})
+
+describe('[MVP8] population-scale counts and concentration semantics', () => {
+  it('counts purchase failures from complete state when a day overflows the event ledger (#30)', () => {
+    let state = createSimulation({ seed: DEFAULT_SEED, householdCount: 200 })
+    let evictedDays = 0
+    for (let day = 0; day < 20; day++) {
+      state = stepSimulation(state)
+      const counts = { insufficient_funds: 0, stockout: 0 }
+      state.households.forEach((household) => Object.values(household.industryOutcomes).forEach(({ purchaseOutcomeToday }) => { if (purchaseOutcomeToday === 'insufficient_funds' || purchaseOutcomeToday === 'stockout') counts[purchaseOutcomeToday]++ }))
+      const { cash, category_budget, inventory } = state.metrics.at(-1)!.purchaseFailuresByCause
+      expect(cash + category_budget).toBe(counts.insufficient_funds)
+      expect(inventory).toBe(counts.stockout)
+      if (state.events.length === MAX_EVENTS && !state.events.some(({ day: eventDay, type }) => eventDay === state.day && type === 'DAY_STARTED')) evictedDays++
+    }
+    expect(evictedDays).toBeGreaterThan(0)
+  })
+
+  it('reports the same population fraction at every size, counting a boundary household in part (#16)', () => {
+    expect(populationShareOfWealth([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], .1)).toBe(1)
+    expect(populationShareOfWealth([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], .01)).toBeCloseTo(.1, 12)
+    expect(populationShareOfWealth([400, 300, 200, 100, 0, 0, 0, 0, 0, 0], .01)).toBeCloseTo(.04, 12)
+    const hundred = [1_000, ...Array(99).fill(10)]
+    expect(populationShareOfWealth(hundred, .01)).toBeCloseTo(1_000 / 1_990, 12)
+    expect(populationShareOfWealth(hundred, .1)).toBeCloseTo(1_090 / 1_990, 12)
+    expect(populationShareOfWealth(Array(10).fill(50), .01)).toBeCloseTo(.01, 12)
+    expect(populationShareOfWealth(Array(100).fill(50), .01)).toBeCloseTo(.01, 12)
+    expect(populationShareOfWealth([0, 0], .5)).toBe(0)
+  })
+
+  it('reports top-1% and top-10% shares with that definition at N=10 and N=100', () => {
+    const { n10, n100 } = runPopulationScaleComparison(DEFAULT_SEED, 20)
+    for (const report of [n10, n100]) {
+      const cash = report.terminalState.households.map(({ cashCents }) => cashCents)
+      expect(report.normalized.top1PercentWealthShare).toBe(populationShareOfWealth(cash, .01))
+      expect(report.normalized.top10PercentWealthShare).toBe(populationShareOfWealth(cash, .1))
+    }
+    const richestN10 = Math.max(...n10.terminalState.households.map(({ cashCents }) => cashCents)) / n10.totalMoneyCents
+    expect(n10.normalized.top1PercentWealthShare).toBeCloseTo(richestN10 / 10, 12)
+    expect(n10.normalized.top10PercentWealthShare).toBeCloseTo(richestN10, 12)
   }, 30_000)
 })

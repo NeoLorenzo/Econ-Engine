@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createSimulation, stepSimulation } from './engine'
-import { analyzeEmploymentDynamics, collectEmploymentObservations, concentrationShare, fractionalRanks, runEmploymentDynamics, spellSummary, summarizeSeries, type EmploymentDayObservation } from './employmentDynamics'
+import { analyzeEmploymentDynamics, CASH_BINS, cashBinIndex, collectEmploymentObservations, concentrationShare, fractionalRanks, runEmploymentDynamics, spellSummary, summarizeSeries, type EmploymentDayObservation } from './employmentDynamics'
 import { giniCoefficient } from './analytics'
 
 describe('[MVP5-Employment-007.1] pure trajectory primitives', () => {
@@ -60,5 +60,63 @@ describe('[MVP5-Employment-007.1] report isolation and accounting', () => {
     const terminalRichest = report.households.find(({ householdId }) => householdId === 'h3')!
     expect(terminalRichest.terminalCashCents).toBe(100); expect(terminalRichest.richestDays).toBe(2)
     expect(terminalRichest.lowCash[100].fraction).toBe(1 / 3)
+  })
+})
+
+type Outcome = EmploymentDayObservation['households'][number]['outcomes']['food']
+const syntheticDay = (day: number, households: Array<{ opening: number; end: number; purchased?: number }>): EmploymentDayObservation => ({
+  day,
+  households: households.map(({ opening, end, purchased = 4 }, index) => {
+    const outcome = (slot: number): Outcome => (slot < purchased ? 'purchased' : 'cash')
+    return { householdId: `h${index}`, employerFirmId: `f${index}`, openingCashCents: opening, endCashCents: end, wageCents: 0, spendingCents: 0, netCashChangeCents: 0, outcomes: { food: outcome(0), utilities: outcome(1), healthcare: outcome(2), entertainment: outcome(3) } }
+  }),
+  firms: households.map((_, index) => ({ firmId: `f${index}`, industryId: 'food' as const, employeeIds: [`h${index}`], produced: 0, sold: 0, expired: 0, operatingEarningsCents: 0, wagesCents: 0 })),
+})
+const flat = (day: number, cash: number[]) => syntheticDay(day, cash.map((value) => ({ opening: value, end: value })))
+
+describe('[MVP8] prior-cash bins partition every household-day (#14)', () => {
+  it('assigns each boundary to exactly one half-open bin', () => {
+    const cases: Array<[number, string]> = [[-1, '<$1'], [0, '<$1'], [99, '<$1'], [100, '$1–$4.99'], [499, '$1–$4.99'], [500, '$5–$9.99'], [999, '$5–$9.99'], [1_000, '$10–$24.99'], [2_499, '$10–$24.99'], [2_500, '$25–$49.99'], [4_999, '$25–$49.99'], [5_000, '$50+'], [1_000_000, '$50+']]
+    for (const [cents, label] of cases) {
+      expect(CASH_BINS[cashBinIndex(cents)]?.label).toBe(label)
+      expect(CASH_BINS.filter(({ min, max }) => cents >= min && cents < max)).toHaveLength(1)
+    }
+  })
+
+  it('counts every observation once and averages completion within each bin', () => {
+    const report = analyzeEmploymentDynamics(1, [
+      syntheticDay(1, [{ opening: 99, end: 0, purchased: 0 }, { opening: 100, end: 0, purchased: 1 }, { opening: 500, end: 0, purchased: 2 }, { opening: 1_000, end: 0, purchased: 3 }, { opening: 2_500, end: 0, purchased: 4 }, { opening: 5_000, end: 0, purchased: 4 }]),
+      syntheticDay(2, [{ opening: 4_999, end: 0, purchased: 2 }, { opening: 5_000, end: 0, purchased: 2 }, { opening: 0, end: 0, purchased: 4 }, { opening: 2_499, end: 0, purchased: 1 }, { opening: 999, end: 0, purchased: 0 }, { opening: 499, end: 0, purchased: 3 }]),
+    ])
+    expect(report.cashBins.reduce((sum, { observations }) => sum + observations, 0)).toBe(2 * 6)
+    expect(report.cashBins.map(({ label, observations, meanNextDayCompletion }) => [label, observations, meanNextDayCompletion])).toEqual([
+      ['<$1', 2, .5], ['$1–$4.99', 2, .5], ['$5–$9.99', 2, .25], ['$10–$24.99', 2, .5], ['$25–$49.99', 2, .75], ['$50+', 2, .75],
+    ])
+  })
+
+  it("includes the canonical economy's 100 opening $50 observations on day 1", () => {
+    const { observations } = collectEmploymentObservations(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 44 }), 1)
+    expect(observations[0].households.every(({ openingCashCents }) => openingCashCents === 5_000)).toBe(true)
+    const report = analyzeEmploymentDynamics(44, observations)
+    expect(report.cashBins.find(({ label }) => label === '$50+')?.observations).toBe(100)
+    expect(report.cashBins.reduce((sum, { observations: count }) => sum + count, 0)).toBe(100)
+  })
+})
+
+describe('[MVP8] richest and poorest day counts under ties (#15)', () => {
+  const days = (report: ReturnType<typeof analyzeEmploymentDynamics>) => Object.fromEntries(report.households.map(({ householdId, richestDays, poorestDays }) => [householdId, [richestDays, poorestDays]]))
+
+  it('counts every household tied for the highest balance as richest', () => {
+    expect(days(analyzeEmploymentDynamics(1, [flat(1, [100, 100, 20, 0])]))).toEqual({ h0: [1, 0], h1: [1, 0], h2: [0, 0], h3: [0, 1] })
+  })
+
+  it("compares each day with that day's lowest balance when tie groups change", () => {
+    const report = analyzeEmploymentDynamics(1, [flat(1, [100, 80, 0, 0]), flat(2, [100, 80, 20, 0]), flat(3, [50, 50, 50, 50])])
+    expect(days(report)).toEqual({ h0: [3, 1], h1: [1, 1], h2: [1, 2], h3: [1, 3] })
+  })
+
+  it('keeps fractional ranks for mean-rank analysis', () => {
+    const report = analyzeEmploymentDynamics(1, [flat(1, [100, 100, 20, 0])])
+    expect(report.households.map(({ meanWealthRank }) => meanWealthRank)).toEqual([1.5, 1.5, 3, 4])
   })
 })
