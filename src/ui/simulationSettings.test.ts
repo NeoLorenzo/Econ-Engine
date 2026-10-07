@@ -5,7 +5,12 @@ import { DEFAULT_SETTINGS_DRAFT, parseSimulationSettings, type SimulationSetting
 /** The pre-#28 App reset() parsing, kept here only to prove valid inputs map to the same config. */
 const legacyConfig = (draft: SimulationSettingsDraft) => ({
   startingPriceCents: 200,
-  firmStartingPricesCents: Object.fromEntries(Object.entries(draft.firmStarts).map(([firmId, value]) => [firmId, Math.max(1, Math.round(Number(value || 0) * 100))])),
+  firmStartingPricesCents: Object.fromEntries(
+    Object.entries(draft.firmStarts).map(([firmId, value]) => [
+      firmId,
+      Math.max(1, Math.round(Number(value || 0) * 100)),
+    ]),
+  ),
   initialStepCents: Math.max(1, Math.round(Number(draft.step || 0) * 100)),
   laborProductivityUnitsPerWorker: 5,
   seed: Math.round(Number(draft.seed || DEFAULT_SEED)),
@@ -13,9 +18,10 @@ const legacyConfig = (draft: SimulationSettingsDraft) => ({
   dailyExpenditureBudgetCents: Math.max(0, Math.round(Number(draft.expenditureBase || 0) * 100)),
 })
 
-const withField = (field: string, value: string): SimulationSettingsDraft => field.startsWith('firm-')
-  ? { ...DEFAULT_SETTINGS_DRAFT, firmStarts: { ...DEFAULT_SETTINGS_DRAFT.firmStarts, [field]: value } }
-  : { ...DEFAULT_SETTINGS_DRAFT, [field]: value }
+const withField = (field: string, value: string): SimulationSettingsDraft =>
+  field.startsWith('firm-')
+    ? { ...DEFAULT_SETTINGS_DRAFT, firmStarts: { ...DEFAULT_SETTINGS_DRAFT.firmStarts, [field]: value } }
+    : { ...DEFAULT_SETTINGS_DRAFT, [field]: value }
 
 const errorFields = (draft: SimulationSettingsDraft) => {
   const result = parseSimulationSettings(draft)
@@ -32,7 +38,13 @@ describe('[#28] simulation settings validation', () => {
   it('produces the same configuration as before for valid inputs', () => {
     const amounts = ['0.01', '1', '2.5', '.25', '12.34', ' 3.10 ', '007.00', '1.15', '1234.56']
     for (const amount of amounts) {
-      const draft: SimulationSettingsDraft = { seed: '61', expenditureBase: amount, transportRate: amount, step: amount, firmStarts: { ...DEFAULT_SETTINGS_DRAFT.firmStarts, 'firm-food-a': amount } }
+      const draft: SimulationSettingsDraft = {
+        seed: '61',
+        expenditureBase: amount,
+        transportRate: amount,
+        step: amount,
+        firmStarts: { ...DEFAULT_SETTINGS_DRAFT.firmStarts, 'firm-food-a': amount },
+      }
       const result = parseSimulationSettings(draft)
       expect(result.ok && result.config, amount).toEqual(legacyConfig(draft))
     }
@@ -65,11 +77,18 @@ describe('[#28] simulation settings validation', () => {
   })
 
   it('reports every invalid field with a readable label and message', () => {
-    const result = parseSimulationSettings({ ...DEFAULT_SETTINGS_DRAFT, seed: 'x', step: '', firmStarts: { ...DEFAULT_SETTINGS_DRAFT.firmStarts, 'firm-healthcare-a': 'abc' } })
+    const result = parseSimulationSettings({
+      ...DEFAULT_SETTINGS_DRAFT,
+      seed: 'x',
+      step: '',
+      firmStarts: { ...DEFAULT_SETTINGS_DRAFT.firmStarts, 'firm-healthcare-a': 'abc' },
+    })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.errors.map(({ field }) => field)).toEqual(['seed', 'step', 'firm-healthcare-a'])
-    expect(result.errors.find(({ field }) => field === 'firm-healthcare-a')?.label).toBe('Healthcare Firm A starting price')
+    expect(result.errors.find(({ field }) => field === 'firm-healthcare-a')?.label).toBe(
+      'Healthcare Firm A starting price',
+    )
     expect(result.errors.every(({ message }) => message.length > 0)).toBe(true)
   })
 })

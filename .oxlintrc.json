@@ -1,0 +1,44 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "react", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/react-in-jsx-scope": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/require-post-message-target-origin": "off",
+    "typescript/no-explicit-any": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-wrapper-object-types": "error",
+    "typescript/prefer-as-const": "error",
+    "typescript/no-namespace": "error",
+    "typescript/triple-slash-reference": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-this-alias": "error",
+    "typescript/no-unsafe-declaration-merging": "error",
+    "typescript/no-duplicate-enum-values": "error",
+    "typescript/no-extra-non-null-assertion": "error",
+    "typescript/no-misused-new": "error",
+    "typescript/no-array-constructor": "error",
+    "typescript/no-non-null-asserted-optional-chain": "error"
+  },
+  "ignorePatterns": ["dist", "coverage", ".agent-logs", "public", ".claude"],
+  // WorldView loads Three.js from a CDN at runtime, and the module has no type definitions.
+  "overrides": [
+    {
+      "files": ["src/ui/WorldView.tsx"],
+      "rules": {
+        "typescript/no-explicit-any": "off"
+      }
+    }
+  ]
+}

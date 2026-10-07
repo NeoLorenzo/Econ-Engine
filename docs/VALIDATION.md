@@ -71,6 +71,7 @@ Lower common supply remains an explicitly different scarcity configuration: it p
 ## Validation commands
 
 ```bash
+npm run lint
 npm run test:run
 npm run typecheck
 npm run build

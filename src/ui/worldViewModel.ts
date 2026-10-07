@@ -1,4 +1,4 @@
-import { INITIAL_HOUSEHOLD_CASH_CENTS } from '../sim/config'
+import { INITIAL_HOUSEHOLD_CASH_CENTS, firmSlot } from '../sim/config'
 import { transportQuote } from '../sim/spatial'
 import type { Coordinate, IndustryId, SimulationState } from '../sim/types'
 
@@ -10,7 +10,6 @@ export interface MarketTerritoryCell {
   x: number
   z: number
   ownerFirmId: string
-  ownerVariant: 'a' | 'b'
   deliveredCostCents: number
   competingDeliveredCostCents: number
   tie: boolean
@@ -26,13 +25,14 @@ export interface HouseholdChoiceObservation {
   roundTripTiles: number | null
   transportFeeCents: number | null
   deliveredCostCents: number | null
-  distanceToA: number | null
-  distanceToB: number | null
+  /** One-way distance to every firm in the industry, keyed by firm ID; null before the market has run. */
+  distancesByFirmId: Record<string, number> | null
 }
 
 export interface MarketTerritory {
   industryId: CompetitiveIndustryId
-  firmIds: [string, string]
+  /** Every firm in the market, in slot order (Firm A first). */
+  firmIds: string[]
   cells: MarketTerritoryCell[]
   cellCounts: Record<string, number>
   tieCount: number
@@ -45,7 +45,8 @@ export interface WorldEntity {
   z: number
   height: number
   industryId?: IndustryId
-  firmVariant?: 'a' | 'b'
+  /** A consumer firm's position in its market (0 is Firm A); undefined for households and Transport. */
+  firmSlot?: number
 }
 
 export interface EmploymentNetworkObservation {
@@ -84,7 +85,10 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
       kind: 'household',
       x: point.x,
       z: point.z,
-      height: householdWealthHeight(measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents, targetCashCents),
+      height: householdWealthHeight(
+        measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents,
+        targetCashCents,
+      ),
     }
   })
 
@@ -92,9 +96,7 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
     if (!firm.coordinate && firm.industryId !== 'transport') {
       throw new Error(`Spatial consumer firm ${firm.id} is missing its authoritative coordinate`)
     }
-    const point = firm.coordinate
-      ? worldPoint(firm.coordinate, width, height)
-      : { x: -(width / 2) - 1.6, z: 0 }
+    const point = firm.coordinate ? worldPoint(firm.coordinate, width, height) : { x: -(width / 2) - 1.6, z: 0 }
 
     return {
       id: firm.id,
@@ -103,7 +105,7 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
       z: point.z,
       height: firm.industryId === 'transport' ? 2.8 : 2.4,
       industryId: firm.industryId,
-      firmVariant: firm.industryId === 'transport' ? undefined : firm.id.endsWith('-b') ? 'b' : 'a',
+      firmSlot: firmSlot(firm.id) ?? undefined,
     }
   })
 
@@ -115,35 +117,41 @@ export function buildMarketTerritory(state: SimulationState, industryId: Competi
   const height = state.config.gridHeight ?? 20
   const transportRateCents = state.config.transportCostPerTileCents ?? 0
   const firms = state.firms
-    .filter((firm): firm is typeof firm & { industryId: CompetitiveIndustryId; coordinate: Coordinate } => firm.industryId === industryId && firm.coordinate !== undefined)
+    .filter(
+      (firm): firm is typeof firm & { industryId: CompetitiveIndustryId; coordinate: Coordinate } =>
+        firm.industryId === industryId && firm.coordinate !== undefined,
+    )
     .sort((a, b) => a.id.localeCompare(b.id))
 
-  if (firms.length !== 2) throw new Error(`Market territory requires exactly two spatial firms for ${industryId}`)
+  if (firms.length === 0) throw new Error(`Market territory requires at least one spatial firm for ${industryId}`)
 
-  const [firmA, firmB] = firms
-  const cellCounts: Record<string, number> = { [firmA.id]: 0, [firmB.id]: 0 }
+  const cellCounts: Record<string, number> = Object.fromEntries(firms.map((firm) => [firm.id, 0]))
   let tieCount = 0
   const cells: MarketTerritoryCell[] = []
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const coordinate = { x, y }
-      const aCost = firmA.postedPriceCents + transportQuote(coordinate, firmA.coordinate, transportRateCents).transportFeeCents
-      const bCost = firmB.postedPriceCents + transportQuote(coordinate, firmB.coordinate, transportRateCents).transportFeeCents
-      const tie = aCost === bCost
-      const owner = aCost <= bCost ? firmA : firmB
-      const competingCost = owner.id === firmA.id ? bCost : aCost
+      // Cheapest delivered cost owns the tile; an exact tie goes to the earlier slot and is flagged.
+      const costs = firms
+        .map((firm) => ({
+          firm,
+          cost:
+            firm.postedPriceCents + transportQuote(coordinate, firm.coordinate, transportRateCents).transportFeeCents,
+        }))
+        .sort((left, right) => left.cost - right.cost)
+      const [owner, runnerUp] = costs
+      const tie = runnerUp !== undefined && runnerUp.cost === owner!.cost
       if (tie) tieCount += 1
-      cellCounts[owner.id] += 1
+      cellCounts[owner!.firm.id] += 1
       const point = worldPoint(coordinate, width, height)
       cells.push({
         coordinate,
         x: point.x,
         z: point.z,
-        ownerFirmId: owner.id,
-        ownerVariant: owner.id === firmA.id ? 'a' : 'b',
-        deliveredCostCents: Math.min(aCost, bCost),
-        competingDeliveredCostCents: competingCost,
+        ownerFirmId: owner!.firm.id,
+        deliveredCostCents: owner!.cost,
+        competingDeliveredCostCents: runnerUp?.cost ?? owner!.cost,
         tie,
       })
     }
@@ -151,7 +159,7 @@ export function buildMarketTerritory(state: SimulationState, industryId: Competi
 
   return {
     industryId,
-    firmIds: [firmA.id, firmB.id],
+    firmIds: firms.map(({ id }) => id),
     cells,
     cellCounts,
     tieCount,
@@ -181,8 +189,7 @@ export function getHouseholdChoiceObservation(
       roundTripTiles: null,
       transportFeeCents: null,
       deliveredCostCents: null,
-      distanceToA: null,
-      distanceToB: null,
+      distancesByFirmId: null,
     }
   }
 
@@ -196,8 +203,7 @@ export function getHouseholdChoiceObservation(
     roundTripTiles: spatial.chosenFirmId ? spatial.roundTripTiles : null,
     transportFeeCents: spatial.chosenFirmId ? spatial.transportFeeCents : null,
     deliveredCostCents: spatial.chosenFirmId ? spatial.deliveredCostCents : null,
-    distanceToA: spatial.distanceToA,
-    distanceToB: spatial.distanceToB,
+    distancesByFirmId: spatial.distancesByFirmId,
   }
 }
 

@@ -88,10 +88,17 @@ function spells(matches: boolean[]): SpellAnalytics {
   let current = 0
   for (const matchesToday of matches) {
     if (matchesToday) current += 1
-    else if (current > 0) { lengths.push(current); current = 0 }
+    else if (current > 0) {
+      lengths.push(current)
+      current = 0
+    }
   }
   if (current > 0) lengths.push(current)
-  return { count: lengths.length, longestDays: Math.max(0, ...lengths), averageDays: lengths.length === 0 ? 0 : mean(lengths) }
+  return {
+    count: lengths.length,
+    longestDays: Math.max(0, ...lengths),
+    averageDays: lengths.length === 0 ? 0 : mean(lengths),
+  }
 }
 
 function leader(day: CompetitiveDayObservation): Leader {
@@ -161,14 +168,25 @@ export function analyzeCompetitiveTrajectory(days: readonly CompetitiveDayObserv
 }
 
 function observation(market: MarketMetrics): CompetitiveFirmObservation {
-  return { marketShare: market.marketShare, unitsSold: market.unitsSold, postedPriceCents: market.postedPriceCents, incumbentPriceCents: market.incumbentPriceCents, profitCents: market.preTaxProfitCents }
+  return {
+    marketShare: market.marketShare,
+    unitsSold: market.unitsSold,
+    postedPriceCents: market.postedPriceCents,
+    incumbentPriceCents: market.incumbentPriceCents,
+    profitCents: market.preTaxProfitCents,
+  }
 }
 
-export function runGeneralizedSpatialExperiment(seeds = [DEFAULT_SEED, 7, 42], days = COMPETITIVE_ANALYSIS_HORIZON_DAYS): GeneralizedSpatialResult[] {
+export function runGeneralizedSpatialExperiment(
+  seeds = [DEFAULT_SEED, 7, 42],
+  days = COMPETITIVE_ANALYSIS_HORIZON_DAYS,
+): GeneralizedSpatialResult[] {
   if (!Number.isInteger(days) || days < 1) throw new Error('Experiment horizon must be a positive integer.')
   return seeds.map((seed) => {
     let state = createSimulation({ startingPriceCents: 100, initialStepCents: 100, seed })
-    const trajectories = Object.fromEntries(CONSUMER_IDS.map((id) => [id, [] as CompetitiveDayObservation[]])) as Record<ConsumerIndustryId, CompetitiveDayObservation[]>
+    const trajectories = Object.fromEntries(
+      CONSUMER_IDS.map((id) => [id, [] as CompetitiveDayObservation[]]),
+    ) as Record<ConsumerIndustryId, CompetitiveDayObservation[]>
     const priceTrajectories: Record<string, number[]> = {}
     for (let day = 0; day < days; day += 1) {
       state = stepSimulation(state)
@@ -190,14 +208,19 @@ export function runGeneralizedSpatialExperiment(seeds = [DEFAULT_SEED, 7, 42], d
           industryId,
           firmLocations: Object.fromEntries(firms.map(({ id, coordinate }) => [id, coordinate!])),
           analytics: analyzeCompetitiveTrajectory(trajectories[industryId]),
-          averageCustomerDistancesAtHorizon: markets.map(({ averageCustomerDistance }) => averageCustomerDistance) as [number, number],
-          averageDeliveredCostsCentsAtHorizon: markets.map(({ averageDeliveredCostCents }) => averageDeliveredCostCents) as [number, number],
+          averageCustomerDistancesAtHorizon: markets.map(({ averageCustomerDistance }) => averageCustomerDistance) as [
+            number,
+            number,
+          ],
+          averageDeliveredCostsCentsAtHorizon: markets.map(
+            ({ averageDeliveredCostCents }) => averageDeliveredCostCents,
+          ) as [number, number],
           transportRevenueCentsAtHorizon: latest.transportRevenueByIndustryCents[industryId] ?? 0,
           priceTrajectories: Object.fromEntries(firms.map((firm) => [firm.id, priceTrajectories[firm.id]])),
         }
       }),
       totalTransportRevenueCentsAtHorizon: latest.totalTransportRevenueCents,
-      totalTripsAtHorizon: latest.entertainmentTrips,
+      totalTripsAtHorizon: latest.transportTrips,
       totalTilesAtHorizon: latest.totalTilesTravelled,
     }
   })

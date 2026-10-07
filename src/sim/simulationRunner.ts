@@ -28,7 +28,12 @@ export class SimulationRunner<State> {
   private dirty = false
   private lastPublishedAt: number
 
-  constructor(initialState: State, stepState: (state: State) => State, publishState: (state: State) => void, options: SimulationRunnerOptions = {}) {
+  constructor(
+    initialState: State,
+    stepState: (state: State) => State,
+    publishState: (state: State) => void,
+    options: SimulationRunnerOptions = {},
+  ) {
     this.state = initialState
     this.stepState = stepState
     this.publishState = publishState

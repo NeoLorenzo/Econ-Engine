@@ -1,4 +1,7 @@
-export interface RandomDraw { value: number; state: number }
+export interface RandomDraw {
+  value: number
+  state: number
+}
 
 export function normalizeSeed(seed: number): number {
   const normalized = Math.round(seed) >>> 0
@@ -26,7 +29,8 @@ export function randomDraw(state: number): RandomDraw {
 }
 
 export function randomInt(state: number, maximumExclusive: number): { value: number; state: number } {
-  if (!Number.isInteger(maximumExclusive) || maximumExclusive <= 0) throw new Error('Random selection requires a positive integer range')
+  if (!Number.isInteger(maximumExclusive) || maximumExclusive <= 0)
+    throw new Error('Random selection requires a positive integer range')
   const draw = randomDraw(state)
   return { value: Math.floor(draw.value * maximumExclusive), state: draw.state }
 }

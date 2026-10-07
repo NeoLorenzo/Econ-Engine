@@ -13,7 +13,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc -b --pretty false",
-    "check": "npm run typecheck && npm run test:run && npm run build",
+    "lint": "oxlint --deny-warnings && prettier --check src scripts .github \"*.{json,ts,mjs,html}\" \".*.json\"",
+    "format": "prettier --write src scripts .github \"*.{json,ts,mjs,html}\" \".*.json\"",
+    "check": "npm run lint && npm run typecheck && npm run test:run && npm run build",
     "agent:check": "node scripts/agent-check.mjs"
   },
   "dependencies": {
@@ -25,7 +27,9 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "oxlint": "1.87.0",
     "playwright": "1.55.0",
+    "prettier": "3.9.9",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10"

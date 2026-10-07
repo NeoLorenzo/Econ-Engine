@@ -1,6 +1,6 @@
 /**
  * JS mirror of the CSS tokens in app.css, for Recharts and Three.js, which cannot read CSS variables.
- * Firm A and Firm B keep the same two colours in every industry, so "A vs B" reads identically everywhere.
+ * Firm A, Firm B, … keep the same colour in every industry, so "A vs B" reads identically everywhere.
  */
 export const palette = {
   bg: '#0a0d0c',
@@ -22,6 +22,11 @@ export const palette = {
   neutral: '#56625c',
 } as const
 
-export const firmColor = (variant: 'a' | 'b' | null) => variant === 'b' ? palette.firmB : variant === 'a' ? palette.firmA : palette.government
+/** Colours by firm slot. The canonical economy uses only A and B; further slots exist for other market structures. */
+const FIRM_COLORS = [palette.firmA, palette.firmB, '#d98ad6', '#8fb0ff']
+
+/** A consumer firm's colour from its slot (A = 0), or Government purple for Transport. */
+export const firmColor = (slot: number | null) =>
+  slot === null ? palette.government : FIRM_COLORS[slot % FIRM_COLORS.length]!
 
 export const hex = (color: string) => Number.parseInt(color.slice(1), 16)

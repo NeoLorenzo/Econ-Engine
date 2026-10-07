@@ -2,6 +2,23 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Structure-021] - (2026-10-07)
+
+### Changed
+
+- **Formatting and linting (#38):** Prettier (`printWidth` 120) formats the source, and oxlint checks the ESLint correctness rules, typescript-eslint's recommended rules and React hooks rules. `npm run lint` runs both and is part of `npm run check`, `npm run agent:check` and both CI workflows. Applying the formatter was a separate formatting-only commit.
+- **Line endings:** a new `.gitattributes` (`* text=auto eol=lf`) checks out every text file with LF on every platform, so the Prettier check enforces LF strictly and can't be defeated by local Git settings. Repository contents are unchanged, because they were already LF.
+- **Daily step (#38):** `stepSimulation` is now an ordered list of named phases: `startDay`, `produce`, `runMarkets` (`clearMarket`, then `decidePrices`, for each industry), `runPayroll`, `runFiscalPhase`, `buildDayMetrics` and `closeDay`. The causal order and RNG draw sequence are unchanged.
+- **Market structure (#36):** consumer industries are no longer limited to two firms. `SimulationConfig.firmsPerIndustry` (default 2) sets the number. The fallback queue orders overflow by distance to each household's next-best firm, a probing firm observes the lowest price its rivals advertised, and each purchase records `distancesByFirmId` instead of `distanceToA`/`distanceToB`. Firm IDs are built and parsed only by `consumerFirmId` and `firmSlot`, including in the research harnesses that pin Entertainment starting prices. The observer derives Firm A, B, C… and their colours from that slot rather than from `-a`/`-b` suffixes, and its cards, charts, share bars and maps render every firm in a market.
+- **Renames (#34):** `DayMetrics.entertainmentTrips` is now `transportTrips` (it counts trips for all four consumer industries), and `householdCashGiniBeforeParity` is now `householdCashGiniAfterMarkets`. `Household.entertainmentToday` is removed, because `spatialPurchasesToday.entertainment` holds the same data. `HouseholdEntertainmentMetrics` is now `HouseholdSpatialPurchase`.
+- **Performance (#37):** payroll and invariant checks look households up through an ID map, each market's customer statistics come from one pass over households, and the Gini coefficient uses a sorted O(n log n) formula that returns the same bits for integer inputs. The canonical step fell from about 2.0 ms to 1.7 ms, and a 1,000-household step from about 37 ms to 27 ms.
+- **Documentation (#40):** `docs/ARCHITECTURE.md` describes the daily phases and the full market-clearing order: the seeded shuffle, preferred-firm assignment with seeded ties, proximity priority, the fallback queue, and the RNG draw order.
+
+### Validation
+
+- The canonical trajectory is bit-for-bit unchanged. Complete states (households, firms, Government, metrics and the event log) at days 0, 1, 2, 50 and 400 matched a baseline captured before the refactor for six configurations: canonical, an alternate seed, every probe and Government trial forced on, N=10, N=200, and Government disabled.
+- New tests cover one-firm and three-firm industries (clearing, money conservation, per-firm distances, every firm selling, and competitor observation of the lowest rival price), the observer models for a three-firm market, rejected market structures, and Gini equality with the pairwise formula on 300 random integer vectors.
+
 ## [MVP8-Maintenance-020] - (2026-10-07)
 
 ### Changed

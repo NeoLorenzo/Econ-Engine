@@ -14,7 +14,9 @@ describe('Entertainment starting-price grid experiment', () => {
   it('records both orientations of swapped starts under seeded sampling', () => {
     const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 200, 300], horizonDays: 100 })
     for (const xy of suite.results) {
-      const yx = suite.results.find((result) => result.firmAStartCents === xy.firmBStartCents && result.firmBStartCents === xy.firmAStartCents)!
+      const yx = suite.results.find(
+        (result) => result.firmAStartCents === xy.firmBStartCents && result.firmBStartCents === xy.firmAStartCents,
+      )!
       expect(yx).toBeDefined()
       expect(xy.bothConverged).toBe(true)
       expect(yx.bothConverged).toBe(true)
@@ -25,13 +27,23 @@ describe('Entertainment starting-price grid experiment', () => {
     const options = { startingPricesCents: [100, 800] as const, horizonDays: 1 }
     const original = structuredClone(options)
     const suite = runCompetitionStartingPriceGrid(options)
-    expect(suite.results.some((result) => !result.bothConverged && result.firmAEndpointCents === null && result.firmBEndpointCents === null)).toBe(true)
+    expect(
+      suite.results.some(
+        (result) => !result.bothConverged && result.firmAEndpointCents === null && result.firmBEndpointCents === null,
+      ),
+    ).toBe(true)
     expect(options).toEqual(original)
   })
 
   it('keeps all non-Transport firms inside valid competitive pricing state', () => {
     const suite = runCompetitionStartingPriceGrid({ startingPricesCents: [100, 1_000], horizonDays: 100 })
-    expect(suite.results.every(({ controlEndpointsCents }) => Object.entries(controlEndpointsCents).every(([id, price]) => id === 'transport' ? price === null : price === null || price >= 1))).toBe(true)
+    expect(
+      suite.results.every(({ controlEndpointsCents }) =>
+        Object.entries(controlEndpointsCents).every(([id, price]) =>
+          id === 'transport' ? price === null : price === null || price >= 1,
+        ),
+      ),
+    ).toBe(true)
   }, 20_000)
 
   it('keeps observer results outside the pricing boundary', () => {

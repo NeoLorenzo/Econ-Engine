@@ -1,15 +1,30 @@
+import { TRANSPORT_FIRM_ID, TRANSPORT_WORKERS_PER_BLOCK } from './config'
 import { normalizeSeed, seededShuffle } from './rng'
 
-export const deriveEmploymentSeed = (masterSeed: number) => normalizeSeed((normalizeSeed(masterSeed) ^ 0x85ebca6b) >>> 0)
+export const deriveEmploymentSeed = (masterSeed: number) =>
+  normalizeSeed((normalizeSeed(masterSeed) ^ 0x85ebca6b) >>> 0)
 
+/**
+ * Fixed seeded jobs. Each employment block has one worker per consumer firm and two for Transport, so a population must
+ * be a whole number of blocks (ten households in the canonical economy).
+ */
 export function assignEmployment(masterSeed: number, householdIds: readonly string[], firmIds: readonly string[]) {
-  if (householdIds.length % 10 !== 0) throw new Error('Population must scale in complete ten-household employment blocks')
-  const scale = householdIds.length / 10
-  const slots = [...firmIds.filter((id) => id !== 'firm-transport').sort().flatMap((id) => Array.from({ length: scale }, () => id)), ...Array.from({ length: scale * 2 }, () => 'firm-transport')]
+  const consumerFirms = firmIds.filter((id) => id !== TRANSPORT_FIRM_ID).sort()
+  const blockSize = consumerFirms.length + TRANSPORT_WORKERS_PER_BLOCK
+  if (householdIds.length % blockSize !== 0)
+    throw new Error(`Population must scale in complete ${blockSize}-household employment blocks`)
+  const scale = householdIds.length / blockSize
+  const slots = [
+    ...consumerFirms.flatMap((id) => Array.from({ length: scale }, () => id)),
+    ...Array.from({ length: scale * TRANSPORT_WORKERS_PER_BLOCK }, () => TRANSPORT_FIRM_ID),
+  ]
   if (slots.length !== householdIds.length) throw new Error('Employment slots must exactly match households')
   const workers = [...householdIds].sort()
   const assignment = seededShuffle(workers, deriveEmploymentSeed(masterSeed)).values
-  return Object.fromEntries(assignment.map((householdId, index) => [householdId, slots[index]])) as Record<string, string>
+  return Object.fromEntries(assignment.map((householdId, index) => [householdId, slots[index]])) as Record<
+    string,
+    string
+  >
 }
 
 export function payrollOrder(masterSeed: number, day: number, firmId: string, employeeIds: readonly string[]) {

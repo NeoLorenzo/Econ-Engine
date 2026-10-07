@@ -1,8 +1,9 @@
 import { DEFAULT_SEED } from './config'
 import { createSimulation, stepSimulation } from './engine'
 
-const mean = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0
-const volatility = (values: number[]) => values.length < 2 ? 0 : Math.sqrt(mean(values.slice(1).map((value, index) => (value - values[index]) ** 2)))
+const mean = (values: number[]) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0)
+const volatility = (values: number[]) =>
+  values.length < 2 ? 0 : Math.sqrt(mean(values.slice(1).map((value, index) => (value - values[index]) ** 2)))
 
 /**
  * Share of total wealth held by the richest `populationFraction` of households.
@@ -13,30 +14,163 @@ export function populationShareOfWealth(values: number[], populationFraction: nu
   const total = values.reduce((sum, value) => sum + value, 0)
   if (total === 0) return 0
   const sorted = [...values].sort((a, b) => b - a)
-  const households = Math.round(populationFraction * sorted.length * 1e9) / 1e9, whole = Math.floor(households)
-  return (sorted.slice(0, whole).reduce((sum, value) => sum + value, 0) + (households - whole) * (sorted[whole] ?? 0)) / total
+  const households = Math.round(populationFraction * sorted.length * 1e9) / 1e9,
+    whole = Math.floor(households)
+  return (
+    (sorted.slice(0, whole).reduce((sum, value) => sum + value, 0) + (households - whole) * (sorted[whole] ?? 0)) /
+    total
+  )
 }
 
 export function runPopulationScale(seed: number, householdCount: 10 | 100, horizonDays = 1_000) {
   let state = createSimulation({ seed, householdCount })
-  const shares = new Map<string, number[]>(), prices: number[] = [], distances: number[] = [], fees: number[] = []
-  let purchases = 0, cashFailures = 0, budgetFailures = 0, inventoryFailures = 0, wages = 0, payroll = 0, unpaid = 0, profit = 0, corporateTax = 0, wealthTax = 0, redistribution = 0, incompleteFirmDays = 0, equalityDays = 0, cashGini = 0, wageGini = 0, wealthRate = 0, equalizingDays = 0, experiments = 0, adoptions = 0, rejections = 0
+  const shares = new Map<string, number[]>(),
+    prices: number[] = [],
+    distances: number[] = [],
+    fees: number[] = []
+  let purchases = 0,
+    cashFailures = 0,
+    budgetFailures = 0,
+    inventoryFailures = 0,
+    wages = 0,
+    payroll = 0,
+    unpaid = 0,
+    profit = 0,
+    corporateTax = 0,
+    wealthTax = 0,
+    redistribution = 0,
+    incompleteFirmDays = 0,
+    equalityDays = 0,
+    cashGini = 0,
+    wageGini = 0,
+    wealthRate = 0,
+    equalizingDays = 0,
+    experiments = 0,
+    adoptions = 0,
+    rejections = 0
   let transportRevenue = 0
-  const completionByIndustry = Object.fromEntries(['food', 'utilities', 'healthcare', 'entertainment'].map((id) => [id, 0])) as Record<string, number>
+  const completionByIndustry = Object.fromEntries(
+    ['food', 'utilities', 'healthcare', 'entertainment'].map((id) => [id, 0]),
+  ) as Record<string, number>
   for (let index = 0; index < horizonDays; index++) {
-    state = stepSimulation(state); const metric = state.metrics.at(-1)!
-    metric.markets.forEach((market) => { const series = shares.get(market.firmId) ?? []; series.push(market.marketShare); shares.set(market.firmId, series); prices.push(market.postedPriceCents); if (market.unitsSold) { distances.push(...Array(market.unitsSold).fill(market.averageCustomerDistance)); fees.push(...Array(market.unitsSold).fill(market.averageTransportFeeCents)) } })
-    state.households.forEach((household) => Object.entries(household.industryOutcomes).forEach(([id, outcome]) => { if (id === 'transport') return; if (outcome.purchasedToday) { purchases++; completionByIndustry[id]++ } }))
+    state = stepSimulation(state)
+    const metric = state.metrics.at(-1)!
+    metric.markets.forEach((market) => {
+      const series = shares.get(market.firmId) ?? []
+      series.push(market.marketShare)
+      shares.set(market.firmId, series)
+      prices.push(market.postedPriceCents)
+      if (market.unitsSold) {
+        distances.push(...Array(market.unitsSold).fill(market.averageCustomerDistance))
+        fees.push(...Array(market.unitsSold).fill(market.averageTransportFeeCents))
+      }
+    })
+    state.households.forEach((household) =>
+      Object.entries(household.industryOutcomes).forEach(([id, outcome]) => {
+        if (id === 'transport') return
+        if (outcome.purchasedToday) {
+          purchases++
+          completionByIndustry[id]++
+        }
+      }),
+    )
     // Read from complete day metrics and Government state: the event ledger is bounded and can evict part of a large day.
-    cashFailures += metric.purchaseFailuresByCause.cash; budgetFailures += metric.purchaseFailuresByCause.category_budget; inventoryFailures += metric.purchaseFailuresByCause.inventory
-    transportRevenue += metric.totalTransportRevenueCents; wages += metric.totalWagesPaidCents; payroll += metric.totalContractualPayrollCents; unpaid += metric.totalUnpaidWagesCents; profit += metric.totalResidualFirmProfitCents; corporateTax += metric.totalCorporateProfitTaxCents; wealthTax += metric.totalWealthTaxCollectedCents; redistribution += metric.totalMeansTestedTransfersCents
-    incompleteFirmDays += state.firms.filter(({ unpaidWagesTodayCents }) => unpaidWagesTodayCents > 0).length; equalityDays += Number(metric.effectiveEquality); cashGini += metric.householdCashGini; wageGini += metric.wageIncomeGini; wealthRate += metric.appliedWealthTaxRateBps; equalizingDays += Number(metric.governmentPolicyMode === 'equalizing'); experiments += Number(metric.governmentPolicyStatus === 'experiment')
-    if (state.government.policyStatus === 'experiment') { adoptions += Number(state.government.lastExperimentOutcome === 'adopted'); rejections += Number(state.government.lastExperimentOutcome === 'rejected') }
+    cashFailures += metric.purchaseFailuresByCause.cash
+    budgetFailures += metric.purchaseFailuresByCause.category_budget
+    inventoryFailures += metric.purchaseFailuresByCause.inventory
+    transportRevenue += metric.totalTransportRevenueCents
+    wages += metric.totalWagesPaidCents
+    payroll += metric.totalContractualPayrollCents
+    unpaid += metric.totalUnpaidWagesCents
+    profit += metric.totalResidualFirmProfitCents
+    corporateTax += metric.totalCorporateProfitTaxCents
+    wealthTax += metric.totalWealthTaxCollectedCents
+    redistribution += metric.totalMeansTestedTransfersCents
+    incompleteFirmDays += state.firms.filter(({ unpaidWagesTodayCents }) => unpaidWagesTodayCents > 0).length
+    equalityDays += Number(metric.effectiveEquality)
+    cashGini += metric.householdCashGini
+    wageGini += metric.wageIncomeGini
+    wealthRate += metric.appliedWealthTaxRateBps
+    equalizingDays += Number(metric.governmentPolicyMode === 'equalizing')
+    experiments += Number(metric.governmentPolicyStatus === 'experiment')
+    if (state.government.policyStatus === 'experiment') {
+      adoptions += Number(state.government.lastExperimentOutcome === 'adopted')
+      rejections += Number(state.government.lastExperimentOutcome === 'rejected')
+    }
   }
-  const allShares = [...shares.values()].flat(), attempts = horizonDays * householdCount * 4
-  return { householdCount, horizonDays, totalMoneyCents: householdCount * 5_000, raw: { purchases, cashFailures, budgetFailures, inventoryFailures, contractualPayrollCents: payroll, wagesCents: wages, unpaidWagesCents: unpaid, residualProfitCents: profit, corporateTaxCents: corporateTax, wealthTaxCents: wealthTax, redistributionCents: redistribution }, normalized: { purchaseCompletionRate: purchases / attempts, completionByIndustry: Object.fromEntries(Object.entries(completionByIndustry).map(([id, count]) => [id, count / (horizonDays * householdCount)])), meanPriceCents: mean(prices), priceRangeCents: Math.max(...prices) - Math.min(...prices), meanMarketShare: mean(allShares), marketShareVolatility: mean([...shares.values()].map(volatility)), extremeShareFraction: allShares.filter((share) => share === 0 || share === 1).length / allShares.length, meanDistance: mean(distances), meanTransportFeeCents: mean(fees), transportRevenuePerHouseholdCents: transportRevenue / horizonDays / householdCount, contractualPayrollPerHouseholdCents: payroll / horizonDays / householdCount, wagesPerHouseholdCents: wages / horizonDays / householdCount, unpaidWagesPerHouseholdCents: unpaid / horizonDays / householdCount, payrollFulfillmentRate: wages / payroll, incompleteFirmDayFraction: incompleteFirmDays / (horizonDays * state.firms.length), residualProfitPerHouseholdCents: profit / horizonDays / householdCount, corporateTaxPerHouseholdCents: corporateTax / horizonDays / householdCount, wealthTaxPerHouseholdCents: wealthTax / horizonDays / householdCount, redistributionPerHouseholdCents: redistribution / horizonDays / householdCount, corporateFinancingShare: corporateTax / redistribution, meanCashGini: cashGini / horizonDays, meanWageGini: wageGini / horizonDays, effectiveEqualityOccupancy: equalityDays / horizonDays, top1PercentWealthShare: populationShareOfWealth(state.households.map(({ cashCents }) => cashCents), .01), top10PercentWealthShare: populationShareOfWealth(state.households.map(({ cashCents }) => cashCents), .1), meanWealthTaxRateBps: wealthRate / horizonDays, equalizingModeOccupancy: equalizingDays / horizonDays, experimentFraction: experiments / horizonDays, adoptions, rejections }, firms: state.firms.map((firm) => ({ firmId: firm.id, workers: firm.employeeIds.length, payrollFulfillmentRate: firm.payrollFulfillmentRate })), terminalState: state }
+  const allShares = [...shares.values()].flat(),
+    attempts = horizonDays * householdCount * 4
+  return {
+    householdCount,
+    horizonDays,
+    totalMoneyCents: householdCount * 5_000,
+    raw: {
+      purchases,
+      cashFailures,
+      budgetFailures,
+      inventoryFailures,
+      contractualPayrollCents: payroll,
+      wagesCents: wages,
+      unpaidWagesCents: unpaid,
+      residualProfitCents: profit,
+      corporateTaxCents: corporateTax,
+      wealthTaxCents: wealthTax,
+      redistributionCents: redistribution,
+    },
+    normalized: {
+      purchaseCompletionRate: purchases / attempts,
+      completionByIndustry: Object.fromEntries(
+        Object.entries(completionByIndustry).map(([id, count]) => [id, count / (horizonDays * householdCount)]),
+      ),
+      meanPriceCents: mean(prices),
+      priceRangeCents: Math.max(...prices) - Math.min(...prices),
+      meanMarketShare: mean(allShares),
+      marketShareVolatility: mean([...shares.values()].map(volatility)),
+      extremeShareFraction: allShares.filter((share) => share === 0 || share === 1).length / allShares.length,
+      meanDistance: mean(distances),
+      meanTransportFeeCents: mean(fees),
+      transportRevenuePerHouseholdCents: transportRevenue / horizonDays / householdCount,
+      contractualPayrollPerHouseholdCents: payroll / horizonDays / householdCount,
+      wagesPerHouseholdCents: wages / horizonDays / householdCount,
+      unpaidWagesPerHouseholdCents: unpaid / horizonDays / householdCount,
+      payrollFulfillmentRate: wages / payroll,
+      incompleteFirmDayFraction: incompleteFirmDays / (horizonDays * state.firms.length),
+      residualProfitPerHouseholdCents: profit / horizonDays / householdCount,
+      corporateTaxPerHouseholdCents: corporateTax / horizonDays / householdCount,
+      wealthTaxPerHouseholdCents: wealthTax / horizonDays / householdCount,
+      redistributionPerHouseholdCents: redistribution / horizonDays / householdCount,
+      corporateFinancingShare: corporateTax / redistribution,
+      meanCashGini: cashGini / horizonDays,
+      meanWageGini: wageGini / horizonDays,
+      effectiveEqualityOccupancy: equalityDays / horizonDays,
+      top1PercentWealthShare: populationShareOfWealth(
+        state.households.map(({ cashCents }) => cashCents),
+        0.01,
+      ),
+      top10PercentWealthShare: populationShareOfWealth(
+        state.households.map(({ cashCents }) => cashCents),
+        0.1,
+      ),
+      meanWealthTaxRateBps: wealthRate / horizonDays,
+      equalizingModeOccupancy: equalizingDays / horizonDays,
+      experimentFraction: experiments / horizonDays,
+      adoptions,
+      rejections,
+    },
+    firms: state.firms.map((firm) => ({
+      firmId: firm.id,
+      workers: firm.employeeIds.length,
+      payrollFulfillmentRate: firm.payrollFulfillmentRate,
+    })),
+    terminalState: state,
+  }
 }
 
 export function runPopulationScaleComparison(seed = DEFAULT_SEED, horizonDays = 1_000) {
-  return { seed, horizonDays, n10: runPopulationScale(seed, 10, horizonDays), n100: runPopulationScale(seed, 100, horizonDays) }
+  return {
+    seed,
+    horizonDays,
+    n10: runPopulationScale(seed, 10, horizonDays),
+    n100: runPopulationScale(seed, 100, horizonDays),
+  }
 }
