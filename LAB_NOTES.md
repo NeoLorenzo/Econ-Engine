@@ -14,6 +14,22 @@ Settings parsing used `Number(value || 0)` followed by clamping. Text that is no
 
 Parsing now converts text to integer cents exactly (no floating-point rounding of typed amounts) and rejects anything it would otherwise have to clamp or remap. Valid inputs map to exactly the configuration the old parser produced, so the canonical trajectory and every previously valid setting are unchanged. Engine-side clamping for programmatic callers is deliberately left as it was.
 
+## [MVP8-RNG_Streams-016] - (2026-10-07)
+
+### Problem
+
+Government was documented as having a dedicated RNG substream, but `deriveGovernmentPolicySeed` and `deriveSpatialSeed` both XORed the master seed with `0x9e3779b9`. For every non-zero seed they returned the same value (canonical `20260813` → `2667732596`). Government's experiment-probability checks, candidate selection, and water-filling remainder order therefore replayed the exact sequence that placed households and firms on the grid. Policy timing was a deterministic function of geography, which violates rule 21's stream-independence assumption and would bias seed-to-seed and ensemble comparisons.
+
+### Decision
+
+Choosing a different XOR constant would remove the equality but not the dependence. xorshift is linear over GF(2), so streams seeded `s ^ c1` and `s ^ c2` differ at every step by `Mⁿ(c1 ^ c2)`, a pattern that is the same for every seed. The Government seed is now the salted normalized master seed passed through `mixSeed`, the murmur3 `fmix32` finalizer: a nonlinear 32-bit bijection. Only the Government stream moves. Spatial, employment, payroll, market, and probing streams keep their derivations, so layouts and employment are identical for existing seeds.
+
+### Impact on recorded results
+
+All Government figures recorded under MVP6–MVP8 (008, 008.1, 009, 010.x, 011) were measured with the shared stream. They remain as historical observations of that code and are not rewritten. On canonical seed `20260813` over 1,000 days at N=100, the mean applied wealth-tax rate moved from 25.085% to 17.422%, experiments from 105 to 111, adoptions from 60 to 72, the terminal incumbent from 45% to 23%, and mean cash Gini from 0.00302 to 0.00038.
+
+The 010.x N=10 versus N=100 comparison changes qualitatively. Mean cash Gini now falls from 0.00175 to 0.00038 instead of rising from 0.00198 to 0.00302. Effective-equality occupancy is 85.4% versus 82.6%, and equalizing-mode occupancy falls slightly (14.3% versus 13.6%) instead of rising. The mean applied wealth tax still roughly doubles (8.899% to 17.422%), experiment occupancy still rises (7.0% to 11.1%), and the corporate financing share still falls (54.217% to 35.168%). Wage and market metrics are unchanged because they precede the fiscal phase. These are single-seed results; that a single stream correction reverses the sign of the cash-Gini scaling reinforces the need for multi-seed ensembles (#3) before reading population-scaling effects as findings.
+
 ## [MVP8-Simulation_Runner-015] - (2026-09-06)
 
 ### Validation boundary

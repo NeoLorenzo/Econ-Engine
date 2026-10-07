@@ -1,9 +1,41 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_SEED } from './config'
+import { deriveEmploymentSeed } from './employment'
 import { createSimulation, runDays } from './engine'
+import { deriveGovernmentPolicySeed } from './government'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
-import { seededShuffle } from './rng'
+import { mixSeed, normalizeSeed, seededShuffle } from './rng'
+import { deriveSpatialSeed } from './spatial'
 import engineSource from './engine.ts?raw'
 import rngSource from './rng.ts?raw'
+
+describe('independent derived RNG streams', () => {
+  const streams = (seed: number) => ({ market: normalizeSeed(seed), spatial: deriveSpatialSeed(seed), employment: deriveEmploymentSeed(seed), government: deriveGovernmentPolicySeed(seed) })
+  const generatedSeeds = Array.from({ length: 500 }, (_, index) => Math.imul(index + 1, 0x2545_f491) >>> 0)
+  const sampleSeeds = [DEFAULT_SEED, 0, 1, 2, 42, 61, 0x9e37_79b9, 0x85eb_ca6b, 0x632b_e5ab, 0xffff_ffff, ...generatedSeeds]
+
+  it('derives pairwise-distinct market, spatial, employment, and Government seeds', () => {
+    for (const seed of sampleSeeds) expect(new Set(Object.values(streams(seed))).size, `seed ${seed}`).toBe(4)
+    const state = createSimulation({ seed: DEFAULT_SEED })
+    expect(new Set([state.rngState, state.spatialSeed, state.employmentSeed, state.governmentPolicyRngState]).size).toBe(4)
+    expect(state.governmentPolicyRngState).toBe(deriveGovernmentPolicySeed(DEFAULT_SEED))
+  })
+
+  it('does not derive the Government stream as a fixed XOR offset of another stream', () => {
+    // xorshift is linear over GF(2): a constant seed offset would persist as a constant offset in every later draw.
+    for (const other of ['market', 'spatial', 'employment'] as const) {
+      const offsets = new Set(generatedSeeds.map((seed) => (streams(seed).government ^ streams(seed)[other]) >>> 0))
+      expect(offsets.size, other).toBeGreaterThan(generatedSeeds.length / 2)
+    }
+  })
+
+  it('mixes seeds as a deterministic 32-bit bijection sample', () => {
+    const mixed = sampleSeeds.map(mixSeed)
+    expect(mixed.every((value) => Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff)).toBe(true)
+    expect(new Set(mixed).size).toBe(new Set(sampleSeeds).size)
+    expect(sampleSeeds.map(mixSeed)).toEqual(mixed)
+  })
+})
 
 describe('seeded randomness and persistent probes', () => {
   it('replays the same seed exactly and permits different seeded paths', () => {

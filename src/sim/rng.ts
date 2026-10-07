@@ -5,6 +5,17 @@ export function normalizeSeed(seed: number): number {
   return normalized === 0 ? 0x6d2b79f5 : normalized
 }
 
+/** Murmur3 fmix32: a nonlinear 32-bit bijection, so a mixed stream seed is not a fixed XOR offset of an XOR-derived one under linear xorshift. */
+export function mixSeed(value: number): number {
+  let mixed = value >>> 0
+  mixed ^= mixed >>> 16
+  mixed = Math.imul(mixed, 0x85eb_ca6b)
+  mixed ^= mixed >>> 13
+  mixed = Math.imul(mixed, 0xc2b2_ae35)
+  mixed ^= mixed >>> 16
+  return mixed >>> 0
+}
+
 export function randomDraw(state: number): RandomDraw {
   let next = normalizeSeed(state)
   next ^= next << 13

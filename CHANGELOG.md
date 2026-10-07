@@ -19,6 +19,22 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 - Added parser coverage for non-numeric, empty, negative, malformed, sub-cent, zero, and out-of-range inputs, plus equivalence with the previous parsing for valid inputs.
 - The canonical-trajectory UI test now builds its configuration through the real settings parser.
 
+## [MVP8-RNG_Streams-016] - (2026-10-07)
+
+### Fixed
+
+- Fixed the Government policy RNG seed being identical to the spatial-layout seed for every non-zero master seed. Both derivations XORed the seed with `0x9e3779b9`, so Government experiment draws replayed the draws that placed households and firms (#27).
+- Government now derives its seed from the normalized master seed, a dedicated salt, and the new `mixSeed` helper (murmur3 `fmix32`) in `rng.ts`. A plain distinct XOR constant was rejected because xorshift is linear over GF(2): it would leave every Government draw a fixed, seed-independent XOR offset of the spatial draws.
+
+### Changed
+
+- Government experiment timing, adopted rates, and fiscal trajectories change for every seed. Spatial layout, employment assignment, payroll order, market ordering, and firm probing draws are unchanged.
+
+### Validation
+
+- Added regression coverage that market, spatial, employment, and Government seeds are pairwise distinct for the canonical seed, edge seeds, and 500 generated seeds, and that the Government seed is not a fixed XOR offset of any other stream.
+- Confirmed the new tests fail against both the previous derivation and a distinct-XOR-constant-only variant.
+
 ## [MVP8-Simulation_Runner-015] - (2026-09-06)
 
 ### Added

@@ -1,11 +1,13 @@
 import { giniCoefficient } from './analytics'
-import { normalizeSeed, randomInt, seededShuffle } from './rng'
+import { mixSeed, normalizeSeed, randomInt, seededShuffle } from './rng'
 import type { Government, GovernmentExperimentType, GovernmentPolicyMode, Household } from './types'
 
 export interface GovernmentCandidate { rateBps: number; type: GovernmentExperimentType }
 
+const GOVERNMENT_POLICY_STREAM_SALT = 0x632b_e5ab
+
 export function deriveGovernmentPolicySeed(masterSeed: number) {
-  return normalizeSeed((masterSeed ^ 0x9e37_79b9) >>> 0)
+  return normalizeSeed(mixSeed((normalizeSeed(masterSeed) ^ GOVERNMENT_POLICY_STREAM_SALT) >>> 0))
 }
 
 export function buildGovernmentExperimentCatalog(incumbentBps: number, mode?: GovernmentPolicyMode): GovernmentCandidate[] {
