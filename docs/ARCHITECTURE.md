@@ -18,7 +18,7 @@ Overview provides economy-wide state; domain tabs provide detailed live state; R
 
 `pricingStrategy.ts` owns private firm learning. Firms receive their own realized operating outcomes and public same-industry advertised prices; they do not receive household wealth, Gini, Government references, or future information.
 
-`government.ts` owns the bounded Government learner and fiscal rules. Government sees current administered post-payroll cash and its realized policy history. It cannot inspect future markets or simulate counterfactual futures. Market ordering, geography, employment, payroll remainder, firm probing, and Government policy use deterministic seeds; Government has a dedicated substream so its experiments do not perturb unrelated stochastic sequences.
+`government.ts` owns the bounded Government learner and fiscal rules. Government sees current administered post-payroll cash and its realized policy history. It cannot inspect future markets or simulate counterfactual futures. Market ordering, geography, employment, payroll remainder, firm probing, and Government policy use deterministic seeds; Government has a dedicated substream so its experiments do not perturb unrelated stochastic sequences. Its seed is the salted master seed passed through the nonlinear `mixSeed` bijection, so it is neither equal to nor a fixed XOR offset of the market, spatial, or employment seeds under the linear xorshift generator.
 
 ## Fiscal accounting
 
