@@ -19,7 +19,7 @@ try {
     return Number(text.match(/\d+/)?.[0] ?? 0) >= 5
   }, null, { timeout: 5000 })
 
-  const householdText = await page.locator('.header-context').textContent()
+  const householdText = await page.locator('.scenario-summary').textContent()
   if (!householdText?.includes('100 households')) {
     throw new Error(`Expected canonical N=100, got: ${householdText}`)
   }

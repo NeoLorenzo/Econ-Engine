@@ -2,6 +2,53 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-UI_Redesign-018.1] - (2026-10-07)
+
+### Changed
+
+- **Market map:** Markets now opens with a top-down "Who's cheapest where" map for the selected market. Shading shows the cheaper firm once the round trip is paid. Each household is a dot coloured by the firm it actually bought from today, and households that missed out are shown as red rings.
+- **Household cash ledger:** the map inspector shows a household's day as a ledger: opening cash, wage (with any shortfall), shopping and transport, wealth tax, Government transfer, and closing cash.
+- **Pillar height:** a Before tax / After tax toggle on the map, defaulting to before tax, because cash after redistribution is nearly uniform. Height now scales with the cube of cash relative to the starting amount, so few-dollar gaps are visible. The camera uses a narrower field of view, so perspective no longer makes nearer pillars look richer.
+- **Cross-links:** household IDs in the Households table, the firm cards in Markets, and the firm markers on the market map open the selection on the economy map. The map and Markets now share one selected market and selection, so switching tabs no longer loses the selection.
+- **Overview:** day 0 replaces the four empty "—" stats with a single "Run the economy" call to action. Feed items about a specific market open that market. The markets list has column headers, and "served" now reads "of households bought".
+- **Hover tooltips:** households show cash before and after tax plus their employer; firms show tomorrow's price and headcount.
+- Chart subtitles note the visible day range once the bounded 400-day history has dropped early days.
+- The 3D map now redraws only when something changes, instead of rendering every frame while idle.
+
+### Fixed
+
+- Industry tiles overflowed the page horizontally at phone width.
+
+### Validation
+
+- Added tests showing that each household ledger reconciles exactly (opening + wage − spending = pre-tax cash; pre-tax − tax + transfer = closing) and opens with the previous day's closing cash. Added tests for the history-window note and the before/after pillar height.
+
+## [MVP8-UI_Redesign-018] - (2026-10-07)
+
+### Changed
+
+- Redesigned the whole observer UI. Economic behavior, the simulation core, and the canonical trajectory are unchanged.
+- **Shell:** a sticky top bar holds the five sections (Overview, Markets, Households, Government, Experiments) and the run controls (Run/Pause, Step, Speed, Restart, Scenario). Space runs or pauses. Tabs support arrow keys and are reflected in the URL hash. A footer states the seed, household count, and whether money was conserved.
+- **Overview:** four headline stats with history sparklines (needs met, inequality, wealth tax, wages paid), the 3D map as the centerpiece, a "where the money went today" circuit diagram whose line widths scale with each flow, a plain-language feed of notable changes (with the full event log behind a disclosure), and a markets-at-a-glance list.
+- **Markets:** four industry tiles act as the selector; the chosen market shows Firm A and Firm B side by side with plain-language learner status, then price, market share, earnings, and supply/sales charts. Firm A is always teal and Firm B always coral.
+- **Households:** a ranked distribution of cash before redistribution against cash after, and a searchable, sortable table with a per-industry "bought today" indicator.
+- **Government:** current rate and what the policy is trying to do in one sentence, today's fiscal stats, inequality before/after, and the tax rate over time.
+- **Experiments:** each harness is a card with a plain question and description. Runs happen in a Web Worker (with a main-thread fallback), so the page stays responsive. Legacy diagnostics sit under "Older diagnostics".
+- **3D map:** one market selector now drives both the territory floor and the household purchase details; firms outside the selected market are dimmed; hovering shows a tooltip; a search box selects any household or firm; the inspector is an overlay panel. Selecting a firm switches the map to its market.
+- **Scenario settings** moved into a modal drawer with explanations per field and a single **Apply & restart**. The top-bar **Restart** always restarts the last applied scenario, so the two reset actions no longer overlap.
+- Replaced the stylesheet with design tokens, a six-step type scale with a 12px minimum, and secondary text that meets WCAG AA contrast. Money is formatted as `$5,000.00` rather than `US$5,000.00`.
+- Split `App.tsx` into `src/ui/views/*`, shared components, chart wrappers, and pure view-model helpers (`economyModel.ts`, `format.ts`, `households.ts`).
+- Updated the page title and social metadata, and pointed the fast-mode browser check at the new `.scenario-summary` element.
+
+### Removed
+
+- Internal ticket codes from on-screen titles, duplicated charts on Overview and Government, the separate "Recent event ledger" panel, the budget strip under the 3D view, and unused legacy CSS.
+
+### Validation
+
+- Added `economyModel.test.ts`, covering completion rate, the daily money-circuit identities, industry snapshots, firm series alignment, plain-language firm status, and the highlight feed.
+- Checked every section in the browser at phone, tablet, and desktop widths, including a phone-width layout with no horizontal page scroll, and measured that a 1,000-day experiment no longer blocks the main thread.
+
 ## [MVP8-Settings_Validation-017] - (2026-10-07)
 
 ### Fixed

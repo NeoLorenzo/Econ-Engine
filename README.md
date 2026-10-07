@@ -1,6 +1,6 @@
 # Econ-Engine — [MVP8-Population_Scaling-010.1]
 
-Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP8 scales the canonical MVP7 economy to 100 households and $5,000; refinement 010.1 organizes its observer into five application tabs without changing economic behavior.
+Econ-Engine is a deterministic browser-based agent economic simulation built to make outcomes inspectable. MVP8 scales the canonical MVP7 economy to 100 households and $5,000; The observer UI presents the economy through five sections: Overview, Markets, Households, Government, and Experiments. Overview combines a 3D map, a daily money-circuit diagram, and a plain-language feed of notable changes. Experiments run in a background worker. The UI does not change economic behavior.
 
 ## Run locally
 

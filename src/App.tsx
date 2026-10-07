@@ -1,160 +1,170 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { DEFAULT_INDUSTRIES as ALL_INDUSTRIES, DEFAULT_SEED, TOTAL_MONEY_CENTS } from './sim/config'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { expectedTotalMoneyCents, TOTAL_MONEY_CENTS } from './sim/config'
 import { createSimulation, stepSimulation } from './sim/engine'
-import { runMultiIndustryExperiment, type MultiIndustryExperimentResult } from './sim/scarcityExperiment'
-import { runCompetitionStartingPriceGrid, type CompetitionGridSuite } from './sim/competitionGridExperiment'
-import { runGeneralizedSpatialExperiment, type GeneralizedSpatialResult } from './sim/generalizedSpatialExperiment'
-import { runEmploymentDynamics, type EmploymentDynamicsReport } from './sim/employmentDynamics'
-import { runGovernmentBaselineComparison, type GovernmentTrajectorySummary } from './sim/governmentExperiment'
-import { runPopulationScaleComparison } from './sim/populationScaleExperiment'
 import { SimulationRunner } from './sim/simulationRunner'
-import type { IndustryId, SimulationState } from './sim/types'
-import { groupEventsForDisplay } from './ui/groupEventsForDisplay'
+import type { SimulationConfig, SimulationState } from './sim/types'
+import { Icon } from './ui/components'
+import { useExperiments } from './ui/experiments'
+import { money } from './ui/format'
+import { SettingsDrawer } from './ui/SettingsDrawer'
 import { DEFAULT_SETTINGS_DRAFT, parseSimulationSettings } from './ui/simulationSettings'
-import { WorldView } from './ui/WorldView'
+import { ExperimentsView } from './ui/views/ExperimentsView'
+import { GovernmentView } from './ui/views/GovernmentView'
+import { HouseholdsView } from './ui/views/HouseholdsView'
+import { MarketsView } from './ui/views/MarketsView'
+import { OverviewView } from './ui/views/OverviewView'
+import type { CompetitiveIndustryId } from './ui/worldViewModel'
 
-const money = (cents: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'USD' }).format(cents / 100)
-const DEFAULT_INDUSTRIES = ALL_INDUSTRIES.filter(({ id }) => id !== 'transport')
-const colors: Record<IndustryId, string> = { food: '#deff75', utilities: '#65bfa1', transport: '#97a3ff', healthcare: '#d6a866', entertainment: '#d47c9b' }
-const firmBColors: Record<IndustryId, string> = { food: '#f09a63', utilities: '#63b9d5', transport: '#97a3ff', healthcare: '#b997e8', entertainment: '#f09a63' }
-const firmColor = (firmId: string, industryId: IndustryId) => firmId.endsWith('-b') ? firmBColors[industryId] : colors[industryId]
-const chartTooltip = { background: '#111715', border: '1px solid #28322e', borderRadius: 8, color: '#f4f7f5' }
+type AppTab = 'overview' | 'markets' | 'households' | 'government' | 'experiments'
+const TABS: { id: AppTab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'markets', label: 'Markets' },
+  { id: 'households', label: 'Households' },
+  { id: 'government', label: 'Government' },
+  { id: 'experiments', label: 'Experiments' },
+]
+const SPEEDS = [1, 5, 20, 100]
 
-function Metric({ label, value, detail, accent = false }: { label: string; value: string; detail?: string; accent?: boolean }) {
-  return <div className={`metric ${accent ? 'metric--accent' : ''}`}><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>
-}
-
-function PriceChart({ state, industryId }: { state: SimulationState; industryId: IndustryId }) {
-  const data = state.metrics.map((metric) => Object.fromEntries([['day', metric.day], ...metric.markets.map((market) => [market.firmId, market.postedPriceCents / 100])]))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -12 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${value}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value) * 100)} labelFormatter={(value) => `Day ${value}`} />{state.firms.filter((firm) => firm.industryId === industryId).map((firm) => <Line key={firm.id} type="monotone" dataKey={firm.id} name={`Firm ${firm.id.endsWith('-a') ? 'A' : 'B'}`} stroke={firmColor(firm.id, firm.industryId)} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
-}
-
-function OperatingEarningsChart({ state, industryId }: { state: SimulationState; industryId: IndustryId }) {
-  const data = state.metrics.map((metric) => Object.fromEntries([['day', metric.day], ...metric.markets.map((market) => [market.firmId, market.preTaxProfitCents])]))
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -4 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${Number(value) / 100}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value))} labelFormatter={(value) => `Day ${value}`} />{state.firms.filter((firm) => firm.industryId === industryId).map((firm) => <Line key={firm.id} type="monotone" dataKey={firm.id} name={`Firm ${firm.id.endsWith('-a') ? 'A' : 'B'}`} stroke={firmColor(firm.id, firm.industryId)} dot={false} strokeWidth={1.8} />)}</LineChart></ResponsiveContainer>
-}
-
-function MarketFlowChart({ state, industryId }: { state: SimulationState; industryId: IndustryId }) {
-  const data = state.metrics.map((metric) => { const markets = metric.markets.filter((item) => item.industryId === industryId); return { day: metric.day, affordable: Math.max(...markets.map((market) => market.householdsAffordableAtMarketOpen)), produced: markets.reduce((sum, market) => sum + market.unitsProduced, 0), sold: markets.reduce((sum, market) => sum + market.unitsSold, 0), expired: markets.reduce((sum, market) => sum + market.unitsExpired, 0) } })
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -16 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" allowDecimals={false} /><Tooltip contentStyle={chartTooltip} labelFormatter={(value) => `Day ${value}`} /><Line dataKey="affordable" name="Affordable" stroke="#65bfa1" dot={false} /><Line dataKey="produced" name="Produced" stroke="#97a3ff" dot={false} strokeDasharray="5 5" /><Line dataKey="sold" name="Sold" stroke="#d6a866" dot={false} /><Line dataKey="expired" name="Expired" stroke="#d47c6b" dot={false} /></LineChart></ResponsiveContainer>
-}
-
-function WealthChart({ state }: { state: SimulationState }) {
-  const data = state.metrics.map((metric) => ({ day: metric.day, minimum: metric.householdCashMinimumCents, median: metric.householdCashMedianCents, maximum: metric.householdCashMaximumCents }))
-  const first = data[0]
-  const isDynamic = first !== undefined && data.some(({ minimum, median, maximum }) => minimum !== maximum || minimum !== first.minimum || median !== first.median || maximum !== first.maximum)
-  if (!isDynamic) return <div className="wealth-chart--hidden" aria-hidden="true" />
-  return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -4 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" tickFormatter={(value) => `$${Number(value) / 100}`} /><Tooltip contentStyle={chartTooltip} formatter={(value) => money(Number(value))} labelFormatter={(value) => `Day ${value}`} /><Line dataKey="minimum" name="Minimum" stroke="#d47c6b" dot={false} /><Line dataKey="median" name="Median" stroke="#deff75" dot={false} strokeWidth={2} /><Line dataKey="maximum" name="Maximum" stroke="#97a3ff" dot={false} /></LineChart></ResponsiveContainer>
-}
-
-function FiscalGiniChart({ state }: { state: SimulationState }) { const data = state.metrics.map((metric) => ({ day: metric.day, preFiscal: metric.preFiscalCashGini, postFiscal: metric.postFiscalCashGini })); return <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 10, right: 12, left: -12 }}><CartesianGrid stroke="#202825" vertical={false} /><XAxis dataKey="day" stroke="#69756f" /><YAxis stroke="#69756f" domain={[0, 1]} /><Tooltip contentStyle={chartTooltip} formatter={(value) => Number(value).toFixed(3)} labelFormatter={(value) => `Day ${value}`} /><Line dataKey="preFiscal" name="Pre-fiscal Gini" stroke="#d47c6b" dot={false} /><Line dataKey="postFiscal" name="Post-fiscal Gini" stroke="#65bfa1" dot={false} strokeWidth={2} /></LineChart></ResponsiveContainer> }
-
-function PricingIntelligence({ state }: { state: SimulationState }) {
-  const latest = state.metrics.at(-1)
-  return <section className="panel pricing-intelligence"><div className="panel-heading"><div><h2>Competitive price experiments</h2><p>Same-industry public sticker prices; realised operating earnings remain the adoption test</p></div></div><div className="pricing-intelligence-grid">{state.firms.filter(({ industryId }) => industryId !== 'transport').map((firm) => {
-    const competitor = state.firms.find(({ industryId, id }) => industryId === firm.industryId && id !== firm.id)!
-    const tested = latest?.markets.find(({ firmId }) => firmId === firm.id)?.postedPriceCents
-    return <article key={firm.id}><span>{firm.industryId} · Firm {firm.id.endsWith('-a') ? 'A' : 'B'}</span><strong>{money(firm.pricing.incumbentPriceCents)} incumbent</strong><small>Tested: {tested === undefined ? '—' : money(tested)} · Competitor advertised: {money(competitor.postedPriceCents)}</small><small>Experiment: {firm.pricing.experimentType?.replaceAll('_', ' ') ?? 'none yet'} · Result: {firm.pricing.lastExperimentOutcome ?? (firm.pricing.probing ? 'testing' : '—')}</small></article>
-  })}</div></section>
-}
-
-function BudgetModel({ state }: { state: SimulationState }) {
-  const modeled = state.industries.filter(({ id }) => id !== 'transport')
-  const totalBps = modeled.reduce((sum, industry) => sum + (industry.budgetShareBps ?? 0), 0)
-  return <section className="baseline panel budget-model"><div><span>Daily expenditure base</span><strong>{money(state.config.dailyExpenditureBudgetCents!)}</strong></div>{modeled.map((industry) => <div key={industry.id}><span>{industry.name}</span><strong>{((industry.budgetShareBps ?? 0) / 100).toFixed(1)}% · {money(industry.householdBudgetCents)}</strong></div>)}<div><span>Modeled share</span><strong>{(totalBps / 100).toFixed(1)}%</strong></div></section>
-}
-
-function EmploymentPanel({ state }: { state: SimulationState }) {
-  return <section className="panel market-overview"><div className="panel-heading"><div><h2>Firm payroll overview</h2><p>Fixed $10 contracts; residual profit is cash after payroll and before corporate tax</p></div></div><div className="market-table-wrap"><table><thead><tr><th>Firm</th><th>Workers</th><th>Revenue</th><th>Payroll owed</th><th>Wages paid</th><th>Unpaid wages</th><th>Fulfillment</th><th>Residual profit</th><th>Corporate tax</th><th>Ending cash</th></tr></thead><tbody>{state.firms.map((firm) => <tr className={firm.payrollFulfillmentRate < 1 ? 'payroll-incomplete' : ''} key={firm.id}><td>{firm.id.replace('firm-', '')}</td><td>{firm.employeeIds.length}</td><td>{money(firm.revenueTodayCents)}</td><td>{money(firm.contractualPayrollTodayCents)}</td><td>{money(firm.wagesPaidTodayCents)}</td><td>{money(firm.unpaidWagesTodayCents)}</td><td>{(firm.payrollFulfillmentRate * 100).toFixed(0)}%</td><td>{money(firm.residualProfitTodayCents)}</td><td>{money(firm.corporateProfitTaxTodayCents)}</td><td>{money(firm.cashCents)}</td></tr>)}</tbody></table></div></section>
-}
-
-function GovernmentPanel({ state }: { state: SimulationState }) { const government = state.government; const objective = government.policyMode === 'equalizing' ? 'Equalizing' : 'Minimizing tax while maintaining equality'; return <section className="panel government-panel"><div className="panel-heading"><div><h2>Government fiscal circuit</h2><p>Corporate profit tax is fixed; household wealth tax remains adaptive</p></div></div><section className="metrics-grid"><Metric label="Corporate profit tax" value="100% fixed" detail={`Receipts ${money(government.corporateTaxCollectedTodayCents)} · non-adaptive`} /><Metric label="Wealth-tax policy" value={objective} detail={`${(government.incumbentWealthTaxRateBps / 100).toFixed(0)}% incumbent · ${(government.appliedWealthTaxRateBps / 100).toFixed(0)}% applied`} /><Metric label="Effective equality" value={government.effectiveEquality ? 'Yes' : 'No'} detail={`Cash range ${money(government.postFiscalCashMinimumCents)}–${money(government.postFiscalCashMaximumCents)}`} /><Metric label="Wealth-tax receipts" value={money(government.wealthTaxCollectedTodayCents)} detail={`${government.householdsPayingTax} payers`} /><Metric label="Combined pool" value={money(government.totalReceiptsTodayCents)} detail={`Corporate ${money(government.corporateTaxCollectedTodayCents)} + wealth ${money(government.wealthTaxCollectedTodayCents)}`} /><Metric label="Redistributed / ending cash" value={`${money(government.redistributedTodayCents)} / ${money(government.cashCents)}`} detail={`${government.householdsReceivingTransfers} recipients`} accent /></section></section> }
-
-function GovernmentExperimentView({ report }: { report: GovernmentTrajectorySummary }) { const pct = (value: number) => `${(value * 100).toFixed(1)}%`; return <section className="metrics-grid"><Metric label="Mean incumbent / applied" value={`${(report.government.meanIncumbentRateBps / 100).toFixed(1)}% / ${(report.government.meanAppliedRateBps / 100).toFixed(1)}%`} detail={`${report.government.experiments} experiments · ${report.government.adopted} adopted`} /><Metric label="Effective equality" value={pct(report.government.effectiveEqualityFraction)} detail={`Equalizing ${pct(report.government.equalizingModeFraction)} · minimizing tax ${pct(report.government.minimizingTaxModeFraction)}`} /><Metric label="Directional outcomes" value={`${report.government.successfulDownwardAdoptions} down · ${report.government.upwardEqualityAdoptions} up`} detail={`${report.government.rejectedDownwardEqualityBreaks} downward tests broke equality`} /><Metric label="Mean pre / post Gini" value={`${report.distribution.meanPreGini.toFixed(3)} / ${report.distribution.meanPostGini.toFixed(3)}`} detail={`Reduction ${report.distribution.meanGiniReduction.toFixed(3)}`} /><Metric label="Purchase completion" value={pct(report.consumption.completionFraction)} detail={`${report.consumption.cashFailures} cash failures`} /><Metric label="Policy spells" value={`${report.government.taxRateChanges} changes`} detail={`Longest ${report.government.longestIncumbentSpellDays} days`} /></section> }
-
-function TemporalCompetitionReport({ result }: { result: GeneralizedSpatialResult }) {
-  const percent = (value: number) => `${(value * 100).toFixed(1)}%`
-  return <div className="market-table-wrap temporal-report"><table><thead><tr><th>Industry</th><th>Mean daily share</th><th>Days leading</th><th>Lead changes</th><th>100% share days</th><th>Longest lead</th><th>Mean incumbent</th><th>Cumulative operating earnings</th><th>Day 1000 snapshot</th></tr></thead><tbody>{result.industries.map(({ industryId, analytics }) => <tr key={industryId}><td>{industryId}</td><td>A {percent(analytics.firmA.meanDailyMarketShare)} / B {percent(analytics.firmB.meanDailyMarketShare)} / tie {percent(analytics.fractionDaysTied)}</td><td>A {percent(analytics.firmA.fractionDaysLeading)} / B {percent(analytics.firmB.fractionDaysLeading)}</td><td>{analytics.leadershipChanges}</td><td>A {percent(analytics.firmA.fractionDaysAtFullShare)} / B {percent(analytics.firmB.fractionDaysAtFullShare)}</td><td>A {analytics.firmA.leadingSpells.longestDays}d / B {analytics.firmB.leadingSpells.longestDays}d</td><td>A {money(analytics.firmA.meanIncumbentPriceCents)} / B {money(analytics.firmB.meanIncumbentPriceCents)}</td><td>A {money(analytics.firmA.cumulativeProfitCents)} / B {money(analytics.firmB.cumulativeProfitCents)}</td><td className="terminal-snapshot">A {percent(analytics.terminalSnapshot.marketShares[0])} / B {percent(analytics.terminalSnapshot.marketShares[1])}</td></tr>)}</tbody></table><p className="experiment-result">Seed {result.seed} · days 1–1000 included · terminal snapshot is context, not a long-run classification.</p></div>
-}
-
-function EmploymentDynamicsView({ report }: { report: EmploymentDynamicsReport }) {
-  const percent = (value: number) => `${(value * 100).toFixed(1)}%`; const failureTotal = Object.values(report.economy.failureTotals).reduce((sum, value) => sum + value, 0)
-  return <div className="employment-dynamics-report"><section className="metrics-grid"><Metric label="Mean / max cash Gini" value={`${report.economy.meanCashGini.toFixed(3)} / ${report.economy.maximumCashGini.toFixed(3)}`} detail={`Day 1000: ${report.economy.terminalCashGini.toFixed(3)}`} /><Metric label="Mean wage Gini" value={report.economy.meanWageGini.toFixed(3)} detail={`Maximum ${report.economy.maximumWageGini.toFixed(3)}`} /><Metric label="Richest-1 share" value={percent(report.economy.richest1.mean)} detail={`Max ${percent(report.economy.richest1.maximum)}`} /><Metric label="Richest-2 / 3" value={`${percent(report.economy.richest2.mean)} / ${percent(report.economy.richest3.mean)}`} detail="Full-horizon means" /><Metric label="Completion" value={percent(report.economy.purchaseCompletionFraction)} detail={`${report.economy.failureTotals.cash} actual-cash failures`} /><Metric label="Money after payroll" value={money(report.economy.totalHouseholdCashCents)} detail="Exact closed circuit" accent /></section><div className="market-table-wrap"><table><thead><tr><th>Household</th><th>Employer</th><th>Mean cash</th><th>Mean wage</th><th>Cumulative wage</th><th>Completion</th><th>&lt;$5 occupancy</th><th>Mean rank</th><th>Top / bottom 3</th><th>Rank changes</th><th>Day 1000</th></tr></thead><tbody>{report.households.map((household) => <tr key={household.householdId}><td>{household.householdId.replace('household-', 'H')}</td><td>{household.employerFirmId.replace('firm-', '')}</td><td>{money(household.meanCashCents)}</td><td>{money(household.meanWageCents)}</td><td>{money(household.cumulativeWagesCents)}</td><td>{percent(household.purchaseCompletionFraction)}</td><td>{percent(household.lowCash[500].fraction)} · {household.lowCash[500].spells} spells · max {household.lowCash[500].longestSpellDays}d</td><td>{household.meanWealthRank.toFixed(2)}</td><td>{percent(household.top3Fraction)} / {percent(household.bottom3Fraction)}</td><td>{household.wealthRankChanges}</td><td className="terminal-snapshot">{money(household.terminalCashCents)}</td></tr>)}</tbody></table></div><div className="market-table-wrap"><table><thead><tr><th>Employer</th><th>Worker(s)</th><th>Produced</th><th>Sold</th><th>Expired</th><th>Sell-through</th><th>Operating earnings</th><th>Wages</th></tr></thead><tbody>{report.firms.map((firm) => <tr key={firm.firmId}><td>{firm.firmId.replace('firm-', '')}</td><td>{firm.workerIds.map((id) => id.replace('household-', 'H')).join(', ')}</td><td>{firm.industryId === 'transport' ? '—' : firm.cumulativeProduction}</td><td>{firm.cumulativeSales}</td><td>{firm.industryId === 'transport' ? '—' : firm.cumulativeExpiration}</td><td>{firm.industryId === 'transport' ? '—' : percent(firm.sellThroughRate)}</td><td>{money(firm.cumulativeOperatingEarningsCents)}</td><td>{money(firm.cumulativeWagesCents)}</td></tr>)}</tbody></table></div><div className="market-table-wrap"><table><thead><tr><th>Failure cause</th><th>Count</th><th>Share</th></tr></thead><tbody>{([['Actual cash', report.economy.failureTotals.cash], ['Category budget', report.economy.failureTotals.category_budget], ['Inventory / availability', report.economy.failureTotals.inventory]] as const).map(([label, count]) => <tr key={label}><td>{label}</td><td>{count}</td><td>{percent(failureTotal ? count / failureTotal : 0)}</td></tr>)}</tbody></table></div><div className="market-table-wrap"><table><thead><tr><th>Prior-day cash</th><th>Household-days</th><th>Mean next-day completion</th></tr></thead><tbody>{report.cashBins.map((bin) => <tr key={bin.label}><td>{bin.label}</td><td>{bin.observations}</td><td>{bin.meanNextDayCompletion === null ? 'No observations' : percent(bin.meanNextDayCompletion)}</td></tr>)}</tbody></table></div><p className="experiment-result">Seed {report.seed} · all days 1–{report.horizonDays} · Pearson cumulative-wage ↔ mean-cash correlation across N=10: {report.cumulativeWageMeanCashPearson?.toFixed(3) ?? 'undefined'} (descriptive only). Terminal values are secondary.</p></div>
-}
-
-type AppTab = 'overview' | 'markets' | 'households' | 'government' | 'research'
-type HouseholdSort = 'household' | 'employer' | 'cash' | 'contract' | 'wage' | 'unpaid' | 'tax' | 'transfer' | 'net'
-const APP_TABS: { id: AppTab; label: string }[] = [{ id: 'overview', label: 'Overview' }, { id: 'markets', label: 'Markets' }, { id: 'households', label: 'Households & Labor' }, { id: 'government', label: 'Government' }, { id: 'research', label: 'Research' }]
-
-export function filterAndSortHouseholds(households: SimulationState['households'], query: string, sort: HouseholdSort, ascending: boolean): SimulationState['households'] {
-  const needle = query.trim().toLowerCase()
-  const value = (household: SimulationState['households'][number]) => ({ household: Number(household.id.split('-').at(-1)), employer: household.employerFirmId, cash: household.postFiscalCashCents, contract: household.contractualWageTodayCents, wage: household.wageTodayCents, unpaid: household.unpaidWageTodayCents, tax: household.taxPaidTodayCents, transfer: household.transferReceivedTodayCents, net: household.netCashChangeTodayCents })[sort]
-  return [...households.filter((household) => !needle || household.id.toLowerCase().includes(needle) || household.employerFirmId.toLowerCase().includes(needle))].sort((a, b) => { const av = value(a); const bv = value(b); const result = typeof av === 'string' ? av.localeCompare(String(bv)) : Number(av) - Number(bv); return (result || a.id.localeCompare(b.id, undefined, { numeric: true })) * (ascending ? 1 : -1) })
+const tabFromHash = (): AppTab => {
+  const hash = typeof window === 'undefined' ? '' : window.location.hash.slice(1)
+  return TABS.some(({ id }) => id === hash) ? hash as AppTab : 'overview'
 }
 
 export default function App() {
-  const [draft, setDraft] = useState(DEFAULT_SETTINGS_DRAFT)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const settings = useMemo(() => parseSimulationSettings(draft), [draft])
-  const settingsErrors = settings.ok ? [] : settings.errors
-  const fieldValidity = (field: string) => settingsErrors.some((error) => error.field === field) ? { 'aria-invalid': true, 'aria-describedby': `settings-error-${field}` } : {}
   const [state, setState] = useState(() => createSimulation())
   const runnerRef = useRef<SimulationRunner<SimulationState> | null>(null)
   if (runnerRef.current === null) runnerRef.current = new SimulationRunner(state, stepSimulation, setState)
   const runner = runnerRef.current
   const [running, setRunning] = useState(false)
   const [speed, setSpeed] = useState(5)
-  const [activeTab, setActiveTab] = useState<AppTab>('overview')
-  const [selectedIndustry, setSelectedIndustry] = useState<IndustryId>('food')
-  const [householdQuery, setHouseholdQuery] = useState('')
-  const [householdSort, setHouseholdSort] = useState<HouseholdSort>('household')
-  const [householdSortAscending, setHouseholdSortAscending] = useState(true)
-  const [experiment, setExperiment] = useState<MultiIndustryExperimentResult | null>(null)
-  const [competitionGrid, setCompetitionGrid] = useState<CompetitionGridSuite | null>(null)
-  const [temporalAnalysis, setTemporalAnalysis] = useState<GeneralizedSpatialResult | null>(null)
-  const [employmentDynamics, setEmploymentDynamics] = useState<EmploymentDynamicsReport | null>(null)
-  const [governmentAnalysis, setGovernmentAnalysis] = useState<{ adaptive: GovernmentTrajectorySummary; baseline: GovernmentTrajectorySummary } | null>(null)
-  const [populationAnalysis, setPopulationAnalysis] = useState<ReturnType<typeof runPopulationScaleComparison> | null>(null)
-  const step = () => runner.stepOnce()
-  const reset = () => {
-    if (!settings.ok) { setSettingsOpen(true); return }
-    setRunning(false); runner.reset(createSimulation(settings.config))
-  }
+  const [tab, setTab] = useState<AppTab>(tabFromHash)
+  // Shared between the map and the Markets page, so both always show the same market and selection.
+  const [industry, setIndustry] = useState<CompetitiveIndustryId>('food')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [draft, setDraft] = useState(DEFAULT_SETTINGS_DRAFT)
+  const [appliedDraft, setAppliedDraft] = useState(DEFAULT_SETTINGS_DRAFT)
+  const [appliedConfig, setAppliedConfig] = useState<SimulationConfig | undefined>(undefined)
+  const { experiments, run: runExperiment } = useExperiments()
+  const tabRefs = useRef(new Map<AppTab, HTMLButtonElement>())
+
   useEffect(() => {
     if (!running) { runner.stop(); return }
     runner.start(speed)
     return () => runner.stop(false)
   }, [runner, running, speed])
   useEffect(() => () => runner.destroy(), [runner])
-  const latest = state.metrics.at(-1)
-  const recentEvents = useMemo(() => groupEventsForDisplay(state.events).reverse().slice(0, 30), [state.events])
-  const settledCount = state.firms.filter(({ industryId, pricing }) => industryId !== 'transport' && pricing.locallySettled).length
-  const households = useMemo(() => filterAndSortHouseholds(state.households, householdQuery, householdSort, householdSortAscending), [state.households, householdQuery, householdSort, householdSortAscending])
-  const consumerMarkets = latest?.markets.filter(({ industryId }) => industryId !== 'transport') ?? []
-  const completion = consumerMarkets.reduce((sum, market) => sum + market.unitsSold, 0) / Math.max(1, state.households.length * DEFAULT_INDUSTRIES.length)
-  const payrollFulfillment = (latest?.totalWagesPaidCents ?? 0) / Math.max(1, latest?.totalContractualPayrollCents ?? 0)
-  const residualProfit = latest?.totalResidualFirmProfitCents ?? 0
-  const selectSort = (sort: HouseholdSort) => { if (householdSort === sort) setHouseholdSortAscending((value) => !value); else { setHouseholdSort(sort); setHouseholdSortAscending(true) } }
-  const sortLabel = (sort: HouseholdSort, label: string) => `${label}${householdSort === sort ? householdSortAscending ? ' ↑' : ' ↓' : ''}`
 
-  return <main>
-    <header className="hero app-header"><div className="eyebrow">[MVP8-Population_Scaling-010.1]</div><div className="hero-row"><div><h1>Econ<span>—</span>Engine</h1></div><div className="header-context"><span className={running ? 'run-indicator running' : 'run-indicator'}>{running ? 'Running' : 'Paused'}</span><span>Day {state.day}</span><span>Seed {state.config.seed}</span><span>{state.households.length} households</span><span>{money(TOTAL_MONEY_CENTS)} closed circuit</span></div></div>
-      <nav className="app-nav" aria-label="Application sections" role="tablist">{APP_TABS.map((tab) => <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</nav>
+  const toggleRunning = useCallback(() => setRunning((value) => !value), [])
+  const restart = () => { setRunning(false); runner.reset(createSimulation(appliedConfig)) }
+  const applySettings = () => {
+    const parsed = parseSimulationSettings(draft)
+    if (!parsed.ok) return
+    setAppliedDraft(draft)
+    setAppliedConfig(parsed.config)
+    setSettingsOpen(false)
+    setRunning(false)
+    runner.reset(createSimulation(parsed.config))
+  }
+  const closeSettings = () => { setSettingsOpen(false); setDraft(appliedDraft) }
+
+  const navigate = useCallback((next: AppTab) => {
+    setTab(next)
+    if (window.location.hash.slice(1) !== next) window.history.replaceState(null, '', `#${next}`)
+  }, [])
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  // Space runs or pauses, unless the user is typing or operating another control.
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat || settingsOpen) return
+      const target = event.target as HTMLElement
+      if (target !== document.body && target.closest('input, select, textarea, button, a, canvas, [contenteditable], summary')) return
+      event.preventDefault()
+      toggleRunning()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [settingsOpen, toggleRunning])
+
+  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const index = TABS.findIndex(({ id }) => id === tab)
+    const next = event.key === 'ArrowRight' ? (index + 1) % TABS.length : event.key === 'ArrowLeft' ? (index - 1 + TABS.length) % TABS.length : event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : -1
+    if (next < 0) return
+    event.preventDefault()
+    navigate(TABS[next].id)
+    tabRefs.current.get(TABS[next].id)?.focus()
+  }
+
+  const openMarket = (next: CompetitiveIndustryId) => { setIndustry(next); navigate('markets'); window.scrollTo({ top: 0 }) }
+  const showOnMap = (id: string) => {
+    setSelectedId(id)
+    const firm = state.firms.find((candidate) => candidate.id === id)
+    if (firm && firm.industryId !== 'transport') setIndustry(firm.industryId)
+    navigate('overview')
+    setTimeout(() => document.getElementById('world-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
+  }
+  const settingsChanged = JSON.stringify(appliedDraft) !== JSON.stringify(DEFAULT_SETTINGS_DRAFT)
+  const totalMoney = state.metrics.at(-1)?.totalMoneyCents ?? TOTAL_MONEY_CENTS
+  const seed = state.config.seed ?? Number(appliedDraft.seed)
+  const conserved = totalMoney === expectedTotalMoneyCents(state.households.length)
+
+  return <div className="app">
+    <header className="topbar">
+      <div className="topbar-inner">
+        <a className="brand" href="#overview" onClick={(event) => { event.preventDefault(); navigate('overview') }}>
+          <span className="brand-mark" aria-hidden="true" />Econ Engine
+        </a>
+        <nav className="tabs" role="tablist" aria-label="Sections">
+          {TABS.map(({ id, label }) => <button
+            key={id}
+            ref={(element) => { if (element) tabRefs.current.set(id, element); else tabRefs.current.delete(id) }}
+            role="tab"
+            id={`tab-${id}`}
+            aria-selected={tab === id}
+            aria-controls={`panel-${id}`}
+            tabIndex={tab === id ? 0 : -1}
+            onClick={() => navigate(id)}
+            onKeyDown={onTabKey}
+          >{label}</button>)}
+        </nav>
+        <div className="controls" role="group" aria-label="Simulation controls">
+          <span className={`run-status${running ? ' is-running' : ''}`}>
+            <span className="run-indicator">{running ? 'Running' : 'Paused'}</span>
+            <span className="control-day">Day {state.day}</span>
+          </span>
+          <button type="button" className="primary run-button" aria-label={running ? 'Pause' : 'Run simulation'} title={`${running ? 'Pause' : 'Run'} (Space)`} onClick={toggleRunning}>
+            <Icon name={running ? 'pause' : 'play'} size={14} /><span>{running ? 'Pause' : 'Run'}</span>
+          </button>
+          <button type="button" className="icon-button" aria-label="Step one day" title="Step one day" disabled={running} onClick={() => runner.stepOnce()}><Icon name="step" /></button>
+          <select className="speed" aria-label="Speed" title="Days simulated per second" value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
+            {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
+          </select>
+          <button type="button" className="icon-button" aria-label="Restart from day 0" title="Restart from day 0" onClick={restart}><Icon name="restart" /></button>
+          <button type="button" className={`icon-button${settingsChanged ? ' has-dot' : ''}`} aria-label={settingsChanged ? 'Scenario settings (customized)' : 'Scenario settings'} title="Scenario settings" onClick={() => setSettingsOpen(true)}><Icon name="settings" /></button>
+        </div>
+      </div>
     </header>
-    <section className="control-bar panel">
-      <div className="run-controls"><button className="primary" onClick={() => setRunning((value) => !value)}>{running ? 'Pause' : 'Run simulation'}</button><button onClick={step} disabled={running}>Step one day</button><button onClick={reset}>Reset</button><label className="speed-control">Speed<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[1, 5, 20, 100].map((value) => <option key={value} value={value}>{value} days/sec</option>)}</select></label><strong className="control-day">Day {state.day}</strong></div>
-      <details className="simulation-settings" open={settingsOpen} onToggle={(event) => setSettingsOpen(event.currentTarget.open)}><summary>Simulation settings</summary><div className="settings-content"><p>Draft values do not affect the running economy. Apply them with <strong>Reset with values</strong>.</p><div className="config-controls"><label>Seed<input inputMode="numeric" aria-label="Random seed" {...fieldValidity('seed')} value={draft.seed} onChange={(event) => setDraft({ ...draft, seed: event.target.value })} /></label><label>Daily expenditure base <span>$</span><input inputMode="decimal" aria-label="Daily expenditure base" {...fieldValidity('expenditureBase')} value={draft.expenditureBase} onChange={(event) => setDraft({ ...draft, expenditureBase: event.target.value })} /></label><label>Transport / tile <span>$</span><input inputMode="decimal" aria-label="Transport cost per tile" {...fieldValidity('transportRate')} value={draft.transportRate} onChange={(event) => setDraft({ ...draft, transportRate: event.target.value })} /></label><label>Initial learning step <span>$</span><input inputMode="decimal" aria-label="Initial price-learning step" {...fieldValidity('step')} value={draft.step} onChange={(event) => setDraft({ ...draft, step: event.target.value })} /></label></div><div className="firm-price-settings">{DEFAULT_INDUSTRIES.map((industry) => <fieldset key={industry.id}><legend>{industry.name}</legend>{(['a', 'b'] as const).map((suffix) => { const firmId = `firm-${industry.id}-${suffix}`; return <label key={firmId}>Firm {suffix.toUpperCase()} <span>$</span><input inputMode="decimal" aria-label={`${firmId} starting price`} {...fieldValidity(firmId)} value={draft.firmStarts[firmId] ?? '2.00'} onChange={(event) => setDraft({ ...draft, firmStarts: { ...draft.firmStarts, [firmId]: event.target.value } })} /></label> })}</fieldset>)}</div>{settingsErrors.length > 0 && <ul className="settings-errors" aria-live="polite">{settingsErrors.map((error) => <li key={error.field} id={`settings-error-${error.field}`}><strong>{error.label}:</strong> {error.message}</li>)}</ul>}<button className="primary" onClick={reset} disabled={!settings.ok}>Reset with values</button></div></details>
-    </section>
-    {activeTab === 'overview' && <section className="tab-panel" role="tabpanel"><section className="metrics-grid overview-kpis"><Metric label="Current day / status" value={`Day ${state.day}`} detail={running ? 'Running' : 'Paused'} /><Metric label="Consumption completion" value={`${(completion * 100).toFixed(1)}%`} detail="Four consumer industries" /><Metric label="Household cash Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail={`${money(latest?.householdCashMinimumCents ?? 5000)}–${money(latest?.householdCashMaximumCents ?? 5000)}`} /><Metric label="Payroll fulfillment" value={`${(payrollFulfillment * 100).toFixed(1)}%`} detail={`${money(latest?.totalUnpaidWagesCents ?? 0)} unpaid`} /><Metric label="Wealth-tax rate" value={`${((latest?.appliedWealthTaxRateBps ?? 0) / 100).toFixed(1)}%`} detail={state.government.policyMode === 'equalizing' ? 'Equalizing' : 'Minimizing tax'} /><Metric label="Mean daily wage" value={money(latest?.meanDailyWageCents ?? 0)} detail={`Wage Gini ${(latest?.wageIncomeGini ?? 0).toFixed(3)}`} /><Metric label="Residual profit" value={money(residualProfit)} detail={`${money(latest?.totalCorporateProfitTaxCents ?? 0)} corporate tax`} /><Metric label="Total money" value={money(latest?.totalMoneyCents ?? TOTAL_MONEY_CENTS)} detail="✓ Exact closed circuit" accent /></section><section className="panel market-overview"><div className="panel-heading"><div><h2>Industry summary</h2><p>Current market, capacity, payroll, and residual accounting</p></div></div><div className="market-table-wrap"><table><thead><tr><th>Industry</th><th>A / B tested price</th><th>A / B share</th><th>Sold / produced</th><th>A / B payroll</th><th>Residual profit</th></tr></thead><tbody>{DEFAULT_INDUSTRIES.map((industry) => { const markets = consumerMarkets.filter(({ industryId }) => industryId === industry.id); const firms = state.firms.filter(({ industryId }) => industryId === industry.id); return <tr key={industry.id}><td>{industry.name}</td><td>{markets.map(({ postedPriceCents }) => money(postedPriceCents)).join(' / ') || '—'}</td><td>{markets.map(({ marketShare }) => `${(marketShare * 100).toFixed(0)}%`).join(' / ') || '—'}</td><td>{markets.reduce((sum, item) => sum + item.unitsSold, 0)} / {markets.reduce((sum, item) => sum + item.unitsProduced, 0)}</td><td>{firms.map(({ payrollFulfillmentRate }) => `${(payrollFulfillmentRate * 100).toFixed(0)}%`).join(' / ')}</td><td>{money(firms.reduce((sum, firm) => sum + firm.residualProfitTodayCents, 0))}</td></tr> })}</tbody></table></div></section><div className="charts-grid auxiliary-charts"><section className="panel chart-panel"><div className="panel-heading"><div><h2>Household wealth</h2><p>End-of-day minimum, median, and maximum cash</p></div></div><div className="chart-wrap"><WealthChart state={state} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Fiscal inequality</h2><p>Pre-fiscal versus post-fiscal Gini</p></div></div><div className="chart-wrap"><FiscalGiniChart state={state} /></div></section></div></section>}
 
-    {activeTab === 'markets' && <section className="tab-panel" role="tabpanel"><div className="industry-tabs" aria-label="Industry selector">{DEFAULT_INDUSTRIES.map((industry) => <button className={selectedIndustry === industry.id ? 'active' : ''} onClick={() => setSelectedIndustry(industry.id)} key={industry.id}>{industry.name}</button>)}</div><section className="panel market-overview"><div className="panel-heading"><div><h2>{DEFAULT_INDUSTRIES.find(({ id }) => id === selectedIndustry)?.name} market state</h2><p>Operating earnings are the pre-payroll zero-cost signal used by the unchanged price learner</p></div><span>{settledCount} / 8 firms locally settled</span></div><div className="market-table-wrap"><table><thead><tr><th>Firm</th><th>Tested</th><th>Next / posted</th><th>Incumbent</th><th>Sold / supplied</th><th>Share</th><th>Operating earnings</th><th>Learner status</th></tr></thead><tbody>{state.firms.filter(({ industryId }) => industryId === selectedIndustry).map((firm) => { const result = latest?.markets.find(({ firmId }) => firmId === firm.id); const status = firm.pricing.probing ? `Probing ${firm.pricing.probeDirection}` : firm.pricing.locallySettled ? 'Locally settled' : `Searching · ${money(firm.pricing.stepSizeCents)}`; return <tr key={firm.id}><td>Firm {firm.id.endsWith('-a') ? 'A' : 'B'}</td><td>{result ? money(result.postedPriceCents) : '—'}</td><td>{money(firm.postedPriceCents)}</td><td>{money(firm.pricing.incumbentPriceCents)}</td><td>{result ? `${result.unitsSold} / ${result.unitsSupplied}` : '—'}</td><td>{result ? `${(result.marketShare * 100).toFixed(0)}%` : '—'}</td><td>{money(result?.preTaxProfitCents ?? 0)}</td><td>{status}</td></tr> })}</tbody></table></div></section><PricingIntelligence state={{ ...state, firms: state.firms.filter(({ industryId }) => industryId === selectedIndustry) }} /><div className="charts-grid auxiliary-charts"><section className="panel chart-panel"><div className="panel-heading"><div><h2>Price trajectory</h2><p>Firm A and Firm B tested prices</p></div></div><div className="chart-wrap"><PriceChart state={state} industryId={selectedIndustry} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Operating earnings trajectory</h2><p>Pre-payroll pricing signal; not residual accounting profit</p></div></div><div className="chart-wrap"><OperatingEarningsChart state={state} industryId={selectedIndustry} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Capacity and flow</h2><p>Affordable households, production, sales, and expiration</p></div></div><div className="chart-wrap"><MarketFlowChart state={state} industryId={selectedIndustry} /></div></section></div><section className="panel ledger"><div className="panel-heading"><div><h2>Recent event ledger</h2><p>Bounded live market and accounting events</p></div></div><div className="event-list">{recentEvents.map((event) => <div className="event" key={event.key}><span>D{event.day}</span><div><strong>{event.type}</strong><p>{event.description}</p></div></div>)}</div></section></section>}
+    <main className="content" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      {tab === 'overview' && <OverviewView state={state} running={running} onRun={() => setRunning(true)} onOpenMarket={openMarket} selectedId={selectedId} onSelect={setSelectedId} industry={industry} onIndustry={setIndustry} />}
+      {tab === 'markets' && <MarketsView state={state} industry={industry} onIndustry={setIndustry} onShowOnMap={showOnMap} />}
+      {tab === 'households' && <HouseholdsView state={state} onShowOnMap={showOnMap} />}
+      {tab === 'government' && <GovernmentView state={state} />}
+      {tab === 'experiments' && <ExperimentsView seed={seed} experiments={experiments} onRun={(kind) => runExperiment(kind, seed)} />}
+    </main>
 
-    {activeTab === 'households' && <section className="tab-panel" role="tabpanel"><EmploymentPanel state={state} /><section className="panel market-overview household-inspector"><div className="panel-heading"><div><h2>Household inspection</h2><p>{households.length} of {state.households.length} households · search by household ID or employer</p></div><input type="search" aria-label="Search households" placeholder="Search household or employer" value={householdQuery} onChange={(event) => setHouseholdQuery(event.target.value)} /></div><div className="market-table-wrap household-table"><table><thead><tr>{([['household','Household'],['employer','Employer'],['cash','Cash'],['contract','Contractual wage'],['wage','Wage received'],['unpaid','Unpaid wage'],['tax','Wealth tax'],['transfer','Government transfer'],['net','Net cash change']] as [HouseholdSort,string][]).map(([sort,label]) => <th key={sort}><button onClick={() => selectSort(sort)}>{sortLabel(sort,label)}</button></th>)}</tr></thead><tbody>{households.map((household) => <tr key={household.id}><td>{household.id.replace('household-', 'H')}</td><td>{household.employerFirmId.replace('firm-', '')}</td><td>{money(household.postFiscalCashCents)}</td><td>{money(household.contractualWageTodayCents)}</td><td>{money(household.wageTodayCents)}</td><td>{money(household.unpaidWageTodayCents)}</td><td>{money(household.taxPaidTodayCents)}</td><td>{money(household.transferReceivedTodayCents)}</td><td>{money(household.netCashChangeTodayCents)}</td></tr>)}</tbody></table></div></section><WorldView state={state} /><BudgetModel state={state} /></section>}
+    <footer className="statusbar">
+      <span className="scenario-summary">Seed {seed} · {state.households.length} households · {money(totalMoney)} in circulation</span>
+      <span className={`conservation${conserved ? '' : ' is-broken'}`}>
+        <Icon name={conserved ? 'check' : 'close'} size={13} />{conserved ? 'Money conserved exactly' : 'Money not conserved'}
+      </span>
+    </footer>
 
-    {activeTab === 'government' && <section className="tab-panel" role="tabpanel"><GovernmentPanel state={state} /><div className="charts-grid auxiliary-charts"><section className="panel chart-panel"><div className="panel-heading"><div><h2>Pre-fiscal vs post-fiscal Gini</h2><p>Live bounded fiscal-distribution history</p></div></div><div className="chart-wrap"><FiscalGiniChart state={state} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Household wealth trajectory</h2><p>Minimum, median, and maximum post-fiscal cash</p></div></div><div className="chart-wrap"><WealthChart state={state} /></div></section></div></section>}
-
-    {activeTab === 'research' && <section className="tab-panel research-groups" role="tabpanel"><h2>Population & employment</h2><section className="panel experiment-panel"><div className="panel-heading"><div><h2>[MVP8-Population_Scaling-010] N=10 vs N=100</h2><p>Normalized population-scale comparison · seed {state.config.seed} · 1,000-day trajectories</p></div><button onClick={() => setPopulationAnalysis(runPopulationScaleComparison(state.config.seed ?? DEFAULT_SEED))}>{populationAnalysis ? 'Run again' : 'Compare populations'}</button></div>{populationAnalysis ? <div className="market-table-wrap"><table><thead><tr><th>Population</th><th>Completion</th><th>Share volatility</th><th>Payroll fulfillment</th><th>Cash Gini</th><th>Wealth-tax rate</th><th>Total money</th></tr></thead><tbody>{[populationAnalysis.n10, populationAnalysis.n100].map((report) => <tr key={report.householdCount}><td>N={report.householdCount}</td><td>{(report.normalized.purchaseCompletionRate * 100).toFixed(2)}%</td><td>{report.normalized.marketShareVolatility.toFixed(4)}</td><td>{(report.normalized.payrollFulfillmentRate * 100).toFixed(2)}%</td><td>{report.normalized.meanCashGini.toFixed(4)}</td><td>{(report.normalized.meanWealthTaxRateBps / 100).toFixed(2)}%</td><td>{money(report.totalMoneyCents)}</td></tr>)}</tbody></table><p className="experiment-result">Full days 1–{populationAnalysis.horizonDays}; normalized trajectory statistics, not terminal snapshots.</p></div> : <div className="experiment-empty">User-triggered comparison runs independently from live state and does not consume its RNG.</div>}</section><section className="panel experiment-panel employment-dynamics"><div className="panel-heading"><div><h2>[MVP5-Employment-007.1] Employment / Wealth Dynamics</h2><p>Seed {state.config.seed} · full days 1–1,000</p></div><button onClick={() => setEmploymentDynamics(runEmploymentDynamics(state.config.seed ?? DEFAULT_SEED))}>{employmentDynamics ? 'Run again' : 'Analyze employment'}</button></div>{employmentDynamics ? <EmploymentDynamicsView report={employmentDynamics} /> : <div className="experiment-empty">Trajectory analysis; terminal values remain secondary.</div>}</section><h2>Government</h2><section className="panel experiment-panel government-analysis"><div className="panel-heading"><div><h2>[MVP6-Government-008] Government trajectory</h2><p>Seed {state.config.seed} · adaptive-policy versus inactive baseline · days 1–1,000</p></div><button onClick={() => setGovernmentAnalysis(runGovernmentBaselineComparison(state.config.seed ?? DEFAULT_SEED))}>{governmentAnalysis ? 'Run again' : 'Analyze Government'}</button></div>{governmentAnalysis ? <><h3>Adaptive Government</h3><GovernmentExperimentView report={governmentAnalysis.adaptive} /><h3>Inactive baseline</h3><GovernmentExperimentView report={governmentAnalysis.baseline} /></> : <div className="experiment-empty">Controlled full-trajectory comparison independent of live state.</div>}</section><h2>Competition & pricing</h2><section className="panel experiment-panel temporal-analysis"><div className="panel-heading"><div><h2>1,000-day competitive trajectory analysis</h2><p>Seed {state.config.seed} · temporal occupancy and cumulative outcomes</p></div><button onClick={() => setTemporalAnalysis(runGeneralizedSpatialExperiment([state.config.seed ?? DEFAULT_SEED])[0]!) }>{temporalAnalysis ? 'Run again' : 'Analyze seed'}</button></div>{temporalAnalysis ? <TemporalCompetitionReport result={temporalAnalysis} /> : <div className="experiment-empty">Operating earnings are the unchanged zero-cost pricing signal.</div>}</section><h2>Legacy diagnostics</h2><section className="panel experiment-panel"><div className="panel-heading"><div><h2><span className="legacy-badge">Legacy</span> 300-day pricing probe</h2><p>Entertainment A starts $1; B starts $8 · terminal diagnostic</p></div><button onClick={() => setExperiment(runMultiIndustryExperiment({ seed: state.config.seed }))}>{experiment ? 'Run again' : 'Run experiment'}</button></div>{experiment ? <div className="market-table-wrap"><table><thead><tr><th>Firm</th><th>Start</th><th>Day-300 tested</th><th>Day-300 incumbent</th><th>Settled day</th><th>Day-300 sales</th><th>Day-300 share</th></tr></thead><tbody>{experiment.firms.map((firm) => <tr key={firm.firmId}><td>{firm.firmId}</td><td>{money(firm.startingPriceCents)}</td><td>{money(firm.finalPriceCents)}</td><td>{firm.convergedPriceCents === null ? 'Still searching' : money(firm.convergedPriceCents)}</td><td>{firm.daysToConvergence ?? `>${experiment.horizonDays}`}</td><td>{firm.finalUnitsSold}</td><td>{(firm.finalMarketShare * 100).toFixed(0)}%</td></tr>)}</tbody></table></div> : <div className="experiment-empty">Historical terminal-snapshot probe.</div>}</section><section className="panel experiment-panel grid-experiment"><div className="panel-heading"><div><h2><span className="legacy-badge">Diagnostic</span> Seeded starting-price sample</h2><p>$1, $5, $8 A/B subset · 300-day endpoints</p></div><button onClick={() => setCompetitionGrid(runCompetitionStartingPriceGrid({ startingPricesCents: [100, 500, 800], seed: state.config.seed }))}>{competitionGrid ? 'Run sample again' : 'Run 3×3 sample'}</button></div>{competitionGrid ? <div className="competition-matrix-wrap"><table><thead><tr><th>A \ B</th>{competitionGrid.startingPricesCents.map((start) => <th key={start}>{money(start)}</th>)}</tr></thead><tbody>{competitionGrid.startingPricesCents.map((aStart) => <tr key={aStart}><th>{money(aStart)}</th>{competitionGrid.startingPricesCents.map((bStart) => { const result = competitionGrid.results.find((item) => item.firmAStartCents === aStart && item.firmBStartCents === bStart)!; return <td key={bStart}>{result.bothConverged ? `${money(result.firmAEndpointCents!)} / ${money(result.firmBEndpointCents!)}` : `Searching at D${competitionGrid.horizonDays}`}</td> })}</tr>)}</tbody></table></div> : <div className="experiment-empty">Retained seeded endpoint diagnostic.</div>}</section></section>}
-    <footer><p><strong>Seeded geography, emergent competition.</strong> Four homogeneous consumer industries compete through delivered cost under partial expenditure shares.</p><span>Market share, household coordinates, and delivered-cost analytics remain observer-only.</span></footer>
-  </main>
+    <SettingsDrawer open={settingsOpen} draft={draft} onDraft={setDraft} onApply={applySettings} onClose={closeSettings} />
+  </div>
 }
