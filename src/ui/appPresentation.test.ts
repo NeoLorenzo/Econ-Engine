@@ -24,7 +24,7 @@ describe('MVP8.1 observer presentation', () => {
     const original = state.households.map(({ id }) => id)
     const sorted = filterAndSortHouseholds(state.households, '', 'cash', false)
     expect(sorted.map(({ postFiscalCashCents }) => postFiscalCashCents)).toEqual(
-      [...sorted.map(({ postFiscalCashCents }) => postFiscalCashCents)].sort((a, b) => b - a),
+      sorted.map(({ postFiscalCashCents }) => postFiscalCashCents).sort((a, b) => b - a),
     )
     expect(state.households.map(({ id }) => id)).toEqual(original)
   })

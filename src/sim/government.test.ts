@@ -56,7 +56,7 @@ describe('[MVP6-Government-008.1] wealth tax and redistribution', () => {
     }
     const first = run(),
       again = run()
-    expect([...first.cash.slice(0, 3)].sort((a, b) => a - b)).toEqual([600, 600, 601])
+    expect(first.cash.slice(0, 3).sort((a, b) => a - b)).toEqual([600, 600, 601])
     expect(first.transfers.reduce((a, b) => a + b, 0)).toBe(801)
     expect(first.government.cashCents).toBe(0)
     expect(first).toEqual(again)

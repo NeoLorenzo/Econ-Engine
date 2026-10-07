@@ -42,7 +42,7 @@ export function HouseholdsView({ state, onShowOnMap }: { state: SimulationState;
         })),
     [state.households],
   )
-  const before = distribution.map(({ before }) => before)
+  const before = distribution.map((household) => household.before)
   const unpaid = latest?.totalUnpaidWagesCents ?? 0
 
   const sortBy = (column: HouseholdSort) => {

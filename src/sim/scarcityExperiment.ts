@@ -1,4 +1,5 @@
 import { summarizeCashDistribution } from './analytics'
+import { consumerFirmId } from './config'
 import { createSimulation, stepSimulation } from './engine'
 import type { IndustryId } from './types'
 
@@ -10,8 +11,8 @@ export const MULTI_INDUSTRY_STARTING_PRICES_CENTS: Record<IndustryId, number> = 
   entertainment: 2_000,
 }
 export const ENTERTAINMENT_COMPETITOR_STARTS_CENTS = {
-  'firm-entertainment-a': 100,
-  'firm-entertainment-b': 800,
+  [consumerFirmId('entertainment', 0)]: 100,
+  [consumerFirmId('entertainment', 1)]: 800,
 } as const
 export const MULTI_INDUSTRY_EXPERIMENT_HORIZON_DAYS = 300
 export const EXPECTED_INDUSTRY_OPTIMA_CENTS: Record<IndustryId, number> = {

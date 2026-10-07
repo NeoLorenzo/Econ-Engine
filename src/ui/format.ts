@@ -1,3 +1,4 @@
+import { firmLetter, firmSlot } from '../sim/config'
 import type { IndustryId } from '../sim/types'
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
@@ -18,20 +19,20 @@ export const INDUSTRY_NAMES: Record<IndustryId, string> = {
   entertainment: 'Entertainment',
 }
 
-export const firmVariant = (firmId: string): 'a' | 'b' | null =>
-  firmId.endsWith('-a') ? 'a' : firmId.endsWith('-b') ? 'b' : null
+export { firmSlot }
 
 /** "Food · Firm A", or "Transport" for the monopoly. */
 export function firmName(firmId: string, industryId?: IndustryId) {
   const industry = industryId ?? (Object.keys(INDUSTRY_NAMES) as IndustryId[]).find((id) => firmId.includes(`-${id}`))
-  const variant = firmVariant(firmId)
+  const slot = firmSlot(firmId)
   const name = industry ? INDUSTRY_NAMES[industry] : firmId.replace('firm-', '')
-  return variant ? `${name} · Firm ${variant.toUpperCase()}` : name
+  return slot === null ? name : `${name} · Firm ${firmLetter(slot)}`
 }
 
+/** "Firm A", or the full name for Transport. */
 export const firmShortName = (firmId: string) => {
-  const variant = firmVariant(firmId)
-  return variant ? `Firm ${variant.toUpperCase()}` : firmName(firmId)
+  const slot = firmSlot(firmId)
+  return slot === null ? firmName(firmId) : `Firm ${firmLetter(slot)}`
 }
 
 export const householdNumber = (householdId: string) => householdId.replace('household-', '')

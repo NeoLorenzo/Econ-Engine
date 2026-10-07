@@ -939,12 +939,6 @@ select {
   border-radius: 50%;
   background: var(--text-3);
 }
-.firm-dot--a {
-  background: var(--firm-a);
-}
-.firm-dot--b {
-  background: var(--firm-b);
-}
 .sharebar {
   display: flex;
   width: 100%;
@@ -958,14 +952,6 @@ select {
   display: block;
   height: 100%;
   transition: width 0.3s;
-}
-.sharebar-a {
-  background: var(--firm-a);
-  border-radius: 999px 0 0 999px;
-}
-.sharebar-b {
-  background: var(--firm-b);
-  border-radius: 0 999px 999px 0;
 }
 
 /* ---------- World ---------- */
@@ -1098,12 +1084,6 @@ select {
 }
 .swatch--household {
   background: var(--household);
-}
-.swatch--a {
-  background: var(--firm-a);
-}
-.swatch--b {
-  background: var(--firm-b);
 }
 .world-tooltip {
   position: absolute;
@@ -1433,12 +1413,6 @@ select {
   height: 9px;
   border-radius: 50%;
 }
-.dot--a {
-  background: var(--firm-a);
-}
-.dot--b {
-  background: var(--firm-b);
-}
 .dot--missed {
   border: 1.5px solid var(--negative);
 }
@@ -1456,9 +1430,6 @@ select {
   border-top: 3px solid var(--firm-a);
   border-radius: var(--radius);
   background: var(--surface);
-}
-.firm-card--b {
-  border-top-color: var(--firm-b);
 }
 .firm-card header {
   display: flex;

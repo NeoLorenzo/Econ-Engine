@@ -1,7 +1,15 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
+import { DEFAULT_FIRMS_PER_INDUSTRY } from '../../sim/config'
 import type { SimulationState } from '../../sim/types'
 import { EmptyState, FirmDot, Icon, MultiSparkline, Section, ShareBar, Stat } from '../components'
-import { buildHighlights, completionRate, CONSUMER_INDUSTRIES, dailyFlows, industrySnapshot } from '../economyModel'
+import {
+  buildHighlights,
+  completionRate,
+  CONSUMER_INDUSTRIES,
+  dailyFlows,
+  industrySnapshot,
+  type FirmSnapshot,
+} from '../economyModel'
 import { bps, gini, money, moneyWhole, percent } from '../format'
 import { groupEventsForDisplay } from '../groupEventsForDisplay'
 import { MoneyFlow } from '../MoneyFlow'
@@ -30,6 +38,7 @@ export function OverviewView({
 }) {
   const latest = state.metrics.at(-1)
   const households = state.households.length
+  const firmsPerIndustry = state.config.firmsPerIndustry ?? DEFAULT_FIRMS_PER_INDUSTRY
   const history = state.metrics
   const flows = dailyFlows(latest)
   const highlights = useMemo(() => buildHighlights(state.events), [state.events])
@@ -186,7 +195,11 @@ export function OverviewView({
 
       <Section
         title="Markets at a glance"
-        subtitle="Two firms compete in each market. Teal is Firm A, coral is Firm B."
+        subtitle={
+          firmsPerIndustry === 2
+            ? 'Two firms compete in each market. Teal is Firm A, coral is Firm B.'
+            : `${firmsPerIndustry} firms compete in each market, each in its own colour.`
+        }
         actions={
           <button type="button" className="ghost" onClick={() => onOpenMarket('food')}>
             All markets <Icon name="arrow" size={14} />
@@ -198,15 +211,21 @@ export function OverviewView({
             <span>Market</span>
             <span>Firm A</span>
             <span>Share of today's sales</span>
-            <span>Firm B</span>
+            <span>{firmsPerIndustry === 2 ? 'Firm B' : 'Other firms'}</span>
             <span className="market-row-trend">Price trend</span>
             <span className="market-row-served">Bought</span>
           </div>
           {CONSUMER_INDUSTRIES.map((industryId) => {
             const snapshot = industrySnapshot(state, industryId)
-            const [a, b] = snapshot.firms
+            const [first, ...others] = snapshot.firms
             const prices = state.metrics.map((metric) =>
               metric.markets.filter((market) => market.industryId === industryId),
+            )
+            const price = (firm: FirmSnapshot) => (
+              <Fragment key={firm.id}>
+                <FirmDot color={firm.color} />
+                {money(firm.todayPriceCents ?? firm.nextPriceCents)}
+              </Fragment>
             )
             return (
               <button type="button" key={industryId} className="market-row" onClick={() => onOpenMarket(industryId)}>
@@ -214,37 +233,21 @@ export function OverviewView({
                   {snapshot.name}
                   <small>{percent(snapshot.budgetShare)} of budget</small>
                 </span>
-                <span className="market-row-price">
-                  <FirmDot variant="a" />
-                  {money(a.todayPriceCents ?? a.nextPriceCents)}
-                </span>
+                <span className="market-row-price">{first && price(first)}</span>
                 <span className="market-row-share">
-                  <ShareBar a={a.sold} b={b.sold} />
-                  <small>
-                    {Math.round(a.share * 100)}% · {Math.round(b.share * 100)}%
-                  </small>
+                  <ShareBar firms={snapshot.firms} />
+                  <small>{snapshot.firms.map((firm) => `${Math.round(firm.share * 100)}%`).join(' · ')}</small>
                 </span>
-                <span className="market-row-price">
-                  <FirmDot variant="b" />
-                  {money(b.todayPriceCents ?? b.nextPriceCents)}
-                </span>
+                <span className="market-row-price">{others.map(price)}</span>
                 <span className="market-row-trend">
                   <MultiSparkline
                     height={28}
-                    series={[
-                      {
-                        values: prices.map(
-                          (day) => day.find((market) => market.firmId === a.id)?.postedPriceCents ?? 0,
-                        ),
-                        color: palette.firmA,
-                      },
-                      {
-                        values: prices.map(
-                          (day) => day.find((market) => market.firmId === b.id)?.postedPriceCents ?? 0,
-                        ),
-                        color: palette.firmB,
-                      },
-                    ]}
+                    series={snapshot.firms.map((firm) => ({
+                      values: prices.map(
+                        (day) => day.find((market) => market.firmId === firm.id)?.postedPriceCents ?? 0,
+                      ),
+                      color: firm.color,
+                    }))}
                   />
                 </span>
                 <span className="market-row-served">

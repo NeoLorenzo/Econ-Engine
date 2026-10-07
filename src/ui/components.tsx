@@ -272,24 +272,31 @@ export function Segmented<T extends string>({
   )
 }
 
-/** Firm A / Firm B split of today's sales. */
-export function ShareBar({ a, b, label }: { a: number; b: number; label?: string }) {
-  const total = a + b
-  const aShare = total ? a / total : 0.5
+/** Each firm's split of today's sales, in slot order. With no sales yet, the firms split the bar evenly. */
+export function ShareBar({
+  firms,
+  label,
+}: {
+  firms: { label: string; sold: number; color: string }[]
+  label?: string
+}) {
+  const total = firms.reduce((sum, firm) => sum + firm.sold, 0)
+  const shares = firms.map((firm) => (total ? firm.sold / total : 1 / firms.length))
   return (
     <div
       className="sharebar"
       role="img"
-      aria-label={label ?? `Firm A ${Math.round(aShare * 100)}%, Firm B ${Math.round((1 - aShare) * 100)}%`}
+      aria-label={label ?? firms.map((firm, index) => `${firm.label} ${Math.round(shares[index]! * 100)}%`).join(', ')}
     >
-      <span className="sharebar-a" style={{ width: `${aShare * 100}%` }} />
-      <span className="sharebar-b" style={{ width: `${(1 - aShare) * 100}%` }} />
+      {firms.map((firm, index) => (
+        <span key={firm.label} style={{ width: `${shares[index]! * 100}%`, background: firm.color }} />
+      ))}
     </div>
   )
 }
 
-export function FirmDot({ variant }: { variant: 'a' | 'b' | null }) {
-  return <i className={`firm-dot firm-dot--${variant ?? 'none'}`} aria-hidden="true" />
+export function FirmDot({ color }: { color: string }) {
+  return <i className="firm-dot" style={{ background: color }} aria-hidden="true" />
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {

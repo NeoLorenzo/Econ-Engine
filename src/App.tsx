@@ -32,9 +32,7 @@ const tabFromHash = (): AppTab => {
 
 export default function App() {
   const [state, setState] = useState(() => createSimulation())
-  const runnerRef = useRef<SimulationRunner<SimulationState> | null>(null)
-  if (runnerRef.current === null) runnerRef.current = new SimulationRunner(state, stepSimulation, setState)
-  const runner = runnerRef.current
+  const [runner] = useState(() => new SimulationRunner<SimulationState>(state, stepSimulation, setState))
   const [running, setRunning] = useState(false)
   const [speed, setSpeed] = useState(5)
   const [tab, setTab] = useState<AppTab>(tabFromHash)

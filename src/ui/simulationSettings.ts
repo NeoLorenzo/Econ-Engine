@@ -1,4 +1,4 @@
-import { DEFAULT_INDUSTRIES, DEFAULT_SEED } from '../sim/config'
+import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, DEFAULT_SEED, consumerFirmIds } from '../sim/config'
 import type { SimulationConfig } from '../sim/types'
 
 export interface SimulationSettingsDraft {
@@ -22,16 +22,7 @@ export const DEFAULT_SETTINGS_DRAFT: SimulationSettingsDraft = {
   expenditureBase: '50.00',
   transportRate: '0.02',
   step: '1.00',
-  firmStarts: {
-    'firm-food-a': '2.00',
-    'firm-food-b': '2.00',
-    'firm-utilities-a': '2.00',
-    'firm-utilities-b': '2.00',
-    'firm-healthcare-a': '2.00',
-    'firm-healthcare-b': '2.00',
-    'firm-entertainment-a': '2.00',
-    'firm-entertainment-b': '2.00',
-  },
+  firmStarts: Object.fromEntries(consumerFirmIds(DEFAULT_FIRM_IDS_BY_INDUSTRY).map((firmId) => [firmId, '2.00'])),
 }
 
 const MAXIMUM_SEED = 0xffff_ffff

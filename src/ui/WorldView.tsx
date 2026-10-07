@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SimulationState } from '../sim/types'
 import { Icon, InfoTip, Segmented } from './components'
 import { CONSUMER_INDUSTRIES, householdCashSteps } from './economyModel'
-import { entityName, firmName, firmShortName, firmVariant, householdName, INDUSTRY_NAMES, money } from './format'
-import { hex, palette } from './theme'
+import { entityName, firmName, firmShortName, firmSlot, householdName, INDUSTRY_NAMES, money } from './format'
+import { firmColor, hex, palette } from './theme'
 import {
   buildMarketTerritory,
   buildWorldEntities,
@@ -30,15 +30,22 @@ const COLORS = {
   gridMajor: 0x2a332f,
   gridMinor: 0x1a201d,
   household: hex(palette.household),
-  firmA: hex(palette.firmA),
-  firmB: hex(palette.firmB),
   idleFirm: 0x46514c,
   transport: hex(palette.government),
   selected: hex(palette.accent),
   jobs: hex(palette.positive),
 }
 
-const variantColor = (variant: 'a' | 'b') => (variant === 'a' ? COLORS.firmA : COLORS.firmB)
+const slotColor = (slot: number | undefined | null) => hex(firmColor(slot ?? 0))
+const firmIdColor = (firmId: string) => slotColor(firmSlot(firmId))
+
+/** "Firm A is 3 tiles away, Firm B 7" */
+const distanceSummary = (distancesByFirmId: Record<string, number>) =>
+  Object.entries(distancesByFirmId)
+    .map(([firmId, distance], index) =>
+      index === 0 ? `${firmShortName(firmId)} is ${distance} tiles away` : `${firmShortName(firmId)} ${distance}`,
+    )
+    .join(', ')
 
 type Runtime = {
   THREE: any
@@ -173,7 +180,7 @@ function syncEntities(runtime: Runtime, state: SimulationState, view: SceneView,
         descriptor.industryId === 'transport'
           ? COLORS.transport
           : inFocus
-            ? variantColor(descriptor.firmVariant ?? 'a')
+            ? slotColor(descriptor.firmSlot)
             : COLORS.idleFirm
     mesh.material.color.setHex(color)
     const scale = selected ? 1.25 : linked ? 1.15 : 1
@@ -206,13 +213,13 @@ function syncTerritory(runtime: Runtime, state: SimulationState, industry: Compe
   runtime.territoryMeshes = []
   const THREE = runtime.THREE
   const territory = buildMarketTerritory(state, industry)
-  for (const variant of ['a', 'b'] as const) {
-    const cells = territory.cells.filter((cell) => cell.ownerVariant === variant)
+  for (const firmId of territory.firmIds) {
+    const cells = territory.cells.filter((cell) => cell.ownerFirmId === firmId)
     if (!cells.length) continue
     const mesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(0.94, 0.02, 0.94),
       new THREE.MeshStandardMaterial({
-        color: variantColor(variant),
+        color: firmIdColor(firmId),
         transparent: true,
         opacity: 0.2,
         roughness: 1,
@@ -256,7 +263,7 @@ function syncLinks(runtime: Runtime, state: SimulationState, view: SceneView) {
       segments.push({
         from: household,
         to: firm,
-        color: variantColor(firmVariant(choice!.chosenFirmId!) ?? 'a'),
+        color: firmIdColor(choice!.chosenFirmId!),
         dashed: true,
       })
   } else {
@@ -491,7 +498,7 @@ function HouseholdInspector({
         <p className="inspector-note">
           {INDUSTRY_NAMES[industry]}: paid {money(active.productPriceCents ?? 0)} +{' '}
           {money(active.transportFeeCents ?? 0)} transport for a {active.roundTripTiles}-tile round trip to{' '}
-          {firmShortName(active.chosenFirmId)}. Firm A is {active.distanceToA} tiles away, Firm B {active.distanceToB}.
+          {firmShortName(active.chosenFirmId)}. {distanceSummary(active.distancesByFirmId ?? {})}.
         </p>
       )}
     </>
@@ -586,8 +593,6 @@ export function WorldView({
   const [query, setQuery] = useState('')
   const view: SceneView = { selectedId, industry, linkMode, measure }
   const viewRef = useRef(view)
-  stateRef.current = state
-  viewRef.current = view
 
   const select = (id: string | null) => {
     onSelect(id)
@@ -595,7 +600,12 @@ export function WorldView({
     if (firm && firm.industryId !== 'transport') onIndustry(firm.industryId)
   }
   const selectRef = useRef(select)
-  selectRef.current = select
+  // The Three.js runtime's event handlers read the latest props through these refs.
+  useLayoutEffect(() => {
+    stateRef.current = state
+    viewRef.current = view
+    selectRef.current = select
+  })
 
   const related = useMemo(() => {
     const ids = new Set<string>()
@@ -740,13 +750,13 @@ export function WorldView({
     syncEntities(runtime, state, current, related)
     syncLinks(runtime, state, current)
     runtime.dirty = true
+    // `status` is not read here, but its change to 'ready' must re-sync the scene the runtime has just built.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [state, selectedId, industry, linkMode, measure, related, status])
 
   const selectedHousehold = selectedId?.startsWith('household-') ? selectedId : null
   const selectedFirm = selectedId && state.firms.some(({ id }) => id === selectedId) ? selectedId : null
-  const [firmAId, firmBId] = territory.firmIds
-  const firmA = state.firms.find(({ id }) => id === firmAId)!
-  const firmB = state.firms.find(({ id }) => id === firmBId)!
+  const territoryFirms = territory.firmIds.map((id) => state.firms.find((firm) => firm.id === id)!)
   const hovered = hoverId && hoverId !== selectedId ? hoverId : null
   const hoveredHousehold = hovered ? state.households.find(({ id }) => id === hovered) : null
   const hoveredFirm = hovered ? state.firms.find(({ id }) => id === hovered) : null
@@ -868,14 +878,12 @@ export function WorldView({
                 ]}
               />
             </span>
-            <span>
-              <i className="swatch swatch--a" />
-              {firmShortName(firmA.id)} · {money(firmA.postedPriceCents)} · {territory.cellCounts[firmA.id] ?? 0} tiles
-            </span>
-            <span>
-              <i className="swatch swatch--b" />
-              {firmShortName(firmB.id)} · {money(firmB.postedPriceCents)} · {territory.cellCounts[firmB.id] ?? 0} tiles
-            </span>
+            {territoryFirms.map((firm) => (
+              <span key={firm.id}>
+                <i className="swatch" style={{ background: firmColor(firmSlot(firm.id)) }} />
+                {firmShortName(firm.id)} · {money(firm.postedPriceCents)} · {territory.cellCounts[firm.id] ?? 0} tiles
+              </span>
+            ))}
           </div>
         </div>
 

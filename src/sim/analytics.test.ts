@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { giniCoefficient, median, summarizeCashDistribution } from './analytics'
 import { createSimulation, stepSimulation } from './engine'
+import { randomInt } from './rng'
 
 describe('multi-industry observer analytics', () => {
   it('calculates median and known Gini values', () => {
@@ -37,5 +38,30 @@ describe('multi-industry observer analytics', () => {
         ({ householdsAffordableAtMarketOpen }) => householdsAffordableAtMarketOpen === 100,
       ),
     ).toBe(true)
+  })
+})
+
+describe('sorted Gini (#37)', () => {
+  const pairwiseGini = (values: number[]) => {
+    const total = values.reduce((sum, value) => sum + value, 0)
+    if (values.length === 0 || total === 0) return 0
+    let absoluteDifferenceSum = 0
+    for (const left of values) for (const right of values) absoluteDifferenceSum += Math.abs(left - right)
+    return absoluteDifferenceSum / (2 * values.length * total)
+  }
+
+  it('returns exactly the pairwise double-loop value for integer cash vectors', () => {
+    let rng = 2_026_1007
+    for (let trial = 0; trial < 300; trial += 1) {
+      const length = (trial % 120) + 1
+      const values = Array.from({ length }, () => {
+        const draw = randomInt(rng, trial % 3 === 0 ? 3 : 1_000_000)
+        rng = draw.state
+        return draw.value
+      })
+      expect(giniCoefficient(values)).toBe(pairwiseGini(values))
+    }
+    expect(giniCoefficient([0, 0, 0])).toBe(0)
+    expect(giniCoefficient([])).toBe(0)
   })
 })

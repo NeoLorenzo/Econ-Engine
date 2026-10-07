@@ -7,10 +7,12 @@ Econ-Engine is a deterministic browser-based agent economic simulation built to 
 ```bash
 npm install
 npm run dev
+npm run lint      # oxlint and the Prettier check
+npm run format    # apply Prettier
 npm run test:run
 npm run typecheck
 npm run build
-npm run check
+npm run check     # lint, typecheck, tests, and build
 ```
 
 ## Model at a glance

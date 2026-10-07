@@ -122,22 +122,19 @@ export function TimeChart<Row extends { day: number }>({
   )
 }
 
-/** Firm A vs Firm B share of an industry's sales over time, stacked to 100%. */
-export function ShareChart({
+/** Each firm's share of an industry's sales over time, stacked to 100%. */
+export function ShareChart<Row extends { day: number }>({
   data,
+  series,
   height = 180,
 }: {
-  data: { day: number; a?: number; b?: number }[]
+  data: Row[]
+  series: ChartSeries[]
   height?: number
 }) {
   return (
     <figure className="chart">
-      <ChartLegend
-        series={[
-          { key: 'a', name: 'Firm A', color: palette.firmA },
-          { key: 'b', name: 'Firm B', color: palette.firmB },
-        ]}
-      />
+      <ChartLegend series={series} />
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
@@ -155,26 +152,19 @@ export function ShareChart({
               formatter={(value, name) => [`${(Number(value) * 100).toFixed(0)}%`, name]}
               labelFormatter={(value) => `Day ${value}`}
             />
-            <Area
-              type="stepAfter"
-              dataKey="a"
-              name="Firm A"
-              stackId="share"
-              stroke={palette.firmA}
-              fill={palette.firmA}
-              fillOpacity={0.35}
-              isAnimationActive={false}
-            />
-            <Area
-              type="stepAfter"
-              dataKey="b"
-              name="Firm B"
-              stackId="share"
-              stroke={palette.firmB}
-              fill={palette.firmB}
-              fillOpacity={0.35}
-              isAnimationActive={false}
-            />
+            {series.map((item) => (
+              <Area
+                key={item.key}
+                type="stepAfter"
+                dataKey={item.key}
+                name={item.name}
+                stackId="share"
+                stroke={item.color}
+                fill={item.color}
+                fillOpacity={0.35}
+                isAnimationActive={false}
+              />
+            ))}
           </AreaChart>
         </ResponsiveContainer>
       </div>

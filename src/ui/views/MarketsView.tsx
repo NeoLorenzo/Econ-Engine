@@ -1,7 +1,14 @@
 import type { SimulationState } from '../../sim/types'
 import { ShareChart, TimeChart } from '../charts'
 import { FirmDot, Icon, InfoTip, MultiSparkline, Section, ShareBar } from '../components'
-import { CONSUMER_INDUSTRIES, firmSeries, historyNote, industrySnapshot, type FirmSnapshot } from '../economyModel'
+import {
+  CONSUMER_INDUSTRIES,
+  firmChartSeries,
+  firmSeries,
+  historyNote,
+  industrySnapshot,
+  type FirmSnapshot,
+} from '../economyModel'
 import { money, percent } from '../format'
 import { MarketMap } from '../MarketMap'
 import { palette } from '../theme'
@@ -12,11 +19,11 @@ const units = (value: number) => String(Math.round(value))
 
 function FirmCard({ firm, onShowOnMap }: { firm: FirmSnapshot; onShowOnMap: () => void }) {
   return (
-    <article className={`firm-card firm-card--${firm.variant}`}>
+    <article className="firm-card" style={{ borderTopColor: firm.color }}>
       <header>
         <span className="firm-card-name">
-          <FirmDot variant={firm.variant} />
-          Firm {firm.variant.toUpperCase()}
+          <FirmDot color={firm.color} />
+          {firm.label}
         </span>
         <span className={`chip chip--${firm.status.tone}`}>{firm.status.label}</span>
       </header>
@@ -77,6 +84,7 @@ export function MarketsView({
   const prices = firmSeries(state, industry, (market) => market.postedPriceCents)
   const shares = firmSeries(state, industry, (market) => market.marketShare)
   const earnings = firmSeries(state, industry, (market) => market.preTaxProfitCents)
+  const series = firmChartSeries(state, industry)
   const supply = state.metrics.map((metric) => {
     const markets = metric.markets.filter((market) => market.industryId === industry)
     return {
@@ -97,7 +105,6 @@ export function MarketsView({
       <div className="industry-tiles" role="group" aria-label="Choose a market">
         {CONSUMER_INDUSTRIES.map((industryId) => {
           const tile = industrySnapshot(state, industryId)
-          const [a, b] = tile.firms
           const history = firmSeries(state, industryId, (market) => market.postedPriceCents)
           return (
             <button
@@ -112,22 +119,20 @@ export function MarketsView({
                 <small>{percent(tile.householdsServed, 0)} of households bought</small>
               </span>
               <span className="industry-tile-prices">
-                <span>
-                  <FirmDot variant="a" />
-                  {money(a.todayPriceCents ?? a.nextPriceCents)}
-                </span>
-                <span>
-                  <FirmDot variant="b" />
-                  {money(b.todayPriceCents ?? b.nextPriceCents)}
-                </span>
+                {tile.firms.map((firm) => (
+                  <span key={firm.id}>
+                    <FirmDot color={firm.color} />
+                    {money(firm.todayPriceCents ?? firm.nextPriceCents)}
+                  </span>
+                ))}
               </span>
-              <ShareBar a={a.sold} b={b.sold} />
+              <ShareBar firms={tile.firms} />
               <MultiSparkline
                 height={30}
-                series={[
-                  { values: history.map((row) => row.a ?? 0), color: palette.firmA },
-                  { values: history.map((row) => row.b ?? 0), color: palette.firmB },
-                ]}
+                series={tile.firms.map((firm) => ({
+                  values: history.map((row) => row[firm.id] ?? 0),
+                  color: firm.color,
+                }))}
               />
             </button>
           )
@@ -169,42 +174,29 @@ export function MarketsView({
             <MarketMap state={state} industry={industry} onSelectFirm={onShowOnMap} />
           </Section>
           <div className="firm-pair">
-            <FirmCard firm={snapshot.firms[0]} onShowOnMap={() => onShowOnMap(snapshot.firms[0].id)} />
-            <FirmCard firm={snapshot.firms[1]} onShowOnMap={() => onShowOnMap(snapshot.firms[1].id)} />
+            {snapshot.firms.map((firm) => (
+              <FirmCard key={firm.id} firm={firm} onShowOnMap={() => onShowOnMap(firm.id)} />
+            ))}
           </div>
         </div>
 
         <div className="chart-grid">
           <Section title="Prices" subtitle={`Price each firm charged, by day${span}`}>
-            <TimeChart
-              data={prices}
-              format={dollars}
-              series={[
-                { key: 'a', name: 'Firm A', color: palette.firmA },
-                { key: 'b', name: 'Firm B', color: palette.firmB },
-              ]}
-            />
+            <TimeChart data={prices} format={dollars} series={series} />
           </Section>
           <Section title="Market share" subtitle={`Share of the day's sales${span}`}>
-            <ShareChart data={shares} height={220} />
+            <ShareChart data={shares} series={series} height={220} />
           </Section>
           <Section
             title="Earnings"
             subtitle={`Daily sales revenue each firm learns from${span}`}
             info="Firms judge a price by the revenue it brings in that day. Making goods costs nothing beyond wages, which are fixed, so more revenue is always better for the firm."
           >
-            <TimeChart
-              data={earnings}
-              format={dollars}
-              series={[
-                { key: 'a', name: 'Firm A', color: palette.firmA },
-                { key: 'b', name: 'Firm B', color: palette.firmB },
-              ]}
-            />
+            <TimeChart data={earnings} format={dollars} series={series} />
           </Section>
           <Section
             title="Supply and sales"
-            subtitle={`Both firms combined${span}`}
+            subtitle={`All firms combined${span}`}
             info="Each firm's 10 workers make 50 units a day. Anything not sold that day spoils. 'Could afford' counts households with enough cash and budget for the cheapest option when the market opened."
           >
             <TimeChart

@@ -1,19 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SEED } from '../sim/config'
+import { DEFAULT_SEED, employmentBlockSize } from '../sim/config'
 import { createSimulation, stepSimulation } from '../sim/engine'
 import {
   buildHighlights,
   completionRate,
   CONSUMER_INDUSTRIES,
   dailyFlows,
+  firmChartSeries,
   firmSeries,
   firmStatus,
   historyNote,
   householdCashSteps,
   industrySnapshot,
 } from './economyModel'
-import { firmName, money } from './format'
-import { buildWorldEntities, householdWealthHeight } from './worldViewModel'
+import { firmName, firmShortName, money } from './format'
+import { buildMarketTerritory, buildWorldEntities, householdWealthHeight } from './worldViewModel'
 
 const run = (days: number) => {
   let state = createSimulation({ seed: DEFAULT_SEED })
@@ -43,7 +44,10 @@ describe('observer economy model', () => {
   it('builds a two-firm snapshot for every consumer industry, Firm A first', () => {
     for (const industryId of CONSUMER_INDUSTRIES) {
       const snapshot = industrySnapshot(state, industryId)
-      expect(snapshot.firms.map(({ variant }) => variant)).toEqual(['a', 'b'])
+      expect(snapshot.firms.map(({ slot, label }) => [slot, label])).toEqual([
+        [0, 'Firm A'],
+        [1, 'Firm B'],
+      ])
       expect(snapshot.sold).toBe(snapshot.firms[0].sold + snapshot.firms[1].sold)
     }
   })
@@ -51,7 +55,7 @@ describe('observer economy model', () => {
   it('aligns firm series to the bounded metric history', () => {
     const series = firmSeries(state, 'food', (market) => market.postedPriceCents)
     expect(series).toHaveLength(state.metrics.length)
-    expect(series.every((row) => row.a !== undefined && row.b !== undefined)).toBe(true)
+    expect(series.every((row) => row['firm-food-a'] !== undefined && row['firm-food-b'] !== undefined)).toBe(true)
   })
 
   it('describes every firm in plain language', () => {
@@ -67,7 +71,7 @@ describe('observer economy model', () => {
   it('turns the ledger into a short newest-first feed', () => {
     const highlights = buildHighlights(state.events, 10)
     expect(highlights.length).toBeLessThanOrEqual(10)
-    expect(highlights.map(({ day }) => day)).toEqual([...highlights.map(({ day }) => day)].sort((a, b) => b - a))
+    expect(highlights.map(({ day }) => day)).toEqual(highlights.map(({ day }) => day).sort((a, b) => b - a))
     expect(buildHighlights([])).toEqual([])
   })
 
@@ -107,5 +111,45 @@ describe('observer economy model', () => {
   it('names firms consistently', () => {
     expect(firmName('firm-food-a')).toBe('Food · Firm A')
     expect(firmName('firm-transport')).toBe('Transport')
+  })
+})
+
+describe('observer models for markets with more than two firms (#36)', () => {
+  let state = createSimulation({ seed: DEFAULT_SEED, firmsPerIndustry: 3, householdCount: employmentBlockSize(3) * 7 })
+  for (let day = 0; day < 20; day++) state = stepSimulation(state)
+  const ids = ['firm-food-a', 'firm-food-b', 'firm-food-c']
+
+  it('names, colours and charts every firm by its slot', () => {
+    const snapshot = industrySnapshot(state, 'food')
+    expect(snapshot.firms.map(({ id, slot, label }) => [id, slot, label])).toEqual([
+      [ids[0], 0, 'Firm A'],
+      [ids[1], 1, 'Firm B'],
+      [ids[2], 2, 'Firm C'],
+    ])
+    expect(new Set(snapshot.firms.map(({ color }) => color)).size).toBe(3)
+    expect(snapshot.sold).toBe(snapshot.firms.reduce((sum, firm) => sum + firm.sold, 0))
+    expect(firmChartSeries(state, 'food').map(({ key, name }) => [key, name])).toEqual(
+      ids.map((id) => [id, firmShortName(id)]),
+    )
+    expect(firmSeries(state, 'food', (market) => market.marketShare).every((row) => ids.every((id) => id in row))).toBe(
+      true,
+    )
+    expect(firmName('firm-food-c')).toBe('Food · Firm C')
+  })
+
+  it('gives each tile to the cheapest of all firms and counts every tile once', () => {
+    const territory = buildMarketTerritory(state, 'food')
+    expect(territory.firmIds).toEqual(ids)
+    expect(Object.values(territory.cellCounts).reduce((sum, count) => sum + count, 0)).toBe(territory.cells.length)
+    for (const cell of territory.cells) {
+      expect(cell.deliveredCostCents).toBeLessThanOrEqual(cell.competingDeliveredCostCents)
+      expect(cell.tie).toBe(cell.deliveredCostCents === cell.competingDeliveredCostCents)
+    }
+    expect(
+      buildWorldEntities(state)
+        .filter(({ industryId }) => industryId === 'food')
+        .map(({ firmSlot }) => firmSlot)
+        .sort(),
+    ).toEqual([0, 1, 2])
   })
 })

@@ -1,9 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { DEFAULT_INDUSTRIES } from '../sim/config'
-import { Icon, InfoTip } from './components'
+import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, consumerFirmIds, firmLetter } from '../sim/config'
+import { FirmDot, Icon, InfoTip } from './components'
+import { firmColor } from './theme'
 import { DEFAULT_SETTINGS_DRAFT, parseSimulationSettings, type SimulationSettingsDraft } from './simulationSettings'
 
 const CONSUMER = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport')
+/** The settings form configures the canonical market structure, so every industry has the same firm slots. */
+const SLOTS = DEFAULT_FIRM_IDS_BY_INDUSTRY.food.map((_, slot) => slot)
 
 function Field({
   label,
@@ -183,24 +186,21 @@ export function SettingsDrawer({
           <div className="field-label">Starting prices</div>
           <div className="price-grid" role="group" aria-label="Starting prices">
             <span />
-            <span className="price-grid-head">
-              <i className="firm-dot firm-dot--a" />
-              Firm A
-            </span>
-            <span className="price-grid-head">
-              <i className="firm-dot firm-dot--b" />
-              Firm B
-            </span>
+            {SLOTS.map((slot) => (
+              <span className="price-grid-head" key={slot}>
+                <FirmDot color={firmColor(slot)} />
+                Firm {firmLetter(slot)}
+              </span>
+            ))}
             {CONSUMER.map((industry) => (
               <div className="price-grid-row" key={industry.id}>
                 <span>{industry.name}</span>
-                {(['a', 'b'] as const).map((suffix) => {
-                  const firmId = `firm-${industry.id}-${suffix}`
+                {DEFAULT_FIRM_IDS_BY_INDUSTRY[industry.id].map((firmId, slot) => {
                   const error = errorFor(firmId)
                   return (
                     <MoneyInput
                       key={firmId}
-                      label={`${industry.name} Firm ${suffix.toUpperCase()} starting price`}
+                      label={`${industry.name} Firm ${firmLetter(slot)} starting price`}
                       value={draft.firmStarts[firmId] ?? '2.00'}
                       invalid={Boolean(error)}
                       describedBy={error ? `error-${firmId}` : undefined}
@@ -211,7 +211,7 @@ export function SettingsDrawer({
               </div>
             ))}
           </div>
-          {CONSUMER.flatMap((industry) => (['a', 'b'] as const).map((suffix) => `firm-${industry.id}-${suffix}`))
+          {consumerFirmIds(DEFAULT_FIRM_IDS_BY_INDUSTRY)
             .filter((firmId) => errorFor(firmId))
             .map((firmId) => (
               <p className="field-error" key={firmId} id={`error-${firmId}`}>

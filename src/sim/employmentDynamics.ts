@@ -269,10 +269,11 @@ export function analyzeEmploymentDynamics(
     ) as HouseholdDynamics['failuresByIndustry']
     let successfulPurchases = 0
     for (const day of series)
-      for (const industryId of CONSUMER_INDUSTRIES)
-        day.outcomes[industryId] === 'purchased'
-          ? successfulPurchases++
-          : failuresByIndustry[industryId][day.outcomes[industryId] as FailureCause]++
+      for (const industryId of CONSUMER_INDUSTRIES) {
+        const outcome = day.outcomes[industryId]
+        if (outcome === 'purchased') successfulPurchases++
+        else failuresByIndustry[industryId][outcome]++
+      }
     const failures = { cash: 0, category_budget: 0, inventory: 0 }
     for (const industry of Object.values(failuresByIndustry))
       for (const cause of Object.keys(failures) as FailureCause[]) failures[cause] += industry[cause]

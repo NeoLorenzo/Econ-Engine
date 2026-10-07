@@ -106,8 +106,7 @@ describe('3D world observer model', () => {
       roundTripTiles: spatial.roundTripTiles,
       transportFeeCents: spatial.transportFeeCents,
       deliveredCostCents: spatial.deliveredCostCents,
-      distanceToA: spatial.distanceToA,
-      distanceToB: spatial.distanceToB,
+      distancesByFirmId: spatial.distancesByFirmId,
     })
   })
 
@@ -133,8 +132,7 @@ describe('3D world observer model', () => {
                 ...candidate.spatialPurchasesToday,
                 food: {
                   chosenFirmId: null,
-                  distanceToA: 3,
-                  distanceToB: 7,
+                  distancesByFirmId: { 'firm-food-a': 3, 'firm-food-b': 7 },
                   chosenOneWayDistance: null,
                   roundTripTiles: 0,
                   productPriceCents: 0,
@@ -157,8 +155,7 @@ describe('3D world observer model', () => {
       roundTripTiles: null,
       transportFeeCents: null,
       deliveredCostCents: null,
-      distanceToA: 3,
-      distanceToB: 7,
+      distancesByFirmId: { 'firm-food-a': 3, 'firm-food-b': 7 },
     })
   })
 

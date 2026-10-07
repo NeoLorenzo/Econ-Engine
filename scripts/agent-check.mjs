@@ -8,12 +8,14 @@ const logDir = join(repoRoot, '.agent-logs')
 mkdirSync(logDir, { recursive: true })
 
 const stages = [
+  ['Lint', 'lint.log', 'lint'],
   ['Typecheck', 'typecheck.log', 'typecheck'],
   ['Tests', 'tests.log', 'test:run'],
   ['Build', 'build.log', 'build'],
 ]
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+// oxlint-disable-next-line no-control-regex -- ANSI escape sequences start with the ESC control character.
 const stripAnsi = (text) => text.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
 const useful = /(FAIL|failed|error|AssertionError|TS\d{4}|test failed|vitest)/i
 

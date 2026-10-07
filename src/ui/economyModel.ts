@@ -1,5 +1,7 @@
 import type { DayMetrics, Firm, IndustryId, PriceExperimentType, SimulationEvent, SimulationState } from '../sim/types'
-import { bps, firmName, firmVariant, INDUSTRY_NAMES, money } from './format'
+import type { ChartSeries } from './charts'
+import { bps, firmName, firmShortName, firmSlot, INDUSTRY_NAMES, money } from './format'
+import { firmColor } from './theme'
 import type { CompetitiveIndustryId } from './worldViewModel'
 
 /** Read-only derivations for the observer UI. Nothing here feeds back into the simulation. */
@@ -126,7 +128,11 @@ export function firmStatus(firm: Firm): FirmStatus {
 
 export interface FirmSnapshot {
   id: string
-  variant: 'a' | 'b'
+  /** Position in the market's roster: 0 is Firm A. */
+  slot: number
+  /** "Firm A" */
+  label: string
+  color: string
   name: string
   todayPriceCents: number | null
   nextPriceCents: number
@@ -144,7 +150,7 @@ export interface IndustrySnapshot {
   industryId: CompetitiveIndustryId
   name: string
   budgetShare: number
-  firms: [FirmSnapshot, FirmSnapshot]
+  firms: FirmSnapshot[]
   sold: number
   produced: number
   expired: number
@@ -161,7 +167,9 @@ export function industrySnapshot(state: SimulationState, industryId: Competitive
       const market = latest?.markets.find(({ firmId }) => firmId === firm.id)
       return {
         id: firm.id,
-        variant: firmVariant(firm.id) ?? 'a',
+        slot: firmSlot(firm.id) ?? 0,
+        label: firmShortName(firm.id),
+        color: firmColor(firmSlot(firm.id)),
         name: firmName(firm.id, firm.industryId),
         todayPriceCents: market?.postedPriceCents ?? null,
         nextPriceCents: firm.postedPriceCents,
@@ -174,7 +182,7 @@ export function industrySnapshot(state: SimulationState, industryId: Competitive
         payrollRate: firm.payrollFulfillmentRate,
         status: firmStatus(firm),
       }
-    }) as [FirmSnapshot, FirmSnapshot]
+    })
   const sold = firms.reduce((sum, firm) => sum + firm.sold, 0)
   return {
     industryId,
@@ -188,21 +196,27 @@ export function industrySnapshot(state: SimulationState, industryId: Competitive
   }
 }
 
-/** One row per day with Firm A / Firm B values for an industry. */
+export type FirmSeriesRow = { day: number } & Record<string, number>
+
+/** One row per day with each firm's value for an industry, keyed by firm ID. */
 export function firmSeries(
   state: SimulationState,
   industryId: IndustryId,
   pick: (market: DayMetrics['markets'][number]) => number,
-) {
+): FirmSeriesRow[] {
   return state.metrics.map((metric) => {
-    const row: { day: number; a?: number; b?: number } = { day: metric.day }
-    for (const market of metric.markets) {
-      if (market.industryId !== industryId) continue
-      const variant = firmVariant(market.firmId)
-      if (variant) row[variant] = pick(market)
-    }
+    const row: FirmSeriesRow = { day: metric.day } as FirmSeriesRow
+    for (const market of metric.markets) if (market.industryId === industryId) row[market.firmId] = pick(market)
     return row
   })
+}
+
+/** Chart series for every firm in an industry, keyed to match `firmSeries` rows. */
+export function firmChartSeries(state: SimulationState, industryId: IndustryId): ChartSeries[] {
+  return state.firms
+    .filter((firm) => firm.industryId === industryId)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((firm) => ({ key: firm.id, name: firmShortName(firm.id), color: firmColor(firmSlot(firm.id)) }))
 }
 
 export interface Highlight {

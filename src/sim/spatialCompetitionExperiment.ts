@@ -1,4 +1,4 @@
-import { DEFAULT_SEED } from './config'
+import { consumerFirmId, DEFAULT_SEED } from './config'
 import { createSimulation, stepSimulation } from './engine'
 
 export interface SpatialCompetitionResult {
@@ -30,7 +30,10 @@ export function runSpatialCompetitionExperiment(
       initialStepCents: 100,
       seed,
       firmStartingPricesCents: startingPricesCents
-        ? { 'firm-entertainment-a': startingPricesCents[0], 'firm-entertainment-b': startingPricesCents[1] }
+        ? {
+            [consumerFirmId('entertainment', 0)]: startingPricesCents[0],
+            [consumerFirmId('entertainment', 1)]: startingPricesCents[1],
+          }
         : undefined,
     })
     const experimentEvents: typeof state.events = []

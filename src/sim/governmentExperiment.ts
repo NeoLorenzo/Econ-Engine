@@ -98,16 +98,11 @@ function summarize(seed: number, days: GovernmentDayObservation[]): GovernmentTr
   if (spell) spells.push(spell)
   const experiments = days.filter(({ experimenting }) => experimenting)
   const occupancy = { '0-10': 0, '10-25': 0, '25-50': 0, '50-75': 0, '75-100': 0 }
-  for (const rate of days.map(({ appliedRateBps }) => appliedRateBps))
-    rate < 1_000
-      ? occupancy['0-10']++
-      : rate < 2_500
-        ? occupancy['10-25']++
-        : rate < 5_000
-          ? occupancy['25-50']++
-          : rate < 7_500
-            ? occupancy['50-75']++
-            : occupancy['75-100']++
+  for (const { appliedRateBps: rate } of days) {
+    const band =
+      rate < 1_000 ? '0-10' : rate < 2_500 ? '10-25' : rate < 5_000 ? '25-50' : rate < 7_500 ? '50-75' : '75-100'
+    occupancy[band]++
+  }
   const purchases = days.reduce((sum, day) => sum + day.purchases, 0),
     attempts =
       purchases + days.reduce((sum, day) => sum + day.cashFailures + day.budgetFailures + day.inventoryFailures, 0),

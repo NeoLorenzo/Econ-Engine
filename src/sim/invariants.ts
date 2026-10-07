@@ -1,8 +1,10 @@
 import {
-  DEFAULT_FIRM_IDS_BY_INDUSTRY,
   DEFAULT_INDUSTRIES,
   INITIAL_HOUSEHOLD_CASH_CENTS,
+  TRANSPORT_WORKERS_PER_BLOCK,
   deriveIndustryBudgetCents,
+  employmentBlockSize,
+  firmRoster,
 } from './config'
 import type { SimulationState } from './types'
 
@@ -21,14 +23,17 @@ export function totalMoney(state: Pick<SimulationState, 'households' | 'firms' |
 
 export function validateState(state: SimulationState, endOfDay = false) {
   if (state.industries.length !== DEFAULT_INDUSTRIES.length) throw new Error('Expected exactly five industries')
-  if (state.firms.length !== 9) throw new Error('Expected eight consumer firms and one Transport firm')
+  const roster = firmRoster(state.config.firmsPerIndustry)
+  const expectedFirmCount = Object.values(roster).flat().length
+  if (state.firms.length !== expectedFirmCount)
+    throw new Error(`Expected ${expectedFirmCount - 1} consumer firms and one Transport firm`)
   const householdCount = state.config.householdCount!
   const expectedTotalMoney = householdCount * INITIAL_HOUSEHOLD_CASH_CENTS
   if (state.households.length !== householdCount) throw new Error(`Expected ${householdCount} households`)
   const industryIds = state.industries.map(({ id }) => id)
   if (new Set(industryIds).size !== industryIds.length) throw new Error('Industry IDs must be unique')
   for (const industryId of industryIds) {
-    const expected = DEFAULT_FIRM_IDS_BY_INDUSTRY[industryId]
+    const expected = roster[industryId]
     const actual = state.firms
       .filter((firm) => firm.industryId === industryId)
       .map(({ id }) => id)
@@ -132,6 +137,8 @@ export function validateState(state: SimulationState, endOfDay = false) {
     }
   })
 
+  const householdsById = new Map(state.households.map((household) => [household.id, household]))
+  const blocks = householdCount / employmentBlockSize(state.config.firmsPerIndustry)
   state.firms.forEach((firm) => {
     assertIntegerMoney(`${firm.id} cash`, firm.cashCents)
     assertIntegerMoney(`${firm.id} price`, firm.postedPriceCents)
@@ -147,12 +154,10 @@ export function validateState(state: SimulationState, endOfDay = false) {
       )
     )
       throw new Error(`${firm.id} goods fields must be non-negative integers`)
-    const expectedWorkers = firm.industryId === 'transport' ? householdCount / 5 : householdCount / 10
+    const expectedWorkers = firm.industryId === 'transport' ? blocks * TRANSPORT_WORKERS_PER_BLOCK : blocks
     if (
       firm.employeeIds.length !== expectedWorkers ||
-      firm.employeeIds.some(
-        (id) => state.households.find(({ id: householdId }) => householdId === id)?.employerFirmId !== firm.id,
-      )
+      firm.employeeIds.some((id) => householdsById.get(id)?.employerFirmId !== firm.id)
     )
       throw new Error(`${firm.id} employment relation is inconsistent`)
     if (

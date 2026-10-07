@@ -220,7 +220,7 @@ export function runGeneralizedSpatialExperiment(
         }
       }),
       totalTransportRevenueCentsAtHorizon: latest.totalTransportRevenueCents,
-      totalTripsAtHorizon: latest.entertainmentTrips,
+      totalTripsAtHorizon: latest.transportTrips,
       totalTilesAtHorizon: latest.totalTilesTravelled,
     }
   })

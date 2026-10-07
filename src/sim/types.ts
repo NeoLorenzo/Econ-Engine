@@ -41,6 +41,8 @@ export interface SimulationConfig {
   transportCostPerTileCents?: number
   dailyExpenditureBudgetCents?: number
   industryBudgetSharesBps?: Partial<Record<Exclude<IndustryId, 'transport'>, number>>
+  /** Competing firms in each consumer industry. The canonical economy has two; other values exist to test market structure. */
+  firmsPerIndustry?: number
 }
 
 export type HouseholdPurchaseOutcome = 'purchased' | 'insufficient_funds' | 'stockout' | null
@@ -60,8 +62,7 @@ export interface Household {
   cashCents: number
   industryOutcomes: Record<IndustryId, HouseholdIndustryOutcome>
   coordinate: Coordinate
-  entertainmentToday: HouseholdEntertainmentMetrics | null
-  spatialPurchasesToday: Partial<Record<Exclude<IndustryId, 'transport'>, HouseholdEntertainmentMetrics>>
+  spatialPurchasesToday: Partial<Record<Exclude<IndustryId, 'transport'>, HouseholdSpatialPurchase>>
   employerFirmId: string
   wageTodayCents: number
   contractualWageTodayCents: number
@@ -83,10 +84,11 @@ export interface Coordinate {
   x: number
   y: number
 }
-export interface HouseholdEntertainmentMetrics {
+/** One household's purchase attempt in one consumer market today. */
+export interface HouseholdSpatialPurchase {
   chosenFirmId: string | null
-  distanceToA: number
-  distanceToB: number
+  /** One-way distance to every firm in the industry, keyed by firm ID. */
+  distancesByFirmId: Record<string, number>
   chosenOneWayDistance: number | null
   roundTripTiles: number
   productPriceCents: number
@@ -323,7 +325,8 @@ export interface DayMetrics {
   householdCashMedianCents: number
   householdCashMaximumCents: number
   householdCashGini: number
-  householdCashGiniBeforeParity: number
+  /** Household cash Gini after the day's markets clear, before payroll and fiscal policy. */
+  householdCashGiniAfterMarkets: number
   totalRevenueCents: number
   totalPreTaxProfitCents: number
   totalHouseholdCashCents: number
@@ -334,7 +337,8 @@ export interface DayMetrics {
   totalMoneyCents: number
   allFirmsConverged: boolean
   allFirmsLocallySettled: boolean
-  entertainmentTrips: number
+  /** Trips sold by Transport today: one per successful consumer purchase in any industry. */
+  transportTrips: number
   totalTilesTravelled: number
   totalTransportRevenueCents: number
   /** Today's failed consumer purchases by cause, counted from complete state rather than the bounded event ledger. */

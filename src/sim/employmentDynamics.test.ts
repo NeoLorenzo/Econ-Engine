@@ -95,7 +95,7 @@ describe('[MVP5-Employment-007.1] report isolation and accounting', () => {
   )
 
   it('does not classify a terminal rank or balance as the whole trajectory', () => {
-    const households = (cash: number[], day: number) =>
+    const households = (cash: number[]) =>
       cash.map((endCashCents, index) => ({
         householdId: `h${index}`,
         employerFirmId: `f${index}`,
@@ -111,7 +111,7 @@ describe('[MVP5-Employment-007.1] report isolation and accounting', () => {
           entertainment: 'purchased',
         } as const,
       }))
-    const firms = (day: number) =>
+    const firms = () =>
       [0, 1, 2, 3].map((index) => ({
         firmId: `f${index}`,
         industryId: 'food' as const,
@@ -126,7 +126,7 @@ describe('[MVP5-Employment-007.1] report isolation and accounting', () => {
       [100, 80, 20, 0],
       [0, 80, 20, 100],
       [0, 80, 20, 100],
-    ].map((cash, index) => ({ day: index + 1, households: households(cash, index + 1), firms: firms(index + 1) }))
+    ].map((cash, index) => ({ day: index + 1, households: households(cash), firms: firms() }))
     const report = analyzeEmploymentDynamics(1, observations)
     const terminalRichest = report.households.find(({ householdId }) => householdId === 'h3')!
     expect(terminalRichest.terminalCashCents).toBe(100)

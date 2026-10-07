@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
-import {
-  EXPECTED_INDUSTRY_OPTIMA_CENTS,
-  MULTI_INDUSTRY_STARTING_PRICES_CENTS,
-  runMultiIndustryExperiment,
-} from './scarcityExperiment'
+import { MULTI_INDUSTRY_STARTING_PRICES_CENTS, runMultiIndustryExperiment } from './scarcityExperiment'
 
 describe('deterministic multi-industry experiment', () => {
   it('preserves control endpoints and records competitive trajectories reproducibly', () => {

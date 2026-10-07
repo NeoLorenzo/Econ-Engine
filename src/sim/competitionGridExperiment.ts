@@ -1,3 +1,4 @@
+import { consumerFirmId } from './config'
 import { createSimulation, stepSimulation } from './engine'
 import type { IndustryId, PricingState } from './types'
 
@@ -50,7 +51,10 @@ export function runCompetitionStartingPriceGrid(options: CompetitionGridOptions 
         startingPriceCents: 200,
         initialStepCents: 100,
         industryStartingPricesCents: CONTROL_STARTS_CENTS,
-        firmStartingPricesCents: { 'firm-entertainment-a': firmAStartCents, 'firm-entertainment-b': firmBStartCents },
+        firmStartingPricesCents: {
+          [consumerFirmId('entertainment', 0)]: firmAStartCents,
+          [consumerFirmId('entertainment', 1)]: firmBStartCents,
+        },
         seed: options.seed,
       })
       const convergenceDays = new Map<string, number>()

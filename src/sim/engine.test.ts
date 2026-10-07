@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
+import {
+  DEFAULT_INDUSTRY_BUDGET_SHARES_BPS,
+  MAX_EVENTS,
+  MAX_HISTORY,
+  deriveIndustryBudgetCents,
+  employmentBlockSize,
+  firmRoster,
+} from './config'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
-import type { IndustryId } from './types'
 import { manhattanDistance, transportQuote } from './spatial'
 
 const consumerIds = ['food', 'utilities', 'healthcare', 'entertainment'] as const
@@ -12,10 +18,10 @@ describe('MVP4 full spatial competition', () => {
   it('creates two firms in every consumer industry and one derived Transport monopoly', () => {
     const state = createSimulation(base)
     expect(state.firms).toHaveLength(9)
-    consumerIds.forEach((id) =>
-      expect(state.firms.filter((firm) => firm.industryId === id).map(({ id }) => id)).toEqual([
-        `firm-${id}-a`,
-        `firm-${id}-b`,
+    consumerIds.forEach((industryId) =>
+      expect(state.firms.filter((firm) => firm.industryId === industryId).map(({ id }) => id)).toEqual([
+        `firm-${industryId}-a`,
+        `firm-${industryId}-b`,
       ]),
     )
     expect(state.firms.filter(({ industryId }) => industryId === 'transport')).toHaveLength(1)
@@ -55,7 +61,7 @@ describe('MVP4 full spatial competition', () => {
     expect(
       day.households.every((household) => household.industryOutcomes.transport.purchaseOutcomeToday === null),
     ).toBe(true)
-    expect(day.metrics[0].entertainmentTrips).toBe(400)
+    expect(day.metrics[0].transportTrips).toBe(400)
     expect(Object.keys(day.metrics[0].transportRevenueByIndustryCents).sort()).toEqual([...consumerIds].sort())
   })
 
@@ -222,5 +228,67 @@ describe('population and grid validation at the config boundary (#35)', () => {
     expect(createSimulation({ ...base, gridWidth: 12, gridHeight: 9 }).households).toHaveLength(100)
     expect(createSimulation({ ...base, householdCount: 10 }).households).toHaveLength(10)
     expect(createSimulation({ ...base, householdCount: 200 }).households).toHaveLength(200)
+  })
+})
+
+describe('market structure beyond two firms per industry (#36)', () => {
+  it.each([1, 3])(
+    'clears, prices and conserves money with %i firm(s) per consumer industry',
+    (firmsPerIndustry) => {
+      const householdCount = employmentBlockSize(firmsPerIndustry) * 7
+      let state = createSimulation({ seed: 11, firmsPerIndustry, householdCount, probeProbability: 1 })
+      const roster = firmRoster(firmsPerIndustry)
+      for (const industryId of consumerIds)
+        expect(
+          state.firms
+            .filter((firm) => firm.industryId === industryId)
+            .map(({ id }) => id)
+            .sort(),
+        ).toEqual(roster[industryId])
+      const everSold = new Set<string>()
+      let competitorExperiments = 0
+      for (let day = 0; day < 80; day += 1) {
+        state = stepSimulation(state)
+        expect(totalMoney(state)).toBe(householdCount * 5_000)
+        for (const industryId of consumerIds) {
+          const firms = state.firms.filter((firm) => firm.industryId === industryId)
+          firms.filter((firm) => firm.unitsSoldToday > 0).forEach((firm) => everSold.add(firm.id))
+          expect(firms.reduce((sum, firm) => sum + firm.unitsSoldToday, 0)).toBe(
+            state.households.filter((household) => household.industryOutcomes[industryId].purchasedToday).length,
+          )
+          for (const household of state.households)
+            expect(Object.keys(household.spatialPurchasesToday[industryId]?.distancesByFirmId ?? {})).toHaveLength(
+              firmsPerIndustry,
+            )
+        }
+        // A probing firm's only view of its rivals is the lowest price they posted that morning.
+        const today = state.events.filter((event) => event.day === state.day)
+        for (const experiment of today.filter(
+          (event) => event.type === 'PRICE_EXPERIMENT_STARTED' && event.experimentType?.startsWith('competitor_'),
+        )) {
+          const rivalPrices = today
+            .filter(
+              (event) =>
+                event.type === 'PRICE_POSTED' &&
+                event.industryId === experiment.industryId &&
+                event.firmId !== experiment.firmId,
+            )
+            .map(({ priceCents }) => priceCents!)
+          expect(experiment.competitorPriceObservedCents).toBe(Math.max(1, Math.min(...rivalPrices)))
+          competitorExperiments += 1
+        }
+      }
+      expect(everSold).toEqual(new Set(consumerIds.flatMap((industryId) => roster[industryId])))
+      if (firmsPerIndustry > 1) expect(competitorExperiments).toBeGreaterThan(0)
+      else expect(competitorExperiments).toBe(0)
+    },
+    60_000,
+  )
+
+  it('rejects a population that does not fill complete employment blocks for the market structure', () => {
+    expect(() => createSimulation({ ...base, firmsPerIndustry: 3, householdCount: 100 })).toThrow(
+      /^householdCount must be a whole multiple of 14/,
+    )
+    expect(() => createSimulation({ ...base, firmsPerIndustry: 0 })).toThrow(/^firmsPerIndustry must be a whole number/)
   })
 })
