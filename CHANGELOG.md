@@ -2,6 +2,23 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Settings_Validation-017] - (2026-10-07)
+
+### Fixed
+
+- Fixed Reset throwing an unhandled exception when a firm starting price or the price-learning step held text that is not a number, and the first step failing on a non-numeric transport rate (#28).
+- Fixed a non-numeric, zero, or out-of-range seed being silently replaced (for example `abc` became `1831565813`) while the run appeared to use the typed value.
+
+### Changed
+
+- Moved settings parsing into `src/ui/simulationSettings.ts`. Amounts must be dollar values with at most two decimal places. Prices and the step must be at least $0.01; the transport rate and expenditure base may be $0.00. Seeds must be whole numbers from 1 to 4294967295.
+- Invalid fields are marked `aria-invalid` and listed with their reason above **Reset with values**, which is disabled until every field is valid. The control-bar Reset leaves the current run untouched and opens the settings panel instead of pausing or replacing the economy.
+
+### Validation
+
+- Added parser coverage for non-numeric, empty, negative, malformed, sub-cent, zero, and out-of-range inputs, plus equivalence with the previous parsing for valid inputs.
+- The canonical-trajectory UI test now builds its configuration through the real settings parser.
+
 ## [MVP8-RNG_Streams-016] - (2026-10-07)
 
 ### Fixed

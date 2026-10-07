@@ -132,6 +132,9 @@ label { color: #8a9790; font-size: .72rem; display: grid; grid-template-columns:
 label span { color: #657069; }
 input, select { color: #eef4f0; background: #090c0b; border: 1px solid #29312e; border-radius: 6px; min-width: 0; padding: .56rem .6rem; outline: none; }
 input:focus, select:focus { border-color: #86a940; }
+input[aria-invalid="true"] { border-color: #d8a06d; }
+.settings-errors { display: grid; gap: 4px; margin: 0; padding: 10px 14px 10px 30px; border: 1px solid #4a3a2c; border-radius: 7px; color: #d8a06d; font-size: .72rem; }
+.settings-errors strong { color: #e8c29d; font-weight: 600; }
 .metrics-grid { display: grid; grid-template-columns: repeat(6, 1fr); border: 1px solid #202724; border-radius: 10px; overflow: hidden; background: #101412; }
 .metric { min-width: 0; padding: 18px 16px; border-right: 1px solid #202724; }
 .metric:last-child { border: 0; }

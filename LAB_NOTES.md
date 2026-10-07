@@ -6,6 +6,14 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Settings_Validation-017] - (2026-10-07)
+
+### Problem and decision
+
+Settings parsing used `Number(value || 0)` followed by clamping. Text that is not a number became `NaN`, which `Math.max` does not clamp: Reset threw inside the click handler after pausing the run, and a non-numeric transport rate failed only on the first step. Seeds were worse because they failed silently. `normalizeSeed` remapped `NaN`, `0`, and values above 32 bits, so a run could be labeled with one seed while using another, the same provenance failure as #12.
+
+Parsing now converts text to integer cents exactly (no floating-point rounding of typed amounts) and rejects anything it would otherwise have to clamp or remap. Valid inputs map to exactly the configuration the old parser produced, so the canonical trajectory and every previously valid setting are unchanged. Engine-side clamping for programmatic callers is deliberately left as it was.
+
 ## [MVP8-RNG_Streams-016] - (2026-10-07)
 
 ### Problem

@@ -9,8 +9,9 @@ import { runEmploymentDynamics, type EmploymentDynamicsReport } from './sim/empl
 import { runGovernmentBaselineComparison, type GovernmentTrajectorySummary } from './sim/governmentExperiment'
 import { runPopulationScaleComparison } from './sim/populationScaleExperiment'
 import { SimulationRunner } from './sim/simulationRunner'
-import type { IndustryId, SimulationConfig, SimulationState } from './sim/types'
+import type { IndustryId, SimulationState } from './sim/types'
 import { groupEventsForDisplay } from './ui/groupEventsForDisplay'
+import { DEFAULT_SETTINGS_DRAFT, parseSimulationSettings } from './ui/simulationSettings'
 import { WorldView } from './ui/WorldView'
 
 const money = (cents: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'USD' }).format(cents / 100)
@@ -19,13 +20,6 @@ const colors: Record<IndustryId, string> = { food: '#deff75', utilities: '#65bfa
 const firmBColors: Record<IndustryId, string> = { food: '#f09a63', utilities: '#63b9d5', transport: '#97a3ff', healthcare: '#b997e8', entertainment: '#f09a63' }
 const firmColor = (firmId: string, industryId: IndustryId) => firmId.endsWith('-b') ? firmBColors[industryId] : colors[industryId]
 const chartTooltip = { background: '#111715', border: '1px solid #28322e', borderRadius: 8, color: '#f4f7f5' }
-const DEFAULT_FIRM_START_DRAFT: Record<string, string> = {
-  'firm-food-a': '2.00', 'firm-food-b': '2.00',
-  'firm-utilities-a': '2.00', 'firm-utilities-b': '2.00',
-  'firm-healthcare-a': '2.00', 'firm-healthcare-b': '2.00',
-  'firm-entertainment-a': '2.00',
-  'firm-entertainment-b': '2.00',
-}
 
 function Metric({ label, value, detail, accent = false }: { label: string; value: string; detail?: string; accent?: boolean }) {
   return <div className={`metric ${accent ? 'metric--accent' : ''}`}><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>
@@ -100,7 +94,11 @@ export function filterAndSortHouseholds(households: SimulationState['households'
 }
 
 export default function App() {
-  const [draft, setDraft] = useState({ firmStarts: DEFAULT_FIRM_START_DRAFT, step: '1.00', seed: String(DEFAULT_SEED), transportRate: '0.02', expenditureBase: '50.00' })
+  const [draft, setDraft] = useState(DEFAULT_SETTINGS_DRAFT)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settings = useMemo(() => parseSimulationSettings(draft), [draft])
+  const settingsErrors = settings.ok ? [] : settings.errors
+  const fieldValidity = (field: string) => settingsErrors.some((error) => error.field === field) ? { 'aria-invalid': true, 'aria-describedby': `settings-error-${field}` } : {}
   const [state, setState] = useState(() => createSimulation())
   const runnerRef = useRef<SimulationRunner<SimulationState> | null>(null)
   if (runnerRef.current === null) runnerRef.current = new SimulationRunner(state, stepSimulation, setState)
@@ -120,9 +118,8 @@ export default function App() {
   const [populationAnalysis, setPopulationAnalysis] = useState<ReturnType<typeof runPopulationScaleComparison> | null>(null)
   const step = () => runner.stepOnce()
   const reset = () => {
-    const firmStartingPricesCents = Object.fromEntries(Object.entries(draft.firmStarts).map(([firmId, value]) => [firmId, Math.max(1, Math.round(Number(value || 0) * 100))]))
-    const config: SimulationConfig = { startingPriceCents: 200, firmStartingPricesCents, initialStepCents: Math.max(1, Math.round(Number(draft.step || 0) * 100)), laborProductivityUnitsPerWorker: 5, seed: Math.round(Number(draft.seed || DEFAULT_SEED)), transportCostPerTileCents: Math.max(0, Math.round(Number(draft.transportRate || 0) * 100)), dailyExpenditureBudgetCents: Math.max(0, Math.round(Number(draft.expenditureBase || 0) * 100)) }
-    setRunning(false); runner.reset(createSimulation(config))
+    if (!settings.ok) { setSettingsOpen(true); return }
+    setRunning(false); runner.reset(createSimulation(settings.config))
   }
   useEffect(() => {
     if (!running) { runner.stop(); return }
@@ -147,7 +144,7 @@ export default function App() {
     </header>
     <section className="control-bar panel">
       <div className="run-controls"><button className="primary" onClick={() => setRunning((value) => !value)}>{running ? 'Pause' : 'Run simulation'}</button><button onClick={step} disabled={running}>Step one day</button><button onClick={reset}>Reset</button><label className="speed-control">Speed<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[1, 5, 20, 100].map((value) => <option key={value} value={value}>{value} days/sec</option>)}</select></label><strong className="control-day">Day {state.day}</strong></div>
-      <details className="simulation-settings"><summary>Simulation settings</summary><div className="settings-content"><p>Draft values do not affect the running economy. Apply them with <strong>Reset with values</strong>.</p><div className="config-controls"><label>Seed<input inputMode="numeric" aria-label="Random seed" value={draft.seed} onChange={(event) => setDraft({ ...draft, seed: event.target.value })} /></label><label>Daily expenditure base <span>$</span><input inputMode="decimal" aria-label="Daily expenditure base" value={draft.expenditureBase} onChange={(event) => setDraft({ ...draft, expenditureBase: event.target.value })} /></label><label>Transport / tile <span>$</span><input inputMode="decimal" aria-label="Transport cost per tile" value={draft.transportRate} onChange={(event) => setDraft({ ...draft, transportRate: event.target.value })} /></label><label>Initial learning step <span>$</span><input inputMode="decimal" aria-label="Initial price-learning step" value={draft.step} onChange={(event) => setDraft({ ...draft, step: event.target.value })} /></label></div><div className="firm-price-settings">{DEFAULT_INDUSTRIES.map((industry) => <fieldset key={industry.id}><legend>{industry.name}</legend>{(['a', 'b'] as const).map((suffix) => { const firmId = `firm-${industry.id}-${suffix}`; return <label key={firmId}>Firm {suffix.toUpperCase()} <span>$</span><input inputMode="decimal" aria-label={`${firmId} starting price`} value={draft.firmStarts[firmId] ?? '2.00'} onChange={(event) => setDraft({ ...draft, firmStarts: { ...draft.firmStarts, [firmId]: event.target.value } })} /></label> })}</fieldset>)}</div><button className="primary" onClick={reset}>Reset with values</button></div></details>
+      <details className="simulation-settings" open={settingsOpen} onToggle={(event) => setSettingsOpen(event.currentTarget.open)}><summary>Simulation settings</summary><div className="settings-content"><p>Draft values do not affect the running economy. Apply them with <strong>Reset with values</strong>.</p><div className="config-controls"><label>Seed<input inputMode="numeric" aria-label="Random seed" {...fieldValidity('seed')} value={draft.seed} onChange={(event) => setDraft({ ...draft, seed: event.target.value })} /></label><label>Daily expenditure base <span>$</span><input inputMode="decimal" aria-label="Daily expenditure base" {...fieldValidity('expenditureBase')} value={draft.expenditureBase} onChange={(event) => setDraft({ ...draft, expenditureBase: event.target.value })} /></label><label>Transport / tile <span>$</span><input inputMode="decimal" aria-label="Transport cost per tile" {...fieldValidity('transportRate')} value={draft.transportRate} onChange={(event) => setDraft({ ...draft, transportRate: event.target.value })} /></label><label>Initial learning step <span>$</span><input inputMode="decimal" aria-label="Initial price-learning step" {...fieldValidity('step')} value={draft.step} onChange={(event) => setDraft({ ...draft, step: event.target.value })} /></label></div><div className="firm-price-settings">{DEFAULT_INDUSTRIES.map((industry) => <fieldset key={industry.id}><legend>{industry.name}</legend>{(['a', 'b'] as const).map((suffix) => { const firmId = `firm-${industry.id}-${suffix}`; return <label key={firmId}>Firm {suffix.toUpperCase()} <span>$</span><input inputMode="decimal" aria-label={`${firmId} starting price`} {...fieldValidity(firmId)} value={draft.firmStarts[firmId] ?? '2.00'} onChange={(event) => setDraft({ ...draft, firmStarts: { ...draft.firmStarts, [firmId]: event.target.value } })} /></label> })}</fieldset>)}</div>{settingsErrors.length > 0 && <ul className="settings-errors" aria-live="polite">{settingsErrors.map((error) => <li key={error.field} id={`settings-error-${error.field}`}><strong>{error.label}:</strong> {error.message}</li>)}</ul>}<button className="primary" onClick={reset} disabled={!settings.ok}>Reset with values</button></div></details>
     </section>
     {activeTab === 'overview' && <section className="tab-panel" role="tabpanel"><section className="metrics-grid overview-kpis"><Metric label="Current day / status" value={`Day ${state.day}`} detail={running ? 'Running' : 'Paused'} /><Metric label="Consumption completion" value={`${(completion * 100).toFixed(1)}%`} detail="Four consumer industries" /><Metric label="Household cash Gini" value={(latest?.householdCashGini ?? 0).toFixed(3)} detail={`${money(latest?.householdCashMinimumCents ?? 5000)}–${money(latest?.householdCashMaximumCents ?? 5000)}`} /><Metric label="Payroll fulfillment" value={`${(payrollFulfillment * 100).toFixed(1)}%`} detail={`${money(latest?.totalUnpaidWagesCents ?? 0)} unpaid`} /><Metric label="Wealth-tax rate" value={`${((latest?.appliedWealthTaxRateBps ?? 0) / 100).toFixed(1)}%`} detail={state.government.policyMode === 'equalizing' ? 'Equalizing' : 'Minimizing tax'} /><Metric label="Mean daily wage" value={money(latest?.meanDailyWageCents ?? 0)} detail={`Wage Gini ${(latest?.wageIncomeGini ?? 0).toFixed(3)}`} /><Metric label="Residual profit" value={money(residualProfit)} detail={`${money(latest?.totalCorporateProfitTaxCents ?? 0)} corporate tax`} /><Metric label="Total money" value={money(latest?.totalMoneyCents ?? TOTAL_MONEY_CENTS)} detail="✓ Exact closed circuit" accent /></section><section className="panel market-overview"><div className="panel-heading"><div><h2>Industry summary</h2><p>Current market, capacity, payroll, and residual accounting</p></div></div><div className="market-table-wrap"><table><thead><tr><th>Industry</th><th>A / B tested price</th><th>A / B share</th><th>Sold / produced</th><th>A / B payroll</th><th>Residual profit</th></tr></thead><tbody>{DEFAULT_INDUSTRIES.map((industry) => { const markets = consumerMarkets.filter(({ industryId }) => industryId === industry.id); const firms = state.firms.filter(({ industryId }) => industryId === industry.id); return <tr key={industry.id}><td>{industry.name}</td><td>{markets.map(({ postedPriceCents }) => money(postedPriceCents)).join(' / ') || '—'}</td><td>{markets.map(({ marketShare }) => `${(marketShare * 100).toFixed(0)}%`).join(' / ') || '—'}</td><td>{markets.reduce((sum, item) => sum + item.unitsSold, 0)} / {markets.reduce((sum, item) => sum + item.unitsProduced, 0)}</td><td>{firms.map(({ payrollFulfillmentRate }) => `${(payrollFulfillmentRate * 100).toFixed(0)}%`).join(' / ')}</td><td>{money(firms.reduce((sum, firm) => sum + firm.residualProfitTodayCents, 0))}</td></tr> })}</tbody></table></div></section><div className="charts-grid auxiliary-charts"><section className="panel chart-panel"><div className="panel-heading"><div><h2>Household wealth</h2><p>End-of-day minimum, median, and maximum cash</p></div></div><div className="chart-wrap"><WealthChart state={state} /></div></section><section className="panel chart-panel"><div className="panel-heading"><div><h2>Fiscal inequality</h2><p>Pre-fiscal versus post-fiscal Gini</p></div></div><div className="chart-wrap"><FiscalGiniChart state={state} /></div></section></div></section>}
 
