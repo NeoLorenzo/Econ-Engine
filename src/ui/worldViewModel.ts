@@ -1,3 +1,4 @@
+import { INITIAL_HOUSEHOLD_CASH_CENTS } from '../sim/config'
 import { transportQuote } from '../sim/spatial'
 import type { Coordinate, IndustryId, SimulationState } from '../sim/types'
 
@@ -74,7 +75,7 @@ export type CashMeasure = 'before' | 'after'
 export function buildWorldEntities(state: SimulationState, measure: CashMeasure = 'after'): WorldEntity[] {
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
-  const targetCashCents = state.config.targetHouseholdCashCents ?? 5_000
+  const targetCashCents = INITIAL_HOUSEHOLD_CASH_CENTS
 
   const households: WorldEntity[] = state.households.map((household) => {
     const point = worldPoint(household.coordinate, width, height)

@@ -46,7 +46,6 @@ export function runCompetitionStartingPriceGrid(options: CompetitionGridOptions 
     let state = createSimulation({
       startingPriceCents: 200,
       initialStepCents: 100,
-      dailySupplyPerIndustry: 10,
       industryStartingPricesCents: CONTROL_STARTS_CENTS,
       firmStartingPricesCents: { 'firm-entertainment-a': firmAStartCents, 'firm-entertainment-b': firmBStartCents },
       seed: options.seed,

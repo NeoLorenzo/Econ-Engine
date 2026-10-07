@@ -167,7 +167,7 @@ function observation(market: MarketMetrics): CompetitiveFirmObservation {
 export function runGeneralizedSpatialExperiment(seeds = [DEFAULT_SEED, 7, 42], days = COMPETITIVE_ANALYSIS_HORIZON_DAYS): GeneralizedSpatialResult[] {
   if (!Number.isInteger(days) || days < 1) throw new Error('Experiment horizon must be a positive integer.')
   return seeds.map((seed) => {
-    let state = createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10, seed })
+    let state = createSimulation({ startingPriceCents: 100, initialStepCents: 100, seed })
     const trajectories = Object.fromEntries(CONSUMER_IDS.map((id) => [id, [] as CompetitiveDayObservation[]])) as Record<ConsumerIndustryId, CompetitiveDayObservation[]>
     const priceTrajectories: Record<string, number[]> = {}
     for (let day = 0; day < days; day += 1) {

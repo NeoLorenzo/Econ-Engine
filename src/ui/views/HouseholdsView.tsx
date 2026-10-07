@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { INITIAL_HOUSEHOLD_CASH_CENTS } from '../../sim/config'
 import type { SimulationState } from '../../sim/types'
 import { DistributionChart } from '../charts'
 import { EmptyState, Icon, Section, Stat } from '../components'
@@ -24,7 +25,7 @@ export function HouseholdsView({ state, onShowOnMap }: { state: SimulationState;
   const [sort, setSort] = useState<HouseholdSort>('household')
   const [ascending, setAscending] = useState(true)
   const latest = state.metrics.at(-1)
-  const startingCents = state.config.targetHouseholdCashCents ?? 5_000
+  const startingCents = INITIAL_HOUSEHOLD_CASH_CENTS
   const rows = useMemo(() => filterAndSortHouseholds(state.households, query, sort, ascending), [state.households, query, sort, ascending])
   const distribution = useMemo(() => [...state.households]
     .sort((a, b) => a.preTaxCashCents - b.preTaxCashCents || a.id.localeCompare(b.id, undefined, { numeric: true }))

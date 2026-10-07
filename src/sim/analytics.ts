@@ -36,7 +36,3 @@ export function summarizeCashDistribution(values: number[]): CashDistribution {
     gini: giniCoefficient(values),
   }
 }
-
-export function countAffordableAtPrice(values: number[], priceCents: number): number {
-  return values.filter((value) => value >= priceCents).length
-}

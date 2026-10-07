@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SEED } from './config'
 import { deriveEmploymentSeed } from './employment'
 import { createSimulation, runDays } from './engine'
@@ -6,8 +6,6 @@ import { deriveGovernmentPolicySeed } from './government'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
 import { mixSeed, normalizeSeed, seededShuffle } from './rng'
 import { deriveSpatialSeed } from './spatial'
-import engineSource from './engine.ts?raw'
-import rngSource from './rng.ts?raw'
 
 describe('independent derived RNG streams', () => {
   const streams = (seed: number) => ({ market: normalizeSeed(seed), spatial: deriveSpatialSeed(seed), employment: deriveEmploymentSeed(seed), government: deriveGovernmentPolicySeed(seed) })
@@ -39,7 +37,7 @@ describe('independent derived RNG streams', () => {
 
 describe('seeded randomness and persistent probes', () => {
   it('replays the same seed exactly and permits different seeded paths', () => {
-    const config = { startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 8, seed: 42 }
+    const config = { startingPriceCents: 200, initialStepCents: 100, seed: 42 }
     expect(runDays(createSimulation(config), 100)).toEqual(runDays(createSimulation(config), 100))
     const first = seededShuffle([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 42)
     const second = seededShuffle([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 43)
@@ -47,8 +45,12 @@ describe('seeded randomness and persistent probes', () => {
   })
 
   it('routes simulation randomness through the seeded utilities', () => {
-    expect(engineSource).not.toContain('Math.random')
-    expect(rngSource).not.toContain('Math.random')
+    // Every stochastic mechanism is forced on: geography, employment, arrival order, ties, price probes, and Government trials.
+    const random = vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('Simulation code called Math.random') })
+    try {
+      runDays(createSimulation({ seed: DEFAULT_SEED, probeProbability: 1, governmentExperimentProbability: 1 }), 60)
+      expect(random).not.toHaveBeenCalled()
+    } finally { random.mockRestore() }
     const arrivals = (seed: number) => stepEvents(seed).filter(({ type, industryId }) => type === 'HOUSEHOLD_PURCHASE' && industryId === 'food').map(({ householdId }) => householdId)
     expect(arrivals(1)).not.toEqual(arrivals(2))
     const ties = (seed: number) => stepEvents(seed).filter(({ type, industryId }) => type === 'HOUSEHOLD_PURCHASE' && industryId === 'entertainment').map(({ firmId }) => firmId)
@@ -68,14 +70,14 @@ describe('seeded randomness and persistent probes', () => {
   })
 
   it('continues sampling explicit probes after local settlement', () => {
-    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 7, probeProbability: 1 }), 100)
+    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 7, probeProbability: 1 }), 100)
     expect(state.firms.filter(({ industryId }) => industryId !== 'transport').every(({ pricing }) => pricing.locallySettled)).toBe(true)
     expect(state.events.some(({ type }) => type === 'PRICE_PROBE_STARTED')).toBe(true)
     expect(state.events.some(({ type }) => type === 'PRICE_PROBE_REJECTED' || type === 'PRICE_PROBE_ADOPTED')).toBe(true)
   })
 
   it('does not freeze a symmetric $5/$5 Entertainment start', () => {
-    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 2_026_0813, firmStartingPricesCents: { 'firm-entertainment-a': 500, 'firm-entertainment-b': 500 } }), 300)
+    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 2_026_0813, firmStartingPricesCents: { 'firm-entertainment-a': 500, 'firm-entertainment-b': 500 } }), 300)
     const incumbents = state.firms.filter(({ industryId }) => industryId === 'entertainment').map(({ pricing }) => pricing.incumbentPriceCents)
     expect(incumbents).not.toEqual([500, 500])
     expect(state.firms.every(({ pricing }) => pricing.incumbentPriceCents >= 1)).toBe(true)
@@ -83,5 +85,5 @@ describe('seeded randomness and persistent probes', () => {
 })
 
 function stepEvents(seed: number) {
-  return runDays(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10, seed, firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 100 } }), 1).events
+  return runDays(createSimulation({ startingPriceCents: 100, initialStepCents: 100, seed, firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 100 } }), 1).events
 }

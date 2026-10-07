@@ -6,6 +6,20 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Maintenance-020] - (2026-10-07)
+
+### Problem
+
+Four maintenance issues: toolchain drift from `latest` specifiers, config fields that compiled but did nothing, population errors that surfaced deep in setup, and tests that asserted on source text. They come before adding a formatter and decomposing `stepSimulation`, because text assertions would break on any reformat.
+
+### Decisions
+
+- **Pinning (#33).** Caret ranges of the locked versions, so `npm ci` installs exactly what it did before; a major upgrade now has to appear in `package.json`. The regenerated lockfile only gained `dev` flags. Automated upgrade PRs (Dependabot or Renovate) were left out, because they add standing repository automation and that is the owner's call.
+- **Playwright in the lockfile (#33 follow-up).** The browser-check workflow installed Playwright ad hoc with `--no-save --package-lock=false`. With caret ranges in `package.json`, that hit an npm 10 crash (`Cannot read properties of null (reading 'edgesOut')` in `#loadPeerSet`, while resolving vitest's optional peers). Reproduced locally: `main`'s `latest` specifiers passed, and pinned ranges failed whether or not the tooling moved to `devDependencies`. Skipping peer resolution avoided the crash, but without a lockfile npm re-resolved the whole tree and installed newer Vite (8.3.3) and React (19.3.0) after `npm ci`, so the preview would run untested versions. Adding `playwright@1.55.0` as an exact devDependency fixes both problems. It adds only Playwright's own packages to the lockfile and runs no install script; browsers are still downloaded only by `npx playwright install`.
+- **Dead config (#32).** Removing the fields lets the type checker catch stale callers. That surfaced one misleading test, the "scarce markets" grouping test, which passed `dailySupplyPerIndustry: 4` and expected scarcity that never happened. Its assertions still hold without the field. The pricing probe's result also echoed the ignored supply value, so it was dropped from the result shape.
+- **Validation (#35).** The engine clamps most numeric fields for programmatic callers, but a clamped population is a different experiment, so `householdCount` now fails loudly. Grid dimensions keep their existing clamp and round, and the capacity check runs on the resolved values. The deeper checks in `assignEmployment` and `generateSpatialLayout` remain as defensive invariants.
+- **Behavioral tests (#39).** Each text assertion was mapped to the behavior it protected. Absence of `Math.random` became a stub that throws; this covers every module the engine reaches, not just the four files that were scanned. The pricing-boundary regex became argument inspection of the strategy's real calls, which still catches a leak if a field is renamed or reached through a nested object. The issue counted 13 assertions; 10 remained on `main`, and all were replaced.
+
 ## [MVP8-Audit_Fixes-019] - (2026-10-07)
 
 ### Problem

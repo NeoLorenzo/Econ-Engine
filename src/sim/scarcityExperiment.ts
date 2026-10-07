@@ -25,7 +25,6 @@ export const EXPECTED_INDUSTRY_OPTIMA_CENTS: Record<IndustryId, number> = {
 export interface MultiIndustryExperimentOptions {
   startingPricesCents?: Partial<Record<IndustryId, number>>
   initialStepCents?: number
-  dailySupplyPerIndustry?: number
   horizonDays?: number
   seed?: number
 }
@@ -55,7 +54,6 @@ export interface CompetitionHistoryPoint {
 
 export interface MultiIndustryExperimentResult {
   initialStepCents: number
-  dailySupplyPerIndustry: number
   horizonDays: number
   daysRun: number
   firms: FirmExperimentResult[]
@@ -69,10 +67,9 @@ export interface MultiIndustryExperimentResult {
 
 export function runMultiIndustryExperiment(options: MultiIndustryExperimentOptions = {}): MultiIndustryExperimentResult {
   const initialStepCents = Math.max(1, Math.round(options.initialStepCents ?? 100))
-  const dailySupplyPerIndustry = Math.max(0, Math.round(options.dailySupplyPerIndustry ?? 10))
   const horizonDays = Math.max(0, Math.round(options.horizonDays ?? MULTI_INDUSTRY_EXPERIMENT_HORIZON_DAYS))
   const startingPrices = { ...MULTI_INDUSTRY_STARTING_PRICES_CENTS, ...options.startingPricesCents }
-  let state = createSimulation({ startingPriceCents: 200, initialStepCents, dailySupplyPerIndustry, industryStartingPricesCents: startingPrices, firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS, seed: options.seed, adaptiveGovernmentEnabled: false })
+  let state = createSimulation({ startingPriceCents: 200, initialStepCents, industryStartingPricesCents: startingPrices, firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS, seed: options.seed, adaptiveGovernmentEnabled: false })
   const convergenceDays = new Map<string, number>()
   while (state.day < horizonDays) {
     state = stepSimulation(state)
@@ -80,7 +77,7 @@ export function runMultiIndustryExperiment(options: MultiIndustryExperimentOptio
   }
   const distribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   return {
-    initialStepCents, dailySupplyPerIndustry, horizonDays, daysRun: state.day,
+    initialStepCents, horizonDays, daysRun: state.day,
     firms: state.firms.map((firm) => ({
       industryId: firm.industryId, firmId: firm.id, startingPriceCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS[firm.id as keyof typeof ENTERTAINMENT_COMPETITOR_STARTS_CENTS] ?? startingPrices[firm.industryId],
       convergedPriceCents: firm.pricing.locallySettled ? firm.pricing.incumbentPriceCents : null,

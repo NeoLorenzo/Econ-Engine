@@ -2,13 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { MAX_EVENTS, MAX_HISTORY } from './config'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
-import engineSource from './engine.ts?raw'
 
 describe('MVP4 006.2 structurally shared simulation steps', () => {
-  it('removes whole-state structuredClone from the daily hot path', () => {
-    expect(engineSource).not.toContain('structuredClone(previous)')
-  })
-
+  // Sharing the previous day's metric, event, config, and coordinate objects by reference rules out a whole-state deep clone.
   it('does not mutate the supplied state and shares immutable historical records', () => {
     const previous = runDays(createSimulation(), 3)
     const snapshot = JSON.stringify(previous)
@@ -35,7 +31,7 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
   })
 
   it('runs 10,000 days with bounded histories and exact terminal invariants', () => {
-    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 2_026_0813 }), 10_000)
+    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 2_026_0813 }), 10_000)
     expect(state.day).toBe(10_000)
     expect(state.metrics).toHaveLength(MAX_HISTORY)
     expect(state.events.length).toBeLessThanOrEqual(MAX_EVENTS)
@@ -57,7 +53,7 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
   })
 
   it('reproduces the complete 1,000-day state exactly', () => {
-    const config = { startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 61 }
+    const config = { startingPriceCents: 200, initialStepCents: 100, seed: 61 }
     expect(runDays(createSimulation(config), 1_000)).toEqual(runDays(createSimulation(config), 1_000))
   }, 30_000)
 })

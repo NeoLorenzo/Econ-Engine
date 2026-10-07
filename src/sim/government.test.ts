@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { buildGovernmentExperimentCatalog, collectWealthTax, isEffectivelyEqual, redistributeByWaterFilling, shouldAdoptGovernmentExperiment, taxForWealth } from './government'
 import { totalMoney, validateState } from './invariants'
-import governmentSource from './government.ts?raw'
 import { runGovernmentExperiment } from './governmentExperiment'
 
 const synthetic = (cash: number[]) => {
@@ -47,7 +46,9 @@ describe('[MVP6-Government-008.1] directional policy learner', () => {
     expect(isEffectivelyEqual([5_000, 5_000])).toBe(true)
     expect(isEffectivelyEqual([4_999, 5_000])).toBe(true)
     expect(isEffectivelyEqual([4_998, 5_000])).toBe(false)
-    expect(governmentSource).not.toContain('GINI_EQUALITY_TOLERANCE')
+    // A near-zero Gini is not equality: one household two cents short of a million others still fails the one-cent range rule.
+    expect(isEffectivelyEqual([...Array(999).fill(1_000_000), 999_998])).toBe(false)
+    expect(isEffectivelyEqual([...Array(999).fill(1_000_000), 999_999])).toBe(true)
   })
 
   it('starts at 0% and retains directional local pp moves plus anchors', () => {
@@ -69,7 +70,7 @@ describe('[MVP6-Government-008.1] directional policy learner', () => {
 
   it('selects an exact same-seed experiment history and allows different valid histories', () => {
     const sequence = (seed: number) => runDays(createSimulation({ seed, governmentExperimentProbability: 1 }), 30).events.filter(({ type }) => type === 'GOVERNMENT_POLICY_EXPERIMENT_STARTED').map(({ taxRateBps, governmentExperimentType }) => [taxRateBps, governmentExperimentType])
-    expect(sequence(77)).toEqual(sequence(77)); expect(sequence(77)).not.toEqual(sequence(78)); expect(governmentSource).not.toContain('Math.random')
+    expect(sequence(77)).toEqual(sequence(77)); expect(sequence(77)).not.toEqual(sequence(78))
   })
 
   it('keeps the directional policy boundary and refreshes its reference under MVP7 settlement', () => {

@@ -25,7 +25,6 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (actual.join('|') !== [...expected].sort().join('|')) throw new Error(`${industryId} firm membership is invalid`)
   }
   if (!Number.isInteger(state.config.laborProductivityUnitsPerWorker) || state.config.laborProductivityUnitsPerWorker! < 0) throw new Error('Labor productivity must be a non-negative integer')
-  if (state.config.firmTaxRateBps !== 0 || state.config.householdParityEnabled !== false) throw new Error('Legacy firm tax and parity policy must remain inactive')
   if ((state.config.governmentExperimentProbability ?? 0) < 0 || (state.config.governmentExperimentProbability ?? 0) > 1) throw new Error('Government experiment probability must be between zero and one')
   if (!Number.isInteger(state.governmentPolicyRngState) || state.governmentPolicyRngState < 0 || state.governmentPolicyRngState > 0xffff_ffff) throw new Error('Government policy RNG state must be an unsigned 32-bit integer')
   if (!Number.isInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffff_ffff) throw new Error('RNG state must be an unsigned 32-bit integer')

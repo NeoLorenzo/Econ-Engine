@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
-import engineSource from './engine.ts?raw'
-import employmentSource from './employment.ts?raw'
+import { decideTomorrowPrice } from './pricingStrategy'
 
 describe('[MVP5-Employment-007]', () => {
   it('assigns exactly one fixed seeded job per household with canonical slot counts', () => {
@@ -15,7 +14,6 @@ describe('[MVP5-Employment-007]', () => {
     expect(first.firms.filter(({ industryId }) => industryId !== 'transport').every(({ employeeIds }) => employeeIds.length === 10)).toBe(true)
     expect(first.firms.find(({ industryId }) => industryId === 'transport')!.employeeIds).toHaveLength(20)
     expect(runDays(first, 20).households.map(({ employerFirmId }) => employerFirmId)).toEqual(first.households.map(({ employerFirmId }) => employerFirmId))
-    expect(employmentSource).not.toContain('Math.random')
   })
 
   it('produces explicitly from labor, expires goods, and excludes Transport production', () => {
@@ -28,16 +26,21 @@ describe('[MVP5-Employment-007]', () => {
   })
 
   it('pays contractual wages, taxes residual profit, and preserves the learner signal', () => {
-    const day = stepSimulation(createSimulation({ startingPriceCents: 101, initialStepCents: 100, seed: 9 }))
+    const initial = createSimulation({ startingPriceCents: 101, initialStepCents: 100, seed: 9 })
+    const day = stepSimulation(initial)
     day.firms.forEach((firm) => { expect(firm.cashCents).toBe(0); expect(firm.wagesPaidTodayCents).toBe(firm.wagePoolTodayCents) })
     expect(day.events.filter(({ day: eventDay, type }) => eventDay === 1 && type === 'WAGE_PAID')).toHaveLength(100)
     expect(day.firms.every((firm) => firm.wagesPaidTodayCents <= firm.contractualPayrollTodayCents && firm.corporateProfitTaxTodayCents === firm.residualProfitTodayCents)).toBe(true)
-    expect(engineSource).toContain('decideTomorrowPrice')
+    // The consumer-firm pricing learner sees operating revenue (price × units), not the residual profit that tax leaves at zero.
+    initial.firms.filter(({ industryId }) => industryId !== 'transport').forEach((before) => {
+      const after = day.firms.find(({ id }) => id === before.id)!
+      const expected = decideTomorrowPrice(before.pricing, before.postedPriceCents, after.unitsSoldToday, after.unitsSoldToday * before.postedPriceCents)
+      expect(after.pricing).toEqual(expected.state); expect(after.postedPriceCents).toBe(expected.nextPriceCents)
+    })
   })
 
   it('keeps Government inactive, permits divergence, and conserves the closed circuit long-run', () => {
     const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 91, adaptiveGovernmentEnabled: false }), 1_000)
-    expect(state.config.firmTaxRateBps).toBe(0); expect(state.config.householdParityEnabled).toBe(false)
     expect(state.events.some(({ type }) => type === 'TAX_PAID' || type === 'PARITY_TRANSFER_RECEIVED')).toBe(false)
     expect(state.households.every(({ cashCents }) => cashCents >= 0)).toBe(true)
     expect(state.households.every(({ cashCents }) => cashCents >= 0)).toBe(true)
