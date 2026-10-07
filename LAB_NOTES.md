@@ -6,6 +6,24 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Audit_Fixes-019] - (2026-10-07)
+
+### Problem
+
+An audit found five defects in the research analytics and event ledger, none of which changed simulation behavior. The analytics fixes matter before multi-seed ensembles (#3): an ensemble would aggregate the same errors across every seed.
+
+### Decisions
+
+- **Event trimming (#31).** `pushEvent` spliced the 1,600-event array on every push once it was full, so each day paid about 1,150 array shifts. Nothing reads `state.events` during a step, so trimming once at the end of `createSimulation` and `stepSimulation` keeps the same newest 1,600 events. Measured on the canonical seed over 1,000 days after a 300-day warm-up: 4.87 ms → 1.73 ms per step. The suite fell from about 70 s to about 30 s, mostly from the two 10,000-day tests.
+- **Cash bins (#14).** Every bin is now half-open over integer cents, and labels state the inclusive upper cent (`$1–$4.99`). Exactly $50 falls in `$50+`, so the canonical day 1 is fully represented.
+- **Extreme days (#15).** Richest and poorest now compare balances with that day's maximum and minimum. Fractional ranks stay in use for mean rank and top/bottom-3 fractions, where tie-averaging is the intended meaning.
+- **Top-1% share (#16).** The top `p` of `N` households is `pN` households, with the boundary household counted in part. Alternatives were relabelling N=10 as "richest household" or dropping the metric at N=10. The fractional definition keeps one comparable column and leaves the top-10% values unchanged, because `0.1 × 10` and `0.1 × 100` are whole.
+- **Failure counts (#30).** Failure causes are now counted when they happen and stored on `DayMetrics`. A cash failure is any affordability failure whose cheapest delivered cost is within the category budget. That matches the old event filter, because the cheapest firm would otherwise have been affordable. Over 1,000 days at N=10 and N=100 for three seeds, the new counts matched the old event-based counts exactly. Policy adoptions and rejections come from `government.policyStatus` and `lastExperimentOutcome`, which are set on the day an experiment is judged.
+
+### Open questions
+
+- `employmentDynamics.ts` and `governmentExperiment.ts` still classify failures from `state.events`. That is safe at N=100, but they would undercount at larger populations in the same way. They could read `purchaseFailuresByCause` or per-household outcomes instead.
+
 ## [MVP8-UI_Redesign-018.1] - (2026-10-07)
 
 ### Observations and decisions

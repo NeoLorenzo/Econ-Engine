@@ -12,6 +12,10 @@ const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
 function pushEvent(state: SimulationState, type: SimulationEventType, description: string, details: Partial<SimulationEvent> = {}) {
   state.events.push({ id: state.nextEventId++, day: state.day, type, description, ...details })
+}
+
+/** Keeps only the newest MAX_EVENTS events. Called once per state transition rather than per push, so trimming costs amortized O(1) per event. */
+function trimEvents(state: SimulationState) {
   if (state.events.length > MAX_EVENTS) state.events.splice(0, state.events.length - MAX_EVENTS)
 }
 
@@ -95,6 +99,7 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
     metrics: [], events: [], nextEventId: 1, rngState: normalizeSeed(safeConfig.seed ?? DEFAULT_SEED), spatialSeed: deriveSpatialSeed(safeConfig.seed ?? DEFAULT_SEED), employmentSeed: deriveEmploymentSeed(safeConfig.seed ?? DEFAULT_SEED), governmentPolicyRngState: deriveGovernmentPolicySeed(safeConfig.seed ?? DEFAULT_SEED),
   }
   state.households.forEach((household) => pushEvent(state, 'EMPLOYMENT_ASSIGNED', `${household.id} was assigned to ${household.employerFirmId}.`, { actorId: household.id, householdId: household.id, counterpartyId: household.employerFirmId, firmId: household.employerFirmId }))
+  trimEvents(state)
   validateState(state)
   return state
 }
@@ -140,6 +145,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
   pushEvent(state, 'DAY_STARTED', `Day ${state.day} began.`)
   state.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => pushEvent(state, 'FIRM_PRODUCED', `${firm.id} produced ${firm.unitsProducedToday} units from ${firm.employeeIds.length} worker × ${firm.productivityPerWorker} productivity.`, { actorId: firm.id, firmId: firm.id, industryId: firm.industryId, quantity: firm.unitsProducedToday, workerCount: firm.employeeIds.length, productivityPerWorker: firm.productivityPerWorker!, unitsProduced: firm.unitsProducedToday }))
   const marketMetrics: MarketMetrics[] = []
+  const purchaseFailuresByCause = { cash: 0, category_budget: 0, inventory: 0 }
 
   for (const industryId of state.config.industryProcessingOrder ?? safeProcessingOrder(state.config)) {
     if (industryId === 'transport') continue
@@ -195,9 +201,10 @@ export function stepSimulation(previous: SimulationState): SimulationState {
       if (affordable.length === 0) {
         outcome.purchaseOutcomeToday = 'insufficient_funds'; outcome.lifetimeAffordabilityFailures += 1
         const minimumDeliveredCostCents = Math.min(...industryFirms.map(delivered))
+        purchaseFailuresByCause[minimumDeliveredCostCents > outcome.budgetCents ? 'category_budget' : 'cash'] += 1
         pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_INSUFFICIENT_FUNDS', `${household.id} could not afford any ${industry.name} firm within its category limit and actual cash.`, { actorId: household.id, householdId: household.id, industryId, priceCents: minimumPostedPrice, householdCashAvailableCents: household.cashCents, categoryBudgetCents: outcome.budgetCents, minimumDeliveredCostCents })
       } else if (available.length === 0) {
-        outcome.purchaseOutcomeToday = 'stockout'; outcome.lifetimeStockoutFailures += 1
+        outcome.purchaseOutcomeToday = 'stockout'; outcome.lifetimeStockoutFailures += 1; purchaseFailuresByCause.inventory += 1
         pushEvent(state, 'HOUSEHOLD_PURCHASE_FAILED_STOCKOUT', `${household.id} could afford ${industry.name}, but no affordable firm had stock.`, { actorId: household.id, householdId: household.id, industryId, priceCents: minimumPostedPrice })
       } else {
         const cheapestPrice = Math.min(...available.map((firm) => delivered(firm)))
@@ -219,7 +226,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
           const spatialResult = { chosenFirmId: firm.id, distanceToA: transportQuote(household.coordinate, industryFirms[0].coordinate!, 0).oneWayDistance, distanceToB: transportQuote(household.coordinate, industryFirms[1].coordinate!, 0).oneWayDistance, chosenOneWayDistance: travel.oneWayDistance, roundTripTiles: travel.roundTripTiles, productPriceCents: price, transportFeeCents: travel.transportFeeCents, deliveredCostCents: total }
           household.spatialPurchasesToday[industryId] = spatialResult
           if (industryId === 'entertainment') household.entertainmentToday = spatialResult
-          pushEvent(state, 'TRANSPORT_SERVICE_PURCHASED', `${household.id} paid ${dollars(travel.transportFeeCents)} to Transport for ${travel.roundTripTiles} tiles of Entertainment travel.`, { ...details, counterpartyId: transportFirm.id, firmId: transportFirm.id, amountCents: travel.transportFeeCents, quantity: travel.roundTripTiles })
+          pushEvent(state, 'TRANSPORT_SERVICE_PURCHASED', `${household.id} paid ${dollars(travel.transportFeeCents)} to Transport for ${travel.roundTripTiles} tiles of ${industry.name} travel.`, { ...details, counterpartyId: transportFirm.id, firmId: transportFirm.id, amountCents: travel.transportFeeCents, quantity: travel.roundTripTiles })
         }
         Object.assign(outcome, { purchasedToday: true, spentTodayCents: total, purchaseOutcomeToday: 'purchased' }); outcome.lifetimeUnitsPurchased += 1
         pushEvent(state, 'HOUSEHOLD_PURCHASE', `${household.id} purchased ${industry.name} from ${firm.id} for ${dollars(price)} (${dollars(total)} delivered).`, { ...details, amountCents: price, quantity: 1 })
@@ -378,7 +385,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
     totalFirmCashAfterTaxCents: state.firms.reduce((sum, firm) => sum + firm.cashCents, 0), governmentCashBeforeRedistributionCents: governmentCashBeforeRedistribution,
     governmentCashAfterRedistributionCents: state.government.cashCents, totalMoneyCents: totalMoney(state), allFirmsConverged: state.firms.every((firm) => firm.pricing.converged),
     allFirmsLocallySettled: state.firms.filter((firm) => firm.industryId !== 'transport').every((firm) => firm.pricing.locallySettled),
-    entertainmentTrips, totalTilesTravelled, totalTransportRevenueCents,
+    entertainmentTrips, totalTilesTravelled, totalTransportRevenueCents, purchaseFailuresByCause,
     averageTransportFeeCents: entertainmentTrips === 0 ? 0 : totalTransportRevenueCents / entertainmentTrips,
     transportRevenueByIndustryCents: Object.fromEntries(DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').map(({ id }) => [id, state.households.reduce((sum, household) => sum + (household.spatialPurchasesToday[id as Exclude<IndustryId, 'transport'>]?.transportFeeCents ?? 0), 0)])),
     totalWagesPaidCents: state.firms.reduce((sum, firm) => sum + firm.wagesPaidTodayCents, 0),
@@ -401,6 +408,7 @@ export function stepSimulation(previous: SimulationState): SimulationState {
   state.metrics.push(metric); if (state.metrics.length > MAX_HISTORY) state.metrics.shift()
   validateState(state, true)
   pushEvent(state, 'DAY_ENDED', `Day ${state.day} ended with exactly ${dollars(metric.totalMoneyCents)} in the closed circuit.`)
+  trimEvents(state)
   return state
 }
 

@@ -2,6 +2,26 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Audit_Fixes-019] - (2026-10-07)
+
+### Fixed
+
+- **Transport events** now name the consumer industry that caused the trip ("tiles of Food travel") instead of always saying Entertainment (#13).
+- **Employment / Wealth Dynamics cash bins** are half-open `[min, max)` ranges labelled `<$1`, `$1–$4.99`, `$5–$9.99`, `$10–$24.99`, `$25–$49.99` and `$50+`. Exactly $50 was previously in no bin, which dropped all 100 day-1 observations (#14).
+- **Richest and poorest days** count every household tied for that day's highest or lowest balance. Tied leaders were previously never counted as richest, and poorest days were compared with day 1's tie structure (#15).
+- **Top-1% wealth share** in the population-scale comparison now has the same meaning at N=10 and N=100: a boundary household counts in proportion, so at N=10 it is one tenth of the richest household's share rather than the richest 10%. The top-10% share is unchanged (#16).
+- **Population-scale failure and policy counts** come from complete day metrics and Government state instead of the bounded event ledger, which would silently undercount above about 140 households. Results at N=10 and N=100 are unchanged (#30).
+
+### Changed
+
+- `DayMetrics.purchaseFailuresByCause` records each day's failed consumer purchases by cause (`cash`, `category_budget`, `inventory`).
+- The event ledger is trimmed once at the end of each day instead of on every event, which cut the canonical step from about 4.9 ms to 1.7 ms. The same newest 1,600 events are retained, with the same IDs and order (#31).
+
+### Validation
+
+- Added tests for event retention, transport-event descriptions, cash-bin boundaries and exhaustiveness, tied extremes, fractional population shares, and failure counts in a 200-household economy whose days overflow the event ledger.
+- The full test suite now runs in about 30 s, down from about 70 s.
+
 ## [MVP8-UI_Redesign-018.1] - (2026-10-07)
 
 ### Changed

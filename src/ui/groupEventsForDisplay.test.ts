@@ -11,6 +11,9 @@ describe('multi-market event display grouping', () => {
     expect(markets.every(({ details }) => details.length === 100)).toBe(true)
     expect(markets.find(({ key }) => key === 'market-1-food')?.description).toContain('100 purchased')
     expect(state.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE')).toHaveLength(400)
+    const foodTrip = displayed.find(({ description }) => description.includes('to Transport for') && description.endsWith('Food travel.'))
+    expect(foodTrip).toBeDefined()
+    expect(displayed.some(({ description }) => description.endsWith('Entertainment travel.'))).toBe(true)
   })
 
   it('distinguishes unaffordable and scarce markets in grouped summaries', () => {
