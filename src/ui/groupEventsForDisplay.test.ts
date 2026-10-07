@@ -4,7 +4,7 @@ import { groupEventsForDisplay } from './groupEventsForDisplay'
 
 describe('multi-market event display grouping', () => {
   it('groups each market separately while preserving all granular events', () => {
-    const state = stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
+    const state = stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100 }))
     const displayed = groupEventsForDisplay(state.events)
     const markets = displayed.filter(({ key }) => key.startsWith('market-'))
     expect(markets).toHaveLength(4)
@@ -17,7 +17,7 @@ describe('multi-market event display grouping', () => {
   })
 
   it('distinguishes unaffordable and scarce markets in grouped summaries', () => {
-    const state = stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 4, industryStartingPricesCents: { food: 1_501 } }))
+    const state = stepSimulation(createSimulation({ startingPriceCents: 100, initialStepCents: 100, industryStartingPricesCents: { food: 1_501 } }))
     const displayed = groupEventsForDisplay(state.events)
     expect(displayed.find(({ key }) => key === 'market-1-food')?.description).toContain('100 affordability')
     expect(displayed.find(({ key }) => key === 'market-1-utilities')?.description).toContain('0 stockout failures')
@@ -27,7 +27,6 @@ describe('multi-market event display grouping', () => {
     const state = stepSimulation(createSimulation({
       startingPriceCents: 500,
       initialStepCents: 100,
-      dailySupplyPerIndustry: 10,
       industryStartingPricesCents: { food: 1_500, utilities: 1_200, healthcare: 1_000, transport: 800, entertainment: 500 },
     }))
     const original = structuredClone(state.events)
@@ -41,7 +40,6 @@ describe('multi-market event display grouping', () => {
     const state = stepSimulation(createSimulation({
       startingPriceCents: 200,
       initialStepCents: 100,
-      dailySupplyPerIndustry: 10,
       firmStartingPricesCents: { 'firm-entertainment-a': 100, 'firm-entertainment-b': 100 },
     }))
     const group = groupEventsForDisplay(state.events).find(({ key }) => key === 'market-1-entertainment')

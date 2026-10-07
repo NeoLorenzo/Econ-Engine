@@ -40,8 +40,6 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   startingPriceCents: 200,
   initialStepCents: 100,
   laborProductivityUnitsPerWorker: DEFAULT_LABOR_PRODUCTIVITY,
-  firmTaxRateBps: 0,
-  householdParityEnabled: false,
   adaptiveGovernmentEnabled: true,
   governmentExperimentProbability: DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY,
   seed: DEFAULT_SEED,
@@ -49,9 +47,22 @@ export const DEFAULT_CONFIG: SimulationConfig = {
   gridWidth: DEFAULT_GRID_WIDTH,
   gridHeight: DEFAULT_GRID_HEIGHT,
   transportCostPerTileCents: DEFAULT_TRANSPORT_COST_PER_TILE_CENTS,
-  targetHouseholdCashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
   dailyExpenditureBudgetCents: DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS,
   industryBudgetSharesBps: DEFAULT_INDUSTRY_BUDGET_SHARES_BPS,
+}
+
+/** Households per employment block: one worker for each of the eight consumer firms and two for Transport. */
+export const EMPLOYMENT_BLOCK_SIZE = 10
+
+/** Rejects an impossible population or grid before any agents are built, naming the offending field. */
+export function validatePopulationConfig({ householdCount, gridWidth, gridHeight }: { householdCount: number; gridWidth: number; gridHeight: number }) {
+  if (!Number.isInteger(householdCount) || householdCount < EMPLOYMENT_BLOCK_SIZE || householdCount % EMPLOYMENT_BLOCK_SIZE !== 0) {
+    throw new Error(`householdCount must be a whole multiple of ${EMPLOYMENT_BLOCK_SIZE} (complete employment blocks) and at least ${EMPLOYMENT_BLOCK_SIZE}; received ${householdCount}`)
+  }
+  const consumerFirmCount = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').reduce((sum, { id }) => sum + DEFAULT_FIRM_IDS_BY_INDUSTRY[id].length, 0)
+  if (gridWidth * gridHeight < householdCount + consumerFirmCount) {
+    throw new Error(`gridWidth × gridHeight is ${gridWidth} × ${gridHeight} = ${gridWidth * gridHeight} cells, too few for ${householdCount} households and ${consumerFirmCount} consumer firms on unique cells`)
+  }
 }
 
 export const deriveIndustryBudgetCents = (dailyExpenditureBudgetCents: number, shareBps: number) => Math.round(dailyExpenditureBudgetCents * shareBps / 10_000)

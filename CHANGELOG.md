@@ -2,6 +2,24 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Maintenance-020] - (2026-10-07)
+
+### Changed
+
+- **Dependencies** are pinned to caret ranges of the versions already in `package-lock.json` instead of `latest`. Vite, TypeScript and the React plugin moved to `devDependencies`, and `engines.node` is `>=22` to match CI. Installed versions are unchanged (#33).
+- **Configuration:** removed `SimulationConfig` fields the engine ignored (`dailySupplyPerIndustry`, `targetHouseholdCashCents`, `firmTaxRateBps`, `householdParityEnabled`) and the unused `countAffordableAtPrice` helper. The multi-industry pricing probe no longer accepts or reports a `dailySupplyPerIndustry` option that had no effect. The UI reads the starting household cash from `INITIAL_HOUSEHOLD_CASH_CENTS` (#32).
+- **Config validation:** `createSimulation` rejects a `householdCount` that is not a whole multiple of 10 of at least 10, and a grid with fewer cells than households plus consumer firms, with messages naming the field. Previously, values such as `15` threw deep inside employment assignment and values such as `5` or `100.5` were silently clamped or rounded (#35).
+
+### Validation
+
+- Replaced the source-text assertions (`?raw` imports) with behavioral tests (#39):
+  - `Math.random` is stubbed to throw while every stochastic mechanism runs for 60 days.
+  - Pass-through spies check that nothing handed to the pricing strategy carries competitor profit, sales, market share, coordinates or household data.
+  - The consumer pricing learner's next state is reproduced from price × units sold.
+  - Effective equality is checked on a near-zero-Gini distribution.
+  - The whole-state-clone guard relies on the existing structural-sharing test.
+- Added tests for rejected and boundary population and grid configurations.
+
 ## [MVP8-Audit_Fixes-019] - (2026-10-07)
 
 ### Fixed

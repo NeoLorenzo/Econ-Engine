@@ -1,5 +1,5 @@
 import { summarizeCashDistribution } from './analytics'
-import { CONTRACTUAL_WAGE_CENTS, DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_LABOR_PRODUCTIVITY, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents } from './config'
+import { CONTRACTUAL_WAGE_CENTS, DEFAULT_CONFIG, DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS, DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY, DEFAULT_GRID_HEIGHT, DEFAULT_GRID_WIDTH, DEFAULT_INDUSTRIES, DEFAULT_INDUSTRY_BUDGET_SHARES_BPS, DEFAULT_LABOR_PRODUCTIVITY, DEFAULT_PROBE_PROBABILITY, DEFAULT_SEED, DEFAULT_TRANSPORT_COST_PER_TILE_CENTS, HOUSEHOLD_COUNT, INITIAL_HOUSEHOLD_CASH_CENTS, MAX_EVENTS, MAX_HISTORY, deriveIndustryBudgetCents, validatePopulationConfig } from './config'
 import { assignEmployment, deriveEmploymentSeed, payrollOrder } from './employment'
 import { chooseGovernmentExperiment, collectWealthTax, deriveGovernmentPolicySeed, householdCashGini, isEffectivelyEqual, redistributeByWaterFilling, shouldAdoptGovernmentExperiment } from './government'
 import { totalMoney, validateState } from './invariants'
@@ -38,11 +38,9 @@ function countHouseholdsAffordableAtMarketOpen(households: SimulationState['hous
 export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CONFIG): SimulationState {
   const safeConfig: SimulationConfig = {
     startingPriceCents: Math.max(1, Math.round(config.startingPriceCents ?? DEFAULT_CONFIG.startingPriceCents)),
-    householdCount: Math.max(10, Math.round(config.householdCount ?? HOUSEHOLD_COUNT)),
+    householdCount: config.householdCount ?? HOUSEHOLD_COUNT,
     initialStepCents: Math.max(1, Math.round(config.initialStepCents ?? DEFAULT_CONFIG.initialStepCents)),
     laborProductivityUnitsPerWorker: Math.max(0, Math.round(config.laborProductivityUnitsPerWorker ?? DEFAULT_LABOR_PRODUCTIVITY)),
-    firmTaxRateBps: 0,
-    householdParityEnabled: false,
     adaptiveGovernmentEnabled: config.adaptiveGovernmentEnabled ?? true,
     governmentExperimentProbability: Math.max(0, Math.min(1, config.governmentExperimentProbability ?? DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY)),
     industryStartingPricesCents: config.industryStartingPricesCents,
@@ -53,10 +51,10 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
     gridWidth: Math.max(1, Math.round(config.gridWidth ?? DEFAULT_GRID_WIDTH)),
     gridHeight: Math.max(1, Math.round(config.gridHeight ?? DEFAULT_GRID_HEIGHT)),
     transportCostPerTileCents: Math.max(0, Math.round(config.transportCostPerTileCents ?? DEFAULT_TRANSPORT_COST_PER_TILE_CENTS)),
-    targetHouseholdCashCents: Math.max(0, Math.round(config.targetHouseholdCashCents ?? INITIAL_HOUSEHOLD_CASH_CENTS)),
     dailyExpenditureBudgetCents: Math.max(0, Math.round(config.dailyExpenditureBudgetCents ?? DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS)),
     industryBudgetSharesBps: Object.fromEntries(Object.entries(DEFAULT_INDUSTRY_BUDGET_SHARES_BPS).map(([id, defaultBps]) => [id, Math.max(0, Math.min(10_000, Math.round(config.industryBudgetSharesBps?.[id as keyof typeof DEFAULT_INDUSTRY_BUDGET_SHARES_BPS] ?? defaultBps)))])),
   }
+  validatePopulationConfig({ householdCount: safeConfig.householdCount!, gridWidth: safeConfig.gridWidth!, gridHeight: safeConfig.gridHeight! })
   const industries = DEFAULT_INDUSTRIES.map((industry) => industry.id === 'transport' ? { ...industry } : { ...industry, budgetShareBps: safeConfig.industryBudgetSharesBps![industry.id], householdBudgetCents: deriveIndustryBudgetCents(safeConfig.dailyExpenditureBudgetCents!, safeConfig.industryBudgetSharesBps![industry.id]!) })
   const consumerFirmIds = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').flatMap(({ id }) => DEFAULT_FIRM_IDS_BY_INDUSTRY[id])
   const householdCount = safeConfig.householdCount!

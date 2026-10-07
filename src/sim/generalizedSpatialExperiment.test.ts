@@ -52,7 +52,7 @@ describe('competitive trajectory analytics', () => {
   })
 
   it('does not consume simulation RNG or alter subsequent simulation results', () => {
-    const state = stepSimulation(createSimulation({ seed: 91, startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10 }))
+    const state = stepSimulation(createSimulation({ seed: 91, startingPriceCents: 100, initialStepCents: 100 }))
     const before = structuredClone(state)
     const markets = state.metrics.at(-1)!.markets.filter(({ industryId }) => industryId === 'food')
     analyzeCompetitiveTrajectory([{ a: { marketShare: markets[0].marketShare, unitsSold: markets[0].unitsSold, postedPriceCents: markets[0].postedPriceCents, incumbentPriceCents: markets[0].incumbentPriceCents, profitCents: markets[0].preTaxProfitCents }, b: { marketShare: markets[1].marketShare, unitsSold: markets[1].unitsSold, postedPriceCents: markets[1].postedPriceCents, incumbentPriceCents: markets[1].incumbentPriceCents, profitCents: markets[1].preTaxProfitCents } }])

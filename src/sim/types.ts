@@ -19,11 +19,7 @@ export interface SimulationConfig {
   householdCount?: number
   startingPriceCents: number
   initialStepCents: number
-  /** @deprecated MVP5 production is derived from employment. Accepted only for legacy callers. */
-  dailySupplyPerIndustry?: number
   laborProductivityUnitsPerWorker?: number
-  firmTaxRateBps?: number
-  householdParityEnabled?: boolean
   adaptiveGovernmentEnabled?: boolean
   governmentExperimentProbability?: number
   industryStartingPricesCents?: Partial<Record<IndustryId, number>>
@@ -34,7 +30,6 @@ export interface SimulationConfig {
   gridWidth?: number
   gridHeight?: number
   transportCostPerTileCents?: number
-  targetHouseholdCashCents?: number
   dailyExpenditureBudgetCents?: number
   industryBudgetSharesBps?: Partial<Record<Exclude<IndustryId, 'transport'>, number>>
 }

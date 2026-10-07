@@ -6,7 +6,7 @@ import type { IndustryId } from './types'
 import { manhattanDistance, transportQuote } from './spatial'
 
 const consumerIds = ['food', 'utilities', 'healthcare', 'entertainment'] as const
-const base = { startingPriceCents: 100, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 20260813 }
+const base = { startingPriceCents: 100, initialStepCents: 100, seed: 20260813 }
 
 describe('MVP4 full spatial competition', () => {
   it('creates two firms in every consumer industry and one derived Transport monopoly', () => {
@@ -141,4 +141,21 @@ describe('MVP4 full spatial competition', () => {
     expect(first.events.length).toBeLessThanOrEqual(MAX_EVENTS)
     expect(first.metrics.every(({ totalMoneyCents }) => totalMoneyCents === 500_000)).toBe(true)
   }, 30_000)
+})
+
+describe('population and grid validation at the config boundary (#35)', () => {
+  it.each([15, 100.5, 5, 0, -10, Number.NaN])('rejects householdCount %s with a field-specific message', (householdCount) => {
+    expect(() => createSimulation({ ...base, householdCount })).toThrow(/^householdCount must be a whole multiple of 10/)
+  })
+
+  it('rejects a grid with fewer cells than households plus consumer firms', () => {
+    expect(() => createSimulation({ ...base, gridWidth: 10, gridHeight: 10 })).toThrow('gridWidth × gridHeight is 10 × 10 = 100 cells, too few for 100 households and 8 consumer firms on unique cells')
+    expect(() => createSimulation({ ...base, householdCount: 400 })).toThrow(/^gridWidth × gridHeight/)
+  })
+
+  it('accepts a grid with exactly enough cells and complete household blocks', () => {
+    expect(createSimulation({ ...base, gridWidth: 12, gridHeight: 9 }).households).toHaveLength(100)
+    expect(createSimulation({ ...base, householdCount: 10 }).households).toHaveLength(10)
+    expect(createSimulation({ ...base, householdCount: 200 }).households).toHaveLength(200)
+  })
 })

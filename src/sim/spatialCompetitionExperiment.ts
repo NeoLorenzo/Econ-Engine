@@ -21,7 +21,7 @@ export interface SpatialCompetitionResult {
 
 export function runSpatialCompetitionExperiment(seeds: number[] = [DEFAULT_SEED, 7, 42, 99], days = 300, startingPricesCents?: [number, number]): SpatialCompetitionResult[] {
   return seeds.map((seed) => {
-    let state = createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed,
+    let state = createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed,
       firmStartingPricesCents: startingPricesCents ? { 'firm-entertainment-a': startingPricesCents[0], 'firm-entertainment-b': startingPricesCents[1] } : undefined })
     const experimentEvents: typeof state.events = []
     for (let day = 0; day < days; day += 1) {

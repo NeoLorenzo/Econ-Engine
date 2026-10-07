@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createSimulation, runDays } from './engine'
 import { buildPriceExperimentCatalog, createPricingState, decideTomorrowPrice } from './pricingStrategy'
-import pricingSource from './pricingStrategy.ts?raw'
+
+// Pass-through spies record exactly what the engine hands the pricing strategy.
+vi.mock('./pricingStrategy', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./pricingStrategy')>()
+  return { ...actual, decideTomorrowPrice: vi.fn(actual.decideTomorrowPrice), buildPriceExperimentCatalog: vi.fn(actual.buildPriceExperimentCatalog) }
+})
 
 describe('MVP4 006.1 price experiment catalogs', () => {
   it('builds the required incumbent-anchored catalog with integer rounding', () => {
@@ -61,7 +66,7 @@ describe('MVP4 006.1 price experiment catalogs', () => {
   })
 
   it('selects reproducible seeded experiment sequences and permits alternate sequences', () => {
-    const events = (seed: number) => runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed, probeProbability: 1 }), 120).events
+    const events = (seed: number) => runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed, probeProbability: 1 }), 120).events
       .filter(({ type }) => type === 'PRICE_EXPERIMENT_STARTED').map(({ firmId, experimentalPriceCents, experimentType }) => [firmId, experimentalPriceCents, experimentType])
     expect(events(31)).toEqual(events(31))
     expect(events(31)).not.toEqual(events(32))
@@ -69,8 +74,15 @@ describe('MVP4 006.1 price experiment catalogs', () => {
   }, 15_000)
 
   it('exposes only competitor advertised price to the strategy boundary', () => {
-    expect(pricingSource).not.toMatch(/competitorProfit|competitorSales|marketShare|coordinate|household/)
-    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, dailySupplyPerIndustry: 10, seed: 18, probeProbability: 1 }), 100)
+    const decide = vi.mocked(decideTomorrowPrice), catalog = vi.mocked(buildPriceExperimentCatalog)
+    decide.mockClear(); catalog.mockClear()
+    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 18, probeProbability: 1 }), 100)
+    const keys = (value: unknown): string[] => value !== null && typeof value === 'object' ? Object.entries(value).flatMap(([key, child]) => [key, ...keys(child)]) : []
+    const calls = [...decide.mock.calls, ...catalog.mock.calls] as unknown[][]
+    expect(decide.mock.calls.length).toBeGreaterThan(0); expect(catalog.mock.calls.length).toBeGreaterThan(0)
+    expect(calls.flatMap((args) => args.flatMap(keys)).filter((key) => /competitorProfit|competitorSales|marketShare|coordinate|household/i.test(key))).toEqual([])
+    // The catalog's only view of a rival is a number: the competitor's advertised price.
+    expect(catalog.mock.calls.every(([reference, competitorPrice, soldOut]) => typeof reference === 'number' && (competitorPrice === undefined || typeof competitorPrice === 'number') && typeof soldOut === 'boolean')).toBe(true)
     const competitive = state.events.filter(({ type, industryId }) => type === 'PRICE_EXPERIMENT_STARTED' && industryId === 'entertainment')
     const monopoly = state.events.filter(({ type, industryId }) => type === 'PRICE_EXPERIMENT_STARTED' && industryId === 'transport')
     expect(competitive.some(({ competitorPriceObservedCents }) => competitorPriceObservedCents !== undefined)).toBe(true)
