@@ -59,6 +59,9 @@ export function validatePopulationConfig({ householdCount, gridWidth, gridHeight
   if (!Number.isInteger(householdCount) || householdCount < EMPLOYMENT_BLOCK_SIZE || householdCount % EMPLOYMENT_BLOCK_SIZE !== 0) {
     throw new Error(`householdCount must be a whole multiple of ${EMPLOYMENT_BLOCK_SIZE} (complete employment blocks) and at least ${EMPLOYMENT_BLOCK_SIZE}; received ${householdCount}`)
   }
+  for (const [field, value] of [['gridWidth', gridWidth], ['gridHeight', gridHeight]] as const) {
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${field} must be a whole number of at least 1; received ${value}`)
+  }
   const consumerFirmCount = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').reduce((sum, { id }) => sum + DEFAULT_FIRM_IDS_BY_INDUSTRY[id].length, 0)
   if (gridWidth * gridHeight < householdCount + consumerFirmCount) {
     throw new Error(`gridWidth × gridHeight is ${gridWidth} × ${gridHeight} = ${gridWidth * gridHeight} cells, too few for ${householdCount} households and ${consumerFirmCount} consumer firms on unique cells`)

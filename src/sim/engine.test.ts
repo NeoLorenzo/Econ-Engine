@@ -153,6 +153,10 @@ describe('population and grid validation at the config boundary (#35)', () => {
     expect(() => createSimulation({ ...base, householdCount: 400 })).toThrow(/^gridWidth × gridHeight/)
   })
 
+  it.each([['gridWidth', Number.NaN], ['gridHeight', Number.POSITIVE_INFINITY]] as const)('rejects a non-finite %s', (field, value) => {
+    expect(() => createSimulation({ ...base, [field]: value })).toThrow(new RegExp(`^${field} must be a whole number`))
+  })
+
   it('accepts a grid with exactly enough cells and complete household blocks', () => {
     expect(createSimulation({ ...base, gridWidth: 12, gridHeight: 9 }).households).toHaveLength(100)
     expect(createSimulation({ ...base, householdCount: 10 }).households).toHaveLength(10)
