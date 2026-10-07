@@ -23,5 +23,7 @@ export function generateSpatialLayout(seed: number, width: number, height: numbe
     const selected = index + draw.value
     ;[cells[index], cells[selected]] = [cells[selected], cells[index]]
   }
-  return Object.fromEntries(entityIds.map((id, index) => [id, { x: cells[index] % width, y: Math.floor(cells[index] / width) }])) as Record<string, Coordinate>
+  return Object.fromEntries(
+    entityIds.map((id, index) => [id, { x: cells[index] % width, y: Math.floor(cells[index] / width) }]),
+  ) as Record<string, Coordinate>
 }

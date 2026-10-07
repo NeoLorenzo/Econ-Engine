@@ -65,21 +65,38 @@ export interface MultiIndustryExperimentResult {
   competitionHistory: CompetitionHistoryPoint[]
 }
 
-export function runMultiIndustryExperiment(options: MultiIndustryExperimentOptions = {}): MultiIndustryExperimentResult {
+export function runMultiIndustryExperiment(
+  options: MultiIndustryExperimentOptions = {},
+): MultiIndustryExperimentResult {
   const initialStepCents = Math.max(1, Math.round(options.initialStepCents ?? 100))
   const horizonDays = Math.max(0, Math.round(options.horizonDays ?? MULTI_INDUSTRY_EXPERIMENT_HORIZON_DAYS))
   const startingPrices = { ...MULTI_INDUSTRY_STARTING_PRICES_CENTS, ...options.startingPricesCents }
-  let state = createSimulation({ startingPriceCents: 200, initialStepCents, industryStartingPricesCents: startingPrices, firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS, seed: options.seed, adaptiveGovernmentEnabled: false })
+  let state = createSimulation({
+    startingPriceCents: 200,
+    initialStepCents,
+    industryStartingPricesCents: startingPrices,
+    firmStartingPricesCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS,
+    seed: options.seed,
+    adaptiveGovernmentEnabled: false,
+  })
   const convergenceDays = new Map<string, number>()
   while (state.day < horizonDays) {
     state = stepSimulation(state)
-    state.firms.forEach((firm) => { if (firm.pricing.converged && !convergenceDays.has(firm.id)) convergenceDays.set(firm.id, state.day) })
+    state.firms.forEach((firm) => {
+      if (firm.pricing.converged && !convergenceDays.has(firm.id)) convergenceDays.set(firm.id, state.day)
+    })
   }
   const distribution = summarizeCashDistribution(state.households.map(({ cashCents }) => cashCents))
   return {
-    initialStepCents, horizonDays, daysRun: state.day,
+    initialStepCents,
+    horizonDays,
+    daysRun: state.day,
     firms: state.firms.map((firm) => ({
-      industryId: firm.industryId, firmId: firm.id, startingPriceCents: ENTERTAINMENT_COMPETITOR_STARTS_CENTS[firm.id as keyof typeof ENTERTAINMENT_COMPETITOR_STARTS_CENTS] ?? startingPrices[firm.industryId],
+      industryId: firm.industryId,
+      firmId: firm.id,
+      startingPriceCents:
+        ENTERTAINMENT_COMPETITOR_STARTS_CENTS[firm.id as keyof typeof ENTERTAINMENT_COMPETITOR_STARTS_CENTS] ??
+        startingPrices[firm.industryId],
       convergedPriceCents: firm.pricing.locallySettled ? firm.pricing.incumbentPriceCents : null,
       daysToConvergence: convergenceDays.get(firm.id) ?? null,
       finalPriceCents: firm.postedPriceCents,
@@ -88,12 +105,25 @@ export function runMultiIndustryExperiment(options: MultiIndustryExperimentOptio
       finalMarketShare: state.metrics.at(-1)?.markets.find((market) => market.firmId === firm.id)?.marketShare ?? 0,
       finalPricingState: structuredClone(firm.pricing),
     })),
-    finalHouseholdCashMinimumCents: distribution.minimumCents, finalHouseholdCashMedianCents: distribution.medianCents,
-    finalHouseholdCashMaximumCents: distribution.maximumCents, finalHouseholdCashGini: distribution.gini,
-    totalMoneyCents: state.metrics.at(-1)?.totalMoneyCents ?? state.households.reduce((sum, household) => sum + household.cashCents, 0),
-    competitionHistory: state.metrics.flatMap((metric) => metric.markets.filter(({ industryId }) => industryId === 'entertainment').map((market) => ({
-      day: metric.day, firmId: market.firmId, testedPriceCents: market.postedPriceCents, nextPriceCents: market.nextPriceCents,
-      unitsSold: market.unitsSold, profitCents: market.preTaxProfitCents, marketShare: market.marketShare,
-    }))),
+    finalHouseholdCashMinimumCents: distribution.minimumCents,
+    finalHouseholdCashMedianCents: distribution.medianCents,
+    finalHouseholdCashMaximumCents: distribution.maximumCents,
+    finalHouseholdCashGini: distribution.gini,
+    totalMoneyCents:
+      state.metrics.at(-1)?.totalMoneyCents ??
+      state.households.reduce((sum, household) => sum + household.cashCents, 0),
+    competitionHistory: state.metrics.flatMap((metric) =>
+      metric.markets
+        .filter(({ industryId }) => industryId === 'entertainment')
+        .map((market) => ({
+          day: metric.day,
+          firmId: market.firmId,
+          testedPriceCents: market.postedPriceCents,
+          nextPriceCents: market.nextPriceCents,
+          unitsSold: market.unitsSold,
+          profitCents: market.preTaxProfitCents,
+          marketShare: market.marketShare,
+        })),
+    ),
   }
 }

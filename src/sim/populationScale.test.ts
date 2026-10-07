@@ -9,8 +9,19 @@ describe('[MVP8-Population_Scaling-010]', () => {
     const state = stepSimulation(createSimulation({ seed: 2_026_0813 }))
     expect(state.households).toHaveLength(100)
     expect(new Set(state.firms.flatMap(({ employeeIds }) => employeeIds))).toHaveProperty('size', 100)
-    expect(state.firms.filter(({ industryId }) => industryId !== 'transport').every((firm) => firm.employeeIds.length === 10 && firm.unitsProducedToday === 50 && firm.contractualPayrollTodayCents === 10_000)).toBe(true)
-    expect(state.firms.find(({ industryId }) => industryId === 'transport')).toMatchObject({ contractualPayrollTodayCents: 20_000 })
+    expect(
+      state.firms
+        .filter(({ industryId }) => industryId !== 'transport')
+        .every(
+          (firm) =>
+            firm.employeeIds.length === 10 &&
+            firm.unitsProducedToday === 50 &&
+            firm.contractualPayrollTodayCents === 10_000,
+        ),
+    ).toBe(true)
+    expect(state.firms.find(({ industryId }) => industryId === 'transport')).toMatchObject({
+      contractualPayrollTodayCents: 20_000,
+    })
     expect(totalMoney(state)).toBe(TOTAL_MONEY_CENTS)
     expect(() => validateState(state, true)).not.toThrow()
   })
@@ -18,15 +29,30 @@ describe('[MVP8-Population_Scaling-010]', () => {
   it('supports proportionally equivalent N=10 and N=100 configurations reproducibly', () => {
     const first = runPopulationScaleComparison(2_026_0813, 30)
     const again = runPopulationScaleComparison(2_026_0813, 30)
-    expect({ ...first, n10: { ...first.n10, terminalState: undefined }, n100: { ...first.n100, terminalState: undefined } }).toEqual({ ...again, n10: { ...again.n10, terminalState: undefined }, n100: { ...again.n100, terminalState: undefined } })
-    expect(first.n10.totalMoneyCents).toBe(50_000); expect(first.n100.totalMoneyCents).toBe(500_000)
-    expect(first.n10.firms.filter(({ firmId }) => firmId !== 'firm-transport').every(({ workers }) => workers === 1)).toBe(true)
-    expect(first.n100.firms.filter(({ firmId }) => firmId !== 'firm-transport').every(({ workers }) => workers === 10)).toBe(true)
+    expect({
+      ...first,
+      n10: { ...first.n10, terminalState: undefined },
+      n100: { ...first.n100, terminalState: undefined },
+    }).toEqual({
+      ...again,
+      n10: { ...again.n10, terminalState: undefined },
+      n100: { ...again.n100, terminalState: undefined },
+    })
+    expect(first.n10.totalMoneyCents).toBe(50_000)
+    expect(first.n100.totalMoneyCents).toBe(500_000)
+    expect(
+      first.n10.firms.filter(({ firmId }) => firmId !== 'firm-transport').every(({ workers }) => workers === 1),
+    ).toBe(true)
+    expect(
+      first.n100.firms.filter(({ firmId }) => firmId !== 'firm-transport').every(({ workers }) => workers === 10),
+    ).toBe(true)
   }, 30_000)
 
   it('retains canonical closure over a long run', () => {
     const state = runDays(createSimulation({ seed: 123 }), 1_000)
-    expect(totalMoney(state)).toBe(500_000); expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true); expect(state.government.cashCents).toBe(0)
+    expect(totalMoney(state)).toBe(500_000)
+    expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
+    expect(state.government.cashCents).toBe(0)
   }, 30_000)
 
   it('reports transport revenue across the full horizon after history retention truncates', () => {
@@ -44,10 +70,10 @@ describe('[MVP8-Population_Scaling-010]', () => {
 
     const expectedFullHorizon = fullHorizonTransportRevenueCents / horizonDays / householdCount
     expect(state.metrics).toHaveLength(MAX_HISTORY)
-    const retainedWindowValue = state.metrics.reduce(
-      (sum, metric) => sum + metric.totalTransportRevenueCents,
-      0,
-    ) / state.metrics.length / householdCount
+    const retainedWindowValue =
+      state.metrics.reduce((sum, metric) => sum + metric.totalTransportRevenueCents, 0) /
+      state.metrics.length /
+      householdCount
     expect(expectedFullHorizon).not.toBe(retainedWindowValue)
 
     const result = runPopulationScale(seed, householdCount, horizonDays)
@@ -63,33 +89,42 @@ describe('[MVP8] population-scale counts and concentration semantics', () => {
     for (let day = 0; day < 20; day++) {
       state = stepSimulation(state)
       const counts = { insufficient_funds: 0, stockout: 0 }
-      state.households.forEach((household) => Object.values(household.industryOutcomes).forEach(({ purchaseOutcomeToday }) => { if (purchaseOutcomeToday === 'insufficient_funds' || purchaseOutcomeToday === 'stockout') counts[purchaseOutcomeToday]++ }))
+      state.households.forEach((household) =>
+        Object.values(household.industryOutcomes).forEach(({ purchaseOutcomeToday }) => {
+          if (purchaseOutcomeToday === 'insufficient_funds' || purchaseOutcomeToday === 'stockout')
+            counts[purchaseOutcomeToday]++
+        }),
+      )
       const { cash, category_budget, inventory } = state.metrics.at(-1)!.purchaseFailuresByCause
       expect(cash + category_budget).toBe(counts.insufficient_funds)
       expect(inventory).toBe(counts.stockout)
-      if (state.events.length === MAX_EVENTS && !state.events.some(({ day: eventDay, type }) => eventDay === state.day && type === 'DAY_STARTED')) evictedDays++
+      if (
+        state.events.length === MAX_EVENTS &&
+        !state.events.some(({ day: eventDay, type }) => eventDay === state.day && type === 'DAY_STARTED')
+      )
+        evictedDays++
     }
     expect(evictedDays).toBeGreaterThan(0)
   })
 
   it('reports the same population fraction at every size, counting a boundary household in part (#16)', () => {
-    expect(populationShareOfWealth([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], .1)).toBe(1)
-    expect(populationShareOfWealth([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], .01)).toBeCloseTo(.1, 12)
-    expect(populationShareOfWealth([400, 300, 200, 100, 0, 0, 0, 0, 0, 0], .01)).toBeCloseTo(.04, 12)
+    expect(populationShareOfWealth([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0.1)).toBe(1)
+    expect(populationShareOfWealth([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], 0.01)).toBeCloseTo(0.1, 12)
+    expect(populationShareOfWealth([400, 300, 200, 100, 0, 0, 0, 0, 0, 0], 0.01)).toBeCloseTo(0.04, 12)
     const hundred = [1_000, ...Array(99).fill(10)]
-    expect(populationShareOfWealth(hundred, .01)).toBeCloseTo(1_000 / 1_990, 12)
-    expect(populationShareOfWealth(hundred, .1)).toBeCloseTo(1_090 / 1_990, 12)
-    expect(populationShareOfWealth(Array(10).fill(50), .01)).toBeCloseTo(.01, 12)
-    expect(populationShareOfWealth(Array(100).fill(50), .01)).toBeCloseTo(.01, 12)
-    expect(populationShareOfWealth([0, 0], .5)).toBe(0)
+    expect(populationShareOfWealth(hundred, 0.01)).toBeCloseTo(1_000 / 1_990, 12)
+    expect(populationShareOfWealth(hundred, 0.1)).toBeCloseTo(1_090 / 1_990, 12)
+    expect(populationShareOfWealth(Array(10).fill(50), 0.01)).toBeCloseTo(0.01, 12)
+    expect(populationShareOfWealth(Array(100).fill(50), 0.01)).toBeCloseTo(0.01, 12)
+    expect(populationShareOfWealth([0, 0], 0.5)).toBe(0)
   })
 
   it('reports top-1% and top-10% shares with that definition at N=10 and N=100', () => {
     const { n10, n100 } = runPopulationScaleComparison(DEFAULT_SEED, 20)
     for (const report of [n10, n100]) {
       const cash = report.terminalState.households.map(({ cashCents }) => cashCents)
-      expect(report.normalized.top1PercentWealthShare).toBe(populationShareOfWealth(cash, .01))
-      expect(report.normalized.top10PercentWealthShare).toBe(populationShareOfWealth(cash, .1))
+      expect(report.normalized.top1PercentWealthShare).toBe(populationShareOfWealth(cash, 0.01))
+      expect(report.normalized.top10PercentWealthShare).toBe(populationShareOfWealth(cash, 0.1))
     }
     const richestN10 = Math.max(...n10.terminalState.households.map(({ cashCents }) => cashCents)) / n10.totalMoneyCents
     expect(n10.normalized.top1PercentWealthShare).toBeCloseTo(richestN10 / 10, 12)

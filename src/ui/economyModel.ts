@@ -35,12 +35,20 @@ export function dailyFlows(metric: DayMetrics | undefined): MoneyFlows {
   }
 }
 
-export interface CashStep { label: string; amountCents: number; kind: 'start' | 'in' | 'out' | 'end' }
+export interface CashStep {
+  label: string
+  amountCents: number
+  kind: 'start' | 'in' | 'out' | 'end'
+}
 
 /** A household's day as a ledger: opening cash, wage in, shopping out, wealth tax out, transfer in, closing cash. */
 export function householdCashSteps(household: SimulationState['households'][number]): CashStep[] {
   return [
-    { label: 'Started the day', amountCents: household.postFiscalCashCents - household.netCashChangeTodayCents, kind: 'start' },
+    {
+      label: 'Started the day',
+      amountCents: household.postFiscalCashCents - household.netCashChangeTodayCents,
+      kind: 'start',
+    },
     { label: 'Wage', amountCents: household.wageTodayCents, kind: 'in' },
     { label: 'Shopping & transport', amountCents: household.spendingTodayCents, kind: 'out' },
     { label: 'Wealth tax', amountCents: household.taxPaidTodayCents, kind: 'out' },
@@ -56,7 +64,11 @@ export function historyNote(state: SimulationState) {
 }
 
 export type FirmStatusTone = 'testing' | 'settled' | 'searching' | 'fixed'
-export interface FirmStatus { tone: FirmStatusTone; label: string; detail: string }
+export interface FirmStatus {
+  tone: FirmStatusTone
+  label: string
+  detail: string
+}
 
 const EXPERIMENT_LABELS: Record<PriceExperimentType, string> = {
   local_up_1c: '1¢ increase',
@@ -73,21 +85,43 @@ const EXPERIMENT_LABELS: Record<PriceExperimentType, string> = {
   competitor_down_5pct: 'undercutting the rival by 5%',
 }
 
-export const experimentLabel = (type: PriceExperimentType | null | undefined) => type ? EXPERIMENT_LABELS[type] : 'price test'
+export const experimentLabel = (type: PriceExperimentType | null | undefined) =>
+  type ? EXPERIMENT_LABELS[type] : 'price test'
 
 /** Plain-language description of where a firm's price learner is. */
 export function firmStatus(firm: Firm): FirmStatus {
   const { pricing } = firm
-  if (firm.industryId === 'transport') return { tone: 'fixed', label: 'Fixed rate', detail: 'Transport charges a set fee per tile travelled.' }
+  if (firm.industryId === 'transport')
+    return { tone: 'fixed', label: 'Fixed rate', detail: 'Transport charges a set fee per tile travelled.' }
   if (pricing.probing) {
-    const what = pricing.experimentPriceCents !== null ? experimentLabel(pricing.experimentType) : `1¢ ${pricing.probeDirection === 'down' ? 'cut' : 'increase'}`
-    return { tone: 'testing', label: `Testing ${money(firm.postedPriceCents)}`, detail: `Trying a ${what} against its usual ${money(pricing.incumbentPriceCents)}. It keeps the new price only if earnings improve.` }
+    const what =
+      pricing.experimentPriceCents !== null
+        ? experimentLabel(pricing.experimentType)
+        : `1¢ ${pricing.probeDirection === 'down' ? 'cut' : 'increase'}`
+    return {
+      tone: 'testing',
+      label: `Testing ${money(firm.postedPriceCents)}`,
+      detail: `Trying a ${what} against its usual ${money(pricing.incumbentPriceCents)}. It keeps the new price only if earnings improve.`,
+    }
   }
   if (pricing.locallySettled) {
-    const last = pricing.lastExperimentOutcome === 'adopted' ? ' Its last test was kept.' : pricing.lastExperimentOutcome === 'rejected' ? ' Its last test was dropped.' : ''
-    return { tone: 'settled', label: `Settled at ${money(pricing.incumbentPriceCents)}`, detail: `Holding its best-known price and occasionally testing alternatives.${last}` }
+    const last =
+      pricing.lastExperimentOutcome === 'adopted'
+        ? ' Its last test was kept.'
+        : pricing.lastExperimentOutcome === 'rejected'
+          ? ' Its last test was dropped.'
+          : ''
+    return {
+      tone: 'settled',
+      label: `Settled at ${money(pricing.incumbentPriceCents)}`,
+      detail: `Holding its best-known price and occasionally testing alternatives.${last}`,
+    }
   }
-  return { tone: 'searching', label: 'Searching', detail: `Still searching for its most profitable price, moving in ${money(pricing.stepSizeCents)} steps.` }
+  return {
+    tone: 'searching',
+    label: 'Searching',
+    detail: `Still searching for its most profitable price, moving in ${money(pricing.stepSizeCents)} steps.`,
+  }
 }
 
 export interface FirmSnapshot {
@@ -155,7 +189,11 @@ export function industrySnapshot(state: SimulationState, industryId: Competitive
 }
 
 /** One row per day with Firm A / Firm B values for an industry. */
-export function firmSeries(state: SimulationState, industryId: IndustryId, pick: (market: DayMetrics['markets'][number]) => number) {
+export function firmSeries(
+  state: SimulationState,
+  industryId: IndustryId,
+  pick: (market: DayMetrics['markets'][number]) => number,
+) {
   return state.metrics.map((metric) => {
     const row: { day: number; a?: number; b?: number } = { day: metric.day }
     for (const market of metric.markets) {
@@ -198,15 +236,48 @@ export function buildHighlights(events: SimulationEvent[], limit = 14): Highligh
 
     const firm = event.firmId ? firmName(event.firmId, event.industryId) : ''
     if (event.type === 'PRICE_EXPERIMENT_ADOPTED') {
-      highlights.push({ key: `e${event.id}`, day: event.day, tone: 'positive', industryId: event.industryId, title: `${firm} moved to ${money(event.experimentalPriceCents ?? 0)}`, detail: `A ${experimentLabel(event.experimentType)} raised its earnings, so it kept the new price.` })
+      highlights.push({
+        key: `e${event.id}`,
+        day: event.day,
+        tone: 'positive',
+        industryId: event.industryId,
+        title: `${firm} moved to ${money(event.experimentalPriceCents ?? 0)}`,
+        detail: `A ${experimentLabel(event.experimentType)} raised its earnings, so it kept the new price.`,
+      })
     } else if (event.type === 'PRICE_EXPERIMENT_REJECTED') {
-      highlights.push({ key: `e${event.id}`, day: event.day, tone: 'neutral', industryId: event.industryId, title: `${firm} went back to ${money(event.incumbentPriceCents ?? 0)}`, detail: `A ${experimentLabel(event.experimentType)} to ${money(event.experimentalPriceCents ?? 0)} didn't improve earnings.` })
+      highlights.push({
+        key: `e${event.id}`,
+        day: event.day,
+        tone: 'neutral',
+        industryId: event.industryId,
+        title: `${firm} went back to ${money(event.incumbentPriceCents ?? 0)}`,
+        detail: `A ${experimentLabel(event.experimentType)} to ${money(event.experimentalPriceCents ?? 0)} didn't improve earnings.`,
+      })
     } else if (event.type === 'PRICE_DISCOVERY_CONVERGED') {
-      highlights.push({ key: `e${event.id}`, day: event.day, tone: 'positive', industryId: event.industryId, title: `${firm} settled at ${money(event.priceCents ?? 0)}`, detail: 'Its initial price search has finished.' })
+      highlights.push({
+        key: `e${event.id}`,
+        day: event.day,
+        tone: 'positive',
+        industryId: event.industryId,
+        title: `${firm} settled at ${money(event.priceCents ?? 0)}`,
+        detail: 'Its initial price search has finished.',
+      })
     } else if (event.type === 'GOVERNMENT_POLICY_EXPERIMENT_ADOPTED') {
-      highlights.push({ key: `e${event.id}`, day: event.day, tone: 'policy', title: `Wealth tax changed to ${bps(event.taxRateBps ?? 0)}`, detail: `Previously ${bps(event.incumbentTaxRateBps ?? 0)}. ${event.effectiveEqualityAfter ? 'Households stayed effectively equal.' : 'Inequality fell.'}` })
+      highlights.push({
+        key: `e${event.id}`,
+        day: event.day,
+        tone: 'policy',
+        title: `Wealth tax changed to ${bps(event.taxRateBps ?? 0)}`,
+        detail: `Previously ${bps(event.incumbentTaxRateBps ?? 0)}. ${event.effectiveEqualityAfter ? 'Households stayed effectively equal.' : 'Inequality fell.'}`,
+      })
     } else if (event.type === 'GOVERNMENT_POLICY_EXPERIMENT_REJECTED') {
-      highlights.push({ key: `e${event.id}`, day: event.day, tone: 'neutral', title: `Government kept the wealth tax at ${bps(event.incumbentTaxRateBps ?? 0)}`, detail: `A trial at ${bps(event.taxRateBps ?? 0)} ${event.governmentPolicyMode === 'minimizing_tax' ? 'would have broken equality' : 'did not reduce inequality'}.` })
+      highlights.push({
+        key: `e${event.id}`,
+        day: event.day,
+        tone: 'neutral',
+        title: `Government kept the wealth tax at ${bps(event.incumbentTaxRateBps ?? 0)}`,
+        detail: `A trial at ${bps(event.taxRateBps ?? 0)} ${event.governmentPolicyMode === 'minimizing_tax' ? 'would have broken equality' : 'did not reduce inequality'}.`,
+      })
     }
   }
 
@@ -215,13 +286,21 @@ export function buildHighlights(events: SimulationEvent[], limit = 14): Highligh
     const day = byDay.get(entry.day) ?? { cash: 0, stock: 0, parts: [] }
     day.cash += entry.cash
     day.stock += entry.stock
-    const reasons = [entry.cash ? `${entry.cash} couldn't afford` : '', entry.stock ? `${entry.stock} sold out` : ''].filter(Boolean).join(', ')
+    const reasons = [entry.cash ? `${entry.cash} couldn't afford` : '', entry.stock ? `${entry.stock} sold out` : '']
+      .filter(Boolean)
+      .join(', ')
     day.parts.push(`${INDUSTRY_NAMES[entry.industryId]}: ${reasons}`)
     byDay.set(entry.day, day)
   }
   for (const [day, entry] of byDay) {
     const total = entry.cash + entry.stock
-    highlights.push({ key: `missed-${day}`, day, tone: 'negative', title: `${total} ${total === 1 ? 'purchase' : 'purchases'} missed`, detail: entry.parts.join(' · ') })
+    highlights.push({
+      key: `missed-${day}`,
+      day,
+      tone: 'negative',
+      title: `${total} ${total === 1 ? 'purchase' : 'purchases'} missed`,
+      detail: entry.parts.join(' · '),
+    })
   }
 
   return highlights.sort((a, b) => b.day - a.day).slice(0, limit)

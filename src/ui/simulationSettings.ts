@@ -9,7 +9,11 @@ export interface SimulationSettingsDraft {
   firmStarts: Record<string, string>
 }
 
-export interface SettingsError { field: string; label: string; message: string }
+export interface SettingsError {
+  field: string
+  label: string
+  message: string
+}
 
 export type SettingsParseResult = { ok: true; config: SimulationConfig } | { ok: false; errors: SettingsError[] }
 
@@ -19,10 +23,14 @@ export const DEFAULT_SETTINGS_DRAFT: SimulationSettingsDraft = {
   transportRate: '0.02',
   step: '1.00',
   firmStarts: {
-    'firm-food-a': '2.00', 'firm-food-b': '2.00',
-    'firm-utilities-a': '2.00', 'firm-utilities-b': '2.00',
-    'firm-healthcare-a': '2.00', 'firm-healthcare-b': '2.00',
-    'firm-entertainment-a': '2.00', 'firm-entertainment-b': '2.00',
+    'firm-food-a': '2.00',
+    'firm-food-b': '2.00',
+    'firm-utilities-a': '2.00',
+    'firm-utilities-b': '2.00',
+    'firm-healthcare-a': '2.00',
+    'firm-healthcare-b': '2.00',
+    'firm-entertainment-a': '2.00',
+    'firm-entertainment-b': '2.00',
   },
 }
 
@@ -33,7 +41,8 @@ const DOLLAR_AMOUNT = /^(\d+(\.\d{0,2})?|\.\d{1,2})$/
 function parseCents(raw: string, minimumCents: number): { cents: number } | { message: string } {
   const text = raw.trim()
   if (!text) return { message: 'Enter an amount.' }
-  if (!DOLLAR_AMOUNT.test(text)) return { message: 'Use a dollar amount with at most two decimal places, such as 2.00.' }
+  if (!DOLLAR_AMOUNT.test(text))
+    return { message: 'Use a dollar amount with at most two decimal places, such as 2.00.' }
   const [whole, fraction = ''] = text.split('.')
   const cents = Number(whole || 0) * 100 + Number(fraction.padEnd(2, '0'))
   if (!Number.isSafeInteger(cents)) return { message: 'Amount is too large.' }
@@ -46,7 +55,8 @@ function parseSeed(raw: string): { seed: number } | { message: string } {
   const text = raw.trim()
   if (!text) return { message: 'Enter a seed.' }
   const seed = /^\d+$/.test(text) ? Number(text) : NaN
-  if (!Number.isInteger(seed) || seed < 1 || seed > MAXIMUM_SEED) return { message: `Use a whole number from 1 to ${MAXIMUM_SEED}.` }
+  if (!Number.isInteger(seed) || seed < 1 || seed > MAXIMUM_SEED)
+    return { message: `Use a whole number from 1 to ${MAXIMUM_SEED}.` }
   return { seed }
 }
 
@@ -60,7 +70,10 @@ export function parseSimulationSettings(draft: SimulationSettingsDraft): Setting
   const errors: SettingsError[] = []
   const amount = (field: string, label: string, raw: string, minimumCents: number) => {
     const result = parseCents(raw, minimumCents)
-    if ('message' in result) { errors.push({ field, label, message: result.message }); return 0 }
+    if ('message' in result) {
+      errors.push({ field, label, message: result.message })
+      return 0
+    }
     return result.cents
   }
   const seedResult = parseSeed(draft.seed)
@@ -68,10 +81,20 @@ export function parseSimulationSettings(draft: SimulationSettingsDraft): Setting
   const dailyExpenditureBudgetCents = amount('expenditureBase', 'Daily expenditure base', draft.expenditureBase, 0)
   const transportCostPerTileCents = amount('transportRate', 'Transport cost per tile', draft.transportRate, 0)
   const initialStepCents = amount('step', 'Initial price-learning step', draft.step, 1)
-  const firmStartingPricesCents = Object.fromEntries(Object.entries(draft.firmStarts).map(([firmId, raw]) => [firmId, amount(firmId, firmLabel(firmId), raw, 1)]))
+  const firmStartingPricesCents = Object.fromEntries(
+    Object.entries(draft.firmStarts).map(([firmId, raw]) => [firmId, amount(firmId, firmLabel(firmId), raw, 1)]),
+  )
   if (errors.length > 0 || 'message' in seedResult) return { ok: false, errors }
   return {
     ok: true,
-    config: { startingPriceCents: 200, firmStartingPricesCents, initialStepCents, laborProductivityUnitsPerWorker: 5, seed: seedResult.seed, transportCostPerTileCents, dailyExpenditureBudgetCents },
+    config: {
+      startingPriceCents: 200,
+      firmStartingPricesCents,
+      initialStepCents,
+      laborProductivityUnitsPerWorker: 5,
+      seed: seedResult.seed,
+      transportCostPerTileCents,
+      dailyExpenditureBudgetCents,
+    },
   }
 }

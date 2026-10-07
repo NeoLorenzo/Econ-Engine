@@ -12,7 +12,12 @@ describe('MVP4 full spatial competition', () => {
   it('creates two firms in every consumer industry and one derived Transport monopoly', () => {
     const state = createSimulation(base)
     expect(state.firms).toHaveLength(9)
-    consumerIds.forEach((id) => expect(state.firms.filter((firm) => firm.industryId === id).map(({ id }) => id)).toEqual([`firm-${id}-a`, `firm-${id}-b`]))
+    consumerIds.forEach((id) =>
+      expect(state.firms.filter((firm) => firm.industryId === id).map(({ id }) => id)).toEqual([
+        `firm-${id}-a`,
+        `firm-${id}-b`,
+      ]),
+    )
     expect(state.firms.filter(({ industryId }) => industryId === 'transport')).toHaveLength(1)
   })
 
@@ -32,7 +37,11 @@ describe('MVP4 full spatial competition', () => {
     const entities = [...state.households, ...state.firms.filter(({ industryId }) => industryId !== 'transport')]
     expect(entities).toHaveLength(108)
     expect(new Set(entities.map(({ coordinate }) => `${coordinate!.x},${coordinate!.y}`)).size).toBe(108)
-    expect(entities.every(({ coordinate }) => coordinate!.x >= 0 && coordinate!.x < 20 && coordinate!.y >= 0 && coordinate!.y < 20)).toBe(true)
+    expect(
+      entities.every(
+        ({ coordinate }) => coordinate!.x >= 0 && coordinate!.x < 20 && coordinate!.y >= 0 && coordinate!.y < 20,
+      ),
+    ).toBe(true)
     expect(state.firms.find(({ industryId }) => industryId === 'transport')?.coordinate).toBeUndefined()
   })
 
@@ -40,8 +49,12 @@ describe('MVP4 full spatial competition', () => {
     const day = stepSimulation(createSimulation(base))
     expect(day.events.filter(({ type }) => type === 'HOUSEHOLD_PURCHASE').length).toBe(400)
     expect(day.events.filter(({ type }) => type === 'TRANSPORT_SERVICE_PURCHASED').length).toBe(400)
-    expect(day.households.every((household) => consumerIds.every((id) => household.industryOutcomes[id].purchasedToday))).toBe(true)
-    expect(day.households.every((household) => household.industryOutcomes.transport.purchaseOutcomeToday === null)).toBe(true)
+    expect(
+      day.households.every((household) => consumerIds.every((id) => household.industryOutcomes[id].purchasedToday)),
+    ).toBe(true)
+    expect(
+      day.households.every((household) => household.industryOutcomes.transport.purchaseOutcomeToday === null),
+    ).toBe(true)
     expect(day.metrics[0].entertainmentTrips).toBe(400)
     expect(Object.keys(day.metrics[0].transportRevenueByIndustryCents).sort()).toEqual([...consumerIds].sort())
   })
@@ -51,17 +64,29 @@ describe('MVP4 full spatial competition', () => {
     const names = Object.fromEntries(day.industries.map(({ id, name }) => [id, name]))
     const trips = day.events.filter(({ type }) => type === 'TRANSPORT_SERVICE_PURCHASED')
     expect(new Set(trips.map(({ industryId }) => industryId))).toEqual(new Set(consumerIds))
-    for (const trip of trips) expect(trip.description.endsWith(`tiles of ${names[trip.industryId!]} travel.`)).toBe(true)
+    for (const trip of trips)
+      expect(trip.description.endsWith(`tiles of ${names[trip.industryId!]} travel.`)).toBe(true)
   })
 
   it.each(consumerIds)('uses delivered cost and derived affordability in %s', (industryId) => {
     const state = createSimulation(base)
     const firms = state.firms.filter((firm) => firm.industryId === industryId)
-    const household = state.households.find((candidate) => manhattanDistance(candidate.coordinate, firms[0].coordinate!) !== manhattanDistance(candidate.coordinate, firms[1].coordinate!))!
-    const [closer, farther] = [...firms].sort((left, right) => manhattanDistance(household.coordinate, left.coordinate!) - manhattanDistance(household.coordinate, right.coordinate!))
-    closer.postedPriceCents = 101; farther.postedPriceCents = 100
+    const household = state.households.find(
+      (candidate) =>
+        manhattanDistance(candidate.coordinate, firms[0].coordinate!) !==
+        manhattanDistance(candidate.coordinate, firms[1].coordinate!),
+    )!
+    const [closer, farther] = [...firms].sort(
+      (left, right) =>
+        manhattanDistance(household.coordinate, left.coordinate!) -
+        manhattanDistance(household.coordinate, right.coordinate!),
+    )
+    closer.postedPriceCents = 101
+    farther.postedPriceCents = 100
     const day = stepSimulation(state)
-    expect(day.households.find(({ id }) => id === household.id)!.spatialPurchasesToday[industryId]?.chosenFirmId).toBe(closer.id)
+    expect(day.households.find(({ id }) => id === household.id)!.spatialPurchasesToday[industryId]?.chosenFirmId).toBe(
+      closer.id,
+    )
   })
 
   it('excludes a household when sticker price fits but every delivered food cost exceeds its opening limits', () => {
@@ -70,8 +95,17 @@ describe('MVP4 full spatial competition', () => {
     const firms = state.firms.filter((firm) => firm.industryId === industryId)
     const household = state.households[0]
     const postedPriceCents = 100
-    firms.forEach((firm) => { firm.postedPriceCents = postedPriceCents })
-    const cheapestDeliveredCostCents = Math.min(...firms.map((firm) => postedPriceCents + transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!).transportFeeCents))
+    firms.forEach((firm) => {
+      firm.postedPriceCents = postedPriceCents
+    })
+    const cheapestDeliveredCostCents = Math.min(
+      ...firms.map(
+        (firm) =>
+          postedPriceCents +
+          transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
+            .transportFeeCents,
+      ),
+    )
     const openingLimitCents = cheapestDeliveredCostCents - 1
     state.households.forEach((candidate) => {
       candidate.cashCents = 0
@@ -82,7 +116,9 @@ describe('MVP4 full spatial competition', () => {
     state.households.find((candidate) => candidate.id !== household.id)!.cashCents = 500_000 - openingLimitCents
 
     const day = stepSimulation(state)
-    const affordable = day.metrics[0].markets.filter((metric) => metric.industryId === industryId).map((metric) => metric.householdsAffordableAtMarketOpen)
+    const affordable = day.metrics[0].markets
+      .filter((metric) => metric.industryId === industryId)
+      .map((metric) => metric.householdsAffordableAtMarketOpen)
 
     expect(postedPriceCents).toBeLessThanOrEqual(openingLimitCents)
     expect(cheapestDeliveredCostCents).toBeGreaterThan(openingLimitCents)
@@ -94,11 +130,22 @@ describe('MVP4 full spatial competition', () => {
     const industryId = 'food'
     const firms = state.firms.filter((firm) => firm.industryId === industryId)
     const household = state.households.find((candidate) => {
-      const fees = firms.map((firm) => transportQuote(candidate.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!).transportFeeCents)
+      const fees = firms.map(
+        (firm) =>
+          transportQuote(candidate.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
+            .transportFeeCents,
+      )
       return fees[0] !== fees[1]
     })!
-    firms.forEach((firm) => { firm.postedPriceCents = 100 })
-    const deliveredCosts = firms.map((firm) => firm.postedPriceCents + transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!).transportFeeCents)
+    firms.forEach((firm) => {
+      firm.postedPriceCents = 100
+    })
+    const deliveredCosts = firms.map(
+      (firm) =>
+        firm.postedPriceCents +
+        transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
+          .transportFeeCents,
+    )
     const openingLimitCents = Math.min(...deliveredCosts)
     state.households.forEach((candidate) => {
       candidate.cashCents = 0
@@ -109,7 +156,9 @@ describe('MVP4 full spatial competition', () => {
     state.households.find((candidate) => candidate.id !== household.id)!.cashCents = 500_000 - openingLimitCents
 
     const day = stepSimulation(state)
-    const affordable = day.metrics[0].markets.filter((metric) => metric.industryId === industryId).map((metric) => metric.householdsAffordableAtMarketOpen)
+    const affordable = day.metrics[0].markets
+      .filter((metric) => metric.industryId === industryId)
+      .map((metric) => metric.householdsAffordableAtMarketOpen)
 
     expect(new Set(deliveredCosts).size).toBe(2)
     expect(deliveredCosts.filter((cost) => cost <= openingLimitCents)).toHaveLength(1)
@@ -129,7 +178,9 @@ describe('MVP4 full spatial competition', () => {
     expect(day.government.cashCents).toBe(0)
     expect(new Set(day.households.map(({ cashCents }) => cashCents)).size).toBeGreaterThan(1)
     expect(totalMoney(day)).toBe(500_000)
-    day.firms.filter(({ industryId }) => industryId !== 'transport').forEach((firm) => expect(firm.unitsSoldToday + firm.unitsExpiredToday).toBe(50))
+    day.firms
+      .filter(({ industryId }) => industryId !== 'transport')
+      .forEach((firm) => expect(firm.unitsSoldToday + firm.unitsExpiredToday).toBe(50))
     expect(() => validateState(day, true)).not.toThrow()
   })
 
@@ -144,16 +195,26 @@ describe('MVP4 full spatial competition', () => {
 })
 
 describe('population and grid validation at the config boundary (#35)', () => {
-  it.each([15, 100.5, 5, 0, -10, Number.NaN])('rejects householdCount %s with a field-specific message', (householdCount) => {
-    expect(() => createSimulation({ ...base, householdCount })).toThrow(/^householdCount must be a whole multiple of 10/)
-  })
+  it.each([15, 100.5, 5, 0, -10, Number.NaN])(
+    'rejects householdCount %s with a field-specific message',
+    (householdCount) => {
+      expect(() => createSimulation({ ...base, householdCount })).toThrow(
+        /^householdCount must be a whole multiple of 10/,
+      )
+    },
+  )
 
   it('rejects a grid with fewer cells than households plus consumer firms', () => {
-    expect(() => createSimulation({ ...base, gridWidth: 10, gridHeight: 10 })).toThrow('gridWidth × gridHeight is 10 × 10 = 100 cells, too few for 100 households and 8 consumer firms on unique cells')
+    expect(() => createSimulation({ ...base, gridWidth: 10, gridHeight: 10 })).toThrow(
+      'gridWidth × gridHeight is 10 × 10 = 100 cells, too few for 100 households and 8 consumer firms on unique cells',
+    )
     expect(() => createSimulation({ ...base, householdCount: 400 })).toThrow(/^gridWidth × gridHeight/)
   })
 
-  it.each([['gridWidth', Number.NaN], ['gridHeight', Number.POSITIVE_INFINITY]] as const)('rejects a non-finite %s', (field, value) => {
+  it.each([
+    ['gridWidth', Number.NaN],
+    ['gridHeight', Number.POSITIVE_INFINITY],
+  ] as const)('rejects a non-finite %s', (field, value) => {
     expect(() => createSimulation({ ...base, [field]: value })).toThrow(new RegExp(`^${field} must be a whole number`))
   })
 

@@ -17,7 +17,12 @@ export const DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS = 5_000
 export const DEFAULT_LABOR_PRODUCTIVITY = 5
 export const CONTRACTUAL_WAGE_CENTS = 1_000
 export const CORPORATE_PROFIT_TAX_RATE_BPS = 10_000
-export const DEFAULT_INDUSTRY_BUDGET_SHARES_BPS = { food: 1_290, utilities: 600, healthcare: 790, entertainment: 460 } as const
+export const DEFAULT_INDUSTRY_BUDGET_SHARES_BPS = {
+  food: 1_290,
+  utilities: 600,
+  healthcare: 790,
+  entertainment: 460,
+} as const
 
 export const DEFAULT_INDUSTRIES: Industry[] = [
   { id: 'food', name: 'Food', householdBudgetCents: 0, budgetShareBps: 1_290 },
@@ -55,17 +60,41 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 export const EMPLOYMENT_BLOCK_SIZE = 10
 
 /** Rejects an impossible population or grid before any agents are built, naming the offending field. */
-export function validatePopulationConfig({ householdCount, gridWidth, gridHeight }: { householdCount: number; gridWidth: number; gridHeight: number }) {
-  if (!Number.isInteger(householdCount) || householdCount < EMPLOYMENT_BLOCK_SIZE || householdCount % EMPLOYMENT_BLOCK_SIZE !== 0) {
-    throw new Error(`householdCount must be a whole multiple of ${EMPLOYMENT_BLOCK_SIZE} (complete employment blocks) and at least ${EMPLOYMENT_BLOCK_SIZE}; received ${householdCount}`)
+export function validatePopulationConfig({
+  householdCount,
+  gridWidth,
+  gridHeight,
+}: {
+  householdCount: number
+  gridWidth: number
+  gridHeight: number
+}) {
+  if (
+    !Number.isInteger(householdCount) ||
+    householdCount < EMPLOYMENT_BLOCK_SIZE ||
+    householdCount % EMPLOYMENT_BLOCK_SIZE !== 0
+  ) {
+    throw new Error(
+      `householdCount must be a whole multiple of ${EMPLOYMENT_BLOCK_SIZE} (complete employment blocks) and at least ${EMPLOYMENT_BLOCK_SIZE}; received ${householdCount}`,
+    )
   }
-  for (const [field, value] of [['gridWidth', gridWidth], ['gridHeight', gridHeight]] as const) {
-    if (!Number.isInteger(value) || value < 1) throw new Error(`${field} must be a whole number of at least 1; received ${value}`)
+  for (const [field, value] of [
+    ['gridWidth', gridWidth],
+    ['gridHeight', gridHeight],
+  ] as const) {
+    if (!Number.isInteger(value) || value < 1)
+      throw new Error(`${field} must be a whole number of at least 1; received ${value}`)
   }
-  const consumerFirmCount = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').reduce((sum, { id }) => sum + DEFAULT_FIRM_IDS_BY_INDUSTRY[id].length, 0)
+  const consumerFirmCount = DEFAULT_INDUSTRIES.filter(({ id }) => id !== 'transport').reduce(
+    (sum, { id }) => sum + DEFAULT_FIRM_IDS_BY_INDUSTRY[id].length,
+    0,
+  )
   if (gridWidth * gridHeight < householdCount + consumerFirmCount) {
-    throw new Error(`gridWidth × gridHeight is ${gridWidth} × ${gridHeight} = ${gridWidth * gridHeight} cells, too few for ${householdCount} households and ${consumerFirmCount} consumer firms on unique cells`)
+    throw new Error(
+      `gridWidth × gridHeight is ${gridWidth} × ${gridHeight} = ${gridWidth * gridHeight} cells, too few for ${householdCount} households and ${consumerFirmCount} consumer firms on unique cells`,
+    )
   }
 }
 
-export const deriveIndustryBudgetCents = (dailyExpenditureBudgetCents: number, shareBps: number) => Math.round(dailyExpenditureBudgetCents * shareBps / 10_000)
+export const deriveIndustryBudgetCents = (dailyExpenditureBudgetCents: number, shareBps: number) =>
+  Math.round((dailyExpenditureBudgetCents * shareBps) / 10_000)

@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SEED } from '../sim/config'
 import { createSimulation, stepSimulation } from '../sim/engine'
-import { buildHighlights, completionRate, CONSUMER_INDUSTRIES, dailyFlows, firmSeries, firmStatus, historyNote, householdCashSteps, industrySnapshot } from './economyModel'
+import {
+  buildHighlights,
+  completionRate,
+  CONSUMER_INDUSTRIES,
+  dailyFlows,
+  firmSeries,
+  firmStatus,
+  historyNote,
+  householdCashSteps,
+  industrySnapshot,
+} from './economyModel'
 import { firmName, money } from './format'
 import { buildWorldEntities, householdWealthHeight } from './worldViewModel'
 
@@ -16,7 +26,9 @@ describe('observer economy model', () => {
   const latest = state.metrics.at(-1)!
 
   it('reports completion as consumer units sold over one desired purchase per household per industry', () => {
-    const sold = latest.markets.filter(({ industryId }) => industryId !== 'transport').reduce((sum, market) => sum + market.unitsSold, 0)
+    const sold = latest.markets
+      .filter(({ industryId }) => industryId !== 'transport')
+      .reduce((sum, market) => sum + market.unitsSold, 0)
     expect(completionRate(latest, state.households.length)).toBeCloseTo(sold / (state.households.length * 4))
     expect(completionRate(undefined, 100)).toBe(0)
   })
@@ -47,7 +59,8 @@ describe('observer economy model', () => {
       const status = firmStatus(firm)
       expect(status.label.length).toBeGreaterThan(0)
       if (firm.industryId === 'transport') expect(status.tone).toBe('fixed')
-      if (firm.pricing.locallySettled && !firm.pricing.probing) expect(status.label).toBe(`Settled at ${money(firm.pricing.incumbentPriceCents)}`)
+      if (firm.pricing.locallySettled && !firm.pricing.probing)
+        expect(status.label).toBe(`Settled at ${money(firm.pricing.incumbentPriceCents)}`)
     }
   })
 
@@ -62,18 +75,24 @@ describe('observer economy model', () => {
     for (const household of state.households) {
       const [start, wage, shopping, tax, transfer, end] = householdCashSteps(household)
       expect(start.amountCents + wage.amountCents - shopping.amountCents).toBe(household.preTaxCashCents)
-      expect(start.amountCents + wage.amountCents - shopping.amountCents - tax.amountCents + transfer.amountCents).toBe(end.amountCents)
+      expect(start.amountCents + wage.amountCents - shopping.amountCents - tax.amountCents + transfer.amountCents).toBe(
+        end.amountCents,
+      )
     }
   })
 
-  it('opens each ledger with the previous day\'s closing cash', () => {
+  it("opens each ledger with the previous day's closing cash", () => {
     const next = stepSimulation(state)
-    next.households.forEach((household, index) => expect(householdCashSteps(household)[0].amountCents).toBe(state.households[index].postFiscalCashCents))
+    next.households.forEach((household, index) =>
+      expect(householdCashSteps(household)[0].amountCents).toBe(state.households[index].postFiscalCashCents),
+    )
   })
 
   it('only notes the history window once the bounded history has dropped early days', () => {
     expect(historyNote(state)).toBe('')
-    expect(historyNote({ ...state, metrics: state.metrics.slice(10) })).toBe(` · days ${state.metrics[10].day}–${state.day}`)
+    expect(historyNote({ ...state, metrics: state.metrics.slice(10) })).toBe(
+      ` · days ${state.metrics[10].day}–${state.day}`,
+    )
   })
 
   it('sizes pillars from cash before or after redistribution', () => {

@@ -8,16 +8,24 @@ describe('MVP8.1 observer presentation', () => {
   it('keeps every household available before filtering and filters by ID or employer', () => {
     const state = createSimulation({ seed: DEFAULT_SEED })
     expect(filterAndSortHouseholds(state.households, '', 'household', true)).toHaveLength(100)
-    expect(filterAndSortHouseholds(state.households, 'household-100', 'household', true).map(({ id }) => id)).toEqual(['household-100'])
+    expect(filterAndSortHouseholds(state.households, 'household-100', 'household', true).map(({ id }) => id)).toEqual([
+      'household-100',
+    ])
     const employer = state.households[0]!.employerFirmId
-    expect(filterAndSortHouseholds(state.households, employer, 'household', true).every((household) => household.employerFirmId === employer)).toBe(true)
+    expect(
+      filterAndSortHouseholds(state.households, employer, 'household', true).every(
+        (household) => household.employerFirmId === employer,
+      ),
+    ).toBe(true)
   })
 
   it('sorts deterministically without mutating simulation order', () => {
     const state = stepSimulation(createSimulation({ seed: DEFAULT_SEED }))
     const original = state.households.map(({ id }) => id)
     const sorted = filterAndSortHouseholds(state.households, '', 'cash', false)
-    expect(sorted.map(({ postFiscalCashCents }) => postFiscalCashCents)).toEqual([...sorted.map(({ postFiscalCashCents }) => postFiscalCashCents)].sort((a, b) => b - a))
+    expect(sorted.map(({ postFiscalCashCents }) => postFiscalCashCents)).toEqual(
+      [...sorted.map(({ postFiscalCashCents }) => postFiscalCashCents)].sort((a, b) => b - a),
+    )
     expect(state.households.map(({ id }) => id)).toEqual(original)
   })
 
@@ -31,8 +39,12 @@ describe('MVP8.1 observer presentation', () => {
   it('preserves the canonical deterministic trajectory through the UI settings parser', () => {
     const parsed = parseSimulationSettings(DEFAULT_SETTINGS_DRAFT)
     if (!parsed.ok) throw new Error('Default settings draft must be valid')
-    let direct = createSimulation({ seed: DEFAULT_SEED }), throughUi = createSimulation(parsed.config)
-    for (let day = 0; day < 20; day++) { direct = stepSimulation(direct); throughUi = stepSimulation(throughUi) }
+    let direct = createSimulation({ seed: DEFAULT_SEED }),
+      throughUi = createSimulation(parsed.config)
+    for (let day = 0; day < 20; day++) {
+      direct = stepSimulation(direct)
+      throughUi = stepSimulation(throughUi)
+    }
     expect({ ...throughUi, config: undefined }).toEqual({ ...direct, config: undefined })
   })
 })

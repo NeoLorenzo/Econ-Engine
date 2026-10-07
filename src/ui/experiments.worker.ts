@@ -1,6 +1,9 @@
 import { runExperiment, type ExperimentRequest, type ExperimentResponse } from './experimentRunner'
 
-const scope = self as unknown as { onmessage: ((event: MessageEvent<ExperimentRequest>) => void) | null; postMessage: (message: ExperimentResponse) => void }
+const scope = self as unknown as {
+  onmessage: ((event: MessageEvent<ExperimentRequest>) => void) | null
+  postMessage: (message: ExperimentResponse) => void
+}
 
 scope.onmessage = (event) => {
   const { id, kind, seed } = event.data

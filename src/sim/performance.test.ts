@@ -31,7 +31,10 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
   })
 
   it('runs 10,000 days with bounded histories and exact terminal invariants', () => {
-    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 2_026_0813 }), 10_000)
+    const state = runDays(
+      createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 2_026_0813 }),
+      10_000,
+    )
     expect(state.day).toBe(10_000)
     expect(state.metrics).toHaveLength(MAX_HISTORY)
     expect(state.events.length).toBeLessThanOrEqual(MAX_EVENTS)
@@ -47,7 +50,9 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
     for (let day = 0; day < 4; day++) {
       state = stepSimulation(state)
       const retained = Math.min(MAX_EVENTS, state.nextEventId - 1)
-      expect(state.events.map(({ id }) => id)).toEqual(Array.from({ length: retained }, (_, index) => state.nextEventId - retained + index))
+      expect(state.events.map(({ id }) => id)).toEqual(
+        Array.from({ length: retained }, (_, index) => state.nextEventId - retained + index),
+      )
       expect(state.events.at(-1)!.type).toBe('DAY_ENDED')
     }
   })

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createPricingState, decideTomorrowPrice } from './pricingStrategy'
-import { EXPECTED_INDUSTRY_OPTIMA_CENTS, MULTI_INDUSTRY_STARTING_PRICES_CENTS, runMultiIndustryExperiment } from './scarcityExperiment'
+import {
+  EXPECTED_INDUSTRY_OPTIMA_CENTS,
+  MULTI_INDUSTRY_STARTING_PRICES_CENTS,
+  runMultiIndustryExperiment,
+} from './scarcityExperiment'
 
 describe('deterministic multi-industry experiment', () => {
   it('preserves control endpoints and records competitive trajectories reproducibly', () => {
@@ -9,12 +13,24 @@ describe('deterministic multi-industry experiment', () => {
     expect(first).toEqual(second)
     expect(first.firms).toHaveLength(9)
     expect(Object.values(MULTI_INDUSTRY_STARTING_PRICES_CENTS)).toEqual([100, 200, 500, 1_500, 2_000])
-    expect(first.firms.filter(({ industryId }) => industryId !== 'transport').every((firm) => firm.finalPriceCents >= 1)).toBe(true)
+    expect(
+      first.firms.filter(({ industryId }) => industryId !== 'transport').every((firm) => firm.finalPriceCents >= 1),
+    ).toBe(true)
     expect(first.firms.find(({ industryId }) => industryId === 'transport')?.convergedPriceCents).toBeNull()
-    expect(first.firms.filter(({ industryId }) => industryId === 'entertainment').map(({ startingPriceCents }) => startingPriceCents)).toEqual([100, 800])
+    expect(
+      first.firms
+        .filter(({ industryId }) => industryId === 'entertainment')
+        .map(({ startingPriceCents }) => startingPriceCents),
+    ).toEqual([100, 800])
     expect(first.competitionHistory.length).toBeGreaterThan(0)
     expect(first.competitionHistory.every((point) => point.marketShare >= 0 && point.marketShare <= 1)).toBe(true)
-    expect(first).toMatchObject({ finalHouseholdCashMinimumCents: expect.any(Number), finalHouseholdCashMedianCents: expect.any(Number), finalHouseholdCashMaximumCents: expect.any(Number), finalHouseholdCashGini: expect.any(Number), totalMoneyCents: 500_000 })
+    expect(first).toMatchObject({
+      finalHouseholdCashMinimumCents: expect.any(Number),
+      finalHouseholdCashMedianCents: expect.any(Number),
+      finalHouseholdCashMaximumCents: expect.any(Number),
+      finalHouseholdCashGini: expect.any(Number),
+      totalMoneyCents: 500_000,
+    })
     expect(first.finalHouseholdCashGini).toBeGreaterThan(0)
   }, 20_000)
 

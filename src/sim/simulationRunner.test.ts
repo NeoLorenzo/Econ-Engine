@@ -67,7 +67,10 @@ describe('SimulationRunner', () => {
   it('publishes fewer observer snapshots than simulation days at fast speed', () => {
     const scheduler = new ManualScheduler()
     const publishedDays: number[] = []
-    const runner = new SimulationRunner(createSimulation(), stepSimulation, (state) => publishedDays.push(state.day), { scheduler, publicationIntervalMs: 100 })
+    const runner = new SimulationRunner(createSimulation(), stepSimulation, (state) => publishedDays.push(state.day), {
+      scheduler,
+      publicationIntervalMs: 100,
+    })
 
     runner.start(100)
     scheduler.run(20)
@@ -107,7 +110,12 @@ describe('SimulationRunner', () => {
   it('reset replaces authoritative and published state and cancels pending work', () => {
     const scheduler = new ManualScheduler()
     const publishedSeeds: number[] = []
-    const runner = new SimulationRunner(createSimulation(), stepSimulation, (state) => publishedSeeds.push(state.config.seed ?? 0), { scheduler })
+    const runner = new SimulationRunner(
+      createSimulation(),
+      stepSimulation,
+      (state) => publishedSeeds.push(state.config.seed ?? 0),
+      { scheduler },
+    )
     const resetState = createSimulation({ seed: 42 })
 
     runner.start(100)
@@ -125,8 +133,14 @@ describe('SimulationRunner', () => {
     const slowScheduler = new ManualScheduler()
     const initialFast = createSimulation({ seed: 7 })
     const initialSlow = createSimulation({ seed: 7 })
-    const fastPublishing = new SimulationRunner(initialFast, stepSimulation, () => {}, { scheduler: fastScheduler, publicationIntervalMs: 20 })
-    const slowPublishing = new SimulationRunner(initialSlow, stepSimulation, () => {}, { scheduler: slowScheduler, publicationIntervalMs: 250 })
+    const fastPublishing = new SimulationRunner(initialFast, stepSimulation, () => {}, {
+      scheduler: fastScheduler,
+      publicationIntervalMs: 20,
+    })
+    const slowPublishing = new SimulationRunner(initialSlow, stepSimulation, () => {}, {
+      scheduler: slowScheduler,
+      publicationIntervalMs: 250,
+    })
 
     fastPublishing.start(100)
     slowPublishing.start(100)

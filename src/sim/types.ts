@@ -1,10 +1,19 @@
 export type Direction = 'up' | 'down'
-export type PriceDecisionAction = 'increase' | 'decrease' | 'refine' | 'hold' | 'locally_settled' | 'probe_started' | 'probe_adopted' | 'probe_rejected'
+export type PriceDecisionAction =
+  'increase' | 'decrease' | 'refine' | 'hold' | 'locally_settled' | 'probe_started' | 'probe_adopted' | 'probe_rejected'
 export type PriceExperimentType =
-  | 'local_up_1c' | 'local_down_1c' | 'local_up_5pct' | 'local_down_5pct'
-  | 'local_up_10pct' | 'local_down_10pct' | 'local_down_20pct'
-  | 'competitor_match' | 'competitor_up_1c' | 'competitor_down_1c'
-  | 'competitor_up_5pct' | 'competitor_down_5pct'
+  | 'local_up_1c'
+  | 'local_down_1c'
+  | 'local_up_5pct'
+  | 'local_down_5pct'
+  | 'local_up_10pct'
+  | 'local_down_10pct'
+  | 'local_down_20pct'
+  | 'competitor_match'
+  | 'competitor_up_1c'
+  | 'competitor_down_1c'
+  | 'competitor_up_5pct'
+  | 'competitor_down_5pct'
 
 export type IndustryId = 'food' | 'utilities' | 'transport' | 'healthcare' | 'entertainment'
 
@@ -70,7 +79,10 @@ export interface Household {
   cumulativeNetFiscalPositionCents: number
 }
 
-export interface Coordinate { x: number; y: number }
+export interface Coordinate {
+  x: number
+  y: number
+}
 export interface HouseholdEntertainmentMetrics {
   chosenFirmId: string | null
   distanceToA: number
@@ -165,7 +177,20 @@ export interface Government {
 
 export type GovernmentPolicyMode = 'equalizing' | 'minimizing_tax'
 
-export type GovernmentExperimentType = 'local_up_1pp' | 'local_down_1pp' | 'local_up_5pp' | 'local_down_5pp' | 'local_up_10pp' | 'local_down_10pp' | 'local_up_20pp' | 'local_down_20pp' | 'anchor_0' | 'anchor_25' | 'anchor_50' | 'anchor_75' | 'anchor_100'
+export type GovernmentExperimentType =
+  | 'local_up_1pp'
+  | 'local_down_1pp'
+  | 'local_up_5pp'
+  | 'local_down_5pp'
+  | 'local_up_10pp'
+  | 'local_down_10pp'
+  | 'local_up_20pp'
+  | 'local_down_20pp'
+  | 'anchor_0'
+  | 'anchor_25'
+  | 'anchor_50'
+  | 'anchor_75'
+  | 'anchor_100'
 
 export interface PriceDecision {
   nextPriceCents: number

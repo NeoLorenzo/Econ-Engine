@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SEED } from '../sim/config'
 import { createSimulation, stepSimulation } from '../sim/engine'
-import { buildMarketTerritory, buildWorldEntities, getEmploymentNetworkObservation, getHouseholdChoiceObservation, householdWealthHeight, worldPoint } from './worldViewModel'
+import {
+  buildMarketTerritory,
+  buildWorldEntities,
+  getEmploymentNetworkObservation,
+  getHouseholdChoiceObservation,
+  householdWealthHeight,
+  worldPoint,
+} from './worldViewModel'
 
 describe('3D world observer model', () => {
   it('maps the canonical simulation to 100 households, 8 consumer firms, and Transport', () => {
@@ -80,10 +87,11 @@ describe('3D world observer model', () => {
     expect(territory.cells[0]?.deliveredCostCents).toBe(198)
   })
 
-
   it('reads a purchased household choice directly from authoritative current-day state', () => {
     const state = stepSimulation(createSimulation({ seed: DEFAULT_SEED }))
-    const household = state.households.find(({ industryOutcomes }) => industryOutcomes.food.purchaseOutcomeToday === 'purchased')!
+    const household = state.households.find(
+      ({ industryOutcomes }) => industryOutcomes.food.purchaseOutcomeToday === 'purchased',
+    )!
     const spatial = household.spatialPurchasesToday.food!
 
     const observation = getHouseholdChoiceObservation(state, household.id, 'food')
@@ -108,26 +116,35 @@ describe('3D world observer model', () => {
     const household = state.households[0]!
     const failedState = {
       ...state,
-      households: state.households.map((candidate) => candidate.id === household.id ? {
-        ...candidate,
-        industryOutcomes: {
-          ...candidate.industryOutcomes,
-          food: { ...candidate.industryOutcomes.food, purchasedToday: false, purchaseOutcomeToday: 'stockout' as const, spentTodayCents: 0 },
-        },
-        spatialPurchasesToday: {
-          ...candidate.spatialPurchasesToday,
-          food: {
-            chosenFirmId: null,
-            distanceToA: 3,
-            distanceToB: 7,
-            chosenOneWayDistance: null,
-            roundTripTiles: 0,
-            productPriceCents: 0,
-            transportFeeCents: 0,
-            deliveredCostCents: 0,
-          },
-        },
-      } : candidate),
+      households: state.households.map((candidate) =>
+        candidate.id === household.id
+          ? {
+              ...candidate,
+              industryOutcomes: {
+                ...candidate.industryOutcomes,
+                food: {
+                  ...candidate.industryOutcomes.food,
+                  purchasedToday: false,
+                  purchaseOutcomeToday: 'stockout' as const,
+                  spentTodayCents: 0,
+                },
+              },
+              spatialPurchasesToday: {
+                ...candidate.spatialPurchasesToday,
+                food: {
+                  chosenFirmId: null,
+                  distanceToA: 3,
+                  distanceToB: 7,
+                  chosenOneWayDistance: null,
+                  roundTripTiles: 0,
+                  productPriceCents: 0,
+                  transportFeeCents: 0,
+                  deliveredCostCents: 0,
+                },
+              },
+            }
+          : candidate,
+      ),
     }
 
     expect(getHouseholdChoiceObservation(failedState, household.id, 'food')).toEqual({
@@ -186,7 +203,11 @@ describe('3D world observer model', () => {
 
     expect(workerIds).toHaveLength(100)
     expect(new Set(workerIds).size).toBe(100)
-    expect(state.firms.filter(({ industryId }) => industryId !== 'transport').every(({ employeeIds }) => employeeIds.length === 10)).toBe(true)
+    expect(
+      state.firms
+        .filter(({ industryId }) => industryId !== 'transport')
+        .every(({ employeeIds }) => employeeIds.length === 10),
+    ).toBe(true)
     expect(state.firms.find(({ id }) => id === 'firm-transport')?.employeeIds).toHaveLength(20)
   })
 

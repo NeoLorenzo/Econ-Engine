@@ -18,7 +18,8 @@ export const INDUSTRY_NAMES: Record<IndustryId, string> = {
   entertainment: 'Entertainment',
 }
 
-export const firmVariant = (firmId: string): 'a' | 'b' | null => firmId.endsWith('-a') ? 'a' : firmId.endsWith('-b') ? 'b' : null
+export const firmVariant = (firmId: string): 'a' | 'b' | null =>
+  firmId.endsWith('-a') ? 'a' : firmId.endsWith('-b') ? 'b' : null
 
 /** "Food · Firm A", or "Transport" for the monopoly. */
 export function firmName(firmId: string, industryId?: IndustryId) {

@@ -14,10 +14,14 @@ try {
   await speed.selectOption('100')
   await page.getByRole('button', { name: 'Run simulation' }).click()
 
-  await page.waitForFunction(() => {
-    const text = document.querySelector('.control-day')?.textContent ?? ''
-    return Number(text.match(/\d+/)?.[0] ?? 0) >= 5
-  }, null, { timeout: 5000 })
+  await page.waitForFunction(
+    () => {
+      const text = document.querySelector('.control-day')?.textContent ?? ''
+      return Number(text.match(/\d+/)?.[0] ?? 0) >= 5
+    },
+    null,
+    { timeout: 5000 },
+  )
 
   const householdText = await page.locator('.scenario-summary').textContent()
   if (!householdText?.includes('100 households')) {
@@ -29,11 +33,9 @@ try {
 
   const startedAt = Date.now()
   await page.getByRole('button', { name: 'Pause' }).click()
-  await page.waitForFunction(
-    () => document.querySelector('.run-indicator')?.textContent === 'Paused',
-    null,
-    { timeout: PAUSE_TIMEOUT_MS },
-  )
+  await page.waitForFunction(() => document.querySelector('.run-indicator')?.textContent === 'Paused', null, {
+    timeout: PAUSE_TIMEOUT_MS,
+  })
   const pauseLatencyMs = Date.now() - startedAt
 
   const pausedText = await page.locator('.control-day').textContent()
@@ -53,13 +55,15 @@ try {
     throw new Error(`Visible day regressed during Pause: ${beforePauseDay} -> ${pausedDay}`)
   }
 
-  console.log(JSON.stringify({
-    householdCount: 100,
-    beforePauseDay,
-    pausedDay,
-    pauseLatencyMs,
-    laterDay,
-  }))
+  console.log(
+    JSON.stringify({
+      householdCount: 100,
+      beforePauseDay,
+      pausedDay,
+      pauseLatencyMs,
+      laterDay,
+    }),
+  )
 } finally {
   await browser.close()
 }

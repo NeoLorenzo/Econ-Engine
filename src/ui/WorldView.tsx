@@ -4,7 +4,16 @@ import { Icon, InfoTip, Segmented } from './components'
 import { CONSUMER_INDUSTRIES, householdCashSteps } from './economyModel'
 import { entityName, firmName, firmShortName, firmVariant, householdName, INDUSTRY_NAMES, money } from './format'
 import { hex, palette } from './theme'
-import { buildMarketTerritory, buildWorldEntities, getEmploymentNetworkObservation, getHouseholdChoiceObservation, type CashMeasure, type CompetitiveIndustryId, type EmploymentNetworkObservation, type HouseholdChoiceObservation } from './worldViewModel'
+import {
+  buildMarketTerritory,
+  buildWorldEntities,
+  getEmploymentNetworkObservation,
+  getHouseholdChoiceObservation,
+  type CashMeasure,
+  type CompetitiveIndustryId,
+  type EmploymentNetworkObservation,
+  type HouseholdChoiceObservation,
+} from './worldViewModel'
 
 const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm'
 
@@ -29,7 +38,7 @@ const COLORS = {
   jobs: hex(palette.positive),
 }
 
-const variantColor = (variant: 'a' | 'b') => variant === 'a' ? COLORS.firmA : COLORS.firmB
+const variantColor = (variant: 'a' | 'b') => (variant === 'a' ? COLORS.firmA : COLORS.firmB)
 
 type Runtime = {
   THREE: any
@@ -96,12 +105,20 @@ function syncGround(runtime: Runtime, state: SimulationState) {
     disposeObject(object)
   }
   const THREE = runtime.THREE
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 1, metalness: 0 }))
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 1, metalness: 0 }),
+  )
   ground.rotation.x = -Math.PI / 2
   ground.position.y = -0.02
   ground.receiveShadow = true
   runtime.scene.add(ground)
-  const grid = new THREE.GridHelper(Math.max(width, height), Math.max(width, height), COLORS.gridMajor, COLORS.gridMinor)
+  const grid = new THREE.GridHelper(
+    Math.max(width, height),
+    Math.max(width, height),
+    COLORS.gridMajor,
+    COLORS.gridMinor,
+  )
   grid.position.y = 0.01
   runtime.scene.add(grid)
   Object.assign(runtime, { ground, grid, gridWidth: width, gridHeight: height })
@@ -114,7 +131,8 @@ function selectedHouseholdChoice(state: SimulationState, selectedId: string | nu
 
 function selectedEmployment(state: SimulationState, selectedId: string | null): EmploymentNetworkObservation | null {
   if (!selectedId) return null
-  if (!state.households.some(({ id }) => id === selectedId) && !state.firms.some(({ id }) => id === selectedId)) return null
+  if (!state.households.some(({ id }) => id === selectedId) && !state.firms.some(({ id }) => id === selectedId))
+    return null
   return getEmploymentNetworkObservation(state, selectedId)
 }
 
@@ -134,7 +152,10 @@ function syncEntities(runtime: Runtime, state: SimulationState, view: SceneView,
     if (!mesh) {
       mesh = new runtime.THREE.Mesh(
         new runtime.THREE.BoxGeometry(isHousehold ? 0.46 : 0.86, 1, isHousehold ? 0.46 : 0.86),
-        new runtime.THREE.MeshStandardMaterial({ roughness: isHousehold ? 0.75 : 0.45, metalness: isHousehold ? 0.02 : 0.1 }),
+        new runtime.THREE.MeshStandardMaterial({
+          roughness: isHousehold ? 0.75 : 0.45,
+          metalness: isHousehold ? 0.02 : 0.1,
+        }),
       )
       mesh.userData.entityId = descriptor.id
       mesh.castShadow = true
@@ -147,7 +168,13 @@ function syncEntities(runtime: Runtime, state: SimulationState, view: SceneView,
     const linked = related.has(descriptor.id)
     const inFocus = descriptor.industryId === view.industry
     let color = COLORS.household
-    if (!isHousehold) color = descriptor.industryId === 'transport' ? COLORS.transport : inFocus ? variantColor(descriptor.firmVariant ?? 'a') : COLORS.idleFirm
+    if (!isHousehold)
+      color =
+        descriptor.industryId === 'transport'
+          ? COLORS.transport
+          : inFocus
+            ? variantColor(descriptor.firmVariant ?? 'a')
+            : COLORS.idleFirm
     mesh.material.color.setHex(color)
     const scale = selected ? 1.25 : linked ? 1.15 : 1
     mesh.position.set(descriptor.x, descriptor.height / 2, descriptor.z)
@@ -158,8 +185,15 @@ function syncEntities(runtime: Runtime, state: SimulationState, view: SceneView,
 }
 
 function territoryKey(state: SimulationState, industry: CompetitiveIndustryId) {
-  return [industry, state.config.gridWidth ?? 20, state.config.gridHeight ?? 20, state.config.transportCostPerTileCents ?? 0,
-    ...state.firms.filter((firm) => firm.industryId === industry).flatMap((firm) => [firm.id, firm.postedPriceCents, firm.coordinate?.x, firm.coordinate?.y])].join('|')
+  return [
+    industry,
+    state.config.gridWidth ?? 20,
+    state.config.gridHeight ?? 20,
+    state.config.transportCostPerTileCents ?? 0,
+    ...state.firms
+      .filter((firm) => firm.industryId === industry)
+      .flatMap((firm) => [firm.id, firm.postedPriceCents, firm.coordinate?.x, firm.coordinate?.y]),
+  ].join('|')
 }
 
 function syncTerritory(runtime: Runtime, state: SimulationState, industry: CompetitiveIndustryId) {
@@ -177,7 +211,14 @@ function syncTerritory(runtime: Runtime, state: SimulationState, industry: Compe
     if (!cells.length) continue
     const mesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(0.94, 0.02, 0.94),
-      new THREE.MeshStandardMaterial({ color: variantColor(variant), transparent: true, opacity: 0.2, roughness: 1, metalness: 0, depthWrite: false }),
+      new THREE.MeshStandardMaterial({
+        color: variantColor(variant),
+        transparent: true,
+        opacity: 0.2,
+        roughness: 1,
+        metalness: 0,
+        depthWrite: false,
+      }),
       cells.length,
     )
     mesh.renderOrder = -1
@@ -211,17 +252,27 @@ function syncLinks(runtime: Runtime, state: SimulationState, view: SceneView) {
     const choice = selectedHouseholdChoice(state, view.selectedId, view.industry)
     const household = choice && runtime.entities.get(choice.householdId)
     const firm = choice?.chosenFirmId ? runtime.entities.get(choice.chosenFirmId) : null
-    if (household && firm) segments.push({ from: household, to: firm, color: variantColor(firmVariant(choice!.chosenFirmId!) ?? 'a'), dashed: true })
+    if (household && firm)
+      segments.push({
+        from: household,
+        to: firm,
+        color: variantColor(firmVariant(choice!.chosenFirmId!) ?? 'a'),
+        dashed: true,
+      })
   } else {
     const employment = selectedEmployment(state, view.selectedId)
     const firm = employment && runtime.entities.get(employment.firmId)
-    if (employment && firm) for (const workerId of employment.workerIds) {
-      const worker = runtime.entities.get(workerId)
-      if (worker) segments.push({ from: firm, to: worker, color: COLORS.jobs, dashed: false })
-    }
+    if (employment && firm)
+      for (const workerId of employment.workerIds) {
+        const worker = runtime.entities.get(workerId)
+        if (worker) segments.push({ from: firm, to: worker, color: COLORS.jobs, dashed: false })
+      }
   }
 
-  const key = segments.map(({ from, to }) => [from.userData.entityId, to.userData.entityId, from.position.y, to.position.y].join(':')).join('|') + view.linkMode
+  const key =
+    segments
+      .map(({ from, to }) => [from.userData.entityId, to.userData.entityId, from.position.y, to.position.y].join(':'))
+      .join('|') + view.linkMode
   if (runtime.linksKey === key) return
   clearLinks(runtime)
   for (const { from, to, color, dashed } of segments) {
@@ -243,7 +294,11 @@ function syncLinks(runtime: Runtime, state: SimulationState, view: SceneView) {
   runtime.linksKey = key
 }
 
-function attachControls(runtime: Runtime, onSelect: (id: string | null) => void, onHover: (id: string | null, x: number, y: number) => void) {
+function attachControls(
+  runtime: Runtime,
+  onSelect: (id: string | null) => void,
+  onHover: (id: string | null, x: number, y: number) => void,
+) {
   const canvas = runtime.renderer.domElement
   const THREE = runtime.THREE
   const raycaster = new THREE.Raycaster()
@@ -260,7 +315,11 @@ function attachControls(runtime: Runtime, onSelect: (id: string | null) => void,
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, runtime.camera)
     const hit = raycaster.intersectObjects(Array.from(runtime.entities.values()), false)[0]
-    return { id: (hit?.object?.userData?.entityId as string | undefined) ?? null, x: event.clientX - rect.left, y: event.clientY - rect.top }
+    return {
+      id: (hit?.object?.userData?.entityId as string | undefined) ?? null,
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    }
   }
 
   const clampTarget = () => {
@@ -324,12 +383,16 @@ function attachControls(runtime: Runtime, onSelect: (id: string | null) => void,
 
   const onWheel = (event: WheelEvent) => {
     event.preventDefault()
-    runtime.controls.radius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, runtime.controls.radius * Math.exp(event.deltaY * 0.001)))
+    runtime.controls.radius = Math.max(
+      MIN_RADIUS,
+      Math.min(MAX_RADIUS, runtime.controls.radius * Math.exp(event.deltaY * 0.001)),
+    )
     applyCamera(runtime)
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === '+' || event.key === '=') runtime.controls.radius = Math.max(MIN_RADIUS, runtime.controls.radius * 0.9)
+    if (event.key === '+' || event.key === '=')
+      runtime.controls.radius = Math.max(MIN_RADIUS, runtime.controls.radius * 0.9)
     else if (event.key === '-') runtime.controls.radius = Math.min(MAX_RADIUS, runtime.controls.radius * 1.1)
     else if (event.key === 'ArrowLeft') runtime.controls.theta += 0.12
     else if (event.key === 'ArrowRight') runtime.controls.theta -= 0.12
@@ -343,12 +406,20 @@ function attachControls(runtime: Runtime, onSelect: (id: string | null) => void,
 
   const preventMenu = (event: MouseEvent) => event.preventDefault()
   const listeners: [string, any, any?][] = [
-    ['pointerdown', onPointerDown], ['pointermove', onPointerMove], ['pointerup', onPointerUp], ['pointercancel', onPointerUp],
-    ['pointerleave', onPointerLeave], ['wheel', onWheel, { passive: false }], ['keydown', onKeyDown], ['contextmenu', preventMenu],
+    ['pointerdown', onPointerDown],
+    ['pointermove', onPointerMove],
+    ['pointerup', onPointerUp],
+    ['pointercancel', onPointerUp],
+    ['pointerleave', onPointerLeave],
+    ['wheel', onWheel, { passive: false }],
+    ['keydown', onKeyDown],
+    ['contextmenu', preventMenu],
   ]
   for (const [type, handler, options] of listeners) canvas.addEventListener(type, handler, options)
   canvas.style.cursor = 'grab'
-  return () => { for (const [type, handler] of listeners) canvas.removeEventListener(type, handler) }
+  return () => {
+    for (const [type, handler] of listeners) canvas.removeEventListener(type, handler)
+  }
 }
 
 function outcomeLabel(outcome: HouseholdChoiceObservation['outcome']) {
@@ -358,7 +429,13 @@ function outcomeLabel(outcome: HouseholdChoiceObservation['outcome']) {
   return 'Not yet'
 }
 
-function HouseholdInspector({ state, householdId, industry, onIndustry, onSelect }: {
+function HouseholdInspector({
+  state,
+  householdId,
+  industry,
+  onIndustry,
+  onSelect,
+}: {
   state: SimulationState
   householdId: string
   industry: CompetitiveIndustryId
@@ -369,52 +446,129 @@ function HouseholdInspector({ state, householdId, industry, onIndustry, onSelect
   const choices = CONSUMER_INDUSTRIES.map((id) => getHouseholdChoiceObservation(state, householdId, id))
   const active = choices.find((choice) => choice.industryId === industry)!
   const unpaid = household.unpaidWageTodayCents
-  return <>
-    <p className="inspector-sub">Works at <button type="button" className="link" onClick={() => onSelect(household.employerFirmId)}>{firmName(household.employerFirmId)}</button></p>
-    <h4>Where its cash went today</h4>
-    <ol className="cash-steps">
-      {householdCashSteps(household).map((step) => <li key={step.label} className={`cash-step cash-step--${step.kind}`}>
-        <span>{step.label}{step.label === 'Wage' && unpaid > 0 && <small> ({money(unpaid)} short)</small>}</span>
-        <span className="num">{step.kind === 'in' ? '+' : step.kind === 'out' ? '−' : ''}{money(step.amountCents)}</span>
-      </li>)}
-    </ol>
-    <h4>Today's purchases</h4>
-    <ul className="purchase-list">
-      {choices.map((choice) => <li key={choice.industryId}>
-        <button type="button" aria-pressed={choice.industryId === industry} onClick={() => onIndustry(choice.industryId)}>
-          <span>{INDUSTRY_NAMES[choice.industryId]}</span>
-          <span className={`outcome outcome--${choice.outcome}`}>{choice.chosenFirmId ? firmShortName(choice.chosenFirmId) : outcomeLabel(choice.outcome)}</span>
-          <span className="num">{choice.deliveredCostCents === null ? '—' : money(choice.deliveredCostCents)}</span>
+  return (
+    <>
+      <p className="inspector-sub">
+        Works at{' '}
+        <button type="button" className="link" onClick={() => onSelect(household.employerFirmId)}>
+          {firmName(household.employerFirmId)}
         </button>
-      </li>)}
-    </ul>
-    {active.chosenFirmId && <p className="inspector-note">
-      {INDUSTRY_NAMES[industry]}: paid {money(active.productPriceCents ?? 0)} + {money(active.transportFeeCents ?? 0)} transport for a {active.roundTripTiles}-tile round trip to {firmShortName(active.chosenFirmId)}. Firm A is {active.distanceToA} tiles away, Firm B {active.distanceToB}.
-    </p>}
-  </>
+      </p>
+      <h4>Where its cash went today</h4>
+      <ol className="cash-steps">
+        {householdCashSteps(household).map((step) => (
+          <li key={step.label} className={`cash-step cash-step--${step.kind}`}>
+            <span>
+              {step.label}
+              {step.label === 'Wage' && unpaid > 0 && <small> ({money(unpaid)} short)</small>}
+            </span>
+            <span className="num">
+              {step.kind === 'in' ? '+' : step.kind === 'out' ? '−' : ''}
+              {money(step.amountCents)}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <h4>Today's purchases</h4>
+      <ul className="purchase-list">
+        {choices.map((choice) => (
+          <li key={choice.industryId}>
+            <button
+              type="button"
+              aria-pressed={choice.industryId === industry}
+              onClick={() => onIndustry(choice.industryId)}
+            >
+              <span>{INDUSTRY_NAMES[choice.industryId]}</span>
+              <span className={`outcome outcome--${choice.outcome}`}>
+                {choice.chosenFirmId ? firmShortName(choice.chosenFirmId) : outcomeLabel(choice.outcome)}
+              </span>
+              <span className="num">{choice.deliveredCostCents === null ? '—' : money(choice.deliveredCostCents)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {active.chosenFirmId && (
+        <p className="inspector-note">
+          {INDUSTRY_NAMES[industry]}: paid {money(active.productPriceCents ?? 0)} +{' '}
+          {money(active.transportFeeCents ?? 0)} transport for a {active.roundTripTiles}-tile round trip to{' '}
+          {firmShortName(active.chosenFirmId)}. Firm A is {active.distanceToA} tiles away, Firm B {active.distanceToB}.
+        </p>
+      )}
+    </>
+  )
 }
 
-function FirmInspector({ state, firmId, linkMode, onSelect }: { state: SimulationState; firmId: string; linkMode: LinkMode; onSelect: (id: string) => void }) {
+function FirmInspector({
+  state,
+  firmId,
+  linkMode,
+  onSelect,
+}: {
+  state: SimulationState
+  firmId: string
+  linkMode: LinkMode
+  onSelect: (id: string) => void
+}) {
   const firm = state.firms.find(({ id }) => id === firmId)!
   const market = state.metrics.at(-1)?.markets.find((item) => item.firmId === firmId)
   const isTransport = firm.industryId === 'transport'
-  return <>
-    <p className="inspector-sub">{isTransport ? 'Monopoly · has no location, so it sits off the grid' : `Competes in ${INDUSTRY_NAMES[firm.industryId]}`}</p>
-    <dl className="inspector-stats">
-      <div><dt>{isTransport ? 'Rate' : 'Price'}</dt><dd>{isTransport ? `${money(state.config.transportCostPerTileCents ?? 0)}/tile` : money(market?.postedPriceCents ?? firm.postedPriceCents)}</dd></div>
-      <div><dt>{isTransport ? 'Trips sold' : 'Share'}</dt><dd>{isTransport ? firm.unitsSoldToday : `${Math.round((market?.marketShare ?? 0) * 100)}%`}</dd></div>
-      <div><dt>Revenue</dt><dd>{money(firm.revenueTodayCents)}</dd></div>
-      <div><dt>Wages paid</dt><dd>{Math.round(firm.payrollFulfillmentRate * 100)}%</dd></div>
-    </dl>
-    {!isTransport && <p className="inspector-note">Sold {firm.unitsSoldToday} of {firm.unitsProducedToday} units made today. Tomorrow's price: {money(firm.postedPriceCents)}.</p>}
-    <h4>{firm.employeeIds.length} workers {linkMode !== 'jobs' && <span className="muted">· switch to Jobs to see links</span>}</h4>
-    <div className="worker-grid">
-      {firm.employeeIds.map((workerId) => <button type="button" key={workerId} onClick={() => onSelect(workerId)}>{workerId.replace('household-', 'H')}</button>)}
-    </div>
-  </>
+  return (
+    <>
+      <p className="inspector-sub">
+        {isTransport
+          ? 'Monopoly · has no location, so it sits off the grid'
+          : `Competes in ${INDUSTRY_NAMES[firm.industryId]}`}
+      </p>
+      <dl className="inspector-stats">
+        <div>
+          <dt>{isTransport ? 'Rate' : 'Price'}</dt>
+          <dd>
+            {isTransport
+              ? `${money(state.config.transportCostPerTileCents ?? 0)}/tile`
+              : money(market?.postedPriceCents ?? firm.postedPriceCents)}
+          </dd>
+        </div>
+        <div>
+          <dt>{isTransport ? 'Trips sold' : 'Share'}</dt>
+          <dd>{isTransport ? firm.unitsSoldToday : `${Math.round((market?.marketShare ?? 0) * 100)}%`}</dd>
+        </div>
+        <div>
+          <dt>Revenue</dt>
+          <dd>{money(firm.revenueTodayCents)}</dd>
+        </div>
+        <div>
+          <dt>Wages paid</dt>
+          <dd>{Math.round(firm.payrollFulfillmentRate * 100)}%</dd>
+        </div>
+      </dl>
+      {!isTransport && (
+        <p className="inspector-note">
+          Sold {firm.unitsSoldToday} of {firm.unitsProducedToday} units made today. Tomorrow's price:{' '}
+          {money(firm.postedPriceCents)}.
+        </p>
+      )}
+      <h4>
+        {firm.employeeIds.length} workers{' '}
+        {linkMode !== 'jobs' && <span className="muted">· switch to Jobs to see links</span>}
+      </h4>
+      <div className="worker-grid">
+        {firm.employeeIds.map((workerId) => (
+          <button type="button" key={workerId} onClick={() => onSelect(workerId)}>
+            {workerId.replace('household-', 'H')}
+          </button>
+        ))}
+      </div>
+    </>
+  )
 }
 
-export function WorldView({ state, selectedId, onSelect, industry, onIndustry }: {
+export function WorldView({
+  state,
+  selectedId,
+  onSelect,
+  industry,
+  onIndustry,
+}: {
   state: SimulationState
   selectedId: string | null
   onSelect: (id: string | null) => void
@@ -457,7 +611,13 @@ export function WorldView({ state, selectedId, onSelect, industry, onIndustry }:
   }, [state, selectedId, industry, linkMode])
 
   const territory = useMemo(() => buildMarketTerritory(state, industry), [state, industry])
-  const searchOptions = useMemo(() => [...state.firms.map(({ id }) => ({ id, label: firmName(id) })), ...state.households.map(({ id }) => ({ id, label: householdName(id) }))], [state.firms, state.households])
+  const searchOptions = useMemo(
+    () => [
+      ...state.firms.map(({ id }) => ({ id, label: firmName(id) })),
+      ...state.households.map(({ id }) => ({ id, label: householdName(id) })),
+    ],
+    [state.firms, state.households],
+  )
 
   useEffect(() => {
     const mount = mountRef.current
@@ -477,7 +637,10 @@ export function WorldView({ state, selectedId, onSelect, industry, onIndustry }:
         renderer.shadowMap.enabled = true
         renderer.shadowMap.type = THREE.PCFSoftShadowMap
         renderer.domElement.tabIndex = 0
-        renderer.domElement.setAttribute('aria-label', 'Economy map. Drag to orbit, shift-drag or right-drag to pan, scroll or press plus and minus to zoom, arrow keys to rotate, Escape to clear the selection.')
+        renderer.domElement.setAttribute(
+          'aria-label',
+          'Economy map. Drag to orbit, shift-drag or right-drag to pan, scroll or press plus and minus to zoom, arrow keys to rotate, Escape to clear the selection.',
+        )
         mount.appendChild(renderer.domElement)
         scene.add(new THREE.HemisphereLight(0xdfe9e4, 0x161b19, 1.5))
         const key = new THREE.DirectionalLight(0xffffff, 2.3)
@@ -487,8 +650,23 @@ export function WorldView({ state, selectedId, onSelect, industry, onIndustry }:
         scene.add(key)
 
         const runtime: Runtime = {
-          THREE, scene, camera, renderer, entities: new Map(), territoryMeshes: [], territoryKey: null, links: [], linksKey: null,
-          ground: null, grid: null, gridWidth: 0, gridHeight: 0, frame: null, dirty: true, resizeObserver: null as unknown as ResizeObserver, disposeControls: () => {},
+          THREE,
+          scene,
+          camera,
+          renderer,
+          entities: new Map(),
+          territoryMeshes: [],
+          territoryKey: null,
+          links: [],
+          linksKey: null,
+          ground: null,
+          grid: null,
+          gridWidth: 0,
+          gridHeight: 0,
+          frame: null,
+          dirty: true,
+          resizeObserver: null as unknown as ResizeObserver,
+          disposeControls: () => {},
           controls: { target: new THREE.Vector3(0, 0, 0), radius: 46, theta: Math.PI / 4, phi: 0.88 },
         }
         const resize = () => {
@@ -576,58 +754,160 @@ export function WorldView({ state, selectedId, onSelect, industry, onIndustry }:
   const onSearch = (value: string) => {
     setQuery(value)
     const match = searchOptions.find((option) => option.label.toLowerCase() === value.trim().toLowerCase())
-    if (match) { select(match.id); setQuery('') }
+    if (match) {
+      select(match.id)
+      setQuery('')
+    }
   }
 
-  return <section className="card world" aria-labelledby="world-title">
-    <header className="card-head world-head">
-      <div>
-        <h2 id="world-title">The economy map<InfoTip label="About the map">
-          Each pillar is a household; taller means more cash. Switch between cash before and after Government's tax and transfers at the bottom of the map. The larger blocks are firms. The shaded floor shows which firm offers the cheapest delivered price (price plus round-trip transport) at every spot for the selected market. Transport is a monopoly with no location, so it sits just off the grid.
-        </InfoTip></h2>
-        <p>Each pillar is a household; taller means more cash. Click anything to inspect it.</p>
-      </div>
-      <div className="world-tools">
-        <Segmented label="Market shown on the map" size="sm" value={industry} onChange={onIndustry} options={CONSUMER_INDUSTRIES.map((id) => ({ id, label: INDUSTRY_NAMES[id] }))} />
-        <Segmented label="Relationship lines" size="sm" value={linkMode} onChange={setLinkMode} options={[{ id: 'purchases', label: 'Purchases' }, { id: 'jobs', label: 'Jobs' }]} />
-      </div>
-    </header>
+  return (
+    <section className="card world" aria-labelledby="world-title">
+      <header className="card-head world-head">
+        <div>
+          <h2 id="world-title">
+            The economy map
+            <InfoTip label="About the map">
+              Each pillar is a household; taller means more cash. Switch between cash before and after Government's tax
+              and transfers at the bottom of the map. The larger blocks are firms. The shaded floor shows which firm
+              offers the cheapest delivered price (price plus round-trip transport) at every spot for the selected
+              market. Transport is a monopoly with no location, so it sits just off the grid.
+            </InfoTip>
+          </h2>
+          <p>Each pillar is a household; taller means more cash. Click anything to inspect it.</p>
+        </div>
+        <div className="world-tools">
+          <Segmented
+            label="Market shown on the map"
+            size="sm"
+            value={industry}
+            onChange={onIndustry}
+            options={CONSUMER_INDUSTRIES.map((id) => ({ id, label: INDUSTRY_NAMES[id] }))}
+          />
+          <Segmented
+            label="Relationship lines"
+            size="sm"
+            value={linkMode}
+            onChange={setLinkMode}
+            options={[
+              { id: 'purchases', label: 'Purchases' },
+              { id: 'jobs', label: 'Jobs' },
+            ]}
+          />
+        </div>
+      </header>
 
-    <div className="world-stage">
-      <div className="world-canvas" data-status={status}>
-        <div ref={mountRef} className="world-canvas-mount" />
-        {status === 'loading' && <div className="world-status">Loading the 3D map…</div>}
-        {status === 'error' && <div className="world-status world-status--error">The 3D map couldn't load (it needs WebGL and an internet connection). Everything else still works.</div>}
-        <div ref={tooltipRef} className={`world-tooltip${hovered ? ' is-visible' : ''}`} aria-hidden="true">
-          {hoveredHousehold && <><strong>{householdName(hoveredHousehold.id)}</strong><span>{money(hoveredHousehold.preTaxCashCents)} before tax → {money(hoveredHousehold.postFiscalCashCents)} after</span><span>Works at {firmName(hoveredHousehold.employerFirmId)}</span></>}
-          {hoveredFirm && <><strong>{firmName(hoveredFirm.id)}</strong><span>{hoveredFirm.industryId === 'transport' ? `${hoveredFirm.employeeIds.length} workers` : `${money(hoveredFirm.postedPriceCents)} tomorrow · ${hoveredFirm.employeeIds.length} workers`}</span></>}
+      <div className="world-stage">
+        <div className="world-canvas" data-status={status}>
+          <div ref={mountRef} className="world-canvas-mount" />
+          {status === 'loading' && <div className="world-status">Loading the 3D map…</div>}
+          {status === 'error' && (
+            <div className="world-status world-status--error">
+              The 3D map couldn't load (it needs WebGL and an internet connection). Everything else still works.
+            </div>
+          )}
+          <div ref={tooltipRef} className={`world-tooltip${hovered ? ' is-visible' : ''}`} aria-hidden="true">
+            {hoveredHousehold && (
+              <>
+                <strong>{householdName(hoveredHousehold.id)}</strong>
+                <span>
+                  {money(hoveredHousehold.preTaxCashCents)} before tax → {money(hoveredHousehold.postFiscalCashCents)}{' '}
+                  after
+                </span>
+                <span>Works at {firmName(hoveredHousehold.employerFirmId)}</span>
+              </>
+            )}
+            {hoveredFirm && (
+              <>
+                <strong>{firmName(hoveredFirm.id)}</strong>
+                <span>
+                  {hoveredFirm.industryId === 'transport'
+                    ? `${hoveredFirm.employeeIds.length} workers`
+                    : `${money(hoveredFirm.postedPriceCents)} tomorrow · ${hoveredFirm.employeeIds.length} workers`}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="world-overlay world-overlay--top">
+            <label className="world-search">
+              <Icon name="search" size={14} />
+              <input
+                list="world-entities"
+                placeholder="Find a household or firm"
+                aria-label="Find a household or firm"
+                value={query}
+                onChange={(event) => onSearch(event.target.value)}
+              />
+            </label>
+            <datalist id="world-entities">
+              {searchOptions.map((option) => (
+                <option key={option.id} value={option.label} />
+              ))}
+            </datalist>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Reset camera"
+              title="Reset camera"
+              disabled={status !== 'ready'}
+              onClick={() => runtimeRef.current && resetCamera(runtimeRef.current)}
+            >
+              <Icon name="camera" />
+            </button>
+          </div>
+          <div className="world-overlay world-overlay--bottom world-legend">
+            <span className="legend-height">
+              Height
+              <Segmented
+                label="Pillar height shows"
+                size="sm"
+                value={measure}
+                onChange={setMeasure}
+                options={[
+                  { id: 'before', label: 'Before tax' },
+                  { id: 'after', label: 'After tax' },
+                ]}
+              />
+            </span>
+            <span>
+              <i className="swatch swatch--a" />
+              {firmShortName(firmA.id)} · {money(firmA.postedPriceCents)} · {territory.cellCounts[firmA.id] ?? 0} tiles
+            </span>
+            <span>
+              <i className="swatch swatch--b" />
+              {firmShortName(firmB.id)} · {money(firmB.postedPriceCents)} · {territory.cellCounts[firmB.id] ?? 0} tiles
+            </span>
+          </div>
         </div>
-        <div className="world-overlay world-overlay--top">
-          <label className="world-search">
-            <Icon name="search" size={14} />
-            <input list="world-entities" placeholder="Find a household or firm" aria-label="Find a household or firm" value={query} onChange={(event) => onSearch(event.target.value)} />
-          </label>
-          <datalist id="world-entities">{searchOptions.map((option) => <option key={option.id} value={option.label} />)}</datalist>
-          <button type="button" className="icon-button" aria-label="Reset camera" title="Reset camera" disabled={status !== 'ready'} onClick={() => runtimeRef.current && resetCamera(runtimeRef.current)}><Icon name="camera" /></button>
-        </div>
-        <div className="world-overlay world-overlay--bottom world-legend">
-          <span className="legend-height">Height
-            <Segmented label="Pillar height shows" size="sm" value={measure} onChange={setMeasure} options={[{ id: 'before', label: 'Before tax' }, { id: 'after', label: 'After tax' }]} />
-          </span>
-          <span><i className="swatch swatch--a" />{firmShortName(firmA.id)} · {money(firmA.postedPriceCents)} · {territory.cellCounts[firmA.id] ?? 0} tiles</span>
-          <span><i className="swatch swatch--b" />{firmShortName(firmB.id)} · {money(firmB.postedPriceCents)} · {territory.cellCounts[firmB.id] ?? 0} tiles</span>
-        </div>
-      </div>
 
-      {selectedId && (selectedHousehold || selectedFirm) && <aside className="inspector" aria-live="polite" aria-label="Selection details">
-        <header>
-          <h3>{entityName(selectedId)}</h3>
-          <button type="button" className="icon-button" aria-label="Close details" onClick={() => onSelect(null)}><Icon name="close" /></button>
-        </header>
-        {selectedHousehold && <HouseholdInspector state={state} householdId={selectedHousehold} industry={industry} onIndustry={onIndustry} onSelect={select} />}
-        {selectedFirm && <FirmInspector state={state} firmId={selectedFirm} linkMode={linkMode} onSelect={select} />}
-        <p className="inspector-foot">{linkMode === 'purchases' ? 'Dashed line: who this household bought from in the selected market.' : 'Green lines: employment links.'} Lines show relationships, not travel routes.</p>
-      </aside>}
-    </div>
-  </section>
+        {selectedId && (selectedHousehold || selectedFirm) && (
+          <aside className="inspector" aria-live="polite" aria-label="Selection details">
+            <header>
+              <h3>{entityName(selectedId)}</h3>
+              <button type="button" className="icon-button" aria-label="Close details" onClick={() => onSelect(null)}>
+                <Icon name="close" />
+              </button>
+            </header>
+            {selectedHousehold && (
+              <HouseholdInspector
+                state={state}
+                householdId={selectedHousehold}
+                industry={industry}
+                onIndustry={onIndustry}
+                onSelect={select}
+              />
+            )}
+            {selectedFirm && (
+              <FirmInspector state={state} firmId={selectedFirm} linkMode={linkMode} onSelect={select} />
+            )}
+            <p className="inspector-foot">
+              {linkMode === 'purchases'
+                ? 'Dashed line: who this household bought from in the selected market.'
+                : 'Green lines: employment links.'}{' '}
+              Lines show relationships, not travel routes.
+            </p>
+          </aside>
+        )}
+      </div>
+    </section>
+  )
 }

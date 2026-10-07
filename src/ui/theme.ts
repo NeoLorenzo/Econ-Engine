@@ -22,6 +22,7 @@ export const palette = {
   neutral: '#56625c',
 } as const
 
-export const firmColor = (variant: 'a' | 'b' | null) => variant === 'b' ? palette.firmB : variant === 'a' ? palette.firmA : palette.government
+export const firmColor = (variant: 'a' | 'b' | null) =>
+  variant === 'b' ? palette.firmB : variant === 'a' ? palette.firmA : palette.government
 
 export const hex = (color: string) => Number.parseInt(color.slice(1), 16)

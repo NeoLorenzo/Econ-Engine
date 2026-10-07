@@ -22,7 +22,11 @@ export function runExperiment<K extends ExperimentKind>(kind: K, seed: number): 
     population: () => {
       const result = runPopulationScaleComparison(seed)
       // The terminal states are large and unused by the view; dropping them keeps the worker hand-off cheap.
-      return { ...result, n10: { ...result.n10, terminalState: undefined as never }, n100: { ...result.n100, terminalState: undefined as never } }
+      return {
+        ...result,
+        n10: { ...result.n10, terminalState: undefined as never },
+        n100: { ...result.n100, terminalState: undefined as never },
+      }
     },
     employment: () => ({ ...runEmploymentDynamics(seed), observations: [] }),
     government: () => runGovernmentBaselineComparison(seed),
@@ -33,5 +37,9 @@ export function runExperiment<K extends ExperimentKind>(kind: K, seed: number): 
   return run[kind]() as ExperimentResults[K]
 }
 
-export interface ExperimentRequest { id: number; kind: ExperimentKind; seed: number }
+export interface ExperimentRequest {
+  id: number
+  kind: ExperimentKind
+  seed: number
+}
 export type ExperimentResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string }

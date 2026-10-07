@@ -15,19 +15,30 @@ describe('[MVP7-Wages_Profits-009]', () => {
       expect(firm.corporateProfitTaxTodayCents).toBe(firm.residualProfitTodayCents)
       expect(firm.cashCents).toBe(0)
     }
-    expect(state.government.totalReceiptsTodayCents).toBe(state.government.corporateTaxCollectedTodayCents + state.government.wealthTaxCollectedTodayCents)
+    expect(state.government.totalReceiptsTodayCents).toBe(
+      state.government.corporateTaxCollectedTodayCents + state.government.wealthTaxCollectedTodayCents,
+    )
     expect(state.government.redistributedTodayCents).toBe(state.government.totalReceiptsTodayCents)
     expect(state.government.cashCents).toBe(0)
     expect(totalMoney(state)).toBe(TOTAL_MONEY_CENTS)
-    expect(state.events.some(({ type, actorId, counterpartyId }) => type === 'CORPORATE_PROFIT_TAX_PAID' && actorId?.startsWith('firm-') && counterpartyId === 'government-1')).toBe(true)
+    expect(
+      state.events.some(
+        ({ type, actorId, counterpartyId }) =>
+          type === 'CORPORATE_PROFIT_TAX_PAID' && actorId?.startsWith('firm-') && counterpartyId === 'government-1',
+      ),
+    ).toBe(true)
   })
 
   it('allocates Transport payroll deterministically without exceeding either contract', () => {
     const first = stepSimulation(createSimulation({ seed: 123, transportCostPerTileCents: 1 }))
     const again = stepSimulation(createSimulation({ seed: 123, transportCostPerTileCents: 1 }))
     const transport = first.firms.find(({ industryId }) => industryId === 'transport')!
-    expect(first.households.map(({ wageTodayCents }) => wageTodayCents)).toEqual(again.households.map(({ wageTodayCents }) => wageTodayCents))
-    transport.employeeIds.forEach((id) => expect(first.households.find((household) => household.id === id)!.wageTodayCents).toBeLessThanOrEqual(1_000))
+    expect(first.households.map(({ wageTodayCents }) => wageTodayCents)).toEqual(
+      again.households.map(({ wageTodayCents }) => wageTodayCents),
+    )
+    transport.employeeIds.forEach((id) =>
+      expect(first.households.find((household) => household.id === id)!.wageTodayCents).toBeLessThanOrEqual(1_000),
+    )
   })
 
   it('preserves exact closure for 10,000 days and bounded interactive history', () => {

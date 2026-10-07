@@ -84,7 +84,10 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
       kind: 'household',
       x: point.x,
       z: point.z,
-      height: householdWealthHeight(measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents, targetCashCents),
+      height: householdWealthHeight(
+        measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents,
+        targetCashCents,
+      ),
     }
   })
 
@@ -92,9 +95,7 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
     if (!firm.coordinate && firm.industryId !== 'transport') {
       throw new Error(`Spatial consumer firm ${firm.id} is missing its authoritative coordinate`)
     }
-    const point = firm.coordinate
-      ? worldPoint(firm.coordinate, width, height)
-      : { x: -(width / 2) - 1.6, z: 0 }
+    const point = firm.coordinate ? worldPoint(firm.coordinate, width, height) : { x: -(width / 2) - 1.6, z: 0 }
 
     return {
       id: firm.id,
@@ -115,7 +116,10 @@ export function buildMarketTerritory(state: SimulationState, industryId: Competi
   const height = state.config.gridHeight ?? 20
   const transportRateCents = state.config.transportCostPerTileCents ?? 0
   const firms = state.firms
-    .filter((firm): firm is typeof firm & { industryId: CompetitiveIndustryId; coordinate: Coordinate } => firm.industryId === industryId && firm.coordinate !== undefined)
+    .filter(
+      (firm): firm is typeof firm & { industryId: CompetitiveIndustryId; coordinate: Coordinate } =>
+        firm.industryId === industryId && firm.coordinate !== undefined,
+    )
     .sort((a, b) => a.id.localeCompare(b.id))
 
   if (firms.length !== 2) throw new Error(`Market territory requires exactly two spatial firms for ${industryId}`)
@@ -128,8 +132,10 @@ export function buildMarketTerritory(state: SimulationState, industryId: Competi
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const coordinate = { x, y }
-      const aCost = firmA.postedPriceCents + transportQuote(coordinate, firmA.coordinate, transportRateCents).transportFeeCents
-      const bCost = firmB.postedPriceCents + transportQuote(coordinate, firmB.coordinate, transportRateCents).transportFeeCents
+      const aCost =
+        firmA.postedPriceCents + transportQuote(coordinate, firmA.coordinate, transportRateCents).transportFeeCents
+      const bCost =
+        firmB.postedPriceCents + transportQuote(coordinate, firmB.coordinate, transportRateCents).transportFeeCents
       const tie = aCost === bCost
       const owner = aCost <= bCost ? firmA : firmB
       const competingCost = owner.id === firmA.id ? bCost : aCost
