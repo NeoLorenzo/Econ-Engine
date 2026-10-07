@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterAndSortHouseholds } from '../App'
+import { filterAndSortHouseholds } from './households'
 import { DEFAULT_SEED } from '../sim/config'
 import { createSimulation, stepSimulation } from '../sim/engine'
 import { DEFAULT_SETTINGS_DRAFT, parseSimulationSettings } from './simulationSettings'

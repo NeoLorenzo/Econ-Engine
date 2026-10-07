@@ -6,6 +6,35 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-UI_Redesign-018.1] - (2026-10-07)
+
+### Observations and decisions
+
+- On day 0 every household holds $50, yet the 3D map showed visibly different pillar heights. The cause was camera perspective with a 40° field of view: nearer pillars looked taller. Height is the map's only encoding of cash, so this was misleading. The camera now uses 26° from further away.
+- Post-redistribution cash is nearly uniform under the canonical Government, so a map sized by it shows almost nothing. Defaulting to pre-tax cash shows where the market alone left people; the toggle shows Government's equalizing effect.
+- The household ledger depends on three identities verified across 80 simulated days with no exceptions: opening = closing − net change; opening + wage − spending = pre-tax cash; pre-tax − tax + transfer = closing. These are now covered by tests, so the ledger will flag any future accounting drift.
+- The 2D market map makes the delivered-cost rule visible: dots on Firm A's side are nearly all teal, and the exceptions (stockouts, budget limits) stand out.
+
+## [MVP8-UI_Redesign-018] - (2026-10-07)
+
+### Problem
+
+An audit of the observer found that it read as a lab notebook, not an instrument. Five tabs split content arbitrarily: Overview and Government repeated the same two charts, and the 3D map was buried under a 100-row table. Ticket codes and methodology prose were the primary copy. The UI had 15 font sizes, mostly 9–13px, with secondary text below AA contrast. One accent colour meant brand, selection, Food Firm A, and households at once. Two reset buttons behaved differently from what their note claimed, and experiments froze the page for about 2.7s.
+
+### Decisions
+
+- **Show the economy, not the ledger.** Probing a canonical run showed that by the end of each day Government returns all cash to households and firms hold nothing, so end-of-day stocks are nearly flat. The informative views are the **within-day flows** (spending, wages, profit tax, wealth tax, transfers) and the **pre-redistribution distribution**. The money-circuit diagram and the before/after distribution chart were designed around that observation.
+- **Progressive disclosure.** Headline numbers are visible; explanations live in ⓘ tooltips; raw events, per-household research tables, and legacy diagnostics sit behind disclosures. Nothing was deleted from the observable surface except duplicated views.
+- **One colour language.** Firm A/B keep the same two colours in every market, so "A vs B" reads the same everywhere and industries need no colours of their own. Lime is reserved for the primary action and the current selection.
+- **Unified map state.** The territory industry and the inspected purchase industry were independent and could disagree; there is now one selector, and selecting a firm moves to its market.
+- Experiments run in a Web Worker; large unused payloads (`observations`, terminal states) are dropped before the hand-off.
+
+### Trade-offs and open questions
+
+- Three.js still loads from a CDN at runtime, so the map needs a network connection; the rest of the UI works without it.
+- Household pillar height still encodes post-fiscal cash, which is close to uniform under an equalizing Government. A toggle to show pre-fiscal cash on the map might be more revealing; it was left out to keep the map controls minimal.
+- The highlight feed summarizes price-test outcomes, policy trials, and missed purchases; other event types remain available only in the full log.
+
 ## [MVP8-Settings_Validation-017] - (2026-10-07)
 
 ### Problem and decision

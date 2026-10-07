@@ -1,29 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { IndustryId, SimulationState } from '../sim/types'
-import { buildMarketTerritory, buildWorldEntities, getEmploymentNetworkObservation, getHouseholdChoiceObservation, type CompetitiveIndustryId, type EmploymentNetworkObservation, type HouseholdChoiceObservation } from './worldViewModel'
+import type { SimulationState } from '../sim/types'
+import { Icon, InfoTip, Segmented } from './components'
+import { CONSUMER_INDUSTRIES, householdCashSteps } from './economyModel'
+import { entityName, firmName, firmShortName, firmVariant, householdName, INDUSTRY_NAMES, money } from './format'
+import { hex, palette } from './theme'
+import { buildMarketTerritory, buildWorldEntities, getEmploymentNetworkObservation, getHouseholdChoiceObservation, type CashMeasure, type CompetitiveIndustryId, type EmploymentNetworkObservation, type HouseholdChoiceObservation } from './worldViewModel'
 
 const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm'
 
-const INDUSTRY_COLORS: Record<CompetitiveIndustryId, { a: number; b: number }> = {
-  food: { a: 0xdeff75, b: 0xf09a63 },
-  utilities: { a: 0x65bfa1, b: 0x63b9d5 },
-  healthcare: { a: 0xd6a866, b: 0xb997e8 },
-  entertainment: { a: 0xd47c9b, b: 0xf09a63 },
+type LinkMode = 'purchases' | 'jobs'
+
+// A narrow field of view keeps perspective from exaggerating near pillars, so height reads as cash.
+const FIELD_OF_VIEW = 26
+const MIN_RADIUS = 14
+const MAX_RADIUS = 95
+
+const COLORS = {
+  background: hex(palette.bg),
+  ground: 0x0f1412,
+  gridMajor: 0x2a332f,
+  gridMinor: 0x1a201d,
+  household: hex(palette.household),
+  firmA: hex(palette.firmA),
+  firmB: hex(palette.firmB),
+  idleFirm: 0x46514c,
+  transport: hex(palette.government),
+  selected: hex(palette.accent),
+  jobs: hex(palette.positive),
 }
 
-const TRANSPORT_COLOR = 0x97a3ff
-type RelationshipMode = 'purchases' | 'employment'
-
-function firmDisplayColor(industryId: IndustryId, variant: 'a' | 'b' = 'a') {
-  return industryId === 'transport' ? TRANSPORT_COLOR : INDUSTRY_COLORS[industryId][variant]
-}
-
-const COMPETITIVE_INDUSTRIES: { id: CompetitiveIndustryId; label: string }[] = [
-  { id: 'food', label: 'Food' },
-  { id: 'utilities', label: 'Utilities' },
-  { id: 'healthcare', label: 'Healthcare' },
-  { id: 'entertainment', label: 'Entertainment' },
-]
+const variantColor = (variant: 'a' | 'b') => variant === 'a' ? COLORS.firmA : COLORS.firmB
 
 type Runtime = {
   THREE: any
@@ -33,23 +39,25 @@ type Runtime = {
   entities: Map<string, any>
   territoryMeshes: any[]
   territoryKey: string | null
-  choiceLine: any | null
-  choiceLineKey: string | null
-  employmentLines: any[]
-  employmentKey: string | null
+  links: any[]
+  linksKey: string | null
   ground: any | null
   grid: any | null
   gridWidth: number
   gridHeight: number
   frame: number | null
+  /** Set whenever the scene changes; the render loop only draws dirty frames. */
+  dirty: boolean
   resizeObserver: ResizeObserver
   disposeControls: () => void
-  controls: {
-    target: any
-    radius: number
-    theta: number
-    phi: number
-  }
+  controls: { target: any; radius: number; theta: number; phi: number }
+}
+
+interface SceneView {
+  selectedId: string | null
+  industry: CompetitiveIndustryId
+  linkMode: LinkMode
+  measure: CashMeasure
 }
 
 function disposeObject(object: any) {
@@ -67,13 +75,14 @@ function applyCamera(runtime: Runtime) {
     controls.target.z + controls.radius * sinPhi * Math.cos(controls.theta),
   )
   camera.lookAt(controls.target)
+  runtime.dirty = true
 }
 
 function resetCamera(runtime: Runtime) {
   runtime.controls.target.set(0, 0, 0)
-  runtime.controls.radius = 28
+  runtime.controls.radius = 46
   runtime.controls.theta = Math.PI / 4
-  runtime.controls.phi = 0.92
+  runtime.controls.phi = 0.88
   applyCamera(runtime)
 }
 
@@ -81,47 +90,37 @@ function syncGround(runtime: Runtime, state: SimulationState) {
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
   if (runtime.gridWidth === width && runtime.gridHeight === height) return
-
-  if (runtime.ground) {
-    runtime.scene.remove(runtime.ground)
-    disposeObject(runtime.ground)
+  for (const object of [runtime.ground, runtime.grid]) {
+    if (!object) continue
+    runtime.scene.remove(object)
+    disposeObject(object)
   }
-  if (runtime.grid) {
-    runtime.scene.remove(runtime.grid)
-    disposeObject(runtime.grid)
-  }
-
-  const ground = new runtime.THREE.Mesh(
-    new runtime.THREE.PlaneGeometry(width, height),
-    new runtime.THREE.MeshStandardMaterial({ color: 0x0d1411, roughness: 0.95, metalness: 0 }),
-  )
+  const THREE = runtime.THREE
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 1, metalness: 0 }))
   ground.rotation.x = -Math.PI / 2
   ground.position.y = -0.02
   ground.receiveShadow = true
   runtime.scene.add(ground)
-
-  const grid = new runtime.THREE.GridHelper(Math.max(width, height), Math.max(width, height), 0x52605a, 0x27322d)
+  const grid = new THREE.GridHelper(Math.max(width, height), Math.max(width, height), COLORS.gridMajor, COLORS.gridMinor)
   grid.position.y = 0.01
   runtime.scene.add(grid)
-
-  runtime.ground = ground
-  runtime.grid = grid
-  runtime.gridWidth = width
-  runtime.gridHeight = height
+  Object.assign(runtime, { ground, grid, gridWidth: width, gridHeight: height })
 }
 
-function syncEntities(
-  runtime: Runtime,
-  state: SimulationState,
-  selectedId: string | null,
-  territoryIndustry: CompetitiveIndustryId,
-  chosenFirmId: string | null,
-  employment: EmploymentNetworkObservation | null,
-  relationshipMode: RelationshipMode,
-) {
-  const descriptors = buildWorldEntities(state)
-  const liveIds = new Set(descriptors.map(({ id }) => id))
+function selectedHouseholdChoice(state: SimulationState, selectedId: string | null, industry: CompetitiveIndustryId) {
+  if (!selectedId || !state.households.some(({ id }) => id === selectedId)) return null
+  return getHouseholdChoiceObservation(state, selectedId, industry)
+}
 
+function selectedEmployment(state: SimulationState, selectedId: string | null): EmploymentNetworkObservation | null {
+  if (!selectedId) return null
+  if (!state.households.some(({ id }) => id === selectedId) && !state.firms.some(({ id }) => id === selectedId)) return null
+  return getEmploymentNetworkObservation(state, selectedId)
+}
+
+function syncEntities(runtime: Runtime, state: SimulationState, view: SceneView, related: Set<string>) {
+  const descriptors = buildWorldEntities(state, view.measure)
+  const liveIds = new Set(descriptors.map(({ id }) => id))
   for (const [id, mesh] of runtime.entities) {
     if (liveIds.has(id)) continue
     runtime.scene.remove(mesh)
@@ -131,91 +130,60 @@ function syncEntities(
 
   for (const descriptor of descriptors) {
     let mesh = runtime.entities.get(descriptor.id)
+    const isHousehold = descriptor.kind === 'household'
     if (!mesh) {
-      const isHousehold = descriptor.kind === 'household'
-      const color = isHousehold
-        ? 0xdfff74
-        : firmDisplayColor(descriptor.industryId!, descriptor.firmVariant ?? 'a')
       mesh = new runtime.THREE.Mesh(
-        new runtime.THREE.BoxGeometry(isHousehold ? 0.46 : 0.82, 1, isHousehold ? 0.46 : 0.82),
-        new runtime.THREE.MeshStandardMaterial({
-          color,
-          roughness: isHousehold ? 0.7 : 0.48,
-          metalness: isHousehold ? 0.05 : 0.12,
-        }),
+        new runtime.THREE.BoxGeometry(isHousehold ? 0.46 : 0.86, 1, isHousehold ? 0.46 : 0.86),
+        new runtime.THREE.MeshStandardMaterial({ roughness: isHousehold ? 0.75 : 0.45, metalness: isHousehold ? 0.02 : 0.1 }),
       )
       mesh.userData.entityId = descriptor.id
-      mesh.userData.kind = descriptor.kind
       mesh.castShadow = true
       mesh.receiveShadow = true
       runtime.scene.add(mesh)
       runtime.entities.set(descriptor.id, mesh)
     }
 
-    const selected = descriptor.id === selectedId
-    const chosenFirm = relationshipMode === 'purchases' && descriptor.id === chosenFirmId
-    const employmentLinked = relationshipMode === 'employment' && employment !== null
-      && (descriptor.id === employment.firmId || employment.workerIds.includes(descriptor.id))
-    const territoryFirm = descriptor.kind === 'firm' && descriptor.industryId === territoryIndustry
-    const visualHeight = descriptor.height
-    const horizontalScale = selected ? 1.22 : employmentLinked ? 1.18 : chosenFirm ? 1.18 : territoryFirm ? 1.1 : 1
-    mesh.position.set(descriptor.x, visualHeight / 2, descriptor.z)
-    mesh.scale.set(horizontalScale, visualHeight, horizontalScale)
-    const entityColor = descriptor.kind === 'firm' && descriptor.industryId
-      ? firmDisplayColor(descriptor.industryId, descriptor.firmVariant ?? 'a')
-      : 0x78d1a8
-    mesh.material.emissive?.setHex(selected ? 0x596528 : employmentLinked ? 0x47735f : chosenFirm ? entityColor : territoryFirm ? entityColor : 0x000000)
-    mesh.material.emissiveIntensity = selected ? 0.75 : employmentLinked ? 0.75 : chosenFirm ? 0.8 : territoryFirm ? 0.22 : 0
+    const selected = descriptor.id === view.selectedId
+    const linked = related.has(descriptor.id)
+    const inFocus = descriptor.industryId === view.industry
+    let color = COLORS.household
+    if (!isHousehold) color = descriptor.industryId === 'transport' ? COLORS.transport : inFocus ? variantColor(descriptor.firmVariant ?? 'a') : COLORS.idleFirm
+    mesh.material.color.setHex(color)
+    const scale = selected ? 1.25 : linked ? 1.15 : 1
+    mesh.position.set(descriptor.x, descriptor.height / 2, descriptor.z)
+    mesh.scale.set(scale, descriptor.height, scale)
+    mesh.material.emissive.setHex(selected ? COLORS.selected : linked || (inFocus && !isHousehold) ? color : 0x000000)
+    mesh.material.emissiveIntensity = selected ? 0.55 : linked ? 0.45 : inFocus && !isHousehold ? 0.18 : 0
   }
 }
 
-function territoryRenderKey(state: SimulationState, industryId: CompetitiveIndustryId) {
-  const firms = state.firms
-    .filter((firm) => firm.industryId === industryId && firm.coordinate)
-    .sort((a, b) => a.id.localeCompare(b.id))
-  return [
-    industryId,
-    state.config.gridWidth ?? 20,
-    state.config.gridHeight ?? 20,
-    state.config.transportCostPerTileCents ?? 0,
-    ...firms.flatMap((firm) => [firm.id, firm.postedPriceCents, firm.coordinate!.x, firm.coordinate!.y]),
-  ].join('|')
+function territoryKey(state: SimulationState, industry: CompetitiveIndustryId) {
+  return [industry, state.config.gridWidth ?? 20, state.config.gridHeight ?? 20, state.config.transportCostPerTileCents ?? 0,
+    ...state.firms.filter((firm) => firm.industryId === industry).flatMap((firm) => [firm.id, firm.postedPriceCents, firm.coordinate?.x, firm.coordinate?.y])].join('|')
 }
 
-function clearTerritory(runtime: Runtime) {
+function syncTerritory(runtime: Runtime, state: SimulationState, industry: CompetitiveIndustryId) {
+  const key = territoryKey(state, industry)
+  if (runtime.territoryKey === key) return
   for (const mesh of runtime.territoryMeshes) {
     runtime.scene.remove(mesh)
     disposeObject(mesh)
   }
   runtime.territoryMeshes = []
-}
-
-function syncTerritory(runtime: Runtime, state: SimulationState, industryId: CompetitiveIndustryId) {
-  const nextKey = territoryRenderKey(state, industryId)
-  if (runtime.territoryKey === nextKey) return
-
-  clearTerritory(runtime)
-  const territory = buildMarketTerritory(state, industryId)
   const THREE = runtime.THREE
-
+  const territory = buildMarketTerritory(state, industry)
   for (const variant of ['a', 'b'] as const) {
     const cells = territory.cells.filter((cell) => cell.ownerVariant === variant)
     if (!cells.length) continue
-
-    const geometry = new THREE.BoxGeometry(0.94, 0.025, 0.94)
-    const material = new THREE.MeshStandardMaterial({
-      color: INDUSTRY_COLORS[industryId][variant],
-      transparent: true,
-      opacity: 0.3,
-      roughness: 0.95,
-      metalness: 0,
-      depthWrite: false,
-    })
-    const mesh = new THREE.InstancedMesh(geometry, material, cells.length)
+    const mesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.94, 0.02, 0.94),
+      new THREE.MeshStandardMaterial({ color: variantColor(variant), transparent: true, opacity: 0.2, roughness: 1, metalness: 0, depthWrite: false }),
+      cells.length,
+    )
     mesh.renderOrder = -1
     const dummy = new THREE.Object3D()
     cells.forEach((cell, index) => {
-      dummy.position.set(cell.x, 0.0125, cell.z)
+      dummy.position.set(cell.x, 0.012, cell.z)
       dummy.updateMatrix()
       mesh.setMatrixAt(index, dummy.matrix)
     })
@@ -223,143 +191,59 @@ function syncTerritory(runtime: Runtime, state: SimulationState, industryId: Com
     runtime.scene.add(mesh)
     runtime.territoryMeshes.push(mesh)
   }
-
-  runtime.territoryKey = nextKey
+  runtime.territoryKey = key
 }
 
-function clearChoiceConnection(runtime: Runtime) {
-  if (!runtime.choiceLine) {
-    runtime.choiceLineKey = null
-    return
-  }
-  runtime.scene.remove(runtime.choiceLine)
-  disposeObject(runtime.choiceLine)
-  runtime.choiceLine = null
-  runtime.choiceLineKey = null
-}
-
-function selectedHouseholdChoice(
-  state: SimulationState,
-  selectedId: string | null,
-  industryId: CompetitiveIndustryId,
-): HouseholdChoiceObservation | null {
-  if (!selectedId || !state.households.some(({ id }) => id === selectedId)) return null
-  return getHouseholdChoiceObservation(state, selectedId, industryId)
-}
-
-function syncChoiceConnection(
-  runtime: Runtime,
-  state: SimulationState,
-  selectedId: string | null,
-  industryId: CompetitiveIndustryId,
-) {
-  const choice = selectedHouseholdChoice(state, selectedId, industryId)
-  if (!choice?.chosenFirmId) {
-    clearChoiceConnection(runtime)
-    return
-  }
-
-  const householdMesh = runtime.entities.get(choice.householdId)
-  const firmMesh = runtime.entities.get(choice.chosenFirmId)
-  if (!householdMesh || !firmMesh) {
-    clearChoiceConnection(runtime)
-    return
-  }
-
-  const nextKey = [
-    choice.householdId,
-    industryId,
-    choice.chosenFirmId,
-    householdMesh.position.x,
-    householdMesh.position.z,
-    firmMesh.position.x,
-    firmMesh.position.z,
-  ].join('|')
-  if (runtime.choiceLineKey === nextKey) return
-
-  clearChoiceConnection(runtime)
-  const THREE = runtime.THREE
-  const start = new THREE.Vector3(householdMesh.position.x, Math.max(0.45, householdMesh.position.y + 0.35), householdMesh.position.z)
-  const end = new THREE.Vector3(firmMesh.position.x, Math.max(0.75, firmMesh.position.y + 0.45), firmMesh.position.z)
-  const geometry = new THREE.BufferGeometry().setFromPoints([start, end])
-  const variant = choice.chosenFirmId.endsWith('-b') ? 'b' : 'a'
-  const material = new THREE.LineDashedMaterial({
-    color: INDUSTRY_COLORS[industryId][variant],
-    dashSize: 0.34,
-    gapSize: 0.2,
-    transparent: true,
-    opacity: 0.95,
-  })
-  const line = new THREE.Line(geometry, material)
-  line.computeLineDistances()
-  line.renderOrder = 4
-  runtime.scene.add(line)
-  runtime.choiceLine = line
-  runtime.choiceLineKey = nextKey
-}
-
-function clearEmploymentConnections(runtime: Runtime) {
-  for (const line of runtime.employmentLines) {
+function clearLinks(runtime: Runtime) {
+  for (const line of runtime.links) {
     runtime.scene.remove(line)
     disposeObject(line)
   }
-  runtime.employmentLines = []
-  runtime.employmentKey = null
+  runtime.links = []
+  runtime.linksKey = null
 }
 
-function selectedEmploymentObservation(
-  state: SimulationState,
-  selectedId: string | null,
-): EmploymentNetworkObservation | null {
-  if (!selectedId) return null
-  if (!state.households.some(({ id }) => id === selectedId) && !state.firms.some(({ id }) => id === selectedId)) return null
-  return getEmploymentNetworkObservation(state, selectedId)
-}
-
-function syncEmploymentConnections(
-  runtime: Runtime,
-  state: SimulationState,
-  selectedId: string | null,
-) {
-  const employment = selectedEmploymentObservation(state, selectedId)
-  if (!employment) {
-    clearEmploymentConnections(runtime)
-    return
-  }
-
-  const firmMesh = runtime.entities.get(employment.firmId)
-  if (!firmMesh) {
-    clearEmploymentConnections(runtime)
-    return
-  }
-
-  const workerMeshes = employment.workerIds
-    .map((workerId) => [workerId, runtime.entities.get(workerId)] as const)
-    .filter((entry): entry is readonly [string, any] => Boolean(entry[1]))
-
-  const nextKey = [
-    employment.selectedEntityId,
-    employment.firmId,
-    ...workerMeshes.flatMap(([workerId, mesh]) => [workerId, mesh.position.x, mesh.position.y, mesh.position.z]),
-  ].join('|')
-  if (runtime.employmentKey === nextKey) return
-
-  clearEmploymentConnections(runtime)
+/** Draws schematic relationship lines: the selected household's supplier, or an employer and its workers. */
+function syncLinks(runtime: Runtime, state: SimulationState, view: SceneView) {
   const THREE = runtime.THREE
-  for (const [, workerMesh] of workerMeshes) {
-    const start = new THREE.Vector3(firmMesh.position.x, Math.max(0.75, firmMesh.position.y + 0.4), firmMesh.position.z)
-    const end = new THREE.Vector3(workerMesh.position.x, Math.max(0.4, workerMesh.position.y + 0.3), workerMesh.position.z)
-    const geometry = new THREE.BufferGeometry().setFromPoints([start, end])
-    const material = new THREE.LineBasicMaterial({ color: 0x78d1a8, transparent: true, opacity: 0.68 })
+  const segments: { from: any; to: any; color: number; dashed: boolean }[] = []
+  if (view.linkMode === 'purchases') {
+    const choice = selectedHouseholdChoice(state, view.selectedId, view.industry)
+    const household = choice && runtime.entities.get(choice.householdId)
+    const firm = choice?.chosenFirmId ? runtime.entities.get(choice.chosenFirmId) : null
+    if (household && firm) segments.push({ from: household, to: firm, color: variantColor(firmVariant(choice!.chosenFirmId!) ?? 'a'), dashed: true })
+  } else {
+    const employment = selectedEmployment(state, view.selectedId)
+    const firm = employment && runtime.entities.get(employment.firmId)
+    if (employment && firm) for (const workerId of employment.workerIds) {
+      const worker = runtime.entities.get(workerId)
+      if (worker) segments.push({ from: firm, to: worker, color: COLORS.jobs, dashed: false })
+    }
+  }
+
+  const key = segments.map(({ from, to }) => [from.userData.entityId, to.userData.entityId, from.position.y, to.position.y].join(':')).join('|') + view.linkMode
+  if (runtime.linksKey === key) return
+  clearLinks(runtime)
+  for (const { from, to, color, dashed } of segments) {
+    const start = new THREE.Vector3(from.position.x, from.position.y * 2 + 0.25, from.position.z)
+    const end = new THREE.Vector3(to.position.x, to.position.y * 2 + 0.25, to.position.z)
+    const mid = start.clone().lerp(end, 0.5)
+    mid.y = Math.max(start.y, end.y) + start.distanceTo(end) * 0.18
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end)
+    const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(32))
+    const material = dashed
+      ? new THREE.LineDashedMaterial({ color, dashSize: 0.32, gapSize: 0.18, transparent: true, opacity: 0.95 })
+      : new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 })
     const line = new THREE.Line(geometry, material)
+    if (dashed) line.computeLineDistances()
     line.renderOrder = 4
     runtime.scene.add(line)
-    runtime.employmentLines.push(line)
+    runtime.links.push(line)
   }
-  runtime.employmentKey = nextKey
+  runtime.linksKey = key
 }
 
-function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) => void) {
+function attachControls(runtime: Runtime, onSelect: (id: string | null) => void, onHover: (id: string | null, x: number, y: number) => void) {
   const canvas = runtime.renderer.domElement
   const THREE = runtime.THREE
   const raycaster = new THREE.Raycaster()
@@ -370,6 +254,15 @@ function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) =>
   let lastX = 0
   let lastY = 0
 
+  const pick = (event: PointerEvent) => {
+    const rect = canvas.getBoundingClientRect()
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+    raycaster.setFromCamera(pointer, runtime.camera)
+    const hit = raycaster.intersectObjects(Array.from(runtime.entities.values()), false)[0]
+    return { id: (hit?.object?.userData?.entityId as string | undefined) ?? null, x: event.clientX - rect.left, y: event.clientY - rect.top }
+  }
+
   const clampTarget = () => {
     const xBound = Math.max(2, runtime.gridWidth / 2)
     const zBound = Math.max(2, runtime.gridHeight / 2)
@@ -377,7 +270,7 @@ function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) =>
     runtime.controls.target.z = Math.max(-zBound, Math.min(zBound, runtime.controls.target.z))
   }
 
-  const handlePointerDown = (event: PointerEvent) => {
+  const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0 && event.button !== 2) return
     dragging = true
     moved = 0
@@ -387,14 +280,20 @@ function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) =>
     canvas.setPointerCapture(event.pointerId)
   }
 
-  const handlePointerMove = (event: PointerEvent) => {
-    if (!dragging) return
+  const onPointerMove = (event: PointerEvent) => {
+    if (!dragging) {
+      const { id, x, y } = pick(event)
+      canvas.style.cursor = id ? 'pointer' : 'grab'
+      onHover(id, x, y)
+      return
+    }
     const dx = event.clientX - lastX
     const dy = event.clientY - lastY
     moved += Math.abs(dx) + Math.abs(dy)
     lastX = event.clientX
     lastY = event.clientY
-
+    onHover(null, 0, 0)
+    canvas.style.cursor = 'grabbing'
     if (mode === 'orbit') {
       runtime.controls.theta -= dx * 0.009
       runtime.controls.phi = Math.max(0.26, Math.min(1.46, runtime.controls.phi + dy * 0.009))
@@ -413,229 +312,152 @@ function attachCameraControls(runtime: Runtime, onSelect: (id: string | null) =>
     applyCamera(runtime)
   }
 
-  const pickEntity = (event: PointerEvent) => {
-    const rect = canvas.getBoundingClientRect()
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-    raycaster.setFromCamera(pointer, runtime.camera)
-    const hit = raycaster.intersectObjects(Array.from(runtime.entities.values()), false)[0]
-    onSelect(hit?.object?.userData?.entityId ?? null)
-  }
-
-  const handlePointerUp = (event: PointerEvent) => {
+  const onPointerUp = (event: PointerEvent) => {
     if (!dragging) return
     dragging = false
+    canvas.style.cursor = 'grab'
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
-    if (moved < 6 && event.button === 0) pickEntity(event)
+    if (moved < 6 && event.button === 0) onSelect(pick(event).id)
   }
 
-  const handleWheel = (event: WheelEvent) => {
+  const onPointerLeave = () => onHover(null, 0, 0)
+
+  const onWheel = (event: WheelEvent) => {
     event.preventDefault()
-    runtime.controls.radius = Math.max(8, Math.min(62, runtime.controls.radius * Math.exp(event.deltaY * 0.001)))
+    runtime.controls.radius = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, runtime.controls.radius * Math.exp(event.deltaY * 0.001)))
     applyCamera(runtime)
   }
 
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === '+' || event.key === '=') runtime.controls.radius = Math.max(8, runtime.controls.radius * 0.9)
-    else if (event.key === '-') runtime.controls.radius = Math.min(62, runtime.controls.radius * 1.1)
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === '+' || event.key === '=') runtime.controls.radius = Math.max(MIN_RADIUS, runtime.controls.radius * 0.9)
+    else if (event.key === '-') runtime.controls.radius = Math.min(MAX_RADIUS, runtime.controls.radius * 1.1)
     else if (event.key === 'ArrowLeft') runtime.controls.theta += 0.12
     else if (event.key === 'ArrowRight') runtime.controls.theta -= 0.12
     else if (event.key === 'ArrowUp') runtime.controls.phi = Math.max(0.26, runtime.controls.phi - 0.08)
     else if (event.key === 'ArrowDown') runtime.controls.phi = Math.min(1.46, runtime.controls.phi + 0.08)
+    else if (event.key === 'Escape') onSelect(null)
     else return
     event.preventDefault()
     applyCamera(runtime)
   }
 
   const preventMenu = (event: MouseEvent) => event.preventDefault()
-  canvas.addEventListener('pointerdown', handlePointerDown)
-  canvas.addEventListener('pointermove', handlePointerMove)
-  canvas.addEventListener('pointerup', handlePointerUp)
-  canvas.addEventListener('pointercancel', handlePointerUp)
-  canvas.addEventListener('wheel', handleWheel, { passive: false })
-  canvas.addEventListener('keydown', handleKeyDown)
-  canvas.addEventListener('contextmenu', preventMenu)
-
-  return () => {
-    canvas.removeEventListener('pointerdown', handlePointerDown)
-    canvas.removeEventListener('pointermove', handlePointerMove)
-    canvas.removeEventListener('pointerup', handlePointerUp)
-    canvas.removeEventListener('pointercancel', handlePointerUp)
-    canvas.removeEventListener('wheel', handleWheel)
-    canvas.removeEventListener('keydown', handleKeyDown)
-    canvas.removeEventListener('contextmenu', preventMenu)
-  }
+  const listeners: [string, any, any?][] = [
+    ['pointerdown', onPointerDown], ['pointermove', onPointerMove], ['pointerup', onPointerUp], ['pointercancel', onPointerUp],
+    ['pointerleave', onPointerLeave], ['wheel', onWheel, { passive: false }], ['keydown', onKeyDown], ['contextmenu', preventMenu],
+  ]
+  for (const [type, handler, options] of listeners) canvas.addEventListener(type, handler, options)
+  canvas.style.cursor = 'grab'
+  return () => { for (const [type, handler] of listeners) canvas.removeEventListener(type, handler) }
 }
 
-function displayMoney(cents: number) {
-  return (cents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })
+function outcomeLabel(outcome: HouseholdChoiceObservation['outcome']) {
+  if (outcome === 'purchased') return 'Bought'
+  if (outcome === 'insufficient_funds') return "Couldn't afford"
+  if (outcome === 'stockout') return 'Sold out'
+  return 'Not yet'
 }
 
-function HouseholdDetails({ household }: { household: SimulationState['households'][number] }) {
-  return <dl className="world-inspector-data">
-    <div><dt>Coordinate</dt><dd>({household.coordinate.x}, {household.coordinate.y})</dd></div>
-    <div><dt>Current cash</dt><dd>{displayMoney(household.postFiscalCashCents)}</dd></div>
-    <div><dt>Employer</dt><dd>{household.employerFirmId.replace('firm-', '')}</dd></div>
-    <div><dt>Contractual wage</dt><dd>{displayMoney(household.contractualWageTodayCents)}</dd></div>
-    <div><dt>Wage paid today</dt><dd>{displayMoney(household.wageTodayCents)}</dd></div>
-    <div><dt>Unpaid wage</dt><dd>{displayMoney(household.unpaidWageTodayCents)}</dd></div>
-    <div><dt>Cumulative wages</dt><dd>{displayMoney(household.cumulativeWagesCents)}</dd></div>
-    <div><dt>Tax today</dt><dd>{displayMoney(household.taxPaidTodayCents)}</dd></div>
-    <div><dt>Transfer today</dt><dd>{displayMoney(household.transferReceivedTodayCents)}</dd></div>
-  </dl>
-}
-
-function FirmDetails({ firm }: { firm: SimulationState['firms'][number] }) {
-  return <dl className="world-inspector-data">
-    <div><dt>Industry</dt><dd>{firm.industryId}</dd></div>
-    <div><dt>Coordinate</dt><dd>{firm.coordinate ? `(${firm.coordinate.x}, ${firm.coordinate.y})` : '—'}</dd></div>
-    <div><dt>Posted price</dt><dd>{displayMoney(firm.postedPriceCents)}</dd></div>
-    <div><dt>Employees</dt><dd>{firm.employeeIds.length}</dd></div>
-    <div><dt>Productivity / worker</dt><dd>{firm.productivityPerWorker ?? 'Service capacity unconstrained'}</dd></div>
-    <div><dt>Units produced today</dt><dd>{firm.industryId === 'transport' ? '—' : firm.unitsProducedToday}</dd></div>
-    <div><dt>Contractual payroll</dt><dd>{displayMoney(firm.contractualPayrollTodayCents)}</dd></div>
-    <div><dt>Wages paid</dt><dd>{displayMoney(firm.wagesPaidTodayCents)}</dd></div>
-    <div><dt>Unpaid wages</dt><dd>{displayMoney(firm.unpaidWagesTodayCents)}</dd></div>
-    <div><dt>Payroll fulfilled</dt><dd>{(firm.payrollFulfillmentRate * 100).toFixed(1)}%</dd></div>
-    <div><dt>Mean wage</dt><dd>{displayMoney(firm.meanWageTodayCents)}</dd></div>
-    <div><dt>Residual profit</dt><dd>{displayMoney(firm.residualProfitTodayCents)}</dd></div>
-  </dl>
-}
-
-function EmploymentDetails({
-  state,
-  employment,
-  selectedFirm,
-  selectedHousehold,
-  onSelect,
-}: {
+function HouseholdInspector({ state, householdId, industry, onIndustry, onSelect }: {
   state: SimulationState
-  employment: EmploymentNetworkObservation
-  selectedFirm: SimulationState['firms'][number] | null
-  selectedHousehold: SimulationState['households'][number] | null
+  householdId: string
+  industry: CompetitiveIndustryId
+  onIndustry: (industry: CompetitiveIndustryId) => void
   onSelect: (id: string) => void
 }) {
-  const employer = state.firms.find(({ id }) => id === employment.firmId)!
-  return <section className="employment-inspector">
-    <div className="choice-heading">
-      <span>Employment network</span>
-      <strong className="employment-count">{selectedFirm ? `${employment.workerIds.length} workers` : 'Employer link'}</strong>
-    </div>
-    <p className="choice-note">
-      {selectedFirm
-        ? `${employer.id.replace('firm-', '')} is connected to its authoritative employeeIds. Select a worker to inspect that household.`
-        : `${selectedHousehold?.id.replace('household-', 'Household ')} is connected only to its authoritative employer, ${employer.id.replace('firm-', '')}.`}
-    </p>
-    {selectedFirm && <div className="employment-workers" aria-label={`Workers employed by ${selectedFirm.id}`}>
-      {employment.workerIds.map((workerId) => {
-        const worker = state.households.find(({ id }) => id === workerId)!
-        return <button type="button" key={workerId} onClick={() => onSelect(workerId)}>
-          <strong>{workerId.replace('household-', 'H')}</strong>
-          <span>{displayMoney(worker.wageTodayCents)} wage</span>
-          <small>{displayMoney(worker.postFiscalCashCents)} cash</small>
+  const household = state.households.find(({ id }) => id === householdId)!
+  const choices = CONSUMER_INDUSTRIES.map((id) => getHouseholdChoiceObservation(state, householdId, id))
+  const active = choices.find((choice) => choice.industryId === industry)!
+  const unpaid = household.unpaidWageTodayCents
+  return <>
+    <p className="inspector-sub">Works at <button type="button" className="link" onClick={() => onSelect(household.employerFirmId)}>{firmName(household.employerFirmId)}</button></p>
+    <h4>Where its cash went today</h4>
+    <ol className="cash-steps">
+      {householdCashSteps(household).map((step) => <li key={step.label} className={`cash-step cash-step--${step.kind}`}>
+        <span>{step.label}{step.label === 'Wage' && unpaid > 0 && <small> ({money(unpaid)} short)</small>}</span>
+        <span className="num">{step.kind === 'in' ? '+' : step.kind === 'out' ? '−' : ''}{money(step.amountCents)}</span>
+      </li>)}
+    </ol>
+    <h4>Today's purchases</h4>
+    <ul className="purchase-list">
+      {choices.map((choice) => <li key={choice.industryId}>
+        <button type="button" aria-pressed={choice.industryId === industry} onClick={() => onIndustry(choice.industryId)}>
+          <span>{INDUSTRY_NAMES[choice.industryId]}</span>
+          <span className={`outcome outcome--${choice.outcome}`}>{choice.chosenFirmId ? firmShortName(choice.chosenFirmId) : outcomeLabel(choice.outcome)}</span>
+          <span className="num">{choice.deliveredCostCents === null ? '—' : money(choice.deliveredCostCents)}</span>
         </button>
-      })}
-    </div>}
-    <p className="choice-note">Green lines are schematic employment relationships, not commuting or travel routes.</p>
-  </section>
+      </li>)}
+    </ul>
+    {active.chosenFirmId && <p className="inspector-note">
+      {INDUSTRY_NAMES[industry]}: paid {money(active.productPriceCents ?? 0)} + {money(active.transportFeeCents ?? 0)} transport for a {active.roundTripTiles}-tile round trip to {firmShortName(active.chosenFirmId)}. Firm A is {active.distanceToA} tiles away, Firm B {active.distanceToB}.
+    </p>}
+  </>
 }
 
-function choiceOutcomeLabel(outcome: HouseholdChoiceObservation['outcome']) {
-  if (outcome === 'purchased') return 'Purchased'
-  if (outcome === 'insufficient_funds') return 'Insufficient funds'
-  if (outcome === 'stockout') return 'Stockout'
-  return 'Not processed'
-}
-
-function formatChoiceMoney(cents: number | null) {
-  return cents === null ? '—' : displayMoney(cents)
-}
-
-function HouseholdChoiceDetails({
-  choice,
-  choices,
-  industryId,
-  onIndustryChange,
-}: {
-  choice: HouseholdChoiceObservation
-  choices: HouseholdChoiceObservation[]
-  industryId: CompetitiveIndustryId
-  onIndustryChange: (industryId: CompetitiveIndustryId) => void
-}) {
-  const industry = COMPETITIVE_INDUSTRIES.find(({ id }) => id === industryId)!
-  return <section className="household-choice-inspector">
-    <div className="choice-tabs" aria-label="Household industry choices">
-      {COMPETITIVE_INDUSTRIES.map(({ id, label }) => {
-        const observation = choices.find((candidate) => candidate.industryId === id)!
-        return <button
-          type="button"
-          key={id}
-          className={industryId === id ? 'active' : ''}
-          aria-pressed={industryId === id}
-          onClick={() => onIndustryChange(id)}
-        >
-          <span>{label}</span>
-          <small>{choiceOutcomeLabel(observation.outcome)}</small>
-        </button>
-      })}
-    </div>
-    <div className="choice-heading">
-      <span>{industry.label} · Day outcome</span>
-      <strong className={`choice-outcome choice-outcome--${choice.outcome}`}>{choiceOutcomeLabel(choice.outcome)}</strong>
-    </div>
-    <dl className="world-inspector-data">
-      <div><dt>Chosen firm</dt><dd>{choice.chosenFirmId?.replace('firm-', '') ?? 'None'}</dd></div>
-      <div><dt>Product price</dt><dd>{formatChoiceMoney(choice.productPriceCents)}</dd></div>
-      <div><dt>One-way distance</dt><dd>{choice.oneWayDistance === null ? '—' : `${choice.oneWayDistance} tiles`}</dd></div>
-      <div><dt>Round trip</dt><dd>{choice.roundTripTiles === null ? '—' : `${choice.roundTripTiles} tiles`}</dd></div>
-      <div><dt>Transport fee</dt><dd>{formatChoiceMoney(choice.transportFeeCents)}</dd></div>
-      <div><dt>Delivered cost</dt><dd>{formatChoiceMoney(choice.deliveredCostCents)}</dd></div>
-      <div><dt>Distance to Firm A</dt><dd>{choice.distanceToA === null ? '—' : `${choice.distanceToA} tiles`}</dd></div>
-      <div><dt>Distance to Firm B</dt><dd>{choice.distanceToB === null ? '—' : `${choice.distanceToB} tiles`}</dd></div>
+function FirmInspector({ state, firmId, linkMode, onSelect }: { state: SimulationState; firmId: string; linkMode: LinkMode; onSelect: (id: string) => void }) {
+  const firm = state.firms.find(({ id }) => id === firmId)!
+  const market = state.metrics.at(-1)?.markets.find((item) => item.firmId === firmId)
+  const isTransport = firm.industryId === 'transport'
+  return <>
+    <p className="inspector-sub">{isTransport ? 'Monopoly · has no location, so it sits off the grid' : `Competes in ${INDUSTRY_NAMES[firm.industryId]}`}</p>
+    <dl className="inspector-stats">
+      <div><dt>{isTransport ? 'Rate' : 'Price'}</dt><dd>{isTransport ? `${money(state.config.transportCostPerTileCents ?? 0)}/tile` : money(market?.postedPriceCents ?? firm.postedPriceCents)}</dd></div>
+      <div><dt>{isTransport ? 'Trips sold' : 'Share'}</dt><dd>{isTransport ? firm.unitsSoldToday : `${Math.round((market?.marketShare ?? 0) * 100)}%`}</dd></div>
+      <div><dt>Revenue</dt><dd>{money(firm.revenueTodayCents)}</dd></div>
+      <div><dt>Wages paid</dt><dd>{Math.round(firm.payrollFulfillmentRate * 100)}%</dd></div>
     </dl>
-    {choice.chosenFirmId
-      ? <p className="choice-note">Dashed line = schematic household-to-supplier relationship. It is not a simulated travel route.</p>
-      : <p className="choice-note">No supplier link is drawn because this household did not purchase in this industry on the presented day.</p>}
-  </section>
+    {!isTransport && <p className="inspector-note">Sold {firm.unitsSoldToday} of {firm.unitsProducedToday} units made today. Tomorrow's price: {money(firm.postedPriceCents)}.</p>}
+    <h4>{firm.employeeIds.length} workers {linkMode !== 'jobs' && <span className="muted">· switch to Jobs to see links</span>}</h4>
+    <div className="worker-grid">
+      {firm.employeeIds.map((workerId) => <button type="button" key={workerId} onClick={() => onSelect(workerId)}>{workerId.replace('household-', 'H')}</button>)}
+    </div>
+  </>
 }
 
-
-export function WorldView({ state }: { state: SimulationState }) {
+export function WorldView({ state, selectedId, onSelect, industry, onIndustry }: {
+  state: SimulationState
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+  industry: CompetitiveIndustryId
+  onIndustry: (industry: CompetitiveIndustryId) => void
+}) {
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
   const runtimeRef = useRef<Runtime | null>(null)
   const stateRef = useRef(state)
-  const selectedIdRef = useRef<string | null>(null)
-  const territoryIndustryRef = useRef<CompetitiveIndustryId>('food')
-  const choiceIndustryRef = useRef<CompetitiveIndustryId>('food')
-  const relationshipModeRef = useRef<RelationshipMode>('purchases')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [territoryIndustry, setTerritoryIndustry] = useState<CompetitiveIndustryId>('food')
-  const [choiceIndustry, setChoiceIndustry] = useState<CompetitiveIndustryId>('food')
-  const [relationshipMode, setRelationshipMode] = useState<RelationshipMode>('purchases')
+  const [linkMode, setLinkMode] = useState<LinkMode>('purchases')
+  const [measure, setMeasure] = useState<CashMeasure>('before')
+  const [hoverId, setHoverId] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [query, setQuery] = useState('')
+  const view: SceneView = { selectedId, industry, linkMode, measure }
+  const viewRef = useRef(view)
   stateRef.current = state
-  selectedIdRef.current = selectedId
-  territoryIndustryRef.current = territoryIndustry
-  choiceIndustryRef.current = choiceIndustry
-  relationshipModeRef.current = relationshipMode
+  viewRef.current = view
 
-  const worldFirms = useMemo(() => state.firms, [state.firms])
-  const selectedHousehold = selectedId ? state.households.find(({ id }) => id === selectedId) ?? null : null
-  const selectedFirm = selectedId ? worldFirms.find(({ id }) => id === selectedId) ?? null : null
-  const selectedChoice = useMemo(
-    () => selectedHousehold ? getHouseholdChoiceObservation(state, selectedHousehold.id, choiceIndustry) : null,
-    [state, selectedHousehold, choiceIndustry],
-  )
-  const allSelectedChoices = useMemo(
-    () => selectedHousehold ? COMPETITIVE_INDUSTRIES.map(({ id }) => getHouseholdChoiceObservation(state, selectedHousehold.id, id)) : [],
-    [state, selectedHousehold],
-  )
-  const territory = useMemo(() => buildMarketTerritory(state, territoryIndustry), [state, territoryIndustry])
-  const territoryFirms = useMemo(() => worldFirms.filter((firm) => firm.industryId === territoryIndustry).sort((a, b) => a.id.localeCompare(b.id)), [worldFirms, territoryIndustry])
-  const employment = useMemo(
-    () => relationshipMode === 'employment' && selectedId ? selectedEmploymentObservation(state, selectedId) : null,
-    [state, selectedId, relationshipMode],
-  )
+  const select = (id: string | null) => {
+    onSelect(id)
+    const firm = id ? stateRef.current.firms.find((candidate) => candidate.id === id) : null
+    if (firm && firm.industryId !== 'transport') onIndustry(firm.industryId)
+  }
+  const selectRef = useRef(select)
+  selectRef.current = select
+
+  const related = useMemo(() => {
+    const ids = new Set<string>()
+    if (linkMode === 'purchases') {
+      const choice = selectedHouseholdChoice(state, selectedId, industry)
+      if (choice?.chosenFirmId) ids.add(choice.chosenFirmId)
+    } else {
+      const employment = selectedEmployment(state, selectedId)
+      if (employment) [employment.firmId, ...employment.workerIds].forEach((id) => ids.add(id))
+    }
+    if (selectedId) ids.delete(selectedId)
+    return ids
+  }, [state, selectedId, industry, linkMode])
+
+  const territory = useMemo(() => buildMarketTerritory(state, industry), [state, industry])
+  const searchOptions = useMemo(() => [...state.firms.map(({ id }) => ({ id, label: firmName(id) })), ...state.households.map(({ id }) => ({ id, label: householdName(id) }))], [state.firms, state.households])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -646,84 +468,60 @@ export function WorldView({ state }: { state: SimulationState }) {
       try {
         const THREE = await import(/* @vite-ignore */ THREE_MODULE_URL)
         if (cancelled) return
-
         const scene = new THREE.Scene()
-        scene.background = new THREE.Color(0x0a0f0d)
-        scene.fog = new THREE.Fog(0x0a0f0d, 28, 72)
-
-        const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 160)
+        scene.background = new THREE.Color(COLORS.background)
+        scene.fog = new THREE.Fog(COLORS.background, 60, 140)
+        const camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.1, 260)
         const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
         renderer.shadowMap.enabled = true
         renderer.shadowMap.type = THREE.PCFSoftShadowMap
         renderer.domElement.tabIndex = 0
-        renderer.domElement.setAttribute('aria-label', '3D Econ Engine world. Drag to orbit, Shift-drag or right-drag to pan, and use the mouse wheel or plus and minus keys to zoom.')
+        renderer.domElement.setAttribute('aria-label', 'Economy map. Drag to orbit, shift-drag or right-drag to pan, scroll or press plus and minus to zoom, arrow keys to rotate, Escape to clear the selection.')
         mount.appendChild(renderer.domElement)
-
-        const ambient = new THREE.HemisphereLight(0xdcece4, 0x1c211f, 1.55)
-        scene.add(ambient)
-        const key = new THREE.DirectionalLight(0xffffff, 2.4)
-        key.position.set(10, 20, 8)
+        scene.add(new THREE.HemisphereLight(0xdfe9e4, 0x161b19, 1.5))
+        const key = new THREE.DirectionalLight(0xffffff, 2.3)
+        key.position.set(10, 22, 8)
         key.castShadow = true
         key.shadow.mapSize.set(1024, 1024)
         scene.add(key)
 
         const runtime: Runtime = {
-          THREE,
-          scene,
-          camera,
-          renderer,
-          entities: new Map<string, any>(),
-          territoryMeshes: [],
-          territoryKey: null,
-          choiceLine: null,
-          choiceLineKey: null,
-          employmentLines: [],
-          employmentKey: null,
-          ground: null,
-          grid: null,
-          gridWidth: 0,
-          gridHeight: 0,
-          frame: null,
-          resizeObserver: null as unknown as ResizeObserver,
-          disposeControls: () => {},
-          controls: {
-            target: new THREE.Vector3(0, 0, 0),
-            radius: 28,
-            theta: Math.PI / 4,
-            phi: 0.92,
-          },
+          THREE, scene, camera, renderer, entities: new Map(), territoryMeshes: [], territoryKey: null, links: [], linksKey: null,
+          ground: null, grid: null, gridWidth: 0, gridHeight: 0, frame: null, dirty: true, resizeObserver: null as unknown as ResizeObserver, disposeControls: () => {},
+          controls: { target: new THREE.Vector3(0, 0, 0), radius: 46, theta: Math.PI / 4, phi: 0.88 },
         }
-
         const resize = () => {
           const width = Math.max(1, mount.clientWidth)
-          const height = Math.max(320, mount.clientHeight)
+          const height = Math.max(1, mount.clientHeight)
           renderer.setSize(width, height, false)
           camera.aspect = width / height
           camera.updateProjectionMatrix()
+          runtime.dirty = true
         }
-        const resizeObserver = new ResizeObserver(resize)
-        resizeObserver.observe(mount)
-        runtime.resizeObserver = resizeObserver
-        runtime.disposeControls = attachCameraControls(runtime, setSelectedId)
+        runtime.resizeObserver = new ResizeObserver(resize)
+        runtime.resizeObserver.observe(mount)
+        runtime.disposeControls = attachControls(
+          runtime,
+          (id) => selectRef.current(id),
+          (id, x, y) => {
+            setHoverId(id)
+            const tooltip = tooltipRef.current
+            if (tooltip) tooltip.style.transform = `translate(${x + 14}px, ${y + 14}px)`
+          },
+        )
         runtimeRef.current = runtime
-
         syncGround(runtime, stateRef.current)
-        syncTerritory(runtime, stateRef.current, territoryIndustryRef.current)
-        const initialChoice = relationshipModeRef.current === 'purchases'
-          ? selectedHouseholdChoice(stateRef.current, selectedIdRef.current, choiceIndustryRef.current)
-          : null
-        const initialEmployment = relationshipModeRef.current === 'employment'
-          ? selectedEmploymentObservation(stateRef.current, selectedIdRef.current)
-          : null
-        syncEntities(runtime, stateRef.current, selectedIdRef.current, territoryIndustryRef.current, initialChoice?.chosenFirmId ?? null, initialEmployment, relationshipModeRef.current)
-        if (relationshipModeRef.current === 'purchases') syncChoiceConnection(runtime, stateRef.current, selectedIdRef.current, choiceIndustryRef.current)
-        else syncEmploymentConnections(runtime, stateRef.current, selectedIdRef.current)
+        syncTerritory(runtime, stateRef.current, viewRef.current.industry)
+        syncEntities(runtime, stateRef.current, viewRef.current, new Set())
+        syncLinks(runtime, stateRef.current, viewRef.current)
         resetCamera(runtime)
         resize()
-
         const render = () => {
-          renderer.render(scene, camera)
+          if (runtime.dirty) {
+            renderer.render(scene, camera)
+            runtime.dirty = false
+          }
           runtime.frame = requestAnimationFrame(render)
         }
         render()
@@ -733,7 +531,6 @@ export function WorldView({ state }: { state: SimulationState }) {
         if (!cancelled) setStatus('error')
       }
     }
-
     void initialize()
 
     return () => {
@@ -743,10 +540,8 @@ export function WorldView({ state }: { state: SimulationState }) {
       if (runtime.frame !== null) cancelAnimationFrame(runtime.frame)
       runtime.disposeControls()
       runtime.resizeObserver.disconnect()
-      clearChoiceConnection(runtime)
-      clearEmploymentConnections(runtime)
-      clearTerritory(runtime)
-      for (const mesh of runtime.entities.values()) {
+      clearLinks(runtime)
+      for (const mesh of [...runtime.territoryMeshes, ...runtime.entities.values()]) {
         runtime.scene.remove(mesh)
         disposeObject(mesh)
       }
@@ -761,76 +556,78 @@ export function WorldView({ state }: { state: SimulationState }) {
   useEffect(() => {
     const runtime = runtimeRef.current
     if (!runtime) return
-    const choice = relationshipMode === 'purchases' ? selectedHouseholdChoice(state, selectedId, choiceIndustry) : null
-    const employmentObservation = relationshipMode === 'employment' ? selectedEmploymentObservation(state, selectedId) : null
     syncGround(runtime, state)
-    syncTerritory(runtime, state, territoryIndustry)
-    syncEntities(runtime, state, selectedId, territoryIndustry, choice?.chosenFirmId ?? null, employmentObservation, relationshipMode)
-    if (relationshipMode === 'purchases') {
-      clearEmploymentConnections(runtime)
-      syncChoiceConnection(runtime, state, selectedId, choiceIndustry)
-    } else {
-      clearChoiceConnection(runtime)
-      syncEmploymentConnections(runtime, state, selectedId)
-    }
-  }, [state, selectedId, territoryIndustry, choiceIndustry, relationshipMode])
+    syncTerritory(runtime, state, industry)
+    const current = { selectedId, industry, linkMode, measure }
+    syncEntities(runtime, state, current, related)
+    syncLinks(runtime, state, current)
+    runtime.dirty = true
+  }, [state, selectedId, industry, linkMode, measure, related, status])
 
-  const selectedLabel = selectedHousehold
-    ? selectedHousehold.id.replace('household-', 'Household ')
-    : selectedFirm
-      ? selectedFirm.id.replace('firm-', '').replaceAll('-', ' ')
-      : 'No entity selected'
+  const selectedHousehold = selectedId?.startsWith('household-') ? selectedId : null
+  const selectedFirm = selectedId && state.firms.some(({ id }) => id === selectedId) ? selectedId : null
+  const [firmAId, firmBId] = territory.firmIds
+  const firmA = state.firms.find(({ id }) => id === firmAId)!
+  const firmB = state.firms.find(({ id }) => id === firmBId)!
+  const hovered = hoverId && hoverId !== selectedId ? hoverId : null
+  const hoveredHousehold = hovered ? state.households.find(({ id }) => id === hovered) : null
+  const hoveredFirm = hovered ? state.firms.find(({ id }) => id === hovered) : null
 
-  return <section className="panel world-panel">
-    <div className="panel-heading world-heading">
-      <div><h2>3D Econ Engine World View</h2><p>{state.households.length} households · {worldFirms.length} employers · 8 consumer competitors + Transport · household height encodes current cash</p></div>
-      <div className="world-actions">
-        <label>Relationship overlay<select aria-label="Relationship overlay" value={relationshipMode} onChange={(event) => setRelationshipMode(event.target.value as RelationshipMode)}>
-          <option value="purchases">Household choices</option>
-          <option value="employment">Employment network</option>
-        </select></label>
-        <label>Market territory<select aria-label="Market territory industry" value={territoryIndustry} onChange={(event) => setTerritoryIndustry(event.target.value as CompetitiveIndustryId)}>
-          {COMPETITIVE_INDUSTRIES.map((industry) => <option key={industry.id} value={industry.id}>{industry.label}</option>)}
-        </select></label>
-        <label>Inspect entity<select aria-label="Inspect world entity" value={selectedId ?? ''} onChange={(event) => setSelectedId(event.target.value || null)}>
-          <option value="">None</option>
-          <optgroup label="Firms">{worldFirms.map((firm) => <option key={firm.id} value={firm.id}>{firm.id.replace('firm-', '')}</option>)}</optgroup>
-          <optgroup label="Households">{state.households.map((household) => <option key={household.id} value={household.id}>{household.id.replace('household-', 'Household ')}</option>)}</optgroup>
-        </select></label>
-        <button type="button" onClick={() => runtimeRef.current && resetCamera(runtimeRef.current)} disabled={status !== 'ready'}>Reset camera</button>
-      </div>
-    </div>
+  const onSearch = (value: string) => {
+    setQuery(value)
+    const match = searchOptions.find((option) => option.label.toLowerCase() === value.trim().toLowerCase())
+    if (match) { select(match.id); setQuery('') }
+  }
 
-    <div className="world-layout">
+  return <section className="card world" aria-labelledby="world-title">
+    <header className="card-head world-head">
       <div>
-        <div className="world-canvas" data-status={status} role="group" aria-label="Interactive three-dimensional view of the current Econ Engine spatial economy">
-          <div ref={mountRef} className="world-canvas-mount" />
-          {status === 'loading' && <div className="world-status">Loading Three.js world…</div>}
-          {status === 'error' && <div className="world-status world-status--error">3D renderer unavailable. Entity inspection remains available.</div>}
+        <h2 id="world-title">The economy map<InfoTip label="About the map">
+          Each pillar is a household; taller means more cash. Switch between cash before and after Government's tax and transfers at the bottom of the map. The larger blocks are firms. The shaded floor shows which firm offers the cheapest delivered price (price plus round-trip transport) at every spot for the selected market. Transport is a monopoly with no location, so it sits just off the grid.
+        </InfoTip></h2>
+        <p>Each pillar is a household; taller means more cash. Click anything to inspect it.</p>
+      </div>
+      <div className="world-tools">
+        <Segmented label="Market shown on the map" size="sm" value={industry} onChange={onIndustry} options={CONSUMER_INDUSTRIES.map((id) => ({ id, label: INDUSTRY_NAMES[id] }))} />
+        <Segmented label="Relationship lines" size="sm" value={linkMode} onChange={setLinkMode} options={[{ id: 'purchases', label: 'Purchases' }, { id: 'jobs', label: 'Jobs' }]} />
+      </div>
+    </header>
+
+    <div className="world-stage">
+      <div className="world-canvas" data-status={status}>
+        <div ref={mountRef} className="world-canvas-mount" />
+        {status === 'loading' && <div className="world-status">Loading the 3D map…</div>}
+        {status === 'error' && <div className="world-status world-status--error">The 3D map couldn't load (it needs WebGL and an internet connection). Everything else still works.</div>}
+        <div ref={tooltipRef} className={`world-tooltip${hovered ? ' is-visible' : ''}`} aria-hidden="true">
+          {hoveredHousehold && <><strong>{householdName(hoveredHousehold.id)}</strong><span>{money(hoveredHousehold.preTaxCashCents)} before tax → {money(hoveredHousehold.postFiscalCashCents)} after</span><span>Works at {firmName(hoveredHousehold.employerFirmId)}</span></>}
+          {hoveredFirm && <><strong>{firmName(hoveredFirm.id)}</strong><span>{hoveredFirm.industryId === 'transport' ? `${hoveredFirm.employeeIds.length} workers` : `${money(hoveredFirm.postedPriceCents)} tomorrow · ${hoveredFirm.employeeIds.length} workers`}</span></>}
         </div>
-        <div className="world-legend" aria-label="World legend">
-          <span><i className="world-swatch household" />Households · height = cash</span>
-          {relationshipMode === 'employment' && <span><i className="world-swatch transport" />Employment links · Transport shown as a non-spatial observer hub</span>}
-          {territoryFirms.map((firm, index) => {
-            const variant = index === 0 ? 'a' : 'b'
-            const count = territory.cellCounts[firm.id] ?? 0
-            return <span key={firm.id}><i className="world-swatch" style={{ background: `#${INDUSTRY_COLORS[territoryIndustry][variant].toString(16).padStart(6, '0')}` }} />{COMPETITIVE_INDUSTRIES.find(({ id }) => id === territoryIndustry)?.label} Firm {variant.toUpperCase()} · {count} cells · {(firm.postedPriceCents / 100).toLocaleString('en-GB', { style: 'currency', currency: 'USD' })}</span>
-          })}
+        <div className="world-overlay world-overlay--top">
+          <label className="world-search">
+            <Icon name="search" size={14} />
+            <input list="world-entities" placeholder="Find a household or firm" aria-label="Find a household or firm" value={query} onChange={(event) => onSearch(event.target.value)} />
+          </label>
+          <datalist id="world-entities">{searchOptions.map((option) => <option key={option.id} value={option.label} />)}</datalist>
+          <button type="button" className="icon-button" aria-label="Reset camera" title="Reset camera" disabled={status !== 'ready'} onClick={() => runtimeRef.current && resetCamera(runtimeRef.current)}><Icon name="camera" /></button>
         </div>
-        <p className="world-help">Territory = lowest posted price + round-trip Manhattan transport cost at each grid cell. Exact ties go to the lexicographically earlier firm ID (Firm A in the canonical economy); this is observer-only. {territory.tieCount} tied cell{territory.tieCount === 1 ? '' : 's'} currently.</p>
-        {relationshipMode === 'employment' && <p className="world-help">Transport has no economic grid coordinate; its off-grid hub position exists only to make its employment relationships inspectable.</p>}
-        <p className="world-help">Drag to orbit · Shift-drag/right-drag to pan · wheel or +/- to zoom · click a pillar/building to inspect.</p>
+        <div className="world-overlay world-overlay--bottom world-legend">
+          <span className="legend-height">Height
+            <Segmented label="Pillar height shows" size="sm" value={measure} onChange={setMeasure} options={[{ id: 'before', label: 'Before tax' }, { id: 'after', label: 'After tax' }]} />
+          </span>
+          <span><i className="swatch swatch--a" />{firmShortName(firmA.id)} · {money(firmA.postedPriceCents)} · {territory.cellCounts[firmA.id] ?? 0} tiles</span>
+          <span><i className="swatch swatch--b" />{firmShortName(firmB.id)} · {money(firmB.postedPriceCents)} · {territory.cellCounts[firmB.id] ?? 0} tiles</span>
+        </div>
       </div>
 
-      <aside className="world-inspector" aria-live="polite">
-        <span className="eyebrow">Selected entity</span>
-        <h3>{selectedLabel}</h3>
-        {selectedHousehold && <HouseholdDetails household={selectedHousehold} />}
-        {relationshipMode === 'purchases' && selectedHousehold && selectedChoice && <HouseholdChoiceDetails choice={selectedChoice} choices={allSelectedChoices} industryId={choiceIndustry} onIndustryChange={setChoiceIndustry} />}
-        {selectedFirm && <FirmDetails firm={selectedFirm} />}
-        {relationshipMode === 'employment' && employment && <EmploymentDetails state={state} employment={employment} selectedFirm={selectedFirm} selectedHousehold={selectedHousehold} onSelect={setSelectedId} />}
-        {!selectedHousehold && !selectedFirm && <p>Select a household or firm in the world or from the entity selector. The renderer reads the current presented simulation snapshot only.</p>}
-      </aside>
+      {selectedId && (selectedHousehold || selectedFirm) && <aside className="inspector" aria-live="polite" aria-label="Selection details">
+        <header>
+          <h3>{entityName(selectedId)}</h3>
+          <button type="button" className="icon-button" aria-label="Close details" onClick={() => onSelect(null)}><Icon name="close" /></button>
+        </header>
+        {selectedHousehold && <HouseholdInspector state={state} householdId={selectedHousehold} industry={industry} onIndustry={onIndustry} onSelect={select} />}
+        {selectedFirm && <FirmInspector state={state} firmId={selectedFirm} linkMode={linkMode} onSelect={select} />}
+        <p className="inspector-foot">{linkMode === 'purchases' ? 'Dashed line: who this household bought from in the selected market.' : 'Green lines: employment links.'} Lines show relationships, not travel routes.</p>
+      </aside>}
     </div>
   </section>
 }

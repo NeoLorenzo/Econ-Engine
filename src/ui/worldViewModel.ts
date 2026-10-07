@@ -61,13 +61,17 @@ export function worldPoint(coordinate: Coordinate, gridWidth: number, gridHeight
   }
 }
 
+/** Cubic in cash relative to the starting amount, so the few-dollar gaps typical of this economy stay visible. */
 export function householdWealthHeight(cashCents: number, targetCashCents = 5_000) {
   const safeTarget = Math.max(1, targetCashCents)
   const ratio = Math.max(0, cashCents) / safeTarget
-  return Math.min(6, Math.max(0.18, 0.18 + ratio * 1.52))
+  return Math.min(6, Math.max(0.18, 0.18 + ratio ** 3 * 1.52))
 }
 
-export function buildWorldEntities(state: SimulationState): WorldEntity[] {
+/** Which household cash figure sets pillar height: before or after Government's tax and transfers. */
+export type CashMeasure = 'before' | 'after'
+
+export function buildWorldEntities(state: SimulationState, measure: CashMeasure = 'after'): WorldEntity[] {
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
   const targetCashCents = state.config.targetHouseholdCashCents ?? 5_000
@@ -79,7 +83,7 @@ export function buildWorldEntities(state: SimulationState): WorldEntity[] {
       kind: 'household',
       x: point.x,
       z: point.z,
-      height: householdWealthHeight(household.postFiscalCashCents, targetCashCents),
+      height: householdWealthHeight(measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents, targetCashCents),
     }
   })
 
