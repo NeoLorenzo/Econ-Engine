@@ -66,7 +66,7 @@ export function useExperiments() {
       if (instance) {
         const id = nextId.current++
         pending.current.set(id, { kind, seed })
-        instance.postMessage({ id, kind, seed } satisfies ExperimentRequest)
+        instance.postMessage({ id, task: 'experiment', kind, seed } satisfies ExperimentRequest)
         return
       }
       // Let the "Running…" state paint before blocking the main thread.

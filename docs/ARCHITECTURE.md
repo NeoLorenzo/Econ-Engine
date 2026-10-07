@@ -55,6 +55,8 @@ Household state distinguishes pre-tax cash, gross tax, gross transfer, net fisca
 
 Live event and metric histories are bounded. `employmentDynamics.ts` preserves the MVP5 007.1 complete finite trajectory analysis. `governmentExperiment.ts` collects compact complete observations over an explicit horizon and compares adaptive Government with an inactive same-seed baseline. It reports policy occupancy/spells, pre/post inequality and concentration, consumption failures, sell-through, revenue, and wages. Observer computations never enter household, firm, or Government decisions.
 
+`ensemble.ts` runs a harness across an explicit seed set and summarizes the spread of its decision-relevant outcomes (mean, sample standard deviation, interpolated 10th, 50th and 90th percentiles, and range). Each seed builds its own economies, so an ensemble never reads or advances a live simulation or its RNG. Results are keyed by seed and reported in ascending seed order, so neither the supplied order nor the order in which parallel workers finish can change a value. `ensembleSeeds(base, n)` starts with the base seed and derives the rest through the Murmur3 finalizer, so adjacent seeds do not feed nearly identical states to the linear xorshift market generator. In the browser, a small pool of Web Workers (one fewer than the CPU cores, at most four) runs seeds in parallel; the pure `runEnsemble` runs them sequentially for tests and scripts.
+
 ## Interface boundary
 
 React controls configuration and time and renders Government, household fiscal positions, markets, trajectories, and experiment reports. Horizontal table scrolling preserves compact mobile layouts. No economic rule exists in React.

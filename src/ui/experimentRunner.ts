@@ -1,4 +1,5 @@
 import { runCompetitionStartingPriceGrid, type CompetitionGridSuite } from '../sim/competitionGridExperiment'
+import { ensembleSeedMetrics, type EnsembleKind } from '../sim/ensemble'
 import { runEmploymentDynamics, type EmploymentDynamicsReport } from '../sim/employmentDynamics'
 import { runGeneralizedSpatialExperiment, type GeneralizedSpatialResult } from '../sim/generalizedSpatialExperiment'
 import { runGovernmentBaselineComparison, type GovernmentTrajectorySummary } from '../sim/governmentExperiment'
@@ -37,9 +38,15 @@ export function runExperiment<K extends ExperimentKind>(kind: K, seed: number): 
   return run[kind]() as ExperimentResults[K]
 }
 
-export interface ExperimentRequest {
-  id: number
-  kind: ExperimentKind
-  seed: number
-}
+/** A whole single-seed experiment, or one seed of an ensemble (the pool runs ensemble seeds in parallel). */
+export type ExperimentRequest =
+  | { id: number; task: 'experiment'; kind: ExperimentKind; seed: number }
+  | { id: number; task: 'ensembleSeed'; kind: EnsembleKind; seed: number; horizonDays: number }
 export type ExperimentResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string }
+
+/** Executes one worker request; shared by the worker and the main-thread fallback. */
+export function runRequest(request: ExperimentRequest): unknown {
+  return request.task === 'experiment'
+    ? runExperiment(request.kind, request.seed)
+    : ensembleSeedMetrics(request.kind, request.seed, request.horizonDays)
+}

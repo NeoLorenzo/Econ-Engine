@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Spinner, Stat } from '../components'
+import type { EnsembleKind, EnsembleSize, EnsembleState } from '../ensembles'
 import type { ExperimentKind, ExperimentResults, ExperimentState } from '../experiments'
+import { EnsemblesSection } from './EnsemblesSection'
 import { firmName, householdNumber, INDUSTRY_NAMES, money, percent } from '../format'
 
 const pct = (value: number) => percent(value)
@@ -440,17 +442,22 @@ export function ExperimentsView({
   seed,
   experiments,
   onRun,
+  ensembles,
+  onRunEnsemble,
 }: {
   seed: number
   experiments: ExperimentState
   onRun: (kind: ExperimentKind) => void
+  ensembles: EnsembleState
+  onRunEnsemble: (kind: EnsembleKind, size: EnsembleSize) => void
 }) {
   return (
     <div className="view">
       <div className="intro intro--plain">
         <p>
           <strong>Longer-run questions.</strong> Each experiment replays the economy from day 0 using seed {seed}, in
-          the background. They never change the live simulation.
+          the background. They never change the live simulation. Each shows one seed's trajectory; the ensembles further
+          down repeat the main questions across many seeds.
         </p>
       </div>
       <div className="experiment-grid">
@@ -464,6 +471,7 @@ export function ExperimentsView({
           />
         ))}
       </div>
+      <EnsemblesSection seed={seed} ensembles={ensembles} onRun={onRunEnsemble} />
       <details className="disclosure legacy">
         <summary>Older diagnostics</summary>
         <p className="muted">Kept for comparison with earlier versions. They report the final day only.</p>

@@ -2,6 +2,24 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Ensembles_Showcase-022] - (2026-10-08)
+
+### Added
+
+- **Multi-seed ensembles (#3).** The Experiments section has a new "Across many seeds" area. The scale, Government and competition questions can each run on 4, 8 or 16 seeds. Each outcome is reported with its mean, sample standard deviation, middle 80% (p10–p90) and range, with a table of every seed's values. Results are labelled as a spread across seeds, not one trajectory, and keep the seed set they were built from if the live seed changes.
+- `src/sim/ensemble.ts`: a pure ensemble harness (`ensembleSeeds`, `ensembleSeedMetrics`, `summarizeEnsemble`, `runEnsemble`). Seeds are validated and always reported in ascending order.
+- The browser runs ensemble seeds in parallel on a small Web Worker pool (one fewer than the CPU cores, at most four), with per-seed progress. An 8-seed scale ensemble takes about 4 seconds.
+
+### Changed
+
+- **README (#4).** It now opens with a link to the live simulator and current screenshots of the Overview, Markets and an ensemble result (`docs/images/`). It summarizes the five sections and the research questions, and links to the specification, architecture notes and validation guide.
+- Firm cards put a stat's qualifier ("of 10 × $10") on its own line, so it no longer overflows its box at common desktop widths.
+
+### Validation
+
+- Tests cover the summary statistics against hand-computed values, deterministic seed sets, rejection of invalid seed sets, exact replay and seed-order independence for all three ensembles, agreement with the single-seed harnesses, isolation from a live simulation, and the ensemble labelling in the UI.
+- In the browser, all three 8-seed ensembles ran with progress updates, the page stayed responsive, and the console showed no errors apart from the long-standing missing `favicon.ico`.
+
 ## [MVP8-Structure-021] - (2026-10-07)
 
 ### Changed

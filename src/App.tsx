@@ -4,6 +4,7 @@ import { createSimulation, stepSimulation } from './sim/engine'
 import { SimulationRunner } from './sim/simulationRunner'
 import type { SimulationConfig, SimulationState } from './sim/types'
 import { Icon } from './ui/components'
+import { useEnsembles } from './ui/ensembles'
 import { useExperiments } from './ui/experiments'
 import { money } from './ui/format'
 import { SettingsDrawer } from './ui/SettingsDrawer'
@@ -44,6 +45,7 @@ export default function App() {
   const [appliedDraft, setAppliedDraft] = useState(DEFAULT_SETTINGS_DRAFT)
   const [appliedConfig, setAppliedConfig] = useState<SimulationConfig | undefined>(undefined)
   const { experiments, run: runExperiment } = useExperiments()
+  const { ensembles, run: runEnsemble } = useEnsembles()
   const tabRefs = useRef(new Map<AppTab, HTMLButtonElement>())
 
   useEffect(() => {
@@ -251,7 +253,13 @@ export default function App() {
         {tab === 'households' && <HouseholdsView state={state} onShowOnMap={showOnMap} />}
         {tab === 'government' && <GovernmentView state={state} />}
         {tab === 'experiments' && (
-          <ExperimentsView seed={seed} experiments={experiments} onRun={(kind) => runExperiment(kind, seed)} />
+          <ExperimentsView
+            seed={seed}
+            experiments={experiments}
+            onRun={(kind) => runExperiment(kind, seed)}
+            ensembles={ensembles}
+            onRunEnsemble={(kind, size) => runEnsemble(kind, seed, size)}
+          />
         )}
       </main>
 

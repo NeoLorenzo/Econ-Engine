@@ -6,6 +6,31 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Ensembles_Showcase-022] - (2026-10-08)
+
+### Problem
+
+Every Research result described one seed. Seeded runs are reproducible but path-dependent, so a single trajectory cannot tell a robust effect from a seed-specific one. Separately, the README made a visitor install the project before seeing what it does.
+
+### Decisions
+
+- **Order independence by construction.** Floating-point sums depend on order, so even a mean could differ by an ulp if seeds were summarized in arrival order; parallel workers finish in any order. The ensemble therefore keys results by seed and always summarizes in ascending seed order. Tests check exact equality under reordering.
+- **Seed sets.** The first seed is the current base seed, so an ensemble always contains the single-seed run it extends. The rest are `mixSeed(base + i)`, because the market stream feeds a raw seed straight into a linear xorshift generator, and neighbouring integers would start from nearly identical states. The seeds are shown in the per-seed table.
+- **Statistics.** Mean, sample standard deviation (n − 1), type-7 interpolated p10, median and p90, and range. These are descriptive only. With 4–16 seeds, no confidence intervals or significance tests are claimed.
+- **Metrics.** Each ensemble reports the outcomes its single-seed card already shows, so the two can be read side by side: completion, inequality, wealth tax and share volatility at both scales; the Government's tax rate, equality, inequality and completion against no Government; and lead changes, ties and share asymmetry across markets.
+- **Parallelism.** One seed costs about 2.5 s for the scale comparison, 4 s for Government and 1.9 s for competition. A pool of up to four workers runs an 8-seed scale ensemble in about 4 s instead of about 20 s. The pure `runEnsemble` stays sequential for tests and scripts.
+- **Screenshots.** Captured with the project's Playwright driving the locally installed Chrome (no browser download), at 1440×900 and 2× pixel density, after 45 simulated days on the canonical seed. The capture exposed a firm-card overflow ("of 10 × $10" spilling out of its box), which was fixed rather than cropped around.
+
+### Observations
+
+On 8 seeds from the canonical base seed, two findings are robust and one is strongly path-dependent:
+
+- The 100-household economy met more needs than the 10-household one on every seed: +0.8 to +4.6 percentage points, mean +2.5.
+- With the adaptive Government, mean post-fiscal inequality stayed between 0.0004 and 0.0010 on every seed.
+- Without a Government, mean inequality ranged from 0.08 to 0.63, and needs met from 83% to 97%, depending on the seed.
+
+These are descriptive results from one 8-seed set.
+
 ## [MVP8-Structure-021] - (2026-10-07)
 
 ### Problem
