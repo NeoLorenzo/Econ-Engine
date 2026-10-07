@@ -1500,6 +1500,8 @@ select {
   white-space: nowrap;
 }
 .mini-stats small {
+  /* The value stays on one line; its qualifier ("of 10 × $10") wraps beneath it instead of overflowing the box. */
+  display: block;
   color: var(--text-3);
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -1762,6 +1764,26 @@ select {
 .experiment-head button {
   flex: none;
   min-width: 104px;
+}
+.ensembles {
+  display: grid;
+  gap: var(--gap);
+}
+.ensembles h2 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.ensemble-controls {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.ensemble-badge {
+  color: var(--text-2);
 }
 .experiment-result {
   display: grid;
