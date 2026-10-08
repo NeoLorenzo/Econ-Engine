@@ -13,10 +13,13 @@ import {
   DEFAULT_PROBE_PROBABILITY,
   DEFAULT_SEED,
   DEFAULT_TRANSPORT_COST_PER_TILE_CENTS,
+  GOVERNMENT_ID,
+  GOVERNMENT_PLOT_SIZE,
   HOUSEHOLD_COUNT,
   INITIAL_HOUSEHOLD_CASH_CENTS,
   MAX_EVENTS,
   MAX_HISTORY,
+  PLOT_SIZES,
   TRANSPORT_FIRM_ID,
   consumerFirmIds as rosterConsumerFirmIds,
   deriveIndustryBudgetCents,
@@ -41,7 +44,7 @@ import {
   type PriceExperimentCandidate,
 } from './pricingStrategy'
 import { normalizeSeed, probabilityCheck, randomInt, seededShuffle } from './rng'
-import { deriveSpatialSeed, generateSpatialLayout, transportQuote } from './spatial'
+import { deriveSpatialSeed, generateTownLayout, transportQuote } from './spatial'
 import type {
   DayMetrics,
   Firm,
@@ -93,7 +96,7 @@ function countHouseholdsAffordableAtMarketOpen(
     return industryFirms.some((firm) => {
       const deliveredCostCents =
         firm.postedPriceCents +
-        transportQuote(household.coordinate, firm.coordinate!, transportCostPerTileCents).transportFeeCents
+        transportQuote(household.coordinate, firm.plot, transportCostPerTileCents).transportFeeCents
       return deliveredCostCents <= budgetCents && deliveredCostCents <= household.cashCents
     })
   }).length
@@ -165,12 +168,12 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
   )
   const consumerFirmIds = rosterConsumerFirmIds(roster)
   const householdCount = safeConfig.householdCount!
-  const spatialIds = [
-    ...Array.from({ length: householdCount }, (_, index) => `household-${index + 1}`),
-    ...consumerFirmIds,
-  ]
-  const layout = generateSpatialLayout(safeConfig.seed!, safeConfig.gridWidth!, safeConfig.gridHeight!, spatialIds)
   const householdIds = Array.from({ length: householdCount }, (_, index) => `household-${index + 1}`)
+  const layout = generateTownLayout(safeConfig.seed!, safeConfig.gridWidth!, safeConfig.gridHeight!, {
+    householdIds,
+    plots: industries.flatMap((industry) => roster[industry.id].map((id) => ({ id, ...PLOT_SIZES[industry.id] }))),
+    centred: { id: GOVERNMENT_ID, ...GOVERNMENT_PLOT_SIZE },
+  })
   const employment = assignEmployment(safeConfig.seed!, householdIds, [...consumerFirmIds, TRANSPORT_FIRM_ID])
   const firms: Firm[] = industries.flatMap((industry) =>
     roster[industry.id].map((firmId) => {
@@ -199,7 +202,7 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
             ? 'Transport charges the configured exogenous per-tile rate.'
             : 'The first price is set by the run configuration.',
         latestDecisionAction: 'hold',
-        coordinate: layout[firmId],
+        plot: layout.plots[firmId]!,
         employeeIds: householdIds.filter((id) => employment[id] === firmId),
         productivityPerWorker: industry.id === 'transport' ? null : safeConfig.laborProductivityUnitsPerWorker!,
         unitsProducedToday: 0,
@@ -222,7 +225,7 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
     households: Array.from({ length: householdCount }, (_, index) => ({
       id: `household-${index + 1}`,
       cashCents: INITIAL_HOUSEHOLD_CASH_CENTS,
-      coordinate: layout[`household-${index + 1}`],
+      coordinate: layout.households[`household-${index + 1}`]!,
       spatialPurchasesToday: {},
       employerFirmId: employment[`household-${index + 1}`],
       contractualWageTodayCents: CONTRACTUAL_WAGE_CENTS,
@@ -256,7 +259,8 @@ export function createSimulation(config: Partial<SimulationConfig> = DEFAULT_CON
     })),
     firms,
     government: {
-      id: 'government-1',
+      id: GOVERNMENT_ID,
+      plot: layout.plots[GOVERNMENT_ID]!,
       cashCents: 0,
       taxCollectedTodayCents: 0,
       corporateTaxCollectedTodayCents: 0,
@@ -318,7 +322,7 @@ function copyStateForStep(previous: SimulationState): SimulationState {
         Object.entries(household.industryOutcomes).map(([industryId, outcome]) => [industryId, { ...outcome }]),
       ) as typeof household.industryOutcomes,
     })),
-    firms: previous.firms.map((firm) => ({ ...firm, coordinate: firm.coordinate, pricing: { ...firm.pricing } })),
+    firms: previous.firms.map((firm) => ({ ...firm, pricing: { ...firm.pricing } })),
     government: { ...previous.government },
     metrics: [...previous.metrics],
     events: [...previous.events],
@@ -481,7 +485,7 @@ function clearMarket(
   state.rngState = shuffled.state
   const priority = shuffled.values.map((household) => {
     const ranked = industryFirms
-      .map((firm) => ({ firm, ...transportQuote(household.coordinate, firm.coordinate!, transportRate) }))
+      .map((firm) => ({ firm, ...transportQuote(household.coordinate, firm.plot, transportRate) }))
       .sort(
         (left, right) =>
           left.firm.postedPriceCents + left.transportFeeCents - (right.firm.postedPriceCents + right.transportFeeCents),
@@ -532,7 +536,7 @@ function clearMarket(
   const transportFirm = state.firms.find(({ industryId: id }) => id === 'transport')!
   for (const household of purchasingOrder) {
     const outcome = household.industryOutcomes[industryId]
-    const quote = (firm: Firm) => transportQuote(household.coordinate, firm.coordinate!, transportRate)
+    const quote = (firm: Firm) => transportQuote(household.coordinate, firm.plot, transportRate)
     const delivered = (firm: Firm) => firm.postedPriceCents + quote(firm).transportFeeCents
     const distancesByFirmId = Object.fromEntries(industryFirms.map((firm) => [firm.id, quote(firm).oneWayDistance]))
     household.spatialPurchasesToday[industryId] = {

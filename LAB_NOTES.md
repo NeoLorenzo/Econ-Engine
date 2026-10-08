@@ -6,6 +6,29 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP9-Plots-026] - (2026-10-08)
+
+### Problem
+
+Every firm occupied a single tile, the same as a house, and Government and Transport had no location in the model at all. The owner wanted building sizes to be more realistic: houses on one tile, firms on more tiles depending on their size, Government on the most, and a larger grid. The owner chose to make this part of the simulation rather than a display-only change, accepting that every trajectory would change.
+
+### Decisions
+
+- **Plot size by industry land use**, fixed for the run. Headcount was considered, but all eight consumer firms have the same headcount, so it would not have varied. Revenue changes daily, and land cannot resize or move without reshuffling the town.
+- **Distance to the nearest plot tile.** It is integer, intuitive, and gives land a real economic role: a bigger plot reaches more households. An entrance tile was considered but would have made a building's facing economically meaningful. A plot-centre distance would have made plot size purely cosmetic.
+- **40×40 at 1¢ per tile.** Halving the rate while doubling the grid keeps a trip across town at about its MVP8 cost, so differences from MVP8 come from plot reach rather than from more expensive travel.
+- **Plots first, then houses, from the spatial seed.** Placement stays as random and neutral as MVP8's. A zoned town (Government at the centre, a commercial ring, houses outside) was rejected because it would build a systematic pattern into who lives near which firm, a new economic assumption. Government is centred because it has no economic location, so where it stands changes only the picture.
+- **A one-tile gap between plots, none around houses.** Plots never merge into one block, and households may live right beside a shop.
+
+### Findings
+
+Over eight seeds, measuring to a plot's nearest edge shortens customer trips by about 15% and cuts the average transport fee by the same proportion. Firms recover part of that saving as higher prices, most visibly in Utilities, which has the largest plots, and in Healthcare. Needs met, inequality before redistribution, wages paid and market-share gaps are within seed-to-seed variation. The mean applied tax rate is higher (30% against 17%), but the seed ranges overlap widely. This is a hypothesis to test with a larger ensemble, not a finding.
+
+### Open questions
+
+- Whether the price rise is a stable consequence of plot reach or seed noise needs a larger ensemble, ideally with plot size varied alone.
+- Plot sizes are a modelling choice, not derived from anything inside the model. A later version might let land use follow from a firm's own decisions.
+
 ## [MVP8-Vision-023] - (2026-10-08)
 
 ### Problem

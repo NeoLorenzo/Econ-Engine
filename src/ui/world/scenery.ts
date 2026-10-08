@@ -46,7 +46,7 @@ function generator(seed: number) {
 
 /**
  * Where grass, trees and bushes go. Decoration only: it is derived from the seed and tile, never from the simulation
- * state, so nothing moves between days. Nothing grows on a tile a household, firm or institution stands on; trees
+ * state, so nothing moves between days. Nothing grows on a house's tile or on any tile of a plot; trees
  * are sparse among the houses and thicken into a forest across the margin.
  */
 export function sceneryLayout({
@@ -58,11 +58,18 @@ export function sceneryLayout({
   width: number
   height: number
   seed: number
-  entities: readonly Pick<WorldEntity, 'x' | 'z'>[]
+  entities: readonly Pick<WorldEntity, 'x' | 'z' | 'footprint'>[]
 }): SceneryLayout {
   const offsetX = (width - 1) / 2
   const offsetZ = (height - 1) / 2
-  const occupied = new Set(entities.map(({ x, z }) => `${Math.round(x + offsetX)},${Math.round(z + offsetZ)}`))
+  // Every tile a house stands on or a plot covers.
+  const occupied = new Set<string>()
+  for (const { x, z, footprint } of entities) {
+    const left = Math.round(x + offsetX - (footprint.width - 1) / 2)
+    const top = Math.round(z + offsetZ - (footprint.depth - 1) / 2)
+    for (let j = top; j < top + footprint.depth; j += 1)
+      for (let i = left; i < left + footprint.width; i += 1) occupied.add(`${i},${j}`)
+  }
   const items: SceneryItem[] = []
   const tiles: GrassTile[] = []
   for (let j = -SCENERY_MARGIN; j < height + SCENERY_MARGIN; j += 1) {

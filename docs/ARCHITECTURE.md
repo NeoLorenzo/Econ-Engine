@@ -66,3 +66,18 @@ After markets and the unchanged price-learning evaluation, firms pay fixed cash-
 ## MVP8 configurable population
 
 `SimulationConfig.householdCount` is the population authority. Canonical MVP8 uses 100; the scale harness also uses 10. Initial money, household generation, spatial entities, employment slots, production, payroll, demand denominators, and invariants derive from that value. Employment permits complete blocks of one worker per consumer firm plus two for Transport (ten households in the canonical economy), assigning `N/10` workers to every consumer firm and `N/5` to Transport through its isolated subseed. `createSimulation` validates the population, grid and market structure before building any agent.
+
+## MVP9 plots and town layout
+
+`spatial.ts` owns land. Households stand on single tiles (`Household.coordinate`); every firm and Government stands on a `Plot`, a rectangle of tiles whose size comes from `PLOT_SIZES` and `GOVERNMENT_PLOT_SIZE` in `config.ts`. `generateTownLayout` builds the whole town from the spatial seed, which no other stream shares:
+
+1. Government's plot is centred.
+2. Firm plots go in descending area, then by ID. A plot that is not square draws its orientation first, then draws its position uniformly from every position that keeps a one-tile gap from the plots already placed. If the drawn orientation fits nowhere, the other is tried.
+3. Households are shuffled onto the tiles no plot covers.
+
+The draw sequence is therefore: one orientation draw per non-square plot, one position draw per firm plot, then one draw per household.
+
+`plotDistance` measures from a household's tile to the nearest tile of a plot, and `transportQuote` prices the round trip from it. The engine's delivered-cost ranking, the fallback order and affordability use `transportQuote(household.coordinate, firm.plot, rate)`, as do the observer's territory map and 2D market map, so the display cannot disagree with the model. `validatePopulationConfig` refuses a grid without room for every plot, its gap and one tile per household, and `invariants.ts` checks plot sizes, bounds and gaps and that no household stands on a plot.
+
+The 3D world draws each firm and Government across its plot: `buildingScale` stretches the building model to the plot, less a 0.1-tile inset, and raises it with the square root of the plot's area. The camera's default distance, zoom-out limit, fog and far plane scale with the grid, and Locate stays further out for bigger plots.
+

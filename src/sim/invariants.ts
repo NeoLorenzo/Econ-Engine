@@ -1,11 +1,14 @@
 import {
   DEFAULT_INDUSTRIES,
+  GOVERNMENT_PLOT_SIZE,
   INITIAL_HOUSEHOLD_CASH_CENTS,
+  PLOT_SIZES,
   TRANSPORT_WORKERS_PER_BLOCK,
   deriveIndustryBudgetCents,
   employmentBlockSize,
   firmRoster,
 } from './config'
+import { plotsSeparated } from './spatial'
 import type { SimulationState } from './types'
 
 const assertIntegerMoney = (label: string, value: number) => {
@@ -67,26 +70,33 @@ export function validateState(state: SimulationState, endOfDay = false) {
     if (industry.householdBudgetCents !== deriveIndustryBudgetCents(state.config.dailyExpenditureBudgetCents!, share!))
       throw new Error(`${industry.id} derived budget is inconsistent`)
   }
-  const spatialEntities = [
-    ...state.households.map(({ id, coordinate }) => ({ id, coordinate })),
-    ...state.firms
-      .filter(({ industryId }) => industryId !== 'transport')
-      .map(({ id, coordinate }) => ({ id, coordinate: coordinate! })),
+  const gridWidth = state.config.gridWidth!
+  const gridHeight = state.config.gridHeight!
+  const coordinates = state.households.map(({ coordinate }) => coordinate)
+  if (new Set(coordinates.map(({ x, y }) => `${x},${y}`)).size !== coordinates.length)
+    throw new Error('Household coordinates must be unique')
+  if (coordinates.some(({ x, y }) => x < 0 || x >= gridWidth || y < 0 || y >= gridHeight))
+    throw new Error('Household coordinate is outside grid bounds')
+  const plots = [
+    ...state.firms.map(({ id, industryId, plot }) => ({ id, plot, size: PLOT_SIZES[industryId] })),
+    { id: state.government.id, plot: state.government.plot, size: GOVERNMENT_PLOT_SIZE },
   ]
-  if (
-    new Set(spatialEntities.map(({ coordinate }) => `${coordinate.x},${coordinate.y}`)).size !== spatialEntities.length
-  )
-    throw new Error('Spatial entity coordinates must be unique')
-  if (
-    spatialEntities.some(
-      ({ coordinate }) =>
-        coordinate.x < 0 ||
-        coordinate.x >= state.config.gridWidth! ||
-        coordinate.y < 0 ||
-        coordinate.y >= state.config.gridHeight!,
-    )
-  )
-    throw new Error('Spatial entity coordinate is outside grid bounds')
+  plots.forEach(({ id, plot, size }, index) => {
+    const sized =
+      (plot.width === size.width && plot.height === size.height) ||
+      (plot.width === size.height && plot.height === size.width)
+    if (!sized) throw new Error(`${id} plot is ${plot.width} × ${plot.height}, not its ${size.width} × ${size.height}`)
+    if (plot.x < 0 || plot.y < 0 || plot.x + plot.width > gridWidth || plot.y + plot.height > gridHeight)
+      throw new Error(`${id} plot is outside grid bounds`)
+    for (const other of plots.slice(index + 1))
+      if (!plotsSeparated(plot, other.plot)) throw new Error(`${id} and ${other.id} plots overlap or touch`)
+  })
+  // Plot tiles are marked once, so the per-step check stays linear in households.
+  const covered = new Set<string>()
+  for (const { plot } of plots)
+    for (let y = plot.y; y < plot.y + plot.height; y += 1)
+      for (let x = plot.x; x < plot.x + plot.width; x += 1) covered.add(`${x},${y}`)
+  if (coordinates.some(({ x, y }) => covered.has(`${x},${y}`))) throw new Error('A household stands on a plot')
 
   state.households.forEach((household) => {
     assertIntegerMoney(`${household.id} cash`, household.cashCents)

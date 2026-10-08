@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   COMFORT_RADIUS,
+  COMFORT_RADIUS_PER_TILE,
+  comfortRadius,
   easeInOutCubic,
   FLIGHT_MS,
   groundShiftForScreenOffset,
@@ -28,6 +30,15 @@ describe('easeInOutCubic', () => {
 })
 
 describe('planFlight', () => {
+  it('stays further out for a bigger plot, so the whole building fits', () => {
+    const far = { x: 0, z: 0, radius: 92 }
+    expect(planFlight(far, { x: 0, z: 0 }, false, 1).to.radius).toBe(COMFORT_RADIUS)
+    expect(planFlight(far, { x: 0, z: 0 }, false, 3).to.radius).toBe(COMFORT_RADIUS + 2 * COMFORT_RADIUS_PER_TILE)
+    expect(planFlight(far, { x: 0, z: 0 }, false, 5).to.radius).toBe(comfortRadius(5))
+    // It still never zooms out.
+    expect(planFlight({ x: 0, z: 0, radius: 35 }, { x: 0, z: 0 }, false, 5).to.radius).toBe(35)
+  })
+
   it('flies to the entity and zooms in to the comfort distance', () => {
     expect(COMFORT_RADIUS).toBe(30)
     expect(FLIGHT_MS).toBe(600)

@@ -84,6 +84,17 @@ export interface Coordinate {
   x: number
   y: number
 }
+
+/**
+ * A rectangle of land on the grid: its lowest-numbered tile and its size in tiles. Firms and Government stand on plots;
+ * households stand on single tiles.
+ */
+export interface Plot {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 /** One household's purchase attempt in one consumer market today. */
 export interface HouseholdSpatialPurchase {
   chosenFirmId: string | null
@@ -132,7 +143,8 @@ export interface Firm {
   pricing: PricingState
   latestDecisionReason: string
   latestDecisionAction: PriceDecisionAction
-  coordinate?: Coordinate
+  /** The land the firm stands on. A household's trip is measured to the plot's nearest tile. */
+  plot: Plot
   employeeIds: string[]
   productivityPerWorker: number | null
   unitsProducedToday: number
@@ -149,6 +161,8 @@ export interface Firm {
 
 export interface Government {
   id: 'government-1'
+  /** Government's land at the centre of the grid. It has no economic effect. */
+  plot: Plot
   cashCents: number
   taxCollectedTodayCents: number
   corporateTaxCollectedTodayCents: number

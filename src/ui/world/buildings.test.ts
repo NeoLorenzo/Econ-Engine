@@ -9,8 +9,10 @@ import {
   BUILDING_FOOTPRINT,
   buildingArchetype,
   buildingRotation,
+  buildingScale,
   createBuildingKit,
   HOUSE_FOOTPRINT,
+  PLOT_INSET,
   setAccent,
 } from './buildings'
 
@@ -47,6 +49,44 @@ describe('buildingRotation', () => {
     const counts = [0, 1, 2, 3].map((turn) => turns.filter((value) => value === turn).length)
     // 110 buildings: every direction is well used, none dominates.
     expect(Math.min(...counts)).toBeGreaterThanOrEqual(15)
+  })
+})
+
+describe('buildingScale', () => {
+  const close = (actual: { x: number; y: number; z: number }, expected: { x: number; y: number; z: number }) => {
+    for (const axis of ['x', 'y', 'z'] as const) expect(actual[axis]).toBeCloseTo(expected[axis], 9)
+  }
+
+  it('keeps a house its own size, growing it by the emphasis factor', () => {
+    close(buildingScale('household', { width: 1, depth: 1 }, Math.PI / 2), { x: 1, y: 1, z: 1 })
+    close(buildingScale('household', { width: 1, depth: 1 }, 0, 1.25), { x: 1.25, y: 1.25, z: 1.25 })
+  })
+
+  it('stretches a plot building to its plot, less the inset, and raises it with the square root of the area', () => {
+    const across = (tiles: number) => (tiles - PLOT_INSET) / BUILDING_FOOTPRINT
+    close(buildingScale('firm', { width: 3, depth: 3 }, 0), { x: across(3), y: 0.75 * 3, z: across(3) })
+    close(buildingScale('government', { width: 5, depth: 5 }, Math.PI), { x: across(5), y: 0.75 * 5, z: across(5) })
+    // Government's 5×5 hall is about 1.7 times as tall as a 3×3 market hall, and stays inside its plot.
+    expect(
+      buildingScale('government', { width: 5, depth: 5 }, 0).y / buildingScale('firm', { width: 3, depth: 3 }, 0).y,
+    ).toBeCloseTo(5 / 3, 9)
+    expect(across(5) * BUILDING_FOOTPRINT).toBeLessThan(5)
+  })
+
+  it('swaps the stretch for a quarter-turned model on a plot that is not square', () => {
+    const across = (tiles: number) => (tiles - PLOT_INSET) / BUILDING_FOOTPRINT
+    const footprint = { width: 3, depth: 2 }
+    close(buildingScale('firm', footprint, 0), { x: across(3), y: 0.75 * Math.sqrt(6), z: across(2) })
+    close(buildingScale('firm', footprint, Math.PI), { x: across(3), y: 0.75 * Math.sqrt(6), z: across(2) })
+    close(buildingScale('firm', footprint, Math.PI / 2), { x: across(2), y: 0.75 * Math.sqrt(6), z: across(3) })
+    close(buildingScale('firm', footprint, (3 * Math.PI) / 2), { x: across(2), y: 0.75 * Math.sqrt(6), z: across(3) })
+  })
+
+  it('grows a selected plot building by about a quarter of a tile, not a quarter of its size', () => {
+    const plain = buildingScale('firm', { width: 4, depth: 4 }, 0)
+    const selected = buildingScale('firm', { width: 4, depth: 4 }, 0, 1.25)
+    expect((selected.x - plain.x) * BUILDING_FOOTPRINT).toBeCloseTo((0.25 * (4 - PLOT_INSET)) / 4, 9)
+    expect(selected.x * BUILDING_FOOTPRINT).toBeLessThan(4 + 1)
   })
 })
 

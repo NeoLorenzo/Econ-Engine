@@ -2,6 +2,42 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP9-Plots-026] - (2026-10-08)
+
+### Changed
+
+- **Multi-tile plots (model change).** Every firm and Government now stands on a plot of land sized by what it is: Utilities 4×4, Food 3×3, Entertainment 3×3, Healthcare 3×2, Transport 4×3 and Government 5×5. Households keep one tile. `Firm.coordinate` is replaced by `Firm.plot`, which Transport now has too, and `Government` gains `plot`. See [docs/MVP9_SPEC.md](docs/MVP9_SPEC.md).
+- **Distance to the nearest edge.** A household's trip to a firm is measured to the nearest tile of the firm's plot, so a bigger plot reaches more households. Delivered cost, the fallback order, affordability, purchase records, market metrics, the territory overlay and the 2D market map all use this one rule.
+- **A bigger town.** The default grid is 40×40 instead of 20×20, and the transport rate is 1¢ per tile instead of 2¢, so a trip across town costs about what it did. The Settings drawer's default rate now follows the model default.
+- **Placement** comes from the spatial seed alone:
+  - Government's plot is centred.
+  - Firm plots are placed largest first, each at a random position that keeps a one-tile gap from other plots; a plot that is not square may be turned 90°.
+  - Households are shuffled onto the remaining tiles.
+  - The market, probe, Government and employment random streams are unchanged.
+- **Validation and invariants:** a grid must hold every plot with its gap plus one tile per household; invariants check plot sizes, bounds and gaps, and that no household stands on a plot.
+- **3D world:**
+  - Each firm and Government building fills its plot and is raised with the square root of the plot's area.
+  - The camera's default distance, zoom limit and fog scale with the grid.
+  - Locate stays further out for bigger plots, and big buildings glow more softly when selected.
+  - Scenery avoids every plot tile.
+  - The display-only `institutionTiles` is removed.
+- The inspector and the Markets panel explain that trips are measured to the nearest edge of a firm's plot. README, architecture, validation and lab notes are updated.
+
+### Validation
+
+- The canonical trajectory changes, as intended. Across eight seeds over days 101–400:
+  - one-way customer trips shorten by about 15% (9.64 to 8.24 MVP8 tiles), and the average transport fee falls from 38.5¢ to 33.0¢;
+  - Utilities and Healthcare prices rise by about 6% and 5%;
+  - needs met, inequality before redistribution, wages paid and market-share gaps stay within the range seen across seeds.
+  Full table in the MVP9 spec.
+- New tests cover plot distance, layouts, orientation, capacity errors, RNG isolation, plot reach in the territory map, plot-sized buildings and Locate distance. No existing simulation test needed a new expected value. Re-baselined or changed tests:
+  - the grid-capacity message and limits: 400 households now fit, so the overflow case uses 1,500;
+  - the "exactly enough cells" case, now a 20×20 grid that still fits every plot;
+  - hand-made territory tests, whose firms now have one-tile plots;
+  - the two institution-tile tests, replaced by plot-centre tests;
+  - scenery tests sized for the 40×40 town.
+- `npm run agent:check` and the fast-mode browser check (pause latency 256 ms) pass. The town, the overlay, scenery, plot picking, Locate, the 2D map and 375px were checked in the browser with no console errors.
+
 ## [MVP8-Town_Models-025] - (2026-10-08)
 
 ### Changed

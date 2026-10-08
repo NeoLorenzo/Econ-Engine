@@ -6,8 +6,9 @@ import { firmColor, palette } from './theme'
 import { buildMarketTerritory, type CompetitiveIndustryId } from './worldViewModel'
 
 /**
- * Top-down view of one market. The floor shows which firm is cheaper once the round trip is paid;
- * each dot is a household, coloured by the firm it actually bought from today.
+ * Top-down view of one market. Each firm is drawn across its plot. The floor shows which firm is cheaper once the
+ * round trip to the nearest edge of its plot is paid; each dot is a household, coloured by the firm it actually bought
+ * from today.
  */
 export function MarketMap({
   state,
@@ -21,7 +22,7 @@ export function MarketMap({
   const territory = useMemo(() => buildMarketTerritory(state, industry), [state, industry])
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
-  const firms = state.firms.filter((firm) => firm.industryId === industry && firm.coordinate)
+  const firms = state.firms.filter((firm) => firm.industryId === industry)
   const households = state.households.map((household) => {
     const outcome = household.industryOutcomes[industry].purchaseOutcomeToday
     return {
@@ -90,20 +91,21 @@ export function MarketMap({
             onClick={onSelectFirm ? () => onSelectFirm(firm.id) : undefined}
           >
             <rect
-              x={firm.coordinate!.x + 0.05}
-              y={firm.coordinate!.y + 0.05}
-              width={0.9}
-              height={0.9}
-              rx={0.18}
+              x={firm.plot.x + 0.05}
+              y={firm.plot.y + 0.05}
+              width={firm.plot.width - 0.1}
+              height={firm.plot.height - 0.1}
+              rx={0.3}
               fill={fill(firm.id)}
               stroke={palette.bg}
               strokeWidth={0.12}
             />
             <text
-              x={firm.coordinate!.x + 0.5}
-              y={firm.coordinate!.y + 0.72}
+              x={firm.plot.x + firm.plot.width / 2}
+              y={firm.plot.y + firm.plot.height / 2}
               textAnchor="middle"
-              fontSize={0.62}
+              dominantBaseline="central"
+              fontSize={Math.min(firm.plot.width, firm.plot.height) * 0.6}
               fontWeight={700}
               fill={palette.bg}
             >

@@ -42,6 +42,33 @@ export function buildingRotation(entityId: string) {
   return (stableHash(entityId) % 4) * (Math.PI / 2)
 }
 
+/** Plot buildings stop this far short of the plot's edges, in tiles. */
+export const PLOT_INSET = 0.1
+
+/**
+ * How much to stretch a building's model. A house keeps its size. A firm's or Government's model, built for a 0.8-tile
+ * square, is stretched to cover its plot, less `PLOT_INSET`, and is raised by the square root of the plot's area so
+ * bigger plots read as bigger buildings without becoming towers. A quarter-turned model swaps its x and z stretch.
+ * `emphasis` (1.25 selected, 1.15 related) grows a house by that factor, and a plot building by about that fraction
+ * of one tile, so it stays inside the gap around its plot.
+ */
+export function buildingScale(
+  kind: WorldEntity['kind'],
+  footprint: WorldEntity['footprint'],
+  rotation: number,
+  emphasis = 1,
+) {
+  if (kind === 'household') return { x: emphasis, y: emphasis, z: emphasis }
+  const across = (tiles: number) => (tiles - PLOT_INSET) / BUILDING_FOOTPRINT
+  const quarterTurned = Math.round(rotation / (Math.PI / 2)) % 2 === 1
+  const [x, z] = quarterTurned
+    ? [across(footprint.depth), across(footprint.width)]
+    : [across(footprint.width), across(footprint.depth)]
+  const grow = 1 + (emphasis - 1) / Math.max(footprint.width, footprint.depth)
+  const y = 0.75 * Math.sqrt(footprint.width * footprint.depth)
+  return { x: x * grow, y: y * grow, z: z * grow }
+}
+
 /** A stable unsigned 32-bit FNV-1a hash, for decoration that must look random but never change between frames. */
 export function stableHash(text: string) {
   let hash = 0x811c9dc5

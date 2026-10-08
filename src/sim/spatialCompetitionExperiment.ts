@@ -1,9 +1,13 @@
 import { consumerFirmId, DEFAULT_SEED } from './config'
 import { createSimulation, stepSimulation } from './engine'
+import type { Coordinate, Plot } from './types'
 
 export interface SpatialCompetitionResult {
   seed: number
-  coordinates: Record<string, { x: number; y: number }>
+  /** Household tiles, keyed by household ID. */
+  coordinates: Record<string, Coordinate>
+  /** The two Entertainment firms' plots, keyed by firm ID. */
+  plots: Record<string, Plot>
   firmAIncumbentCents: number
   firmBIncumbentCents: number
   firmAFinalShare: number
@@ -49,9 +53,8 @@ export function runSpatialCompetitionExperiment(
     const b = latest.markets.find((market) => market.firmId === entertainment[1].id)!
     return {
       seed,
-      coordinates: Object.fromEntries(
-        [...state.households, ...entertainment].map((entity) => [entity.id, entity.coordinate!]),
-      ),
+      coordinates: Object.fromEntries(state.households.map(({ id, coordinate }) => [id, coordinate])),
+      plots: Object.fromEntries(entertainment.map(({ id, plot }) => [id, plot])),
       firmAIncumbentCents: entertainment[0].pricing.incumbentPriceCents,
       firmBIncumbentCents: entertainment[1].pricing.incumbentPriceCents,
       firmAFinalShare: a.marketShare,
