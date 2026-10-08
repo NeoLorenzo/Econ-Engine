@@ -1,6 +1,11 @@
 export const FLIGHT_MS = 600
-/** Locate zooms in to this distance, but never zooms out to it. The default view sits at 46. */
+/** Locate zooms in to this distance for a house, but never zooms out to it. The default view sits at 46. */
 export const COMFORT_RADIUS = 30
+/** For a plot, Locate stays this much further out per tile of the plot's longer side beyond the first. */
+export const COMFORT_RADIUS_PER_TILE = 6
+
+/** How close Locate comes: further out for a bigger plot, so the whole building fits in view. */
+export const comfortRadius = (footprintTiles = 1) => COMFORT_RADIUS + COMFORT_RADIUS_PER_TILE * (footprintTiles - 1)
 
 /** Where the orbit camera looks (on the ground, so y is 0) and how far away it is. */
 export interface CameraPose {
@@ -28,10 +33,15 @@ export function easeInOutCubic(t: number) {
   return p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2
 }
 
-export function planFlight(current: CameraPose, entity: { x: number; z: number }, reducedMotion: boolean): Flight {
+export function planFlight(
+  current: CameraPose,
+  entity: { x: number; z: number },
+  reducedMotion: boolean,
+  footprintTiles = 1,
+): Flight {
   return {
     from: current,
-    to: { x: entity.x, z: entity.z, radius: Math.min(current.radius, COMFORT_RADIUS) },
+    to: { x: entity.x, z: entity.z, radius: Math.min(current.radius, comfortRadius(footprintTiles)) },
     durationMs: reducedMotion ? 0 : FLIGHT_MS,
   }
 }

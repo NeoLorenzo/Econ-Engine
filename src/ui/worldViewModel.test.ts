@@ -9,7 +9,7 @@ import {
   getTransferRecipientIds,
   householdWealthHeight,
   houseTier,
-  institutionTiles,
+  plotCentre,
   worldPoint,
 } from './worldViewModel'
 
@@ -23,62 +23,31 @@ describe('3D world observer model', () => {
     expect(firmEntities).toHaveLength(9)
     expect(firmEntities.filter(({ industryId }) => industryId !== 'transport')).toHaveLength(8)
     expect(firmEntities.some(({ id }) => id === 'firm-transport')).toBe(true)
-    expect(buildMarketTerritory(state, 'food').cells).toHaveLength(400)
+    expect(buildMarketTerritory(state, 'food').cells).toHaveLength(1_600)
   })
 
-  it('places Government and Transport on the free tiles nearest the centre without giving them coordinates', () => {
+  it('stands every firm and Government at the centre of its plot, covering the whole plot', () => {
     const state = createSimulation({ seed: DEFAULT_SEED })
-    const width = state.config.gridWidth ?? 20
-    const height = state.config.gridHeight ?? 20
-    const tiles = institutionTiles(state)
-    const occupied = new Set(
-      [
-        ...state.households.map(({ coordinate }) => coordinate),
-        ...state.firms.flatMap(({ coordinate }) => coordinate ?? []),
-      ].map(({ x, y }) => `${x},${y}`),
-    )
-    const centreDistance = ({ x, y }: { x: number; y: number }) =>
-      (x - (width - 1) / 2) ** 2 + (y - (height - 1) / 2) ** 2
-    const freeDistances = Array.from({ length: width * height }, (_, index) => ({
-      x: index % width,
-      y: Math.floor(index / width),
-    }))
-      .filter(({ x, y }) => !occupied.has(`${x},${y}`))
-      .map(centreDistance)
-      .sort((a, b) => a - b)
-
-    expect(tiles.government).not.toBeNull()
-    expect(tiles.transport).not.toBeNull()
-    expect(tiles.government).not.toEqual(tiles.transport)
-    for (const tile of [tiles.government!, tiles.transport!]) expect(occupied.has(`${tile.x},${tile.y}`)).toBe(false)
-    expect(centreDistance(tiles.government!)).toBe(freeDistances[0])
-    expect(centreDistance(tiles.transport!)).toBe(freeDistances[1])
-
     const entities = buildWorldEntities(state)
+    const owners = [
+      ...state.firms.map(({ id, plot }) => ({ id, plot })),
+      { id: state.government.id, plot: state.government.plot },
+    ]
+    for (const { id, plot } of owners) {
+      const entity = entities.find((candidate) => candidate.id === id)!
+      expect({ x: entity.x, z: entity.z }).toEqual(plotCentre(plot, 40, 40))
+      expect(entity.footprint).toEqual({ width: plot.width, depth: plot.height })
+    }
     const government = entities.find(({ id }) => id === state.government.id)!
-    const transport = entities.find(({ id }) => id === 'firm-transport')!
-    expect(government.kind).toBe('government')
-    expect({ x: government.x, z: government.z }).toEqual(worldPoint(tiles.government!, width, height))
-    expect({ x: transport.x, z: transport.z }).toEqual(worldPoint(tiles.transport!, width, height))
-    // The tiles are for display only: the simulation still gives neither a location.
-    expect(state.firms.find(({ id }) => id === 'firm-transport')!.coordinate).toBeUndefined()
+    expect(government).toMatchObject({ kind: 'government', x: -0.5, z: -0.5, footprint: { width: 5, depth: 5 } })
+    expect(entities.filter(({ kind }) => kind === 'household').every(({ footprint }) => footprint.width === 1)).toBe(
+      true,
+    )
   })
 
-  it('puts Government and Transport beside the grid when no tile is free', () => {
-    const base = createSimulation({ seed: DEFAULT_SEED })
-    const state = {
-      ...base,
-      config: { ...base.config, gridWidth: 2, gridHeight: 1 },
-      households: base.households.slice(0, 1).map((household) => ({ ...household, coordinate: { x: 0, y: 0 } })),
-      firms: base.firms
-        .filter(({ id }) => id === 'firm-food-a' || id === 'firm-transport')
-        .map((firm) => (firm.id === 'firm-food-a' ? { ...firm, coordinate: { x: 1, y: 0 } } : firm)),
-    }
-    const entities = buildWorldEntities(state)
-
-    expect(institutionTiles(state)).toEqual({ government: null, transport: null })
-    expect(entities.find(({ id }) => id === 'firm-transport')!.x).toBeLessThan(-1)
-    expect(entities.find(({ id }) => id === state.government.id)!.x).toBeGreaterThan(1)
+  it('puts a plot centre midway across its tiles', () => {
+    expect(plotCentre({ x: 0, y: 0, width: 3, height: 2 }, 40, 40)).toEqual({ x: -18.5, z: -19 })
+    expect(plotCentre({ x: 0, y: 0, width: 1, height: 1 }, 40, 40)).toEqual(worldPoint({ x: 0, y: 0 }, 40, 40))
   })
 
   it('lists the households that received a transfer today', () => {
@@ -111,8 +80,10 @@ describe('3D world observer model', () => {
       ...base,
       config: { ...base.config, gridWidth: 3, gridHeight: 1, transportCostPerTileCents: 2 },
       firms: base.firms.map((firm) => {
-        if (firm.id === 'firm-food-a') return { ...firm, coordinate: { x: 0, y: 0 }, postedPriceCents: 200 }
-        if (firm.id === 'firm-food-b') return { ...firm, coordinate: { x: 2, y: 0 }, postedPriceCents: 200 }
+        if (firm.id === 'firm-food-a')
+          return { ...firm, plot: { x: 0, y: 0, width: 1, height: 1 }, postedPriceCents: 200 }
+        if (firm.id === 'firm-food-b')
+          return { ...firm, plot: { x: 2, y: 0, width: 1, height: 1 }, postedPriceCents: 200 }
         return firm
       }),
     }
@@ -131,14 +102,37 @@ describe('3D world observer model', () => {
     expect(territory.cellCounts).toEqual({ 'firm-food-a': 2, 'firm-food-b': 1 })
   })
 
+  it('measures territory to the nearest tile of each plot, so a wider plot reaches further', () => {
+    const base = createSimulation({ seed: DEFAULT_SEED })
+    const state = {
+      ...base,
+      config: { ...base.config, gridWidth: 6, gridHeight: 1, transportCostPerTileCents: 2 },
+      firms: base.firms.map((firm) => {
+        if (firm.id === 'firm-food-a')
+          return { ...firm, plot: { x: 0, y: 0, width: 3, height: 1 }, postedPriceCents: 200 }
+        if (firm.id === 'firm-food-b')
+          return { ...firm, plot: { x: 5, y: 0, width: 1, height: 1 }, postedPriceCents: 200 }
+        return firm
+      }),
+    }
+
+    const territory = buildMarketTerritory(state, 'food')
+    // Tiles 0–2 are Firm A's plot; tile 3 is one tile from A and two from B (a 4¢ round trip against 8¢).
+    expect(territory.cells.map(({ ownerFirmId }) => ownerFirmId.slice(-1)).join('')).toBe('aaaabb')
+    expect(territory.cells.map(({ deliveredCostCents }) => deliveredCostCents)).toEqual([200, 200, 200, 204, 204, 200])
+    expect(territory.cells[3]).toMatchObject({ tie: false, competingDeliveredCostCents: 208 })
+  })
+
   it('moves territory when an authoritative posted price changes', () => {
     const base = createSimulation({ seed: DEFAULT_SEED })
     const state = {
       ...base,
       config: { ...base.config, gridWidth: 3, gridHeight: 1, transportCostPerTileCents: 2 },
       firms: base.firms.map((firm) => {
-        if (firm.id === 'firm-food-a') return { ...firm, coordinate: { x: 0, y: 0 }, postedPriceCents: 200 }
-        if (firm.id === 'firm-food-b') return { ...firm, coordinate: { x: 2, y: 0 }, postedPriceCents: 190 }
+        if (firm.id === 'firm-food-a')
+          return { ...firm, plot: { x: 0, y: 0, width: 1, height: 1 }, postedPriceCents: 200 }
+        if (firm.id === 'firm-food-b')
+          return { ...firm, plot: { x: 2, y: 0, width: 1, height: 1 }, postedPriceCents: 190 }
         return firm
       }),
     }

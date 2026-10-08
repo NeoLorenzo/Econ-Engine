@@ -10,7 +10,7 @@ import {
   type LinkMode,
 } from '../worldViewModel'
 
-/** "Firm A is 3 tiles away, Firm B 7" */
+/** "Firm A is 3 tiles away, Firm B 7", measured to the nearest edge of each firm's plot */
 const distanceSummary = (distancesByFirmId: Record<string, number>) =>
   Object.entries(distancesByFirmId)
     .map(([firmId, distance], index) =>
@@ -112,7 +112,7 @@ function FirmInspector({
     <>
       <p className="inspector-sub">
         {isTransport
-          ? 'Monopoly · shown near the centre for reference; fares depend only on the trip to the shop'
+          ? 'Monopoly · its depot stands on its own plot; fares depend only on the trip to the shop'
           : `Competes in ${INDUSTRY_NAMES[firm.industryId]}`}
       </p>
       <dl className="inspector-stats">
@@ -163,8 +163,8 @@ function GovernmentInspector({ state }: { state: SimulationState }) {
   return (
     <>
       <p className="inspector-sub">
-        Taxes wealth and pays it to the households with the least · shown near the centre for reference; distance to it
-        has no effect
+        Taxes wealth and pays it to the households with the least · its hall stands at the centre of town; distance to
+        it has no effect
       </p>
       <dl className="inspector-stats">
         <div>

@@ -1,6 +1,6 @@
 import { DEFAULT_SEED } from './config'
 import { createSimulation, stepSimulation } from './engine'
-import type { IndustryId, MarketMetrics } from './types'
+import type { IndustryId, MarketMetrics, Plot } from './types'
 
 export const COMPETITIVE_ANALYSIS_HORIZON_DAYS = 1_000
 const CONSUMER_IDS = ['food', 'utilities', 'healthcare', 'entertainment'] as const
@@ -64,7 +64,7 @@ export interface CompetitiveTemporalAnalytics {
 
 export interface GeneralizedIndustryResult {
   industryId: ConsumerIndustryId
-  firmLocations: Record<string, { x: number; y: number }>
+  firmLocations: Record<string, Plot>
   analytics: CompetitiveTemporalAnalytics
   averageCustomerDistancesAtHorizon: [number, number]
   averageDeliveredCostsCentsAtHorizon: [number, number]
@@ -206,7 +206,7 @@ export function runGeneralizedSpatialExperiment(
         const markets = firms.map((firm) => latest.markets.find((market) => market.firmId === firm.id)!)
         return {
           industryId,
-          firmLocations: Object.fromEntries(firms.map(({ id, coordinate }) => [id, coordinate!])),
+          firmLocations: Object.fromEntries(firms.map(({ id, plot }) => [id, plot])),
           analytics: analyzeCompetitiveTrajectory(trajectories[industryId]),
           averageCustomerDistancesAtHorizon: markets.map(({ averageCustomerDistance }) => averageCustomerDistance) as [
             number,

@@ -9,7 +9,7 @@ import {
 } from './config'
 import { createSimulation, runDays, stepSimulation } from './engine'
 import { totalMoney, validateState } from './invariants'
-import { manhattanDistance, transportQuote } from './spatial'
+import { plotContains, plotDistance, transportQuote } from './spatial'
 
 const consumerIds = ['food', 'utilities', 'healthcare', 'entertainment'] as const
 const base = { startingPriceCents: 100, initialStepCents: 100, seed: 20260813 }
@@ -38,17 +38,18 @@ describe('MVP4 full spatial competition', () => {
     expect(state.industries.find(({ id }) => id === 'transport')?.budgetShareBps).toBeUndefined()
   })
 
-  it('places 100 households and eight consumer firms on unique in-bounds cells', () => {
+  it('places 100 households on unique in-bounds tiles, off the plots of nine firms and Government', () => {
     const state = createSimulation(base)
-    const entities = [...state.households, ...state.firms.filter(({ industryId }) => industryId !== 'transport')]
-    expect(entities).toHaveLength(108)
-    expect(new Set(entities.map(({ coordinate }) => `${coordinate!.x},${coordinate!.y}`)).size).toBe(108)
+    expect(new Set(state.households.map(({ coordinate }) => `${coordinate.x},${coordinate.y}`)).size).toBe(100)
     expect(
-      entities.every(
-        ({ coordinate }) => coordinate!.x >= 0 && coordinate!.x < 20 && coordinate!.y >= 0 && coordinate!.y < 20,
+      state.households.every(
+        ({ coordinate }) => coordinate.x >= 0 && coordinate.x < 40 && coordinate.y >= 0 && coordinate.y < 40,
       ),
     ).toBe(true)
-    expect(state.firms.find(({ industryId }) => industryId === 'transport')?.coordinate).toBeUndefined()
+    const plots = [...state.firms.map(({ plot }) => plot), state.government.plot]
+    expect(plots).toHaveLength(10)
+    expect(state.households.some(({ coordinate }) => plots.some((plot) => plotContains(plot, coordinate)))).toBe(false)
+    expect(() => validateState(state)).not.toThrow()
   })
 
   it('routes every consumer purchase product payment and travel payment separately', () => {
@@ -79,13 +80,10 @@ describe('MVP4 full spatial competition', () => {
     const firms = state.firms.filter((firm) => firm.industryId === industryId)
     const household = state.households.find(
       (candidate) =>
-        manhattanDistance(candidate.coordinate, firms[0].coordinate!) !==
-        manhattanDistance(candidate.coordinate, firms[1].coordinate!),
+        plotDistance(candidate.coordinate, firms[0].plot) !== plotDistance(candidate.coordinate, firms[1].plot),
     )!
     const [closer, farther] = [...firms].sort(
-      (left, right) =>
-        manhattanDistance(household.coordinate, left.coordinate!) -
-        manhattanDistance(household.coordinate, right.coordinate!),
+      (left, right) => plotDistance(household.coordinate, left.plot) - plotDistance(household.coordinate, right.plot),
     )
     closer.postedPriceCents = 101
     farther.postedPriceCents = 100
@@ -108,8 +106,7 @@ describe('MVP4 full spatial competition', () => {
       ...firms.map(
         (firm) =>
           postedPriceCents +
-          transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
-            .transportFeeCents,
+          transportQuote(household.coordinate, firm.plot, state.config.transportCostPerTileCents!).transportFeeCents,
       ),
     )
     const openingLimitCents = cheapestDeliveredCostCents - 1
@@ -138,8 +135,7 @@ describe('MVP4 full spatial competition', () => {
     const household = state.households.find((candidate) => {
       const fees = firms.map(
         (firm) =>
-          transportQuote(candidate.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
-            .transportFeeCents,
+          transportQuote(candidate.coordinate, firm.plot, state.config.transportCostPerTileCents!).transportFeeCents,
       )
       return fees[0] !== fees[1]
     })!
@@ -149,8 +145,7 @@ describe('MVP4 full spatial competition', () => {
     const deliveredCosts = firms.map(
       (firm) =>
         firm.postedPriceCents +
-        transportQuote(household.coordinate, firm.coordinate!, state.config.transportCostPerTileCents!)
-          .transportFeeCents,
+        transportQuote(household.coordinate, firm.plot, state.config.transportCostPerTileCents!).transportFeeCents,
     )
     const openingLimitCents = Math.min(...deliveredCosts)
     state.households.forEach((candidate) => {
@@ -210,11 +205,12 @@ describe('population and grid validation at the config boundary (#35)', () => {
     },
   )
 
-  it('rejects a grid with fewer cells than households plus consumer firms', () => {
+  it('rejects a grid without room for the households plus every plot and its gap', () => {
     expect(() => createSimulation({ ...base, gridWidth: 10, gridHeight: 10 })).toThrow(
-      'gridWidth × gridHeight is 10 × 10 = 100 cells, too few for 100 households and 8 consumer firms on unique cells',
+      'gridWidth × gridHeight is 10 × 10 = 100 cells, too few for 100 households plus plots for 9 firms and Government (194 cells including the gap around each plot)',
     )
-    expect(() => createSimulation({ ...base, householdCount: 400 })).toThrow(/^gridWidth × gridHeight/)
+    expect(() => createSimulation({ ...base, householdCount: 1_500 })).toThrow(/^gridWidth × gridHeight/)
+    expect(() => createSimulation({ ...base, gridWidth: 4, gridHeight: 400 })).toThrow(/^gridWidth × gridHeight/)
   })
 
   it.each([
@@ -224,8 +220,8 @@ describe('population and grid validation at the config boundary (#35)', () => {
     expect(() => createSimulation({ ...base, [field]: value })).toThrow(new RegExp(`^${field} must be a whole number`))
   })
 
-  it('accepts a grid with exactly enough cells and complete household blocks', () => {
-    expect(createSimulation({ ...base, gridWidth: 12, gridHeight: 9 }).households).toHaveLength(100)
+  it('accepts a smaller grid with room for every plot and complete household blocks', () => {
+    expect(createSimulation({ ...base, gridWidth: 20, gridHeight: 20 }).households).toHaveLength(100)
     expect(createSimulation({ ...base, householdCount: 10 }).households).toHaveLength(10)
     expect(createSimulation({ ...base, householdCount: 200 }).households).toHaveLength(200)
   })

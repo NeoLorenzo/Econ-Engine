@@ -8,10 +8,14 @@ import { createScenery, SCENERY_JITTER, SCENERY_MARGIN, sceneryGeometry, scenery
 
 const EPSILON = 1e-6
 
+// The canonical town: a 40×40 grid, so its edge is 20 tiles from the centre.
+const SIZE = 40
+const HALF = SIZE / 2
+
 function canonicalLayout(seed = DEFAULT_SEED) {
   const state = createSimulation({ seed })
   const entities = buildWorldEntities(state)
-  return { entities, layout: sceneryLayout({ width: 20, height: 20, seed, entities }) }
+  return { state, entities, layout: sceneryLayout({ width: SIZE, height: SIZE, seed, entities }) }
 }
 
 describe('sceneryLayout', () => {
@@ -21,23 +25,23 @@ describe('sceneryLayout', () => {
 
   it('covers the grid and its margin with exactly one grass tile each', () => {
     const { layout } = canonicalLayout()
-    const side = 20 + 2 * SCENERY_MARGIN
+    const side = SIZE + 2 * SCENERY_MARGIN
     expect(layout.tiles).toHaveLength(side * side)
-    expect(layout.tiles.filter(({ inside }) => inside)).toHaveLength(400)
+    expect(layout.tiles.filter(({ inside }) => inside)).toHaveLength(SIZE * SIZE)
     expect(layout.bounds).toEqual({
-      minX: -10 - SCENERY_MARGIN,
-      maxX: 10 + SCENERY_MARGIN,
-      minZ: -10 - SCENERY_MARGIN,
-      maxZ: 10 + SCENERY_MARGIN,
+      minX: -HALF - SCENERY_MARGIN,
+      maxX: HALF + SCENERY_MARGIN,
+      minZ: -HALF - SCENERY_MARGIN,
+      maxZ: HALF + SCENERY_MARGIN,
     })
     expect(layout.tiles.every(({ shade }) => shade >= 0 && shade < 1)).toBe(true)
   })
 
-  it('never grows anything on a tile a household, firm or institution stands on, or near enough to touch it', () => {
+  it("never grows anything on a house's tile or on any tile of a plot", () => {
     const { entities, layout } = canonicalLayout()
     for (const item of layout.items)
-      for (const entity of entities)
-        expect(Math.max(Math.abs(item.x - entity.x), Math.abs(item.z - entity.z))).toBeGreaterThan(0.5)
+      for (const { x, z, footprint } of entities)
+        expect(Math.abs(item.x - x) > footprint.width / 2 || Math.abs(item.z - z) > footprint.depth / 2).toBe(true)
   })
 
   it('keeps each item within its tile and inside the island', () => {
@@ -58,14 +62,18 @@ describe('sceneryLayout', () => {
   })
 
   it('scatters trees among the houses and grows a denser forest around the town', () => {
-    const { layout } = canonicalLayout()
-    const inside = layout.items.filter(({ x, z }) => Math.abs(x) < 10 && Math.abs(z) < 10)
-    const outside = layout.items.filter(({ x, z }) => Math.abs(x) > 10 || Math.abs(z) > 10)
+    const { entities, layout } = canonicalLayout()
+    const taken = entities.reduce((sum, { footprint }) => sum + footprint.width * footprint.depth, 0)
+    const freeInside = SIZE * SIZE - taken
+    const margin = (SIZE + 2 * SCENERY_MARGIN) ** 2 - SIZE * SIZE
+    const inside = layout.items.filter(({ x, z }) => Math.abs(x) < HALF && Math.abs(z) < HALF)
+    const outside = layout.items.filter(({ x, z }) => Math.abs(x) > HALF || Math.abs(z) > HALF)
     const insideTrees = inside.filter(({ kind }) => kind !== 'bush')
     const outsideTrees = outside.filter(({ kind }) => kind !== 'bush')
-    expect(insideTrees.length).toBeGreaterThan(20)
-    expect(insideTrees.length / (400 - 110)).toBeLessThan(0.3)
-    expect(outsideTrees.length / (30 * 30 - 400)).toBeGreaterThan(insideTrees.length / (400 - 110))
+    expect(inside.length + outside.length).toBe(layout.items.length)
+    expect(insideTrees.length).toBeGreaterThan(100)
+    expect(insideTrees.length / freeInside).toBeLessThan(0.3)
+    expect(outsideTrees.length / margin).toBeGreaterThan(insideTrees.length / freeInside)
     expect(new Set(layout.items.map(({ kind }) => kind))).toEqual(new Set(['pine', 'oak', 'bush']))
   })
 

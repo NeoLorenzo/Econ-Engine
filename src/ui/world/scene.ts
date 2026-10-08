@@ -16,6 +16,7 @@ import {
 import {
   buildingArchetype,
   buildingRotation,
+  buildingScale,
   createBuildingKit,
   setAccent,
   type BuildingKit,
@@ -36,6 +37,10 @@ import {
 export const FIELD_OF_VIEW = 26
 export const MIN_RADIUS = 14
 export const MAX_RADIUS = 95
+/** The default view, and the zoom-out limit, fog and far plane, are tuned for a 20-tile grid and scale with it. */
+const REFERENCE_GRID = 20
+const DEFAULT_RADIUS = 46
+const maxRadius = (runtime: Runtime) => MAX_RADIUS * runtime.viewScale
 /** Overlay pillars are a little wider than a house, so they wrap it. */
 const PILLAR_WIDTH = 0.56
 
@@ -92,6 +97,8 @@ export type Runtime = {
   viewport: { width: number; height: number }
   /** While paused (covered or hidden), nothing is drawn. */
   paused: boolean
+  /** The grid's size relative to a 20-tile grid; distances in the camera, fog and zoom limits scale by it. */
+  viewScale: number
 }
 
 export interface SceneView {
@@ -123,7 +130,7 @@ export function applyCamera(runtime: Runtime) {
 
 export function resetCamera(runtime: Runtime) {
   runtime.controls.target.set(0, 0, 0)
-  runtime.controls.radius = 46
+  runtime.controls.radius = DEFAULT_RADIUS * runtime.viewScale
   runtime.controls.theta = Math.PI / 4
   runtime.controls.phi = 0.88
   applyCamera(runtime)
@@ -133,6 +140,13 @@ export function syncGround(runtime: Runtime, state: SimulationState) {
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
   if (runtime.gridWidth === width && runtime.gridHeight === height) return
+  // A bigger town needs a camera further out to see it whole, and fog and a far plane that reach further.
+  runtime.viewScale = Math.max(width, height) / REFERENCE_GRID
+  runtime.scene.fog.near = 60 * runtime.viewScale
+  runtime.scene.fog.far = 140 * runtime.viewScale
+  runtime.camera.far = 260 * runtime.viewScale
+  runtime.camera.updateProjectionMatrix()
+  resetCamera(runtime)
   for (const object of [runtime.ground, runtime.grid]) {
     if (!object) continue
     runtime.scene.remove(object)
@@ -229,12 +243,20 @@ export function syncEntities(
             ? slotColor(descriptor.firmSlot)
             : COLORS.idleFirm
     setAccent(mesh.material, accent)
-    const scale = selected ? 1.25 : linked ? 1.15 : 1
+    const scale = buildingScale(
+      descriptor.kind,
+      descriptor.footprint,
+      mesh.rotation.y,
+      selected ? 1.25 : linked ? 1.15 : 1,
+    )
     mesh.position.set(descriptor.x, 0, descriptor.z)
-    mesh.scale.setScalar(scale)
-    mesh.userData.top = geometry.userData.top * scale
+    mesh.scale.set(scale.x, scale.y, scale.z)
+    mesh.userData.footprintTiles = Math.max(descriptor.footprint.width, descriptor.footprint.depth)
+    mesh.userData.top = geometry.userData.top * scale.y
     mesh.material.emissive.setHex(selected ? COLORS.selected : linked ? accent : 0x000000)
-    mesh.material.emissiveIntensity = selected ? 0.45 : linked ? 0.35 : 0
+    // A big building glows more softly, so its walls and accent stay readable when selected.
+    const glow = descriptor.kind === 'household' ? 1 : 0.55
+    mesh.material.emissiveIntensity = (selected ? 0.45 : linked ? 0.35 : 0) * glow
   }
   return descriptors
 }
@@ -288,7 +310,7 @@ function territoryKey(state: SimulationState, industry: CompetitiveIndustryId) {
     state.config.transportCostPerTileCents ?? 0,
     ...state.firms
       .filter((firm) => firm.industryId === industry)
-      .flatMap((firm) => [firm.id, firm.postedPriceCents, firm.coordinate?.x, firm.coordinate?.y]),
+      .flatMap(({ id, postedPriceCents, plot }) => [id, postedPriceCents, plot.x, plot.y, plot.width, plot.height]),
   ].join('|')
 }
 
@@ -304,7 +326,12 @@ export function syncScenery(runtime: Runtime, state: SimulationState, entities: 
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
   const seed = state.config.seed ?? 0
-  const key = [width, height, seed, ...entities.map(({ x, z }) => `${x},${z}`)].join('|')
+  const key = [
+    width,
+    height,
+    seed,
+    ...entities.map(({ x, z, footprint }) => `${x},${z},${footprint.width},${footprint.depth}`),
+  ].join('|')
   if (runtime.sceneryKey !== key) {
     if (runtime.scenery) {
       runtime.scene.remove(runtime.scenery.group)
@@ -540,7 +567,7 @@ export function attachControls(
     runtime.flight = null
     runtime.controls.radius = Math.max(
       MIN_RADIUS,
-      Math.min(MAX_RADIUS, runtime.controls.radius * Math.exp(event.deltaY * 0.001)),
+      Math.min(maxRadius(runtime), runtime.controls.radius * Math.exp(event.deltaY * 0.001)),
     )
     applyCamera(runtime)
   }
@@ -548,7 +575,7 @@ export function attachControls(
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === '+' || event.key === '=')
       runtime.controls.radius = Math.max(MIN_RADIUS, runtime.controls.radius * 0.9)
-    else if (event.key === '-') runtime.controls.radius = Math.min(MAX_RADIUS, runtime.controls.radius * 1.1)
+    else if (event.key === '-') runtime.controls.radius = Math.min(maxRadius(runtime), runtime.controls.radius * 1.1)
     else if (event.key === 'ArrowLeft') runtime.controls.theta += 0.12
     else if (event.key === 'ArrowRight') runtime.controls.theta -= 0.12
     else if (event.key === 'ArrowUp') runtime.controls.phi = Math.max(0.26, runtime.controls.phi - 0.08)
@@ -638,11 +665,12 @@ export async function createRuntime(
     dirty: true,
     resizeObserver: null as unknown as ResizeObserver,
     disposeControls: () => {},
-    controls: { target: new THREE.Vector3(0, 0, 0), radius: 46, theta: Math.PI / 4, phi: 0.88 },
+    controls: { target: new THREE.Vector3(0, 0, 0), radius: DEFAULT_RADIUS, theta: Math.PI / 4, phi: 0.88 },
     flight: null,
     inset: NO_INSET,
     viewport: { width: 1, height: 1 },
     paused: false,
+    viewScale: 1,
   }
   const resize = () => {
     const width = Math.max(1, mount.clientWidth)
@@ -724,6 +752,7 @@ export function flyTo(
     { x: target.x, z: target.z, radius },
     { x: mesh.position.x, z: mesh.position.z },
     reducedMotion,
+    mesh.userData.footprintTiles,
   )
   const shift = groundShiftForScreenOffset(
     { theta, phi, radius: flight.to.radius, fovDeg: FIELD_OF_VIEW, viewportHeight: runtime.viewport.height },

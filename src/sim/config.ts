@@ -10,9 +10,10 @@ export const MAX_EVENTS = 1_600
 export const DEFAULT_SEED = 2_026_0813
 export const DEFAULT_PROBE_PROBABILITY = 0.1
 export const DEFAULT_GOVERNMENT_EXPERIMENT_PROBABILITY = 0.1
-export const DEFAULT_GRID_WIDTH = 20
-export const DEFAULT_GRID_HEIGHT = 20
-export const DEFAULT_TRANSPORT_COST_PER_TILE_CENTS = 2
+/** MVP9: a 40×40 town. Each tile is half as wide as an MVP8 tile, so the per-tile transport rate is halved too. */
+export const DEFAULT_GRID_WIDTH = 40
+export const DEFAULT_GRID_HEIGHT = 40
+export const DEFAULT_TRANSPORT_COST_PER_TILE_CENTS = 1
 export const DEFAULT_DAILY_EXPENDITURE_BUDGET_CENTS = 5_000
 export const DEFAULT_LABOR_PRODUCTIVITY = 5
 export const CONTRACTUAL_WAGE_CENTS = 1_000
@@ -33,11 +34,27 @@ export const DEFAULT_INDUSTRIES: Industry[] = [
 ]
 
 export const TRANSPORT_FIRM_ID = 'firm-transport'
+export const GOVERNMENT_ID = 'government-1' as const
 /** Competing firms in each consumer industry in the canonical economy. */
 export const DEFAULT_FIRMS_PER_INDUSTRY = 2
 /** Transport workers in each employment block, alongside one worker per consumer firm. */
 export const TRANSPORT_WORKERS_PER_BLOCK = 2
 const MAX_FIRMS_PER_INDUSTRY = 26
+
+/** Government's plot, centred on the grid. */
+export const GOVERNMENT_PLOT_SIZE = { width: 5, height: 5 } as const
+
+/** Each firm's land, in tiles, by industry. Plots that are not square may be turned 90° when placed. */
+export const PLOT_SIZES: Record<IndustryId, { width: number; height: number }> = {
+  food: { width: 3, height: 3 },
+  utilities: { width: 4, height: 4 },
+  transport: { width: 4, height: 3 },
+  healthcare: { width: 3, height: 2 },
+  entertainment: { width: 3, height: 3 },
+}
+
+/** Tiles a plot needs counting the one-tile gap it keeps from other plots. */
+const landNeeded = ({ width, height }: { width: number; height: number }) => (width + 1) * (height + 1)
 
 /** `firm-food-a`, `firm-food-b`, …: a consumer firm's ID encodes its industry and its position (slot) in that market. */
 export const consumerFirmId = (industryId: Exclude<IndustryId, 'transport'>, slot: number) =>
@@ -119,10 +136,18 @@ export function validatePopulationConfig({
     if (!Number.isInteger(value) || value < 1)
       throw new Error(`${field} must be a whole number of at least 1; received ${value}`)
   }
-  const consumerFirmCount = consumerFirmIds(firmRoster(firmsPerIndustry)).length
-  if (gridWidth * gridHeight < householdCount + consumerFirmCount) {
+  const roster = firmRoster(firmsPerIndustry)
+  const plotLand =
+    landNeeded(GOVERNMENT_PLOT_SIZE) +
+    DEFAULT_INDUSTRIES.reduce((sum, { id }) => sum + roster[id].length * landNeeded(PLOT_SIZES[id]), 0)
+  const firmCount = DEFAULT_INDUSTRIES.reduce((sum, { id }) => sum + roster[id].length, 0)
+  if (
+    gridWidth < GOVERNMENT_PLOT_SIZE.width ||
+    gridHeight < GOVERNMENT_PLOT_SIZE.height ||
+    gridWidth * gridHeight < householdCount + plotLand
+  ) {
     throw new Error(
-      `gridWidth × gridHeight is ${gridWidth} × ${gridHeight} = ${gridWidth * gridHeight} cells, too few for ${householdCount} households and ${consumerFirmCount} consumer firms on unique cells`,
+      `gridWidth × gridHeight is ${gridWidth} × ${gridHeight} = ${gridWidth * gridHeight} cells, too few for ${householdCount} households plus plots for ${firmCount} firms and Government (${plotLand} cells including the gap around each plot)`,
     )
   }
 }

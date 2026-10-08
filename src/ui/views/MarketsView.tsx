@@ -146,7 +146,7 @@ export function MarketsView({
             <p>
               Households set aside {percent(snapshot.budgetShare)} of their {money(dailyBudget)} daily budget (
               {money(Math.round(dailyBudget * snapshot.budgetShare))}) for {snapshot.name.toLowerCase()}. They buy from
-              whichever firm is cheapest once the trip there is included.
+              whichever firm is cheapest once the trip to the nearest edge of its plot is included.
             </p>
           </div>
           <div className="market-detail-summary">
@@ -224,8 +224,9 @@ export function MarketsView({
             {money(latest?.totalTransportRevenueCents ?? 0)} earned today · {transport.employeeIds.length} workers
           </span>
           <InfoTip label="About transport">
-            Transport has a fixed rate and no location; it never competes. It is the reason distance matters: a cheaper
-            shop far away can cost more than a pricier one next door.
+            Transport has a fixed rate and its depot's location changes nothing; it never competes. It is the reason
+            distance matters: a cheaper shop far away can cost more than a pricier one next door. Trips are measured to
+            the nearest edge of a firm's plot, so a bigger plot reaches more households.
           </InfoTip>
         </div>
       )}

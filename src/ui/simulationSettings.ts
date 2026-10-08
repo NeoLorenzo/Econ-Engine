@@ -1,4 +1,10 @@
-import { DEFAULT_FIRM_IDS_BY_INDUSTRY, DEFAULT_INDUSTRIES, DEFAULT_SEED, consumerFirmIds } from '../sim/config'
+import {
+  DEFAULT_FIRM_IDS_BY_INDUSTRY,
+  DEFAULT_INDUSTRIES,
+  DEFAULT_SEED,
+  DEFAULT_TRANSPORT_COST_PER_TILE_CENTS,
+  consumerFirmIds,
+} from '../sim/config'
 import type { SimulationConfig } from '../sim/types'
 
 export interface SimulationSettingsDraft {
@@ -20,7 +26,7 @@ export type SettingsParseResult = { ok: true; config: SimulationConfig } | { ok:
 export const DEFAULT_SETTINGS_DRAFT: SimulationSettingsDraft = {
   seed: String(DEFAULT_SEED),
   expenditureBase: '50.00',
-  transportRate: '0.02',
+  transportRate: (DEFAULT_TRANSPORT_COST_PER_TILE_CENTS / 100).toFixed(2),
   step: '1.00',
   firmStarts: Object.fromEntries(consumerFirmIds(DEFAULT_FIRM_IDS_BY_INDUSTRY).map((firmId) => [firmId, '2.00'])),
 }
