@@ -33,6 +33,10 @@
   --radius-sm: 9px;
   --gap: 16px;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  /* Heights of the fixed top bar and the stats HUD, which overlays and panels sit below. The app measures both. */
+  --topbar-h: 57px;
+  --hud-h: 132px;
+  --tools-h: 80px;
 
   font-family:
     Manrope,
@@ -383,21 +387,20 @@ select {
 
 /* ---------- App shell ---------- */
 .app {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 .topbar {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 20;
+  inset-inline: 0;
+  z-index: 10;
   border-bottom: 1px solid var(--border);
-  background: rgba(10, 13, 12, 0.86);
-  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(10px);
 }
 .topbar-inner {
-  max-width: 1480px;
-  margin: 0 auto;
   padding: 10px 24px;
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -455,7 +458,7 @@ select {
   color: var(--text);
   border: 0;
 }
-.tabs button[aria-selected='true'] {
+.tabs button[aria-expanded='true'] {
   background: var(--surface-2);
   color: var(--text);
   box-shadow: inset 0 -2px 0 var(--accent);
@@ -513,28 +516,9 @@ select {
   width: 64px;
 }
 
-.content {
-  flex: 1;
-  width: 100%;
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 24px;
-}
 .view {
   display: grid;
   gap: var(--gap);
-}
-.statusbar {
-  max-width: 1480px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 14px 24px 22px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px 24px;
-  color: var(--text-3);
-  font-size: var(--fs-xs);
 }
 .conservation {
   display: inline-flex;
@@ -583,6 +567,156 @@ select {
   min-height: 44px;
   padding: 0 20px;
   font-size: var(--fs-md);
+}
+
+/* ---------- Shell: HUD, intro and panels over the world ---------- */
+.hud {
+  position: fixed;
+  top: calc(var(--topbar-h) + 12px);
+  left: 12px;
+  z-index: 5;
+  max-width: calc(100vw - 36px - var(--inset-right, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.hud > * {
+  pointer-events: auto;
+}
+.stat--compact {
+  width: 196px;
+  padding: 10px 12px 8px;
+  border-color: var(--border-strong);
+  background: rgba(17, 22, 20, 0.86);
+  backdrop-filter: blur(10px);
+}
+.stat--compact .stat-label {
+  font-size: var(--fs-xs);
+}
+.stat--compact .stat-value {
+  margin-top: 2px;
+  font-size: var(--fs-xl);
+}
+.stat--compact .stat-detail {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat--compact .sparkline {
+  padding-top: 6px;
+}
+.hud-status {
+  flex: none;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(17, 22, 20, 0.86);
+  backdrop-filter: blur(10px);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.intro-card {
+  position: fixed;
+  left: calc((100vw - var(--inset-right, 0px)) / 2);
+  bottom: calc(var(--tools-h) + 24px);
+  z-index: 6;
+  width: min(860px, calc(100vw - 32px - var(--inset-right, 0px)));
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, rgba(212, 243, 106, 0.07), transparent 70%), rgba(17, 22, 20, 0.94);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+}
+.panel {
+  position: fixed;
+  top: calc(var(--topbar-h) + 12px);
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.panel--docked {
+  width: min(560px, 42vw);
+}
+.panel--wide {
+  width: min(1100px, 92vw);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-head h2 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  outline: none;
+}
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+/* A docked panel is narrow, so the views inside it use their narrow-screen layouts. */
+.panel--docked .stat-row,
+.panel--docked .industry-tiles,
+.panel--docked .mini-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.panel--docked .market-overview-row,
+.panel--docked .firm-pair,
+.panel--docked .chart-grid,
+.panel--docked .policy-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+.panel--docked .market-row {
+  grid-template-columns: 1fr auto auto;
+  gap: 8px 12px;
+}
+.panel--docked .market-row-share {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.panel--docked .market-row-trend,
+.panel--docked .market-row-served,
+.panel--docked .market-row--head {
+  display: none;
+}
+.panel--docked .market-detail-head {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.panel--docked .market-detail-summary div {
+  text-align: left;
+}
+.panel--docked .policy-rate {
+  padding-right: 0;
+  border-right: 0;
+}
+.panel--docked .market-map {
+  max-width: 420px;
+}
+.panel--docked .card {
+  padding: 16px;
+}
+.panel--wide .experiment-head {
+  flex-wrap: wrap;
 }
 
 /* ---------- Cards ---------- */
@@ -694,17 +828,6 @@ select {
 }
 
 /* ---------- Overview ---------- */
-.overview-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: var(--gap);
-  align-items: start;
-}
-.overview-side {
-  display: grid;
-  gap: var(--gap);
-  min-width: 0;
-}
 .money-flow {
   display: block;
   width: 100%;
@@ -955,42 +1078,30 @@ select {
 }
 
 /* ---------- World ---------- */
-.world {
-  padding-bottom: 20px;
-}
-.world-head {
-  flex-wrap: wrap;
-}
-.world-tools {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.world-stage {
-  position: relative;
-}
-.world-canvas {
-  position: relative;
-  height: clamp(440px, 64vh, 680px);
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   background: var(--bg);
 }
-.world-canvas-mount {
-  width: 100%;
-  height: 100%;
+.stage-canvas {
+  position: absolute;
+  inset: 0;
 }
-.world-canvas canvas {
+.stage-canvas canvas {
   display: block;
   width: 100%;
   height: 100%;
   outline: none;
   touch-action: none;
 }
-.world-canvas canvas:focus-visible {
+.stage-canvas canvas:focus-visible {
   box-shadow: inset 0 0 0 2px var(--accent);
+}
+.world-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .world-status {
   position: absolute;
@@ -1006,23 +1117,30 @@ select {
 .world-status--error {
   color: var(--warning);
 }
-.world-overlay {
+.map-tools {
   position: absolute;
+  z-index: 2;
   left: 12px;
+  bottom: 12px;
+  max-width: calc(100vw - 24px - var(--inset-right, 0px));
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
   pointer-events: none;
+}
+.world-overlay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 .world-overlay > * {
   pointer-events: auto;
 }
-.world-overlay--top {
-  top: 12px;
-}
-.world-overlay--bottom {
-  bottom: 12px;
-  right: 12px;
+.world-overlay .segmented {
+  background: rgba(17, 22, 20, 0.88);
+  backdrop-filter: blur(8px);
 }
 .world-search {
   display: inline-flex;
@@ -1053,7 +1171,6 @@ select {
   gap: 6px 14px;
   padding: 7px 12px;
   width: fit-content;
-  max-width: calc(100% - 24px);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(17, 22, 20, 0.82);
@@ -1112,11 +1229,13 @@ select {
 
 .inspector {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  bottom: 56px;
+  left: 12px;
+  bottom: calc(var(--tools-h) + 24px);
   z-index: 4;
-  width: 310px;
+  width: 320px;
+  /* Sits just above the map tools and never reaches up under the HUD. */
+  max-height: calc(100vh - var(--topbar-h) - var(--hud-h) - var(--tools-h) - 60px);
+  max-height: calc(100dvh - var(--topbar-h) - var(--hud-h) - var(--tools-h) - 60px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1970,13 +2089,6 @@ select {
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1280px) {
-  .overview-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .overview-side {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-  }
   .highlights {
     max-height: 320px;
   }
@@ -2012,16 +2124,37 @@ select {
   }
 }
 @media (max-width: 860px) {
-  .content {
-    padding: 16px;
-  }
-  .statusbar {
-    padding: 12px 16px 18px;
-  }
   .topbar-inner {
     padding: 8px 16px 4px;
   }
-  .overview-side,
+  .hud {
+    right: 12px;
+    max-width: none;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .stat--compact {
+    flex: none;
+    width: 168px;
+  }
+  .panel,
+  .panel--docked,
+  .panel--wide {
+    inset: auto 0 0 0;
+    width: auto;
+    height: 60vh;
+    height: 60dvh;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .inspector {
+    right: 12px;
+    width: auto;
+  }
+  /* The bottom sheet already shows the details, and the world above it is too short for the inspector. */
+  .has-panel .inspector {
+    display: none;
+  }
   .chart-grid,
   .firm-pair,
   .experiment-grid {
@@ -2034,17 +2167,6 @@ select {
   .market-detail-summary div {
     text-align: left;
   }
-  .inspector {
-    position: static;
-    width: auto;
-    margin-top: 12px;
-    max-height: none;
-    backdrop-filter: none;
-    box-shadow: none;
-  }
-  .world-canvas {
-    height: 420px;
-  }
   .policy-hero {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -2055,9 +2177,6 @@ select {
   }
   .card-head {
     flex-wrap: wrap;
-  }
-  .world-tools {
-    justify-content: flex-start;
   }
 }
 @media (max-width: 600px) {

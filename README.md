@@ -6,13 +6,15 @@ A deterministic agent-based economy you can watch and inspect in the browser: 10
 
 Current model: MVP8, population scaling. The [changelog](CHANGELOG.md) records every update.
 
-![The Overview: a 3D map of households and firms, the day's money circuit between households, firms and Government, and a feed of notable changes](docs/images/overview.png)
+![The 3D world: each pillar is a household and taller means more cash, the floor shows which firm is cheapest where, and the headline numbers float above it](docs/images/overview.png)
 
 ## What you can explore
 
+The simulator opens on a 3D world. Each pillar is a household (taller means more cash), the larger blocks are firms, and the floor shows which firm is cheapest where. Headline numbers float above it. Click anything to inspect it. Each section opens as a panel over the world, which stays live beside it, and "Locate" in a panel flies the camera to that household or firm.
+
 | Section | What it shows |
 | --- | --- |
-| **Overview** | Headline numbers, a 3D map where each pillar is a household (taller means more cash) and the floor shows which firm is cheapest where, the day's money circuit, and a plain-language feed of notable changes. Click anything on the map to inspect it. |
+| **Overview** | The day's money circuit between households, firms and Government, a plain-language feed of notable changes, and every market at a glance. |
 | **Markets** | The four consumer markets (Food, Utilities, Healthcare, Entertainment): each firm's price, share, sales and wages, a top-down map of who bought where, and price, share and earnings over time. |
 | **Households** | Every household's cash before and after redistribution, wages, purchases and employer, searchable and sortable. |
 | **Government** | The current wealth-tax rate and how the Government's trials moved it, what it collected and paid back, and inequality before and after. |

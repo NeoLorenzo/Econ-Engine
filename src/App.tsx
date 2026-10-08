@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { expectedTotalMoneyCents, TOTAL_MONEY_CENTS } from './sim/config'
 import { createSimulation, stepSimulation } from './sim/engine'
 import { SimulationRunner } from './sim/simulationRunner'
@@ -6,47 +6,52 @@ import type { SimulationConfig, SimulationState } from './sim/types'
 import { Icon } from './ui/components'
 import { useEnsembles } from './ui/ensembles'
 import { useExperiments } from './ui/experiments'
-import { money } from './ui/format'
 import { SettingsDrawer } from './ui/SettingsDrawer'
+import { Hud, IntroCard } from './ui/shell/Hud'
+import {
+  focusForPanel,
+  hashForPanel,
+  INITIAL_FOCUS,
+  panelFromHash,
+  PANELS,
+  type PanelId,
+  type WorldFocus,
+} from './ui/shell/navigation'
+import { Panel } from './ui/shell/Panel'
+import { useHeightVar } from './ui/shell/useHeightVar'
 import { DEFAULT_SETTINGS_DRAFT, parseSimulationSettings } from './ui/simulationSettings'
 import { ExperimentsView } from './ui/views/ExperimentsView'
 import { GovernmentView } from './ui/views/GovernmentView'
 import { HouseholdsView } from './ui/views/HouseholdsView'
 import { MarketsView } from './ui/views/MarketsView'
 import { OverviewView } from './ui/views/OverviewView'
+import { NO_INSET, type ViewInset } from './ui/world/cameraMath'
+import { WorldStage, type WorldController, type WorldStatus } from './ui/world/WorldStage'
 import type { CompetitiveIndustryId } from './ui/worldViewModel'
 
-type AppTab = 'overview' | 'markets' | 'households' | 'government' | 'experiments'
-const TABS: { id: AppTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'markets', label: 'Markets' },
-  { id: 'households', label: 'Households' },
-  { id: 'government', label: 'Government' },
-  { id: 'experiments', label: 'Experiments' },
-]
 const SPEEDS = [1, 5, 20, 100]
 
-const tabFromHash = (): AppTab => {
-  const hash = typeof window === 'undefined' ? '' : window.location.hash.slice(1)
-  return TABS.some(({ id }) => id === hash) ? (hash as AppTab) : 'overview'
-}
+const panelFromLocation = () => (typeof window === 'undefined' ? null : panelFromHash(window.location.hash))
 
 export default function App() {
   const [state, setState] = useState(() => createSimulation())
   const [runner] = useState(() => new SimulationRunner<SimulationState>(state, stepSimulation, setState))
   const [running, setRunning] = useState(false)
   const [speed, setSpeed] = useState(5)
-  const [tab, setTab] = useState<AppTab>(tabFromHash)
-  // Shared between the map and the Markets page, so both always show the same market and selection.
-  const [industry, setIndustry] = useState<CompetitiveIndustryId>('food')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [panel, setPanel] = useState<PanelId | null>(panelFromLocation)
+  // One focus drives the world; panels and the map tools both change it, so they always agree.
+  const [focus, setFocus] = useState<WorldFocus>(() => focusForPanel(panelFromLocation(), INITIAL_FOCUS))
+  const [inset, setInset] = useState<ViewInset>(NO_INSET)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [draft, setDraft] = useState(DEFAULT_SETTINGS_DRAFT)
   const [appliedDraft, setAppliedDraft] = useState(DEFAULT_SETTINGS_DRAFT)
   const [appliedConfig, setAppliedConfig] = useState<SimulationConfig | undefined>(undefined)
   const { experiments, run: runExperiment } = useExperiments()
   const { ensembles, run: runEnsemble } = useEnsembles()
-  const tabRefs = useRef(new Map<AppTab, HTMLButtonElement>())
+  const tabRefs = useRef(new Map<PanelId, HTMLButtonElement>())
+  const worldRef = useRef<WorldController | null>(null)
+  const topbarRef = useRef<HTMLElement | null>(null)
+  useHeightVar(topbarRef, '--topbar-h')
 
   useEffect(() => {
     if (!running) {
@@ -77,20 +82,53 @@ export default function App() {
     setDraft(appliedDraft)
   }
 
-  const navigate = useCallback((next: AppTab) => {
-    setTab(next)
-    if (window.location.hash.slice(1) !== next) window.history.replaceState(null, '', `#${next}`)
-  }, [])
+  // Opening a panel sets its starting world focus once; the user can change the map tools afterwards.
+  const showPanel = useCallback(
+    (next: PanelId | null) => {
+      if (next && next !== panel) setFocus((current) => focusForPanel(next, current))
+      setPanel(next)
+      const hash = hashForPanel(next)
+      if (window.location.hash !== hash)
+        window.history.replaceState(null, '', hash || window.location.pathname + window.location.search)
+    },
+    [panel],
+  )
+  const closePanel = useCallback(() => {
+    if (!panel) return
+    showPanel(null)
+    tabRefs.current.get(panel)?.focus()
+  }, [panel, showPanel])
+  const togglePanel = (next: PanelId) => (next === panel ? closePanel() : showPanel(next))
+
   useEffect(() => {
-    const onHash = () => setTab(tabFromHash())
+    const onHash = () => {
+      const next = panelFromLocation()
+      setPanel(next)
+      if (next) setFocus((current) => focusForPanel(next, current))
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  // Space runs or pauses, unless the user is typing or operating another control.
+  // Without the world, the panels are the whole app, so open one. The hash always mirrors the open panel.
+  const onWorldStatus = useCallback(
+    (status: WorldStatus) => {
+      if (status === 'error' && !panelFromLocation()) showPanel('overview')
+    },
+    [showPanel],
+  )
+
+  // Space runs or pauses, unless the user is typing or operating another control. Escape closes the panel,
+  // unless the map already used it to clear the selection.
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.code !== 'Space' || event.repeat || settingsOpen) return
+      if (settingsOpen) return
+      if (event.key === 'Escape') {
+        if (event.defaultPrevented) return
+        closePanel()
+        return
+      }
+      if (event.code !== 'Space' || event.repeat) return
       const target = event.target as HTMLElement
       if (
         target !== document.body &&
@@ -102,73 +140,82 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [settingsOpen, toggleRunning])
+  }, [settingsOpen, toggleRunning, closePanel])
 
-  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const index = TABS.findIndex(({ id }) => id === tab)
+  // Arrow keys move between section buttons without opening their panels.
+  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>, id: PanelId) => {
+    const index = PANELS.findIndex((candidate) => candidate.id === id)
     const next =
       event.key === 'ArrowRight'
-        ? (index + 1) % TABS.length
+        ? (index + 1) % PANELS.length
         : event.key === 'ArrowLeft'
-          ? (index - 1 + TABS.length) % TABS.length
+          ? (index - 1 + PANELS.length) % PANELS.length
           : event.key === 'Home'
             ? 0
             : event.key === 'End'
-              ? TABS.length - 1
+              ? PANELS.length - 1
               : -1
     if (next < 0) return
     event.preventDefault()
-    navigate(TABS[next].id)
-    tabRefs.current.get(TABS[next].id)?.focus()
+    tabRefs.current.get(PANELS[next].id)?.focus()
   }
 
-  const openMarket = (next: CompetitiveIndustryId) => {
-    setIndustry(next)
-    navigate('markets')
-    window.scrollTo({ top: 0 })
+  const setIndustry = (industry: CompetitiveIndustryId) => setFocus((current) => ({ ...current, industry }))
+  const openMarket = (industry: CompetitiveIndustryId) => {
+    setIndustry(industry)
+    showPanel('markets')
   }
-  const showOnMap = (id: string) => {
-    setSelectedId(id)
-    const firm = state.firms.find((candidate) => candidate.id === id)
-    if (firm && firm.industryId !== 'transport') setIndustry(firm.industryId)
-    navigate('overview')
-    setTimeout(() => document.getElementById('world-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
-  }
+  const locate = (id: string) => worldRef.current?.locate(id)
+
   const settingsChanged = JSON.stringify(appliedDraft) !== JSON.stringify(DEFAULT_SETTINGS_DRAFT)
   const totalMoney = state.metrics.at(-1)?.totalMoneyCents ?? TOTAL_MONEY_CENTS
   const seed = state.config.seed ?? Number(appliedDraft.seed)
   const conserved = totalMoney === expectedTotalMoneyCents(state.households.length)
+  const openPanel = PANELS.find(({ id }) => id === panel)
 
   return (
-    <div className="app">
-      <header className="topbar">
+    // Overlays on the world keep clear of an open docked panel.
+    <div className={`app${panel ? ' has-panel' : ''}`} style={{ '--inset-right': `${inset.right}px` } as CSSProperties}>
+      <main className="world-main" aria-label="Economy world">
+        <WorldStage
+          state={state}
+          focus={focus}
+          onFocus={setFocus}
+          inset={inset}
+          paused={panel === 'experiments'}
+          controllerRef={worldRef}
+          onStatus={onWorldStatus}
+        />
+        <Hud state={state} seed={seed} totalMoney={totalMoney} conserved={conserved} />
+        <IntroCard state={state} onRun={() => setRunning(true)} />
+      </main>
+
+      <header ref={topbarRef} className="topbar">
         <div className="topbar-inner">
           <a
             className="brand"
-            href="#overview"
+            href="#"
             onClick={(event) => {
               event.preventDefault()
-              navigate('overview')
+              closePanel()
             }}
           >
             <span className="brand-mark" aria-hidden="true" />
             Econ Engine
           </a>
-          <nav className="tabs" role="tablist" aria-label="Sections">
-            {TABS.map(({ id, label }) => (
+          <nav className="tabs" aria-label="Sections">
+            {PANELS.map(({ id, label }) => (
               <button
                 key={id}
+                type="button"
                 ref={(element) => {
                   if (element) tabRefs.current.set(id, element)
                   else tabRefs.current.delete(id)
                 }}
-                role="tab"
-                id={`tab-${id}`}
-                aria-selected={tab === id}
-                aria-controls={`panel-${id}`}
-                tabIndex={tab === id ? 0 : -1}
-                onClick={() => navigate(id)}
-                onKeyDown={onTabKey}
+                aria-expanded={panel === id}
+                aria-controls={panel === id ? `panel-${id}` : undefined}
+                onClick={() => togglePanel(id)}
+                onKeyDown={(event) => onTabKey(event, id)}
               >
                 {label}
               </button>
@@ -234,44 +281,32 @@ export default function App() {
         </div>
       </header>
 
-      <main className="content" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'overview' && (
-          <OverviewView
-            state={state}
-            running={running}
-            onRun={() => setRunning(true)}
-            onOpenMarket={openMarket}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            industry={industry}
-            onIndustry={setIndustry}
-          />
-        )}
-        {tab === 'markets' && (
-          <MarketsView state={state} industry={industry} onIndustry={setIndustry} onShowOnMap={showOnMap} />
-        )}
-        {tab === 'households' && <HouseholdsView state={state} onShowOnMap={showOnMap} />}
-        {tab === 'government' && <GovernmentView state={state} />}
-        {tab === 'experiments' && (
-          <ExperimentsView
-            seed={seed}
-            experiments={experiments}
-            onRun={(kind) => runExperiment(kind, seed)}
-            ensembles={ensembles}
-            onRunEnsemble={(kind, size) => runEnsemble(kind, seed, size)}
-          />
-        )}
-      </main>
-
-      <footer className="statusbar">
-        <span className="scenario-summary">
-          Seed {seed} · {state.households.length} households · {money(totalMoney)} in circulation
-        </span>
-        <span className={`conservation${conserved ? '' : ' is-broken'}`}>
-          <Icon name={conserved ? 'check' : 'close'} size={13} />
-          {conserved ? 'Money conserved exactly' : 'Money not conserved'}
-        </span>
-      </footer>
+      {openPanel && (
+        <Panel
+          key={openPanel.id}
+          id={openPanel.id}
+          label={openPanel.label}
+          layout={openPanel.layout}
+          onClose={closePanel}
+          onInset={setInset}
+        >
+          {openPanel.id === 'overview' && <OverviewView state={state} running={running} onOpenMarket={openMarket} />}
+          {openPanel.id === 'markets' && (
+            <MarketsView state={state} industry={focus.industry} onIndustry={setIndustry} onLocate={locate} />
+          )}
+          {openPanel.id === 'households' && <HouseholdsView state={state} onLocate={locate} />}
+          {openPanel.id === 'government' && <GovernmentView state={state} />}
+          {openPanel.id === 'experiments' && (
+            <ExperimentsView
+              seed={seed}
+              experiments={experiments}
+              onRun={(kind) => runExperiment(kind, seed)}
+              ensembles={ensembles}
+              onRunEnsemble={(kind, size) => runEnsemble(kind, seed, size)}
+            />
+          )}
+        </Panel>
+      )}
 
       <SettingsDrawer
         open={settingsOpen}

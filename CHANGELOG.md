@@ -2,6 +2,25 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-World_First_UI-023] - (2026-10-08)
+
+### Changed
+
+- **3D-first interface.** The app opens on a full-screen 3D world instead of the Overview page. The world stays mounted for the whole session. The top bar, a HUD with the four headline numbers, the map tools and the household and firm inspector float over it.
+- **Sections are panels.** Overview, Markets, Households and Government open as a panel docked on the right; Experiments opens as a wide sheet; on screens narrower than 860px every panel is a bottom sheet. Esc, the close button or clicking the section again returns to the world. URL hashes (`#markets` and the others) still open their sections, and no hash shows the world.
+- **The world follows the panel.** Opening Markets or Households shows purchase links, and opening Government shows pillar heights after tax. Each panel sets this once, so the map tools can still change it.
+- **Locate.** "Show on map" is now "Locate". It selects the household or firm and flies the camera to it, without closing the panel. It lands in the middle of the part of the world that the panel, the headline numbers, the inspector and the map tools leave uncovered. With reduced motion, the camera jumps instead.
+- The world is not synced or drawn while Experiments covers it or the browser tab is hidden.
+- If the 3D world cannot start, the Overview panel opens so every figure stays reachable.
+- **Three.js is bundled** from npm (`three@0.180.0`, in its own lazily loaded chunk) instead of being loaded from jsDelivr at runtime.
+- `src/ui/WorldView.tsx` is split into `src/ui/world/` (scene runtime, camera maths, map tools, inspector, stage) and `src/ui/shell/` (navigation and focus, panel, HUD).
+
+### Validation
+
+- New tests cover panel hashes, the starting focus each panel sets, selection rules, stale selections, fly-to easing and zoom, mid-flight replanning, and the view offset for docked panels and bottom sheets.
+- The canonical trajectory is unchanged: no file under `src/sim/` changed, and the day-46 screenshot shows the same figures as before.
+- The fast-mode browser check passed three times (pause latency 234–338 ms). Browser checks covered every panel, focus on opening, Locate centring beside the panel, resizing across 860px, a deep link to Experiments, reduced motion and the WebGL fallback.
+
 ## [MVP8-Ensembles_Showcase-022] - (2026-10-08)
 
 ### Added
