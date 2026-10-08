@@ -6,6 +6,33 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP8-Vision-023] - (2026-10-08)
+
+### Problem
+
+The project had no stated long-term direction beyond the next MVP. A discussion of what to build next started from realism: every household earns the same $10 wage, so market income is identical and almost all inequality comes from location and prices. One option was firm ownership with dividends, replacing the 100% profit tax. That led to a broader question: could the same engine represent economies from feudal societies to modern ones? The owner then sharpened it. The engine should not encode any particular institution, such as serfdom or democracy. Institutions should emerge from agents' decisions, starting from a very basic economy, and the engine should later extend to politics and culture.
+
+### Decisions
+
+- **A vision document, not a specification.** [docs/VISION.md](docs/VISION.md) records the direction so later work has a reference point. It is explicitly non-authoritative: the MVP specifications still define behaviour, and the design rules still define method. Nothing in it is implemented.
+- **Primitives, not institutions.** The engine should contain only primitives, such as control of land, need for food, cost of exit, claims on output and sanctions. Institutions are recurring combinations of those primitives. The document sets out four layers: physics and accounting fixed by the engine, rules created and enforced by agents, and agents acting within both.
+- **Rules as data, using an existing grammar.** Crawford and Ostrom's (1995) institutional grammar (attributes, deontic, aim, conditions, or else) was chosen as the reference representation because one structure expresses a feudal due, a wealth tax and a minimum wage alike. It also keeps every institution inspectable, with a history.
+- **Institution labels belong to the observer.** The engine never names "feudalism". An observer classifier may, which keeps institution labels as measurements (design rule 18).
+- **The ownership step was set aside.** The owner asked to drop the ownership implementation from this discussion. It is not part of the vision's incremental path, which instead starts by re-expressing the existing fiscal phase as rule objects and deriving the Government's objective from household preferences.
+- **Validation through theory, not aesthetics.** Emergent outcomes have no single analytical benchmark, so the document names theoretical predictions the engine should reproduce without hard-coding them, chiefly Domar's (1970) hypothesis on land abundance and bound labour, plus Malthusian dynamics.
+
+### Trade-offs
+
+- A small rule grammar limits what can emerge. A large one gives bounded learners a search space they cannot navigate. The document recommends starting small (design rule 12).
+- Every starting point is an assumption. Keeping money fixed and given, for example, rules out histories without money. The document asks for such choices to stay visible as choices, not for all of them to be removed.
+
+### Open questions
+
+- What is the smallest rule grammar that can express both the current fiscal phase and a feudal due?
+- How do agents learn which rules to prefer without knowing their aggregate consequences (design rule 1)?
+- Births, deaths and inheritance are probably required before dynastic wealth can emerge, and may be a larger engine change than the rules layer itself. Where should they come in the sequence?
+- At what point does a simulated day stop being the right unit of time?
+
 ## [MVP8-Ensembles_Showcase-022] - (2026-10-08)
 
 ### Problem
