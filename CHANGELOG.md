@@ -21,6 +21,12 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
 - The canonical trajectory is unchanged: no file under `src/sim/` changed, and the day-46 screenshot shows the same figures as before.
 - The fast-mode browser check passed three times (pause latency 234–338 ms). Browser checks covered every panel, focus on opening, Locate centring beside the panel, resizing across 860px, a deep link to Experiments, reduced motion and the WebGL fallback.
 
+## [MVP8-Vision-023] - (2026-10-08)
+
+### Added
+
+- **Vision document.** [docs/VISION.md](docs/VISION.md) sets out the long-term direction: an institution-agnostic engine in which institutions emerge from agents' decisions instead of being hard-coded, with rules represented as inspectable data, Government's objective derived from households, and later extensions to politics and culture. It lists what MVP8 currently hard-codes, the risks, validation targets from known theory, and an incremental path. It is a direction document only; no simulation behaviour changed.
+
 ## [MVP8-Ensembles_Showcase-022] - (2026-10-08)
 
 ### Added
