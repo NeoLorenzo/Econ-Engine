@@ -192,6 +192,7 @@ export function Stat({
   spark,
   sparkColor,
   tone,
+  compact = false,
 }: {
   label: string
   value: ReactNode
@@ -200,9 +201,11 @@ export function Stat({
   spark?: number[]
   sparkColor?: string
   tone?: 'positive' | 'warning' | 'negative'
+  /** A smaller chip for floating over the world. */
+  compact?: boolean
 }) {
   return (
-    <div className={`stat${tone ? ` stat--${tone}` : ''}`}>
+    <div className={`stat${tone ? ` stat--${tone}` : ''}${compact ? ' stat--compact' : ''}`}>
       <div className="stat-label">
         {label}
         {info && <InfoTip label={`About ${label}`}>{info}</InfoTip>}

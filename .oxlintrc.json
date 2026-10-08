@@ -32,10 +32,10 @@
     "typescript/no-non-null-asserted-optional-chain": "error"
   },
   "ignorePatterns": ["dist", "coverage", ".agent-logs", "public", ".claude"],
-  // WorldView loads Three.js from a CDN at runtime, and the module has no type definitions.
+  // The Three.js runtime is deliberately left untyped for now.
   "overrides": [
     {
-      "files": ["src/ui/WorldView.tsx"],
+      "files": ["src/ui/world/scene.ts"],
       "rules": {
         "typescript/no-explicit-any": "off"
       }

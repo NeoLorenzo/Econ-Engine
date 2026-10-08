@@ -17,7 +17,7 @@ import type { CompetitiveIndustryId } from '../worldViewModel'
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`
 const units = (value: number) => String(Math.round(value))
 
-function FirmCard({ firm, onShowOnMap }: { firm: FirmSnapshot; onShowOnMap: () => void }) {
+function FirmCard({ firm, onLocate }: { firm: FirmSnapshot; onLocate: () => void }) {
   return (
     <article className="firm-card" style={{ borderTopColor: firm.color }}>
       <header>
@@ -61,8 +61,8 @@ function FirmCard({ firm, onShowOnMap }: { firm: FirmSnapshot; onShowOnMap: () =
             ? `Tomorrow: ${money(firm.nextPriceCents)}`
             : ''}
         </span>
-        <button type="button" className="ghost" onClick={onShowOnMap}>
-          Show on map <Icon name="arrow" size={14} />
+        <button type="button" className="ghost" onClick={onLocate}>
+          Locate <Icon name="arrow" size={14} />
         </button>
       </footer>
     </article>
@@ -73,12 +73,12 @@ export function MarketsView({
   state,
   industry,
   onIndustry,
-  onShowOnMap,
+  onLocate,
 }: {
   state: SimulationState
   industry: CompetitiveIndustryId
   onIndustry: (industry: CompetitiveIndustryId) => void
-  onShowOnMap: (id: string) => void
+  onLocate: (id: string) => void
 }) {
   const snapshot = industrySnapshot(state, industry)
   const prices = firmSeries(state, industry, (market) => market.postedPriceCents)
@@ -171,11 +171,11 @@ export function MarketsView({
             subtitle="Shading: the cheaper firm once the round trip is paid. Dots: who each household bought from today."
             className="market-map-card"
           >
-            <MarketMap state={state} industry={industry} onSelectFirm={onShowOnMap} />
+            <MarketMap state={state} industry={industry} onSelectFirm={onLocate} />
           </Section>
           <div className="firm-pair">
             {snapshot.firms.map((firm) => (
-              <FirmCard key={firm.id} firm={firm} onShowOnMap={() => onShowOnMap(firm.id)} />
+              <FirmCard key={firm.id} firm={firm} onLocate={() => onLocate(firm.id)} />
             ))}
           </div>
         </div>

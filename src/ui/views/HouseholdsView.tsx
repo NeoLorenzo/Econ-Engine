@@ -20,7 +20,7 @@ const COLUMNS: { id: HouseholdSort; label: string; numeric?: boolean }[] = [
 
 const signed = (cents: number) => `${cents > 0 ? '+' : cents < 0 ? '−' : ''}${money(Math.abs(cents))}`
 
-export function HouseholdsView({ state, onShowOnMap }: { state: SimulationState; onShowOnMap: (id: string) => void }) {
+export function HouseholdsView({ state, onLocate }: { state: SimulationState; onLocate: (id: string) => void }) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<HouseholdSort>('household')
   const [ascending, setAscending] = useState(true)
@@ -142,8 +142,8 @@ export function HouseholdsView({ state, onShowOnMap }: { state: SimulationState;
                     <button
                       type="button"
                       className="link"
-                      title="Show on the map"
-                      onClick={() => onShowOnMap(household.id)}
+                      title="Locate on the map"
+                      onClick={() => onLocate(household.id)}
                     >
                       H{householdNumber(household.id)}
                     </button>

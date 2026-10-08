@@ -73,6 +73,9 @@ export function householdWealthHeight(cashCents: number, targetCashCents = 5_000
 /** Which household cash figure sets pillar height: before or after Government's tax and transfers. */
 export type CashMeasure = 'before' | 'after'
 
+/** Which relationship lines the map draws: who a household bought from, or who works where. */
+export type LinkMode = 'purchases' | 'jobs'
+
 export function buildWorldEntities(state: SimulationState, measure: CashMeasure = 'after'): WorldEntity[] {
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
