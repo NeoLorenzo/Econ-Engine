@@ -73,3 +73,7 @@ Pushes to `main` validate and deploy the static Vite bundle to [GitHub Pages](ht
 ## Current limits
 
 Government is deliberately narrow and stylized: one flat cash-wealth tax, one Gini objective, no forecasting, and one equalizing transfer rule. There are no other taxes, benefits, public purchases, borrowing, money creation, monetary policy, or welfare/consumption objectives.
+
+## Direction
+
+The long-term aim is an institution-agnostic engine: markets, taxes, governments and other institutions should emerge from agents' decisions instead of being built in. The [vision document](docs/VISION.md) describes that direction and an incremental path towards it. It is not a description of the current model.
