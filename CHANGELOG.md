@@ -2,7 +2,7 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
-## [MVP8-World_First_UI-023] - (2026-10-08)
+## [MVP8-World_First_UI-024] - (2026-10-08)
 
 ### Changed
 
