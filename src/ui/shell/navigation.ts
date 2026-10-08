@@ -18,6 +18,10 @@ export interface WorldFocus {
   industry: CompetitiveIndustryId
   linkMode: LinkMode
   measure: CashMeasure
+  /** Whether the data overlay (territory tiles and household cash pillars) is drawn over the town. */
+  overlay: boolean
+  /** Whether the grass island, trees and bushes are drawn around the town. Decoration only. */
+  scenery: boolean
 }
 
 export const INITIAL_FOCUS: WorldFocus = {
@@ -25,6 +29,8 @@ export const INITIAL_FOCUS: WorldFocus = {
   industry: 'food',
   linkMode: 'purchases',
   measure: 'before',
+  overlay: false,
+  scenery: true,
 }
 
 /** The open panel for a URL hash; anything unrecognized shows the world with no panel. */
@@ -40,7 +46,8 @@ export function hashForPanel(panel: PanelId | null) {
 /** The starting focus a panel sets when it opens. It is applied once, so the user can change it afterwards. */
 export function focusForPanel(panel: PanelId | null, focus: WorldFocus): WorldFocus {
   if (panel === 'markets' || panel === 'households') return { ...focus, linkMode: 'purchases' }
-  if (panel === 'government') return { ...focus, measure: 'after' }
+  // Redistribution is only readable as pillar heights, so Government also shows the overlay.
+  if (panel === 'government') return { ...focus, measure: 'after', overlay: true }
   return focus
 }
 

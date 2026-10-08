@@ -8,6 +8,7 @@ import {
   getHouseholdChoiceObservation,
   getTransferRecipientIds,
   householdWealthHeight,
+  houseTier,
   institutionTiles,
   worldPoint,
 } from './worldViewModel'
@@ -273,5 +274,43 @@ describe('3D world observer model', () => {
     expect(householdWealthHeight(2_500)).toBeLessThan(householdWealthHeight(5_000))
     expect(householdWealthHeight(5_000)).toBeLessThan(householdWealthHeight(10_000))
     expect(householdWealthHeight(1_000_000)).toBe(6)
+  })
+
+  it('puts houses in four wealth tiers with inclusive lower bounds at 85%, 95% and 105% of starting cash', () => {
+    expect(houseTier(-100)).toBe(0)
+    expect(houseTier(0)).toBe(0)
+    expect(houseTier(4_249)).toBe(0)
+    expect(houseTier(4_250)).toBe(1)
+    expect(houseTier(4_749)).toBe(1)
+    expect(houseTier(4_750)).toBe(2)
+    expect(houseTier(5_000)).toBe(2)
+    expect(houseTier(5_249)).toBe(2)
+    expect(houseTier(5_250)).toBe(3)
+    expect(houseTier(1_000_000)).toBe(3)
+    expect(houseTier(170, 200)).toBe(1)
+  })
+
+  it('shows a spread of houses before tax and an even town after Government redistributes', () => {
+    let state = createSimulation({ seed: DEFAULT_SEED })
+    for (let day = 0; day < 60; day += 1) state = stepSimulation(state)
+    const tiers = (measure: 'before' | 'after') =>
+      new Set(buildWorldEntities(state, measure).flatMap(({ tier }) => (tier === undefined ? [] : [tier])))
+    expect(tiers('before').size).toBeGreaterThanOrEqual(3)
+    expect([...tiers('after')]).toEqual([2])
+  })
+
+  it('gives households a tier from the selected cash measure and leaves firms and Government without one', () => {
+    let state = createSimulation({ seed: DEFAULT_SEED })
+    for (let day = 0; day < 30; day += 1) state = stepSimulation(state)
+    for (const measure of ['before', 'after'] as const) {
+      const entities = buildWorldEntities(state, measure)
+      for (const household of state.households) {
+        const entity = entities.find(({ id }) => id === household.id)!
+        const cash = measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents
+        expect(entity.tier).toBe(houseTier(cash))
+        expect(entity.height).toBe(householdWealthHeight(cash))
+      }
+      expect(entities.filter(({ kind }) => kind !== 'household').every(({ tier }) => tier === undefined)).toBe(true)
+    }
   })
 })

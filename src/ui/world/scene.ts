@@ -11,7 +11,17 @@ import {
   type CompetitiveIndustryId,
   type EmploymentNetworkObservation,
   type LinkMode,
+  type WorldEntity,
 } from '../worldViewModel'
+import {
+  buildingArchetype,
+  buildingRotation,
+  createBuildingKit,
+  setAccent,
+  type BuildingKit,
+  type MergeGeometries,
+} from './buildings'
+import { createScenery, SCENERY_MARGIN, sceneryLayout } from './scenery'
 import {
   groundShiftForScreenOffset,
   NO_INSET,
@@ -26,6 +36,8 @@ import {
 export const FIELD_OF_VIEW = 26
 export const MIN_RADIUS = 14
 export const MAX_RADIUS = 95
+/** Overlay pillars are a little wider than a house, so they wrap it. */
+const PILLAR_WIDTH = 0.56
 
 export const COLORS = {
   background: hex(palette.bg),
@@ -48,7 +60,17 @@ export type Runtime = {
   scene: any
   camera: any
   renderer: any
+  keyLight: any
+  kit: BuildingKit
+  /** One building mesh per entity. Their geometry belongs to `kit`, so only their materials are disposed. */
   entities: Map<string, any>
+  /** Household cash pillars, present only while the data overlay is on. They share `pillarGeometry`. */
+  pillars: Map<string, any>
+  pillarGeometry: any
+  mergeGeometries: MergeGeometries
+  /** Grass, trees and bushes, built when first shown and kept while hidden; rebuilt only when the map changes. */
+  scenery: ReturnType<typeof createScenery> | null
+  sceneryKey: string | null
   territoryMeshes: any[]
   territoryKey: string | null
   links: any[]
@@ -77,6 +99,8 @@ export interface SceneView {
   industry: CompetitiveIndustryId
   linkMode: LinkMode
   measure: CashMeasure
+  overlay: boolean
+  scenery: boolean
 }
 
 export function disposeObject(object: any) {
@@ -131,6 +155,10 @@ export function syncGround(runtime: Runtime, state: SimulationState) {
   )
   grid.position.y = 0.01
   runtime.scene.add(grid)
+  // The shadow camera covers the grid and the scenery around it, so everything casts shadows, not just the centre.
+  const half = Math.max(width, height) / 2 + SCENERY_MARGIN + 1
+  Object.assign(runtime.keyLight.shadow.camera, { left: -half, right: half, top: half, bottom: -half })
+  runtime.keyLight.shadow.camera.updateProjectionMatrix()
   Object.assign(runtime, { ground, grid, gridWidth: width, gridHeight: height })
 }
 
@@ -153,52 +181,102 @@ export function selectedEmployment(
   return getEmploymentNetworkObservation(state, selectedId)
 }
 
-export function syncEntities(runtime: Runtime, state: SimulationState, view: SceneView, related: Set<string>) {
+/** Removes a building. Its geometry is shared through the kit, so only its own material is disposed. */
+function removeBuilding(runtime: Runtime, mesh: any) {
+  runtime.scene.remove(mesh)
+  mesh.material.dispose()
+}
+
+/** Keeps one building per entity in step with the simulation, and returns the entities it drew. */
+export function syncEntities(
+  runtime: Runtime,
+  state: SimulationState,
+  view: SceneView,
+  related: Set<string>,
+): WorldEntity[] {
   const descriptors = buildWorldEntities(state, view.measure)
   const liveIds = new Set(descriptors.map(({ id }) => id))
   for (const [id, mesh] of runtime.entities) {
     if (liveIds.has(id)) continue
-    runtime.scene.remove(mesh)
-    disposeObject(mesh)
+    removeBuilding(runtime, mesh)
     runtime.entities.delete(id)
   }
 
   for (const descriptor of descriptors) {
+    // A household that changes wealth tier swaps to another house.
+    const geometry = runtime.kit.geometry(buildingArchetype(descriptor))
     let mesh = runtime.entities.get(descriptor.id)
-    const isHousehold = descriptor.kind === 'household'
     if (!mesh) {
-      mesh = new runtime.THREE.Mesh(
-        new runtime.THREE.BoxGeometry(isHousehold ? 0.46 : 0.86, 1, isHousehold ? 0.46 : 0.86),
-        new runtime.THREE.MeshStandardMaterial({
-          roughness: isHousehold ? 0.75 : 0.45,
-          metalness: isHousehold ? 0.02 : 0.1,
-        }),
-      )
+      mesh = new runtime.THREE.Mesh(geometry, runtime.kit.material())
       mesh.userData.entityId = descriptor.id
+      mesh.rotation.y = buildingRotation(descriptor.id)
       mesh.castShadow = true
       mesh.receiveShadow = true
       runtime.scene.add(mesh)
       runtime.entities.set(descriptor.id, mesh)
-    }
+    } else if (mesh.geometry !== geometry) mesh.geometry = geometry
 
     const selected = descriptor.id === view.selectedId
     const linked = related.has(descriptor.id)
-    const inFocus = descriptor.industryId === view.industry
-    let color = COLORS.household
-    if (descriptor.kind === 'government') color = COLORS.government
-    else if (!isHousehold)
-      color =
+    // Houses have no accent surface; a firm's accent shows its slot, greyed outside the focused market.
+    let accent = COLORS.household
+    if (descriptor.kind === 'government') accent = COLORS.government
+    else if (descriptor.kind === 'firm')
+      accent =
         descriptor.industryId === 'transport'
           ? COLORS.transport
-          : inFocus
+          : descriptor.industryId === view.industry
             ? slotColor(descriptor.firmSlot)
             : COLORS.idleFirm
-    mesh.material.color.setHex(color)
+    setAccent(mesh.material, accent)
     const scale = selected ? 1.25 : linked ? 1.15 : 1
-    mesh.position.set(descriptor.x, descriptor.height / 2, descriptor.z)
-    mesh.scale.set(scale, descriptor.height, scale)
-    mesh.material.emissive.setHex(selected ? COLORS.selected : linked || (inFocus && !isHousehold) ? color : 0x000000)
-    mesh.material.emissiveIntensity = selected ? 0.55 : linked ? 0.45 : inFocus && !isHousehold ? 0.18 : 0
+    mesh.position.set(descriptor.x, 0, descriptor.z)
+    mesh.scale.setScalar(scale)
+    mesh.userData.top = geometry.userData.top * scale
+    mesh.material.emissive.setHex(selected ? COLORS.selected : linked ? accent : 0x000000)
+    mesh.material.emissiveIntensity = selected ? 0.45 : linked ? 0.35 : 0
+  }
+  return descriptors
+}
+
+/** While the data overlay is on, keeps a translucent cash pillar around every house; otherwise removes them. */
+export function syncPillars(runtime: Runtime, descriptors: WorldEntity[], view: SceneView, related: Set<string>) {
+  const households = view.overlay ? descriptors.filter(({ kind }) => kind === 'household') : []
+  const liveIds = new Set(households.map(({ id }) => id))
+  for (const [id, pillar] of runtime.pillars) {
+    if (liveIds.has(id)) continue
+    runtime.scene.remove(pillar)
+    pillar.material.dispose()
+    runtime.pillars.delete(id)
+  }
+
+  for (const descriptor of households) {
+    let pillar = runtime.pillars.get(descriptor.id)
+    if (!pillar) {
+      pillar = new runtime.THREE.Mesh(
+        runtime.pillarGeometry,
+        new runtime.THREE.MeshStandardMaterial({
+          color: COLORS.household,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+          roughness: 0.6,
+          metalness: 0,
+        }),
+      )
+      pillar.userData.entityId = descriptor.id
+      pillar.renderOrder = 2
+      runtime.scene.add(pillar)
+      runtime.pillars.set(descriptor.id, pillar)
+    }
+    const selected = descriptor.id === view.selectedId
+    const linked = related.has(descriptor.id)
+    const width = PILLAR_WIDTH * (selected ? 1.25 : linked ? 1.15 : 1)
+    pillar.position.set(descriptor.x, descriptor.height / 2, descriptor.z)
+    pillar.scale.set(width, descriptor.height, width)
+    pillar.userData.top = descriptor.height
+    pillar.material.emissive.setHex(selected ? COLORS.selected : linked ? COLORS.household : 0x000000)
+    pillar.material.emissiveIntensity = selected ? 0.55 : linked ? 0.45 : 0
   }
 }
 
@@ -214,14 +292,55 @@ function territoryKey(state: SimulationState, industry: CompetitiveIndustryId) {
   ].join('|')
 }
 
-export function syncTerritory(runtime: Runtime, state: SimulationState, industry: CompetitiveIndustryId) {
-  const key = territoryKey(state, industry)
-  if (runtime.territoryKey === key) return
+/**
+ * Shows or hides the grass island, trees and bushes. Their layout depends only on the grid, the seed and where
+ * entities stand, so it is rebuilt only when one of those changes, such as after Apply settings.
+ */
+export function syncScenery(runtime: Runtime, state: SimulationState, entities: WorldEntity[], enabled: boolean) {
+  if (!enabled) {
+    if (runtime.scenery) runtime.scenery.group.visible = false
+    return
+  }
+  const width = state.config.gridWidth ?? 20
+  const height = state.config.gridHeight ?? 20
+  const seed = state.config.seed ?? 0
+  const key = [width, height, seed, ...entities.map(({ x, z }) => `${x},${z}`)].join('|')
+  if (runtime.sceneryKey !== key) {
+    if (runtime.scenery) {
+      runtime.scene.remove(runtime.scenery.group)
+      runtime.scenery.dispose()
+    }
+    runtime.scenery = createScenery(
+      runtime.THREE,
+      runtime.mergeGeometries,
+      sceneryLayout({ width, height, seed, entities }),
+    )
+    runtime.scene.add(runtime.scenery.group)
+    runtime.sceneryKey = key
+  }
+  runtime.scenery!.group.visible = true
+}
+
+function clearTerritory(runtime: Runtime) {
   for (const mesh of runtime.territoryMeshes) {
     runtime.scene.remove(mesh)
     disposeObject(mesh)
   }
   runtime.territoryMeshes = []
+  runtime.territoryKey = null
+}
+
+/** Draws which firm is cheapest on each tile, only while the data overlay is on. */
+export function syncTerritory(
+  runtime: Runtime,
+  state: SimulationState,
+  industry: CompetitiveIndustryId,
+  overlay: boolean,
+) {
+  if (!overlay) return clearTerritory(runtime)
+  const key = territoryKey(state, industry)
+  if (runtime.territoryKey === key) return
+  clearTerritory(runtime)
   const THREE = runtime.THREE
   const territory = buildMarketTerritory(state, industry)
   for (const firmId of territory.firmIds) {
@@ -273,45 +392,45 @@ export function selectedTransfers(state: SimulationState, selectedId: string | n
  */
 export function syncLinks(runtime: Runtime, state: SimulationState, view: SceneView) {
   const THREE = runtime.THREE
-  const segments: { from: any; to: any; color: number; dashed: boolean }[] = []
+  const segments: { from: string; to: string; color: number; dashed: boolean }[] = []
   const recipients = selectedTransfers(state, view.selectedId)
   if (recipients) {
-    const government = runtime.entities.get(state.government.id)
-    for (const householdId of recipients) {
-      const household = runtime.entities.get(householdId)
-      if (government && household)
-        segments.push({ from: government, to: household, color: COLORS.government, dashed: false })
-    }
+    for (const householdId of recipients)
+      segments.push({ from: state.government.id, to: householdId, color: COLORS.government, dashed: false })
   } else if (view.linkMode === 'purchases') {
     const choice = selectedHouseholdChoice(state, view.selectedId, view.industry)
-    const household = choice && runtime.entities.get(choice.householdId)
-    const firm = choice?.chosenFirmId ? runtime.entities.get(choice.chosenFirmId) : null
-    if (household && firm)
+    if (choice?.chosenFirmId)
       segments.push({
-        from: household,
-        to: firm,
-        color: firmIdColor(choice!.chosenFirmId!),
+        from: choice.householdId,
+        to: choice.chosenFirmId,
+        color: firmIdColor(choice.chosenFirmId),
         dashed: true,
       })
   } else {
     const employment = selectedEmployment(state, view.selectedId)
-    const firm = employment && runtime.entities.get(employment.firmId)
-    if (employment && firm)
-      for (const workerId of employment.workerIds) {
-        const worker = runtime.entities.get(workerId)
-        if (worker) segments.push({ from: firm, to: worker, color: COLORS.jobs, dashed: false })
-      }
+    if (employment)
+      for (const workerId of employment.workerIds)
+        segments.push({ from: employment.firmId, to: workerId, color: COLORS.jobs, dashed: false })
   }
 
+  // A line ends just above the household's pillar while the overlay draws one, and otherwise above the rooftop.
+  const endpoint = (id: string) => {
+    const mesh = runtime.entities.get(id)
+    if (!mesh) return null
+    const top: number = runtime.pillars.get(id)?.userData.top ?? mesh.userData.top
+    return new THREE.Vector3(mesh.position.x, top + 0.15, mesh.position.z)
+  }
+  const lines = segments.flatMap(({ from, to, color, dashed }) => {
+    const start = endpoint(from)
+    const end = endpoint(to)
+    return start && end ? [{ start, end, color, dashed }] : []
+  })
+
   const key =
-    segments
-      .map(({ from, to }) => [from.userData.entityId, to.userData.entityId, from.position.y, to.position.y].join(':'))
-      .join('|') + view.linkMode
+    lines.map(({ start, end }) => [start.x, start.y, start.z, end.x, end.y, end.z].join(':')).join('|') + view.linkMode
   if (runtime.linksKey === key) return
   clearLinks(runtime)
-  for (const { from, to, color, dashed } of segments) {
-    const start = new THREE.Vector3(from.position.x, from.position.y * 2 + 0.25, from.position.z)
-    const end = new THREE.Vector3(to.position.x, to.position.y * 2 + 0.25, to.position.z)
+  for (const { start, end, color, dashed } of lines) {
     const mid = start.clone().lerp(end, 0.5)
     mid.y = Math.max(start.y, end.y) + start.distanceTo(end) * 0.18
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end)
@@ -348,7 +467,7 @@ export function attachControls(
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, runtime.camera)
-    const hit = raycaster.intersectObjects(Array.from(runtime.entities.values()), false)[0]
+    const hit = raycaster.intersectObjects([...runtime.entities.values(), ...runtime.pillars.values()], false)[0]
     return {
       id: (hit?.object?.userData?.entityId as string | undefined) ?? null,
       x: event.clientX - rect.left,
@@ -467,7 +586,10 @@ export async function createRuntime(
     onHover: (id: string | null, x: number, y: number) => void
   },
 ): Promise<Runtime> {
-  const THREE = await import('three')
+  const [THREE, { mergeGeometries }] = await Promise.all([
+    import('three'),
+    import('three/examples/jsm/utils/BufferGeometryUtils.js'),
+  ])
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(COLORS.background)
   scene.fog = new THREE.Fog(COLORS.background, 60, 140)
@@ -487,6 +609,8 @@ export async function createRuntime(
   key.position.set(10, 22, 8)
   key.castShadow = true
   key.shadow.mapSize.set(1024, 1024)
+  key.shadow.bias = -0.0005
+  key.shadow.normalBias = 0.02
   scene.add(key)
 
   const runtime: Runtime = {
@@ -494,7 +618,14 @@ export async function createRuntime(
     scene,
     camera,
     renderer,
+    keyLight: key,
+    kit: createBuildingKit(THREE, mergeGeometries),
+    mergeGeometries,
+    scenery: null,
+    sceneryKey: null,
     entities: new Map(),
+    pillars: new Map(),
+    pillarGeometry: new THREE.BoxGeometry(1, 1, 1),
     territoryMeshes: [],
     territoryKey: null,
     links: [],
@@ -552,10 +683,12 @@ export function disposeRuntime(runtime: Runtime) {
   runtime.disposeControls()
   runtime.resizeObserver.disconnect()
   clearLinks(runtime)
-  for (const mesh of [...runtime.territoryMeshes, ...runtime.entities.values()]) {
-    runtime.scene.remove(mesh)
-    disposeObject(mesh)
-  }
+  clearTerritory(runtime)
+  for (const mesh of runtime.entities.values()) removeBuilding(runtime, mesh)
+  for (const pillar of runtime.pillars.values()) pillar.material.dispose()
+  runtime.pillarGeometry.dispose()
+  runtime.kit.dispose()
+  runtime.scenery?.dispose()
   if (runtime.ground) disposeObject(runtime.ground)
   if (runtime.grid) disposeObject(runtime.grid)
   runtime.renderer.dispose()

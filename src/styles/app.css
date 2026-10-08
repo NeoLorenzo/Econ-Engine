@@ -520,6 +520,12 @@ select {
   display: grid;
   gap: var(--gap);
 }
+.view-lead {
+  max-width: 68ch;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
 .conservation {
   display: inline-flex;
   align-items: center;
@@ -545,31 +551,8 @@ select {
   border-color: var(--border);
   background: var(--surface);
 }
-.intro--start {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 22px 24px;
-}
-.intro--start p + p {
-  margin-top: 4px;
-  max-width: 760px;
-  font-size: var(--fs-sm);
-}
-.intro-title {
-  color: var(--text);
-  font-size: var(--fs-lg);
-  font-weight: 700;
-}
-.intro-cta {
-  flex: none;
-  min-height: 44px;
-  padding: 0 20px;
-  font-size: var(--fs-md);
-}
 
-/* ---------- Shell: HUD, intro and panels over the world ---------- */
+/* ---------- Shell: HUD and panels over the world ---------- */
 .hud {
   position: fixed;
   top: calc(var(--topbar-h) + 12px);
@@ -621,17 +604,6 @@ select {
   backdrop-filter: blur(10px);
   color: var(--text-3);
   font-size: var(--fs-xs);
-}
-.intro-card {
-  position: fixed;
-  left: calc((100vw - var(--inset-right, 0px)) / 2);
-  bottom: calc(var(--tools-h) + 24px);
-  z-index: 6;
-  width: min(860px, calc(100vw - 32px - var(--inset-right, 0px)));
-  transform: translateX(-50%);
-  background: linear-gradient(90deg, rgba(212, 243, 106, 0.07), transparent 70%), rgba(17, 22, 20, 0.94);
-  backdrop-filter: blur(12px);
-  box-shadow: var(--shadow);
 }
 .panel {
   position: fixed;
@@ -1187,6 +1159,28 @@ select {
 .legend-height {
   margin-right: 4px;
   color: var(--text-3);
+}
+.map-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.map-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.map-toggle[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: rgba(212, 243, 106, 0.1);
+  color: var(--accent);
 }
 .world-legend .segmented {
   padding: 2px;
@@ -2247,7 +2241,8 @@ select {
   .world-search input {
     width: 140px;
   }
-  .world-legend {
+  /* The overlay switch and the cash measure stay; the firm swatches do not fit. */
+  .world-legend > span:not(.legend-height) {
     display: none;
   }
   .search-field input {
@@ -2255,10 +2250,6 @@ select {
   }
   .experiment-head {
     flex-direction: column;
-  }
-  .intro--start {
-    flex-direction: column;
-    align-items: stretch;
   }
   .market-row--head {
     display: none;

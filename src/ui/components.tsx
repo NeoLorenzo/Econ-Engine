@@ -2,7 +2,19 @@ import { useId, type ReactNode } from 'react'
 import { palette } from './theme'
 
 type IconName =
-  'play' | 'pause' | 'step' | 'restart' | 'settings' | 'close' | 'camera' | 'help' | 'check' | 'search' | 'arrow'
+  | 'play'
+  | 'pause'
+  | 'step'
+  | 'restart'
+  | 'settings'
+  | 'close'
+  | 'camera'
+  | 'help'
+  | 'check'
+  | 'search'
+  | 'arrow'
+  | 'layers'
+  | 'tree'
 
 const ICON_PATHS: Record<IconName, ReactNode> = {
   play: <path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none" />,
@@ -53,6 +65,19 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
+  layers: (
+    <>
+      <path d="M12 4l8 4-8 4-8-4z" />
+      <path d="M4 12l8 4 8-4" />
+      <path d="M4 16l8 4 8-4" />
+    </>
+  ),
+  tree: (
+    <>
+      <path d="M12 3l6 9h-3.5l3.5 5H6l3.5-5H6z" />
+      <path d="M12 17v4" />
+    </>
+  ),
 }
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
