@@ -16,6 +16,8 @@ import {
   syncEntities,
   syncGround,
   syncLinks,
+  syncPillars,
+  syncScenery,
   syncTerritory,
   setViewInset,
   type Runtime,
@@ -75,7 +77,7 @@ export function WorldStage({
   const [hidden, setHidden] = useState(() => document.visibilityState === 'hidden')
   // Nothing is synced or drawn while the world is covered (Experiments) or the browser tab is hidden.
   const asleep = paused || hidden
-  const { selectedId, industry, linkMode, measure } = focus
+  const { selectedId, industry, linkMode, measure, overlay, scenery } = focus
 
   const select = (id: string | null) => onFocus(focusForSelection(state, focus, id))
   const selectRef = useRef(select)
@@ -179,15 +181,17 @@ export function WorldStage({
     const runtime = runtimeRef.current
     if (!runtime || asleep) return
     syncGround(runtime, state)
-    syncTerritory(runtime, state, industry)
-    const current = { selectedId, industry, linkMode, measure }
-    syncEntities(runtime, state, current, related)
+    syncTerritory(runtime, state, industry, overlay)
+    const current = { selectedId, industry, linkMode, measure, overlay, scenery }
+    const entities = syncEntities(runtime, state, current, related)
+    syncScenery(runtime, state, entities, scenery)
+    syncPillars(runtime, entities, current, related)
     syncLinks(runtime, state, current)
     runtime.dirty = true
     // `status` is not read here, but its change to 'ready' must re-sync the scene the runtime has just built.
     // Waking from `asleep` re-syncs to the latest state.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
-  }, [state, selectedId, industry, linkMode, measure, related, status, asleep])
+  }, [state, selectedId, industry, linkMode, measure, overlay, scenery, related, status, asleep])
 
   const hovered = hoverId && hoverId !== selectedId ? hoverId : null
   const hoveredHousehold = hovered ? state.households.find(({ id }) => id === hovered) : null

@@ -2,6 +2,24 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP8-Town_Models-025] - (2026-10-08)
+
+### Changed
+
+- **A town instead of pillars.** The 3D world draws procedural low-poly buildings. Each household is a house in one of four wealth tiers, depending on its cash relative to the $50 start: a shack below 85%, a cottage from 85%, a two-storey house from 95% and a villa from 105%. The cash shown can be before or after tax. Each consumer industry has its own firm building (a market hall, a plant, a clinic and a cinema), Transport is a depot with a bus, and Government is a domed civic hall. A firm's roof, awning, marquee or cross takes its slot colour (Firm A cyan, Firm B orange), greyed outside the market shown. Each building faces one of four directions, picked from a hash of its ID, so the town looks varied but a building never turns between days.
+- **Data overlay.** A new "Data overlay" switch in the map tools adds today's territory tiles and a translucent cash pillar around every house, with the same heights as before. It is off by default. Opening Government switches it on, with after-tax cash, because redistribution reads best as pillar heights. Firm and Government pillars are gone, because their heights were fixed and showed no data.
+- **Scenery.** The town stands on a grass island with earth sides. Trees and bushes are scattered among the houses and thicken into a forest across a five-tile margin around the grid. Nothing grows on or against a tile that a household, firm or institution occupies. Placement comes from the seed and the tile, so it never changes between days. A "Scenery" switch in the map tools hides it all and restores the plain board. It is on by default and no panel changes it. Trees and bushes are three instanced meshes, and the shadow camera now covers the margin.
+- Relationship lines end above the rooftops, or above the pillars while the overlay is on. Clicking a pillar selects its household.
+- The height control is now "Cash shown", because it sets house tiers as well as pillar heights. On phones, the overlay switch and this control stay visible.
+- **The day-0 intro card is removed.** The HUD summary now also gives the firm count, the explanation opens the Overview panel, and the top bar's Run button replaces "Run the economy".
+- `src/ui/world/buildings.ts` builds each building type once, merges it into one geometry with vertex colours, and shares it. Each entity is one mesh with its own material, whose accent colour comes from a small shader hook. The shadow camera now covers the whole grid.
+
+### Validation
+
+- New tests cover every building type's footprint, ground contact, attributes and accent surfaces, geometry caching, per-building materials, house tier boundaries, tiers under both cash measures, and the overlay in the starting focus and Government's focus, and the scenery layout: determinism, one grass tile per tile, nothing on or touching an occupied tile, items staying in their tiles, a denser forest outside the town than inside it, and the tree and bush sizes.
+- The canonical trajectory is unchanged: no file under `src/sim/` changed.
+- Browser checks covered the town at day 0 and later, the overlay on and off, picking houses and pillars, purchase lines to rooftops and pillar tops, Government switching the overlay on, the 375px layout, and a clean console on the production build. `docs/images/overview.png` was recaptured at day 46.
+
 ## [MVP8-World_First_UI-024] - (2026-10-08)
 
 ### Changed

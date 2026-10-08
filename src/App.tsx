@@ -7,7 +7,7 @@ import { Icon } from './ui/components'
 import { useEnsembles } from './ui/ensembles'
 import { useExperiments } from './ui/experiments'
 import { SettingsDrawer } from './ui/SettingsDrawer'
-import { Hud, IntroCard } from './ui/shell/Hud'
+import { Hud } from './ui/shell/Hud'
 import {
   focusForPanel,
   hashForPanel,
@@ -187,7 +187,6 @@ export default function App() {
           onStatus={onWorldStatus}
         />
         <Hud state={state} seed={seed} totalMoney={totalMoney} conserved={conserved} />
-        <IntroCard state={state} onRun={() => setRunning(true)} />
       </main>
 
       <header ref={topbarRef} className="topbar">

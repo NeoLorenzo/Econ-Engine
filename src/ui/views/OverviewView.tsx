@@ -24,6 +24,10 @@ export function OverviewView({
   const rawEvents = useMemo(() => groupEventsForDisplay(state.events).reverse().slice(0, 60), [state.events])
   return (
     <div className="view">
+      <p className="view-lead">
+        Firms learn their prices from what sells, households buy from whichever shop is cheapest once the trip is paid,
+        and Government taxes wealth to keep everyone roughly equal. Nobody is told the answer; it emerges day by day.
+      </p>
       <Section
         title="Where the money went today"
         subtitle={

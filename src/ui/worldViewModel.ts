@@ -47,6 +47,8 @@ export interface WorldEntity {
   industryId?: IndustryId
   /** A consumer firm's position in its market (0 is Firm A); undefined for households and Transport. */
   firmSlot?: number
+  /** A household's house: 0 shack, 1 cottage, 2 two-storey house, 3 villa. Undefined for firms and Government. */
+  tier?: HouseTier
 }
 
 export interface EmploymentNetworkObservation {
@@ -70,7 +72,25 @@ export function householdWealthHeight(cashCents: number, targetCashCents = 5_000
   return Math.min(6, Math.max(0.18, 0.18 + ratio ** 3 * 1.52))
 }
 
-/** Which household cash figure sets pillar height: before or after Government's tax and transfers. */
+export type HouseTier = 0 | 1 | 2 | 3
+
+/**
+ * Discrete wealth tiers for the town's houses, relative to starting cash: below 85%, from 85%, from 95% and from
+ * 105%. Each lower bound is inclusive. Household cash in this economy stays within a few dollars of the start (about
+ * 80–115% before tax, and 100% after Government evens it out), so the bands sit close around 100% to keep those gaps
+ * visible. The overlay pillars show exact cash; tiers keep the town readable.
+ */
+export function houseTier(cashCents: number, startingCashCents = INITIAL_HOUSEHOLD_CASH_CENTS): HouseTier {
+  // Whole percentages of the starting cash, compared exactly.
+  const percent = cashCents * 100
+  const start = Math.max(1, startingCashCents)
+  if (percent >= start * 105) return 3
+  if (percent >= start * 95) return 2
+  if (percent >= start * 85) return 1
+  return 0
+}
+
+/** Which household cash figure sets pillar height and house tier: before or after Government's tax and transfers. */
 export type CashMeasure = 'before' | 'after'
 
 /** Which relationship lines the map draws: who a household bought from, or who works where. */
@@ -117,15 +137,14 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
 
   const households: WorldEntity[] = state.households.map((household) => {
     const point = worldPoint(household.coordinate, width, height)
+    const cashCents = measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents
     return {
       id: household.id,
       kind: 'household',
       x: point.x,
       z: point.z,
-      height: householdWealthHeight(
-        measure === 'before' ? household.preTaxCashCents : household.postFiscalCashCents,
-        targetCashCents,
-      ),
+      height: householdWealthHeight(cashCents, targetCashCents),
+      tier: houseTier(cashCents, targetCashCents),
     }
   })
 

@@ -8,7 +8,10 @@ import { useHeightVar } from '../shell/useHeightVar'
 import { firmColor } from '../theme'
 import { buildMarketTerritory } from '../worldViewModel'
 
-/** Search, market and relationship switches, pillar height and the territory legend, floating over the world. */
+/**
+ * Search, market and relationship switches, the data overlay and scenery switches, the cash measure and, with the
+ * overlay on, the territory legend, floating over the world.
+ */
 export function MapTools({
   state,
   focus,
@@ -26,7 +29,7 @@ export function MapTools({
 }) {
   const [query, setQuery] = useState('')
   const toolsRef = useRef<HTMLDivElement | null>(null)
-  // The inspector and the intro card sit above the tools, which wrap onto more rows on narrow screens.
+  // The inspector sits above the tools, which wrap onto more rows on narrow screens.
   useHeightVar(toolsRef, '--tools-h')
   const territory = useMemo(() => buildMarketTerritory(state, focus.industry), [state, focus.industry])
   const territoryFirms = territory.firmIds.map((id) => state.firms.find((firm) => firm.id === id)!)
@@ -97,10 +100,30 @@ export function MapTools({
         </div>
       </div>
       <div className="world-overlay world-overlay--legend world-legend">
+        <button
+          type="button"
+          className="map-toggle"
+          aria-pressed={focus.overlay}
+          title="Show cash pillars over the houses and which firm is cheapest on each tile"
+          onClick={() => onFocus({ ...focus, overlay: !focus.overlay })}
+        >
+          <Icon name="layers" size={14} />
+          Data overlay
+        </button>
+        <button
+          type="button"
+          className="map-toggle"
+          aria-pressed={focus.scenery}
+          title="Show grass, trees and bushes around the town. Decoration only."
+          onClick={() => onFocus({ ...focus, scenery: !focus.scenery })}
+        >
+          <Icon name="tree" size={14} />
+          Scenery
+        </button>
         <span className="legend-height">
-          Height
+          Cash shown
           <Segmented
-            label="Pillar height shows"
+            label="Cash that sets house size and pillar height"
             size="sm"
             value={focus.measure}
             onChange={(measure) => onFocus({ ...focus, measure })}
@@ -110,12 +133,13 @@ export function MapTools({
             ]}
           />
         </span>
-        {territoryFirms.map((firm) => (
-          <span key={firm.id}>
-            <i className="swatch" style={{ background: firmColor(firmSlot(firm.id)) }} />
-            {firmShortName(firm.id)} · {money(firm.postedPriceCents)} · {territory.cellCounts[firm.id] ?? 0} tiles
-          </span>
-        ))}
+        {focus.overlay &&
+          territoryFirms.map((firm) => (
+            <span key={firm.id}>
+              <i className="swatch" style={{ background: firmColor(firmSlot(firm.id)) }} />
+              {firmShortName(firm.id)} · {money(firm.postedPriceCents)} · {territory.cellCounts[firm.id] ?? 0} tiles
+            </span>
+          ))}
       </div>
     </div>
   )

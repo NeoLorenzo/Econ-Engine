@@ -81,37 +81,13 @@ export function Hud({
       )}
       <div className="hud-status">
         <span className="scenario-summary">
-          Seed {seed} · {households} households · {money(totalMoney)} in circulation
+          Seed {seed} · {households} households · {state.firms.length} firms · {money(totalMoney)} in circulation
         </span>
         <span className={`conservation${conserved ? '' : ' is-broken'}`}>
           <Icon name={conserved ? 'check' : 'close'} size={13} />
           {conserved ? 'Money conserved exactly' : 'Money not conserved'}
         </span>
       </div>
-    </div>
-  )
-}
-
-/** The day-0 introduction, floating over the world until the economy first runs. */
-export function IntroCard({ state, onRun }: { state: SimulationState; onRun: () => void }) {
-  if (state.day !== 0) return null
-  const households = state.households.length
-  return (
-    <div className="intro intro--start intro-card">
-      <div>
-        <p className="intro-title">
-          {households} households, 9 firms and a government share a fixed {moneyWhole(households * 5_000)}.
-        </p>
-        <p>
-          Firms learn their prices from what sells, households buy from whichever shop is cheapest once the trip is
-          paid, and Government taxes wealth to keep everyone roughly equal. Nobody is told the answer; it emerges day by
-          day.
-        </p>
-      </div>
-      <button type="button" className="primary intro-cta" onClick={onRun}>
-        <Icon name="play" size={14} />
-        Run the economy
-      </button>
     </div>
   )
 }

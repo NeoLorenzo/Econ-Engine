@@ -12,7 +12,14 @@ import {
   type WorldFocus,
 } from './navigation'
 
-const focus: WorldFocus = { selectedId: 'household-3', industry: 'healthcare', linkMode: 'jobs', measure: 'before' }
+const focus: WorldFocus = {
+  selectedId: 'household-3',
+  industry: 'healthcare',
+  linkMode: 'jobs',
+  measure: 'before',
+  overlay: false,
+  scenery: true,
+}
 
 describe('panel hash', () => {
   it('shows the world, with no panel, for an empty or unknown hash', () => {
@@ -41,8 +48,22 @@ describe('focusForPanel', () => {
     expect(focusForPanel('households', focus).linkMode).toBe('purchases')
   })
 
-  it('shows after-tax heights for Government', () => {
-    expect(focusForPanel('government', focus).measure).toBe('after')
+  it('shows after-tax heights and the data overlay for Government', () => {
+    expect(focusForPanel('government', focus)).toEqual({ ...focus, measure: 'after', overlay: true })
+  })
+
+  it('never changes the scenery', () => {
+    for (const panel of [null, ...PANELS.map(({ id }) => id)]) {
+      expect(focusForPanel(panel, focus).scenery).toBe(true)
+      expect(focusForPanel(panel, { ...focus, scenery: false }).scenery).toBe(false)
+    }
+  })
+
+  it('leaves the overlay alone for every other panel', () => {
+    for (const panel of [null, 'overview', 'markets', 'households', 'experiments'] as const) {
+      expect(focusForPanel(panel, focus).overlay).toBe(false)
+      expect(focusForPanel(panel, { ...focus, overlay: true }).overlay).toBe(true)
+    }
   })
 
   it('leaves the focus alone for the world, Overview and Experiments', () => {
@@ -103,7 +124,14 @@ describe('selectedEntityKind', () => {
 })
 
 describe('INITIAL_FOCUS', () => {
-  it('starts on Food with purchase links and before-tax heights, nothing selected', () => {
-    expect(INITIAL_FOCUS).toEqual({ selectedId: null, industry: 'food', linkMode: 'purchases', measure: 'before' })
+  it('starts on the town with scenery and without the overlay, on Food with purchase links and before-tax cash, nothing selected', () => {
+    expect(INITIAL_FOCUS).toEqual({
+      selectedId: null,
+      industry: 'food',
+      linkMode: 'purchases',
+      measure: 'before',
+      overlay: false,
+      scenery: true,
+    })
   })
 })

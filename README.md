@@ -6,11 +6,11 @@ A deterministic agent-based economy you can watch and inspect in the browser: 10
 
 Current model: MVP8, population scaling. The [changelog](CHANGELOG.md) records every update.
 
-![The 3D world: each pillar is a household and taller means more cash, the floor shows which firm is cheapest where, and the headline numbers float above it](docs/images/overview.png)
+![The 3D world: a town where each house is a household and bigger houses hold more cash, each firm's building shows its industry, trees and fields surround the town, and the headline numbers float above it](docs/images/overview.png)
 
 ## What you can explore
 
-The simulator opens on a 3D world. Each pillar is a household (taller means more cash), the larger blocks are firms, Transport (grey) and Government (purple) stand near the centre for reference, and the floor shows which firm is cheapest where. Headline numbers float above it. Click anything to inspect it. Each section opens as a panel over the world, which stays live beside it, and "Locate" in a panel flies the camera to that household or firm.
+The simulator opens on a 3D town. Each house is a household, from a shack to a villa as its cash grows. Each firm's building shows its industry (a market hall for Food, a plant for Utilities, a clinic for Healthcare, a cinema for Entertainment) and its roof shows which firm it is. The Transport depot and the Government hall stand near the centre for reference. Grass, trees and a ring of forest surround the town; the Scenery switch hides them. The Data overlay switch adds a translucent cash pillar around every house and colours the floor by which firm is cheapest where. Headline numbers float above it. Click anything to inspect it. Each section opens as a panel over the world, which stays live beside it, and "Locate" in a panel flies the camera to that household or firm.
 
 | Section | What it shows |
 | --- | --- |

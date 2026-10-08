@@ -53,12 +53,14 @@ Households are houses in four tiers. The tier is set by the cash figure the curr
 
 | Tier | Building | Cash relative to the start |
 | --- | --- | --- |
-| 0 | Shack | below 50% |
-| 1 | Cottage | 50% up to 110% |
-| 2 | Two-storey house | 110% up to 200% |
-| 3 | Villa | 200% and above |
+| 0 | Shack | below 85% |
+| 1 | Cottage | 85% up to 95% |
+| 2 | Two-storey house | 95% up to 105% |
+| 3 | Villa | 105% and above |
 
-Each lower bound is inclusive. Zero and negative cash give tier 0. Discrete tiers keep the town readable; the overlay pillars show exact cash. Houses use the household palette colour (`palette.household`) for walls and darker roofs, and have no accent colour.
+Each lower bound is inclusive. Zero and negative cash give tier 0. Discrete tiers keep the town readable; the overlay pillars show exact cash.
+
+The bands are close around 100% because cash in this economy stays within a few dollars of the start. Over 400 canonical days, cash before tax runs from about 81% to 114% of the start, and after tax every household holds 100%. Bands at 50%, 110% and 200%, as first drafted, would have shown almost nothing but cottages. With these bands, the town before tax shows a spread of houses, and the town after tax is uniformly two-storey, which is what redistribution does. Houses use the household palette colour (`palette.household`) for walls and darker roofs, and have no accent colour.
 
 ### Firms
 
@@ -78,7 +80,9 @@ Walls are neutral. The accent (roof, awning, marquee or cross) takes the firm's 
 
 A civic building with columns and a dome. Its accent is `palette.government`.
 
-### Footprints and ground
+### Footprints, facing and ground
+
+- Each building faces one of four quarter-turns, picked by `buildingRotation(entityId)` from an FNV-1a hash of its ID. The town looks varied, and a building never turns between days or runs. Quarter-turns keep every footprint square to its tile; other angles would push a 0.8 footprint's diagonal to 1.13 tiles, into its neighbours.
 
 - Firm and Government buildings fit a 0.8 × 0.8 tile footprint, houses a 0.5 × 0.5 footprint. Every building sits on the ground at y = 0, so neighbours never overlap.
 - Each building geometry includes a thin base slab that anchors it on the dark ground.
@@ -205,7 +209,8 @@ Three.js geometry runs in Node without WebGL, so the kit is tested directly.
 
 `worldViewModel.test.ts`:
 
-- `houseTier` at each boundary: just under and exactly 50%, 110% and 200% of starting cash. Zero and negative cash give tier 0.
+- `houseTier` at each boundary: just under and exactly 85%, 95% and 105% of starting cash. Zero and negative cash give tier 0.
+- On the canonical economy, the town before tax shows at least three tiers, and after tax every house is tier 2.
 - Households carry the expected `tier` under both measures.
 - Firms and Government carry no tier.
 - Existing heights are unchanged.
