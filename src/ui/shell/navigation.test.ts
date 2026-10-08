@@ -88,6 +88,7 @@ describe('selectedEntityKind', () => {
   it('recognizes households and firms that exist', () => {
     expect(selectedEntityKind(state, 'household-1')).toBe('household')
     expect(selectedEntityKind(state, 'firm-transport')).toBe('firm')
+    expect(selectedEntityKind(state, state.government.id)).toBe('government')
   })
 
   it('returns null for no selection or an unknown ID', () => {

@@ -2,7 +2,7 @@ import { INITIAL_HOUSEHOLD_CASH_CENTS, firmSlot } from '../sim/config'
 import { transportQuote } from '../sim/spatial'
 import type { Coordinate, IndustryId, SimulationState } from '../sim/types'
 
-export type WorldEntityKind = 'household' | 'firm'
+export type WorldEntityKind = 'household' | 'firm' | 'government'
 export type CompetitiveIndustryId = Exclude<IndustryId, 'transport'>
 
 export interface MarketTerritoryCell {
@@ -76,10 +76,44 @@ export type CashMeasure = 'before' | 'after'
 /** Which relationship lines the map draws: who a household bought from, or who works where. */
 export type LinkMode = 'purchases' | 'jobs'
 
+/**
+ * Display tiles for Government and Transport, which the model gives no location: the free tiles nearest the
+ * grid centre, Government first. Map-only, so no fee or tax depends on them. Null when no tile is free.
+ */
+export function institutionTiles(state: SimulationState): {
+  government: Coordinate | null
+  transport: Coordinate | null
+} {
+  const width = state.config.gridWidth ?? 20
+  const height = state.config.gridHeight ?? 20
+  const occupied = new Set(
+    [
+      ...state.households.map(({ coordinate }) => coordinate),
+      ...state.firms.flatMap(({ coordinate }) => coordinate ?? []),
+    ].map(({ x, y }) => `${x},${y}`),
+  )
+  const centreDistance = ({ x, y }: Coordinate) => (x - (width - 1) / 2) ** 2 + (y - (height - 1) / 2) ** 2
+  const free: Coordinate[] = []
+  for (let y = 0; y < height; y += 1)
+    for (let x = 0; x < width; x += 1) if (!occupied.has(`${x},${y}`)) free.push({ x, y })
+  // Row-major order breaks distance ties, so the choice is stable.
+  free.sort((a, b) => centreDistance(a) - centreDistance(b))
+  return { government: free[0] ?? null, transport: free[1] ?? null }
+}
+
+/** Households that received a Government transfer today, in household order. */
+export function getTransferRecipientIds(state: SimulationState) {
+  return state.households.filter(({ transferReceivedTodayCents }) => transferReceivedTodayCents > 0).map(({ id }) => id)
+}
+
 export function buildWorldEntities(state: SimulationState, measure: CashMeasure = 'after'): WorldEntity[] {
   const width = state.config.gridWidth ?? 20
   const height = state.config.gridHeight ?? 20
   const targetCashCents = INITIAL_HOUSEHOLD_CASH_CENTS
+  const tiles = institutionTiles(state)
+  // Without a free tile, an institution stands just beside the grid: Transport on the left, Government on the right.
+  const institutionPoint = (tile: Coordinate | null, side: -1 | 1) =>
+    tile ? worldPoint(tile, width, height) : { x: side * (width / 2 + 1.6), z: 0 }
 
   const households: WorldEntity[] = state.households.map((household) => {
     const point = worldPoint(household.coordinate, width, height)
@@ -99,7 +133,7 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
     if (!firm.coordinate && firm.industryId !== 'transport') {
       throw new Error(`Spatial consumer firm ${firm.id} is missing its authoritative coordinate`)
     }
-    const point = firm.coordinate ? worldPoint(firm.coordinate, width, height) : { x: -(width / 2) - 1.6, z: 0 }
+    const point = firm.coordinate ? worldPoint(firm.coordinate, width, height) : institutionPoint(tiles.transport, -1)
 
     return {
       id: firm.id,
@@ -112,7 +146,14 @@ export function buildWorldEntities(state: SimulationState, measure: CashMeasure 
     }
   })
 
-  return [...households, ...firms]
+  const government: WorldEntity = {
+    id: state.government.id,
+    kind: 'government',
+    ...institutionPoint(tiles.government, 1),
+    height: 3.2,
+  }
+
+  return [...households, ...firms, government]
 }
 
 export function buildMarketTerritory(state: SimulationState, industryId: CompetitiveIndustryId): MarketTerritory {

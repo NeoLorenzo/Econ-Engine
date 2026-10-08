@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { SimulationState } from '../../sim/types'
-import { firmName, householdName, money } from '../format'
+import { bps, firmName, householdName, money } from '../format'
 import { focusForSelection, selectedEntityKind, type WorldFocus } from '../shell/navigation'
 import type { ViewInset } from './cameraMath'
 import { Inspector } from './Inspector'
@@ -12,6 +12,7 @@ import {
   resetCamera,
   selectedEmployment,
   selectedHouseholdChoice,
+  selectedTransfers,
   syncEntities,
   syncGround,
   syncLinks,
@@ -129,7 +130,9 @@ export function WorldStage({
 
   const related = useMemo(() => {
     const ids = new Set<string>()
-    if (linkMode === 'purchases') {
+    const recipients = selectedTransfers(state, selectedId)
+    if (recipients) recipients.forEach((id) => ids.add(id))
+    else if (linkMode === 'purchases') {
       const choice = selectedHouseholdChoice(state, selectedId, industry)
       if (choice?.chosenFirmId) ids.add(choice.chosenFirmId)
     } else {
@@ -189,6 +192,7 @@ export function WorldStage({
   const hovered = hoverId && hoverId !== selectedId ? hoverId : null
   const hoveredHousehold = hovered ? state.households.find(({ id }) => id === hovered) : null
   const hoveredFirm = hovered ? state.firms.find(({ id }) => id === hovered) : null
+  const hoveredGovernment = hovered === state.government.id ? state.government : null
 
   return (
     <div className="stage" data-status={status}>
@@ -216,6 +220,15 @@ export function WorldStage({
               {hoveredFirm.industryId === 'transport'
                 ? `${hoveredFirm.employeeIds.length} workers`
                 : `${money(hoveredFirm.postedPriceCents)} tomorrow · ${hoveredFirm.employeeIds.length} workers`}
+            </span>
+          </>
+        )}
+        {hoveredGovernment && (
+          <>
+            <strong>Government</strong>
+            <span>
+              {bps(hoveredGovernment.appliedWealthTaxRateBps)} wealth tax ·{' '}
+              {money(hoveredGovernment.redistributedTodayCents)} paid out today
             </span>
           </>
         )}

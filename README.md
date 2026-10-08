@@ -10,7 +10,7 @@ Current model: MVP8, population scaling. The [changelog](CHANGELOG.md) records e
 
 ## What you can explore
 
-The simulator opens on a 3D world. Each pillar is a household (taller means more cash), the larger blocks are firms, and the floor shows which firm is cheapest where. Headline numbers float above it. Click anything to inspect it. Each section opens as a panel over the world, which stays live beside it, and "Locate" in a panel flies the camera to that household or firm.
+The simulator opens on a 3D world. Each pillar is a household (taller means more cash), the larger blocks are firms, Transport (grey) and Government (purple) stand near the centre for reference, and the floor shows which firm is cheapest where. Headline numbers float above it. Click anything to inspect it. Each section opens as a panel over the world, which stays live beside it, and "Locate" in a panel flies the camera to that household or firm.
 
 | Section | What it shows |
 | --- | --- |

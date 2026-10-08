@@ -39,5 +39,6 @@ export const householdNumber = (householdId: string) => householdId.replace('hou
 export const householdName = (householdId: string) => `Household ${householdNumber(householdId)}`
 
 export function entityName(id: string) {
+  if (id.startsWith('government-')) return 'Government'
   return id.startsWith('household-') ? householdName(id) : firmName(id)
 }

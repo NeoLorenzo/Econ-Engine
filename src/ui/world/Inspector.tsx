@@ -1,7 +1,7 @@
 import type { SimulationState } from '../../sim/types'
 import { Icon } from '../components'
 import { CONSUMER_INDUSTRIES, householdCashSteps } from '../economyModel'
-import { entityName, firmName, firmShortName, INDUSTRY_NAMES, money } from '../format'
+import { bps, entityName, firmName, firmShortName, INDUSTRY_NAMES, money } from '../format'
 import { selectedEntityKind, type WorldFocus } from '../shell/navigation'
 import {
   getHouseholdChoiceObservation,
@@ -112,7 +112,7 @@ function FirmInspector({
     <>
       <p className="inspector-sub">
         {isTransport
-          ? 'Monopoly · has no location, so it sits off the grid'
+          ? 'Monopoly · shown near the centre for reference; fares depend only on the trip to the shop'
           : `Competes in ${INDUSTRY_NAMES[firm.industryId]}`}
       </p>
       <dl className="inspector-stats">
@@ -158,7 +158,43 @@ function FirmInspector({
   )
 }
 
-/** Details for the selected household or firm. Renders nothing when the selection names nothing in this run. */
+function GovernmentInspector({ state }: { state: SimulationState }) {
+  const government = state.government
+  return (
+    <>
+      <p className="inspector-sub">
+        Taxes wealth and pays it to the households with the least · shown near the centre for reference; distance to it
+        has no effect
+      </p>
+      <dl className="inspector-stats">
+        <div>
+          <dt>Wealth tax</dt>
+          <dd>{bps(government.appliedWealthTaxRateBps)}</dd>
+        </div>
+        <div>
+          <dt>Collected</dt>
+          <dd>{money(government.totalReceiptsTodayCents)}</dd>
+        </div>
+        <div>
+          <dt>Paid out</dt>
+          <dd>{money(government.redistributedTodayCents)}</dd>
+        </div>
+        <div>
+          <dt>Recipients</dt>
+          <dd>{government.householdsReceivingTransfers}</dd>
+        </div>
+      </dl>
+      {government.policyStatus === 'experiment' && (
+        <p className="inspector-note">
+          Trying {bps(government.appliedWealthTaxRateBps)} today instead of the usual{' '}
+          {bps(government.incumbentWealthTaxRateBps)}.
+        </p>
+      )}
+    </>
+  )
+}
+
+/** Details for the selected household, firm or Government. Renders nothing when the selection names nothing in this run. */
 export function Inspector({
   state,
   focus,
@@ -191,10 +227,13 @@ export function Inspector({
         />
       )}
       {kind === 'firm' && <FirmInspector state={state} firmId={selectedId} linkMode={linkMode} onSelect={onSelect} />}
+      {kind === 'government' && <GovernmentInspector state={state} />}
       <p className="inspector-foot">
-        {linkMode === 'purchases'
-          ? 'Dashed line: who this household bought from in the selected market.'
-          : 'Green lines: employment links.'}{' '}
+        {kind === 'government'
+          ? 'Purple lines: households that received a transfer today.'
+          : linkMode === 'purchases'
+            ? 'Dashed line: who this household bought from in the selected market.'
+            : 'Green lines: employment links.'}{' '}
         Lines show relationships, not travel routes.
       </p>
     </aside>
