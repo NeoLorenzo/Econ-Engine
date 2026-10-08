@@ -25,8 +25,8 @@ export const palette = {
 /** Colours by firm slot. The canonical economy uses only A and B; further slots exist for other market structures. */
 const FIRM_COLORS = [palette.firmA, palette.firmB, '#d98ad6', '#8fb0ff']
 
-/** A consumer firm's colour from its slot (A = 0), or Government purple for Transport. */
+/** A consumer firm's colour from its slot (A = 0), or a neutral grey for Transport, leaving purple to Government. */
 export const firmColor = (slot: number | null) =>
-  slot === null ? palette.government : FIRM_COLORS[slot % FIRM_COLORS.length]!
+  slot === null ? palette.text2 : FIRM_COLORS[slot % FIRM_COLORS.length]!
 
 export const hex = (color: string) => Number.parseInt(color.slice(1), 16)

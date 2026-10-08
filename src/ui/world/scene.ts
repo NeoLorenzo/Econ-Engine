@@ -6,6 +6,7 @@ import {
   buildWorldEntities,
   getEmploymentNetworkObservation,
   getHouseholdChoiceObservation,
+  getTransferRecipientIds,
   type CashMeasure,
   type CompetitiveIndustryId,
   type EmploymentNetworkObservation,
@@ -33,7 +34,8 @@ export const COLORS = {
   gridMinor: 0x1a201d,
   household: hex(palette.household),
   idleFirm: 0x46514c,
-  transport: hex(palette.government),
+  transport: hex(palette.text2),
+  government: hex(palette.government),
   selected: hex(palette.accent),
   jobs: hex(palette.positive),
 }
@@ -183,7 +185,8 @@ export function syncEntities(runtime: Runtime, state: SimulationState, view: Sce
     const linked = related.has(descriptor.id)
     const inFocus = descriptor.industryId === view.industry
     let color = COLORS.household
-    if (!isHousehold)
+    if (descriptor.kind === 'government') color = COLORS.government
+    else if (!isHousehold)
       color =
         descriptor.industryId === 'transport'
           ? COLORS.transport
@@ -259,11 +262,27 @@ export function clearLinks(runtime: Runtime) {
   runtime.linksKey = null
 }
 
-/** Draws schematic relationship lines: the selected household's supplier, or an employer and its workers. */
+/** Households that received a transfer today while Government is selected, otherwise null. */
+export function selectedTransfers(state: SimulationState, selectedId: string | null) {
+  return selectedId === state.government.id ? getTransferRecipientIds(state) : null
+}
+
+/**
+ * Draws schematic relationship lines: Government's transfer recipients, the selected household's supplier, or an
+ * employer and its workers.
+ */
 export function syncLinks(runtime: Runtime, state: SimulationState, view: SceneView) {
   const THREE = runtime.THREE
   const segments: { from: any; to: any; color: number; dashed: boolean }[] = []
-  if (view.linkMode === 'purchases') {
+  const recipients = selectedTransfers(state, view.selectedId)
+  if (recipients) {
+    const government = runtime.entities.get(state.government.id)
+    for (const householdId of recipients) {
+      const household = runtime.entities.get(householdId)
+      if (government && household)
+        segments.push({ from: government, to: household, color: COLORS.government, dashed: false })
+    }
+  } else if (view.linkMode === 'purchases') {
     const choice = selectedHouseholdChoice(state, view.selectedId, view.industry)
     const household = choice && runtime.entities.get(choice.householdId)
     const firm = choice?.chosenFirmId ? runtime.entities.get(choice.chosenFirmId) : null

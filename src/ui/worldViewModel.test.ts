@@ -6,7 +6,9 @@ import {
   buildWorldEntities,
   getEmploymentNetworkObservation,
   getHouseholdChoiceObservation,
+  getTransferRecipientIds,
   householdWealthHeight,
+  institutionTiles,
   worldPoint,
 } from './worldViewModel'
 
@@ -23,14 +25,72 @@ describe('3D world observer model', () => {
     expect(buildMarketTerritory(state, 'food').cells).toHaveLength(400)
   })
 
-  it('renders Transport as an explicitly non-spatial observer hub', () => {
+  it('places Government and Transport on the free tiles nearest the centre without giving them coordinates', () => {
     const state = createSimulation({ seed: DEFAULT_SEED })
-    const transport = state.firms.find(({ id }) => id === 'firm-transport')!
-    const descriptor = buildWorldEntities(state).find(({ id }) => id === transport.id)!
+    const width = state.config.gridWidth ?? 20
+    const height = state.config.gridHeight ?? 20
+    const tiles = institutionTiles(state)
+    const occupied = new Set(
+      [
+        ...state.households.map(({ coordinate }) => coordinate),
+        ...state.firms.flatMap(({ coordinate }) => coordinate ?? []),
+      ].map(({ x, y }) => `${x},${y}`),
+    )
+    const centreDistance = ({ x, y }: { x: number; y: number }) =>
+      (x - (width - 1) / 2) ** 2 + (y - (height - 1) / 2) ** 2
+    const freeDistances = Array.from({ length: width * height }, (_, index) => ({
+      x: index % width,
+      y: Math.floor(index / width),
+    }))
+      .filter(({ x, y }) => !occupied.has(`${x},${y}`))
+      .map(centreDistance)
+      .sort((a, b) => a - b)
 
-    expect(transport.coordinate).toBeUndefined()
-    expect(descriptor.industryId).toBe('transport')
-    expect(descriptor.x).toBeLessThan(-(state.config.gridWidth ?? 20) / 2)
+    expect(tiles.government).not.toBeNull()
+    expect(tiles.transport).not.toBeNull()
+    expect(tiles.government).not.toEqual(tiles.transport)
+    for (const tile of [tiles.government!, tiles.transport!]) expect(occupied.has(`${tile.x},${tile.y}`)).toBe(false)
+    expect(centreDistance(tiles.government!)).toBe(freeDistances[0])
+    expect(centreDistance(tiles.transport!)).toBe(freeDistances[1])
+
+    const entities = buildWorldEntities(state)
+    const government = entities.find(({ id }) => id === state.government.id)!
+    const transport = entities.find(({ id }) => id === 'firm-transport')!
+    expect(government.kind).toBe('government')
+    expect({ x: government.x, z: government.z }).toEqual(worldPoint(tiles.government!, width, height))
+    expect({ x: transport.x, z: transport.z }).toEqual(worldPoint(tiles.transport!, width, height))
+    // The tiles are for display only: the simulation still gives neither a location.
+    expect(state.firms.find(({ id }) => id === 'firm-transport')!.coordinate).toBeUndefined()
+  })
+
+  it('puts Government and Transport beside the grid when no tile is free', () => {
+    const base = createSimulation({ seed: DEFAULT_SEED })
+    const state = {
+      ...base,
+      config: { ...base.config, gridWidth: 2, gridHeight: 1 },
+      households: base.households.slice(0, 1).map((household) => ({ ...household, coordinate: { x: 0, y: 0 } })),
+      firms: base.firms
+        .filter(({ id }) => id === 'firm-food-a' || id === 'firm-transport')
+        .map((firm) => (firm.id === 'firm-food-a' ? { ...firm, coordinate: { x: 1, y: 0 } } : firm)),
+    }
+    const entities = buildWorldEntities(state)
+
+    expect(institutionTiles(state)).toEqual({ government: null, transport: null })
+    expect(entities.find(({ id }) => id === 'firm-transport')!.x).toBeLessThan(-1)
+    expect(entities.find(({ id }) => id === state.government.id)!.x).toBeGreaterThan(1)
+  })
+
+  it('lists the households that received a transfer today', () => {
+    const base = createSimulation({ seed: DEFAULT_SEED })
+    const state = {
+      ...base,
+      households: base.households.map((household, index) => ({
+        ...household,
+        transferReceivedTodayCents: index === 2 || index === 5 ? 120 : 0,
+      })),
+    }
+
+    expect(getTransferRecipientIds(state)).toEqual([state.households[2]!.id, state.households[5]!.id])
   })
 
   it('centres authoritative grid coordinates without mutating them', () => {

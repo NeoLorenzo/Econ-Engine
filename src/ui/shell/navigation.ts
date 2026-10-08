@@ -53,8 +53,12 @@ export function focusForSelection(state: SimulationState, focus: WorldFocus, id:
 }
 
 /** What the selection refers to, or null when it names nothing that exists in this run. */
-export function selectedEntityKind(state: SimulationState, id: string | null): 'household' | 'firm' | null {
+export function selectedEntityKind(
+  state: SimulationState,
+  id: string | null,
+): 'household' | 'firm' | 'government' | null {
   if (!id) return null
+  if (id === state.government.id) return 'government'
   if (state.households.some((household) => household.id === id)) return 'household'
   if (state.firms.some((firm) => firm.id === id)) return 'firm'
   return null

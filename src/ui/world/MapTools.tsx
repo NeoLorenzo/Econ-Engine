@@ -32,10 +32,11 @@ export function MapTools({
   const territoryFirms = territory.firmIds.map((id) => state.firms.find((firm) => firm.id === id)!)
   const searchOptions = useMemo(
     () => [
+      { id: state.government.id, label: 'Government' },
       ...state.firms.map(({ id }) => ({ id, label: firmName(id) })),
       ...state.households.map(({ id }) => ({ id, label: householdName(id) })),
     ],
-    [state.firms, state.households],
+    [state.government.id, state.firms, state.households],
   )
 
   const onSearch = (value: string) => {
