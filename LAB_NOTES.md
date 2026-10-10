@@ -6,6 +6,33 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [MVP9-Life_Engine_Merge-027] - (2026-10-10)
+
+### Problem
+
+The owner proposed stepping back from the MVP9 economy and returning to basics: identify the earliest economy in human history, model its agents, get it running, and only then add complexity. The engine has no target era; it models agents managing scarcity. Looking at Life Engine, a separate Unity project with embodied agents, the owner expected the two projects to converge and wanted them to: the goal is one simulation of life, with economics as one part. That raised a platform decision. The owner does not write code, so all of it is written by Claude Code, and leaned towards three.js in the browser while wondering whether Unity would be faster.
+
+### Decisions
+
+- **Merge into Econ-Engine; keep the browser.** Rendering speed was not decisive. Life Engine's simulation runs inside Unity's frame loop, with physics steering, raycast perception and unseeded randomness, so it cannot be replayed, run headless or repeated across seeds. Econ-Engine's core is already separate from its view. Claude Code can validate the TypeScript project headless in seconds and inspect it in a browser, whereas much of a Unity project lives in the editor. Life Engine is frozen as a design reference; its ideas are ported, not its code.
+- **Bottom-up instead of top-down.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time. Those institutions are the current engine, so every intermediate version would be a modern economy with parts missing. A new core starting from the economy with the fewest institutions, a forager band, reaches the vision's goal more directly. The MVP9 core stays as a reference.
+- **The earliest economy as a guide, not a period.** Foraging bands are the starting point because they have no money, prices, firms or government, not because the engine models prehistory.
+- **No barter assumption.** The barter-first story has little evidence behind it (Humphrey, 1985; Graeber, 2011). Agents may keep, give or swap; which prevails is an outcome.
+- **The individual as the agent.** Life Engine's embodied individual replaces the household. Its hormone-level physiology is reduced to energy and fatigue until a question needs more.
+- **A ladder of questions.** Seven steps, each with a question that could come out either way and a validation target from theory: survival and leisure, carrying capacity, sharing under risk and spoilage, specialization, property, Malthusian dynamics, and the emergence of a medium of exchange.
+
+### Trade-offs
+
+- Most of `src/sim` (firms, markets, payroll, Government) is unused by the early steps. The infrastructure carries over: RNG streams, invariants, the ledger, ensembles and the observer.
+- Sugarscape already covered much of the first three steps. The new core's contribution must come from exact accounting, the causal ledger, perception-limited information and rules as data.
+- The browser lacks Unity's animation, physics and terrain tooling. The simulation does not need them; the view can add web equivalents if wanted.
+
+### Open questions
+
+- The tick length, and whether bodily needs follow fixed priority rules, bounded learning, or both.
+- The new core's directory and name, whether the observer shows both cores, and whether the MVP9 core is eventually retired.
+- Whether the project should be renamed once the merged core is the main line of work.
+
 ## [MVP9-Plots-026] - (2026-10-08)
 
 ### Problem

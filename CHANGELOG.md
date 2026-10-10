@@ -2,6 +2,12 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [MVP9-Life_Engine_Merge-027] - (2026-10-10)
+
+### Added
+
+- **Merge document.** [docs/MERGE.md](docs/MERGE.md) records the decision to merge Life Engine (a Unity project with embodied agents) into Econ-Engine and to keep TypeScript and three.js as the platform. A new simulation core will be built bottom-up, starting from a band of foragers, beside the frozen MVP9 core. The document sets out what carries over from each project, a seven-step ladder with a question and a validation target for each step, the risks and the open decisions. It replaces the vision's incremental path; VISION.md and the README now point to it. It is a direction document only; no simulation behaviour changed.
+
 ## [MVP9-Plots-026] - (2026-10-08)
 
 ### Changed

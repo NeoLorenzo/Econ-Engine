@@ -2,6 +2,8 @@
 
 This is a direction document, not a specification. Nothing in it is implemented. The current MVP specifications remain authoritative for what the engine does, and the [simulation design rules](../SIMULATION_DESIGN_RULES.md) remain authoritative for how it must be built. This document describes where the engine is meant to go, so later work has a reference point.
 
+On 2026-10-10 Life Engine was merged into this project and development turned bottom-up. The [merge document](MERGE.md) replaces this document's [incremental path](#incremental-path) and answers its question about the unit of time. Everything else here still stands.
+
 ## Purpose
 
 Econ-Engine should be able to start from a very basic economy and let institutions emerge from the decisions of individual agents. The engine should not contain a definition of serfdom, a market economy, a tax system or a democracy. Those should be patterns that appear, persist, change or disappear because agents with needs, limited information and bounded learning find them worthwhile, or cannot escape them.
@@ -137,6 +139,8 @@ Known theory gives testable predictions without hard-coding the outcome:
 - **Behaviour-preserving refactors.** When an existing hard-coded mechanism is re-expressed as rule data, the canonical trajectory must match bit-for-bit, as in the MVP8 structural refactor.
 
 ## Incremental path
+
+> Superseded by the ladder in the [merge document](MERGE.md#the-ladder). The path below is kept as the record of the earlier plan.
 
 No rewrite is required. Each step moves one hard-coded institution into the rules layer and gets its own specification and validation:
 
