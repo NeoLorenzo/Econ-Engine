@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, lastEventOf, stepLife } from './engine'
 import { addLots, carriedKcal, spoil, takeOldest } from './food'
 import { assertLifeInvariants } from './invariants'
@@ -55,11 +55,12 @@ describe('luck', () => {
   })
 
   it('always succeeds when a harvest is one hour’s food, and otherwise at the expected rate', () => {
-    const steady = { ...LIFE_DEFAULT_CONFIG, harvestKcal: LIFE_DEFAULT_CONFIG.forageKcalPerHour }
-    for (let tick = 0; tick < 500; tick += 1) expect(forageSucceeds(steady, tick, 0)).toBe(true)
+    const life2 = { ...LIFE_DEFAULT_CONFIG, ...LIFE2_WORLD }
+    const steady = { ...life2, harvestKcal: life2.forageKcalPerHour }
+    for (let tick = 0; tick < 500; tick += 1) expect(forageSucceeds(steady, tick, 0, 1_200)).toBe(true)
     let successes = 0
     const draws = 40_000
-    for (let tick = 0; tick < draws; tick += 1) if (forageSucceeds(LIFE_DEFAULT_CONFIG, tick, tick % 12)) successes += 1
+    for (let tick = 0; tick < draws; tick += 1) if (forageSucceeds(life2, tick, tick % 12, 1_200)) successes += 1
     // p = 0.2; the standard error over 40,000 draws is 0.002.
     expect(Math.abs(successes / draws - 0.2)).toBeLessThan(0.006)
   })
@@ -68,6 +69,7 @@ describe('luck', () => {
 describe('eating and harvesting', () => {
   // A lone forager with no camp on a patch holding windfalls, hungry at 9 in the morning.
   const lone = {
+    ...LIFE2_WORLD,
     gridWidth: 1,
     gridHeight: 1,
     patchCount: 1,
@@ -80,7 +82,8 @@ describe('eating and harvesting', () => {
   const at = (tick: number) => ({ ...createLife({ ...lone }), tick })
 
   const firstTick = (succeeds: boolean) => {
-    for (let tick = 9; tick < 18 * 24; tick += 24) if (forageSucceeds(at(0).config, tick, 0) === succeeds) return tick
+    for (let tick = 9; tick < 18 * 24; tick += 24)
+      if (forageSucceeds(at(0).config, tick, 0, 1_200) === succeeds) return tick
     throw new Error('no such hour')
   }
 

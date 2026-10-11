@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE0_WORLD, LIFE_DEFAULT_CONFIG } from '../life/config'
+import { LIFE0_WORLD, LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from '../life/config'
 import { createLife, lastEventOf, runLifeHours, stepLife } from '../life/engine'
 import type { LifeConfig, LifeState } from '../life/types'
 import {
@@ -8,24 +8,36 @@ import {
   bundleScale,
   bushScale,
   clockLabel,
+  crownScale,
   currentGifts,
+  currentSwaps,
   daylightAt,
   describeActivity,
   displayedCarried,
   displayedStock,
+  displayedWood,
+  foragerColor,
   foragerName,
   foragerPose,
   foragerSummary,
   giftArcPoint,
   giftEnds,
+  groveInspection,
+  hearthAt,
   isCamp,
+  logScale,
   MAX_FRAME_SECONDS,
+  ownTermsPosition,
   pairOffsets,
   patchInspection,
   perceptionOutline,
+  specializationPoints,
   standingOffsets,
   stepFollowed,
   STRATEGY_COLORS,
+  swapEnds,
+  TERMS_COLORS,
+  tradeSummary,
   type DisplayPair,
 } from './lifeViewModel'
 
@@ -127,7 +139,9 @@ describe('bushes', () => {
 describe('words', () => {
   it('describes what the forager is doing', () => {
     expect(describeActivity(pairAt(hungryAtDusk(), 0.5), 0)).toBe('Walking to patch 2')
-    expect(describeActivity(pairAt(createLife(), 0.5), 7)).toBe('Sleeping through the night')
+    expect(describeActivity(pairAt(createLife(LIFE2_WORLD), 0.5), 7)).toBe('Sleeping through the night')
+    // A Life 3 band starts with no wood, so its first night is cold.
+    expect(describeActivity(pairAt(createLife(), 0.5), 7)).toBe('Sleeping cold, with no wood to burn')
     expect(foragerName(0)).toBe('Forager 1')
   })
 
@@ -197,7 +211,7 @@ describe('the band on screen', () => {
 describe('sharing on screen', () => {
   /** The canonical band at midnight: forager 4, a sharer, carries 3,000 kcal with a full reserve; forager 0 is hungry. */
   function campWithFood(): LifeState {
-    const state = createLife()
+    const state = createLife(LIFE2_WORLD)
     const foragers = state.foragers.map((forager) =>
       forager.id === 4
         ? { ...forager, energyKcal: 20_000, hungry: false, carried: [{ kcal: 3_000, harvestTick: 0 }] }
@@ -252,7 +266,7 @@ describe('sharing on screen', () => {
   })
 
   it('knows the camp, and describes the walk home', () => {
-    const state = createLife()
+    const state = createLife(LIFE2_WORLD)
     expect(isCamp(state, { x: 6, y: 6 })).toBe(true)
     expect(isCamp(state, { x: 0, y: 0 })).toBe(false)
     expect(isCamp(createLife(LIFE0_WORLD), { x: 6, y: 6 })).toBe(false)
@@ -263,5 +277,101 @@ describe('sharing on screen', () => {
     }
     expect(describeActivity(pairAt(away, 0.5), 0)).toBe('Walking home to camp')
     expect(LIFE_DEFAULT_CONFIG.hasCamp).toBe(true)
+  })
+})
+
+describe('specialization on screen', () => {
+  /** The canonical band at 20:00: forager 0 holds spare wood and forager 1 wants wood and carries food to pay. */
+  function campReadyToSwap(): LifeState {
+    const state = createLife()
+    const [seller, buyer] = [...state.foragers]
+      .sort((a, b) => a.forageRate * b.woodRate - b.forageRate * a.woodRate)
+      .filter((_, index, sorted) => index === 0 || index === sorted.length - 1)
+    const foragers = state.foragers.map((forager) =>
+      forager.id === seller!.id
+        ? { ...forager, wood: 60, energyKcal: 15_000 }
+        : forager.id === buyer!.id
+          ? { ...forager, wood: 0, energyKcal: 20_000, carried: [{ kcal: 4_000, harvestTick: 19 }] }
+          : { ...forager, wood: 24 },
+    )
+    return { ...state, tick: 20, foragers }
+  }
+
+  it('sizes trees and log stacks, which never vanish while there is wood', () => {
+    expect(crownScale(200, 200)).toBe(1)
+    expect(crownScale(0, 200)).toBeCloseTo(0.35, 9)
+    expect(logScale(0, 24)).toBe(0)
+    expect(logScale(6, 24)).toBeCloseTo(0.725, 9)
+    expect(logScale(100, 24)).toBe(1)
+  })
+
+  it('colours foragers by own terms, from gatherers to foragers', () => {
+    const { config, foragers } = createLife()
+    const at = (forageRate: number, woodRate: number) =>
+      ownTermsPosition(config, { ...foragers[0]!, forageRate, woodRate })
+    expect(at(600, 36)).toBe(0)
+    expect(at(1_800, 12)).toBe(1)
+    expect(at(1_200, 24)).toBeCloseTo(0.5, 9)
+    expect(ownTermsPosition({ ...config, skillMinPercent: 100, skillMaxPercent: 100 }, foragers[0]!)).toBe(0.5)
+    expect(foragerColor(config, { ...foragers[0]!, forageRate: 600, woodRate: 36 })).toBe(TERMS_COLORS.gatherer)
+    expect(foragerColor(config, { ...foragers[0]!, forageRate: 1_800, woodRate: 12 })).toBe(TERMS_COLORS.forager)
+  })
+
+  it('shows the swaps of the hour being drawn, between the two on the swap’s tile', () => {
+    const before = campReadyToSwap()
+    const pair = pairAt(before, 0.5)
+    const swaps = currentSwaps(pair)
+    expect(swaps.length).toBeGreaterThan(0)
+    const { from, to } = swapEnds(swaps[0]!, pairOffsets(pair))
+    expect(Math.hypot(from.x - 6, from.y - 6)).toBeLessThan(0.5)
+    expect(Math.hypot(to.x - 6, to.y - 6)).toBeLessThan(0.5)
+    expect(from).not.toEqual(to)
+    const seller = swaps[0]!.sellerId
+    // The seller burns a unit for the night and sells; the display is halfway between.
+    const after = pair.next.foragers[seller]!.wood
+    expect(displayedWood(pair, seller)).toBeCloseTo((60 + after) / 2, 9)
+    expect(currentSwaps(pairAt(pair.next, 0.5)).every((made) => made.tick === pair.next.tick)).toBe(true)
+  })
+
+  it('lights a hearth while a forager burns wood, and leaves it dark when it sleeps cold', () => {
+    const state = campReadyToSwap()
+    const pair = pairAt(state, 0.5)
+    const lit = state.foragers.find((forager) => forager.wood > 0)!.id
+    expect(hearthAt(pair, lit)).toBe('lit')
+    const cold = { ...state, foragers: state.foragers.map((forager) => ({ ...forager, wood: 0 })) }
+    expect(hearthAt(pairAt(cold, 0.5), 0)).toBe('cold')
+    expect(describeActivity(pairAt(cold, 0.5), 0)).toBe('Sleeping cold, with no wood to burn')
+    const noon = { ...state, tick: 12 }
+    expect(hearthAt(pairAt(noon, 0.5), 0)).toBeNull()
+  })
+
+  it('summarizes a forager’s skills, wood and swaps, and plots its share of work', () => {
+    let state = createLife()
+    state = runLifeHours(state, 24 * 6)
+    const summary = tradeSummary(state, 0)
+    expect(summary.forageRate).toBe(state.foragers[0]!.forageRate)
+    expect(summary.ownTerms).toBeCloseTo(state.foragers[0]!.forageRate / state.foragers[0]!.woodRate, 9)
+    expect(summary.woodTarget).toBe(24)
+    const sold = state.foragers.reduce((sum, forager) => sum + tradeSummary(state, forager.id).woodSold, 0)
+    const bought = state.foragers.reduce((sum, forager) => sum + tradeSummary(state, forager.id).woodBought, 0)
+    expect(sold).toBe(state.totals.swappedWood)
+    expect(bought).toBe(sold)
+    const points = specializationPoints(state)
+    expect(points.length).toBeGreaterThan(0)
+    for (const point of points) {
+      expect(point.woodShare).toBeGreaterThanOrEqual(0)
+      expect(point.woodShare).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('inspects a grove: what it holds against what the followed forager remembers', () => {
+    expect(groveInspection(createLife(), 2, 0)).toMatchObject({
+      name: 'Grove 3',
+      wood: 200,
+      capacity: 200,
+      rememberedWood: 200,
+      seen: 'at the start',
+      difference: 0,
+    })
   })
 })

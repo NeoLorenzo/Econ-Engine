@@ -5,31 +5,37 @@ import type { LifeConfig } from '../life/types'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
-import { createLifeScene, type LifePick, type LifeScene } from './lifeScene'
+import { createLifeScene, type LifePick, type LifeScene, type LifeSite } from './lifeScene'
 import {
   advanceClock,
   aliveCount,
   clockLabel,
-  currentEvent,
   describeActivity,
   displayedEnergy,
   displayHours,
+  foragerColor,
   foragerName,
   foragerSummary,
   formatHours,
   formatKcal,
+  groveInspection,
   LIFE_SPEEDS,
   patchInspection,
   seesEverything,
+  specializationPoints,
   stepFollowed,
-  STRATEGY_COLORS,
+  TERMS_COLORS,
+  tradeSummary,
   type DisplayPair,
 } from './lifeViewModel'
+import { SpecializationChart } from './SpecializationChart'
 
-type Setup = Pick<
+type NumericSetup = Pick<
   LifeConfig,
   | 'seed'
   | 'bandSize'
+  | 'skillMinPercent'
+  | 'skillMaxPercent'
   | 'sharers'
   | 'reciprocators'
   | 'harvestKcal'
@@ -37,21 +43,33 @@ type Setup = Pick<
   | 'perceptionRadiusTiles'
   | 'patchCount'
   | 'patchRegrowthKcalPerHour'
+  | 'groveCount'
 >
+type Setup = NumericSetup & Pick<LifeConfig, 'swapping' | 'quotes'>
 
-const SETUP_FIELDS: { key: keyof Setup; label: string }[] = [
+const SETUP_FIELDS: { key: keyof NumericSetup; label: string }[] = [
   { key: 'seed', label: 'Seed' },
   { key: 'bandSize', label: 'Foragers' },
+  { key: 'skillMinPercent', label: 'Skill from, %' },
+  { key: 'skillMaxPercent', label: 'Skill to, %' },
   { key: 'sharers', label: 'Sharers' },
   { key: 'reciprocators', label: 'Reciprocators' },
-  { key: 'harvestKcal', label: 'Windfall, kcal' },
+  { key: 'harvestKcal', label: 'Harvest, kcal' },
   { key: 'shelfLifeHours', label: 'Keeps, h (0 = ∞)' },
   { key: 'perceptionRadiusTiles', label: 'Sight, tiles' },
   { key: 'patchCount', label: 'Patches' },
   { key: 'patchRegrowthKcalPerHour', label: 'Regrowth, kcal/h' },
+  { key: 'groveCount', label: 'Groves' },
 ]
 
-const DEFAULT_SETUP = Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, LIFE_DEFAULT_CONFIG[key]])) as Setup
+const SETUP_SWITCHES: { key: 'swapping' | 'quotes'; label: string }[] = [
+  { key: 'swapping', label: 'Swapping' },
+  { key: 'quotes', label: 'Telling terms' },
+]
+
+const DEFAULT_SETUP = Object.fromEntries(
+  [...SETUP_FIELDS, ...SETUP_SWITCHES].map(({ key }) => [key, LIFE_DEFAULT_CONFIG[key]]),
+) as Setup
 
 /** Every forager is drawn as its own figure, which stays smooth up to about this many. */
 const MAX_BAND = 100
@@ -72,6 +90,8 @@ interface Snapshot {
 
 const HUD_INTERVAL_MS = 100
 
+const formatUnits = (units: number) => `${units.toLocaleString('en-US')} ${units === 1 ? 'unit' : 'units'}`
+
 export default function LifeApp() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<LifeScene | null>(null)
@@ -79,10 +99,11 @@ export default function LifeApp() {
   const pairRef = useRef<DisplayPair>(initialPair)
   const [running, setRunning] = useState(true)
   const [speedIndex, setSpeedIndex] = useState(1)
-  const [selectedPatchId, setSelectedPatchId] = useState<number | null>(null)
+  const [selected, setSelected] = useState<LifeSite | null>(null)
   const [followedId, setFollowedId] = useState(0)
   const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP)
-  const [draft, setDraft] = useState<Record<keyof Setup, string>>(() => stringify(DEFAULT_SETUP))
+  const [draft, setDraft] = useState<Record<keyof NumericSetup, string>>(() => stringify(DEFAULT_SETUP))
+  const [switches, setSwitches] = useState({ swapping: DEFAULT_SETUP.swapping, quotes: DEFAULT_SETUP.quotes })
   const [setupError, setSetupError] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0, true))
   const [sceneError, setSceneError] = useState(false)
@@ -91,15 +112,15 @@ export default function LifeApp() {
 
   const runningRef = useRef(running)
   const speedRef = useRef(LIFE_SPEEDS[speedIndex]!)
-  const selectedRef = useRef(selectedPatchId)
+  const selectedRef = useRef(selected)
   const followedRef = useRef(followedId)
   // The animation loop reads the latest controls through refs, so changing them never restarts it.
   useEffect(() => {
     runningRef.current = running
     speedRef.current = LIFE_SPEEDS[speedIndex]!
-    selectedRef.current = selectedPatchId
+    selectedRef.current = selected
     followedRef.current = followedId
-  }, [running, speedIndex, selectedPatchId, followedId])
+  }, [running, speedIndex, selected, followedId])
 
   // One loop advances the clock and draws; React only refreshes the HUD.
   useEffect(() => {
@@ -113,7 +134,7 @@ export default function LifeApp() {
       if (pick?.kind === 'forager') {
         followedRef.current = pick.id
         setFollowedId(pick.id)
-      } else setSelectedPatchId(pick?.id ?? null)
+      } else setSelected(pick)
     }
     createLifeScene(mount, onPick)
       .then((scene) => {
@@ -135,7 +156,7 @@ export default function LifeApp() {
           }
           scene.draw(pairRef.current, {
             interpolate: speed.interpolate,
-            selectedPatchId: selectedRef.current,
+            selected: selectedRef.current,
             followedId: followedRef.current,
             nowMs: now,
           })
@@ -159,7 +180,7 @@ export default function LifeApp() {
   const reset = useCallback((nextSetup: Setup) => {
     pairRef.current = startPair(nextSetup)
     sceneRef.current?.setWorld(pairRef.current.next)
-    setSelectedPatchId(null)
+    setSelected(null)
     followedRef.current = 0
     setFollowedId(0)
     setSnapshot(snap(pairRef.current, 0, true))
@@ -185,7 +206,7 @@ export default function LifeApp() {
       if (event.code === 'Space') {
         event.preventDefault()
         setRunning((value) => !value)
-      } else if (event.key === 'Escape') setSelectedPatchId(null)
+      } else if (event.key === 'Escape') setSelected(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -193,7 +214,10 @@ export default function LifeApp() {
 
   const applySetup = (event: FormEvent) => {
     event.preventDefault()
-    const parsed = Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, Number(draft[key])])) as Setup
+    const parsed = {
+      ...(Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, Number(draft[key])])) as NumericSetup),
+      ...switches,
+    }
     const errors = lifeConfigErrors({ ...LIFE_DEFAULT_CONFIG, ...parsed })
     if (!errors.length && parsed.bandSize > MAX_BAND) errors.push(`The observer shows at most ${MAX_BAND} foragers`)
     if (errors.length) {
@@ -209,22 +233,20 @@ export default function LifeApp() {
   const state = pair.next
   const { config } = state
   const forager = state.foragers[followed]!
-  const event = currentEvent(pair, followed)
   const name = foragerName(followed)
-  const inspection = selectedPatchId === null ? null : patchInspection(state, selectedPatchId, followed)
+  const patch = selected?.kind === 'patch' ? patchInspection(state, selected.id, followed) : null
+  const grove = selected?.kind === 'grove' ? groveInspection(state, selected.id, followed) : null
   const summary = foragerSummary(state, followed)
-  const keepers = config.bandSize - config.sharers - config.reciprocators
+  const trade = tradeSummary(state, followed)
+  const gifting = config.sharers + config.reciprocators > 0
   const days = state.days.map((day) => ({
     day: day.day + 1,
-    keepers: day.aliveByStrategy.keeper,
-    sharers: day.aliveByStrategy.sharer,
-    reciprocators: day.aliveByStrategy.reciprocator,
-    given: day.givenKcal,
-    spoiled: day.spoiledKcal,
+    alive: day.alive,
+    swappedWood: day.swappedWood,
+    coldHours: day.coldSleepHours,
     reserve: day.endEnergyKcal[followed]!,
     stock: day.totalPatchStockKcal / config.patchCount,
   }))
-  const odds = Math.round(config.harvestKcal / config.forageKcalPerHour)
   const percent = (value: number) => `${(value / config.reserveMaxKcal) * 100}%`
 
   return (
@@ -238,7 +260,7 @@ export default function LifeApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 2 · sharing</span>
+        <span className="life-title">Life 3 · specialization</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -297,9 +319,10 @@ export default function LifeApp() {
             <span
               className="life-strategy-dot"
               aria-hidden="true"
-              style={{ background: STRATEGY_COLORS[forager.strategy] }}
+              style={{ background: foragerColor(config, forager) }}
             />
-            {name} · {summary.strategy}
+            {name}
+            {gifting && ` · ${summary.strategy}`}
           </span>
           <button
             type="button"
@@ -339,9 +362,19 @@ export default function LifeApp() {
           </div>
         </div>
         <dl className="life-food">
+          <dt>Skills</dt>
+          <dd className="num">
+            {formatKcal(trade.forageRate)}/h · {trade.woodRate} wood/h
+          </dd>
+          <dt>Wood costs it</dt>
+          <dd className="num">{Math.round(trade.ownTerms)} kcal a unit</dd>
+          <dt>Holds</dt>
+          <dd className="num">
+            {formatUnits(trade.wood)} of wood{trade.wood < trade.woodTarget && ` (wants ${trade.woodTarget})`}
+          </dd>
           <dt>Carries</dt>
           <dd className="num">
-            {summary.carriedKcal ? formatKcal(summary.carriedKcal) : 'nothing'}
+            {summary.carriedKcal ? formatKcal(summary.carriedKcal) : 'no food'}
             {summary.carriedKcal > 0 &&
               (summary.spoilsInHours === null
                 ? ', which keeps'
@@ -349,46 +382,85 @@ export default function LifeApp() {
                   ? ', some spoiling this hour'
                   : `, oldest spoils in ${formatHours(summary.spoilsInHours)}`)}
           </dd>
-          <dt>Has given</dt>
-          <dd className="num">{formatKcal(summary.givenKcal)}</dd>
-          <dt>Has received</dt>
-          <dd className="num">{formatKcal(summary.receivedKcal)}</dd>
+          <dt>Terms it heard</dt>
+          <dd className="num">
+            {trade.heardTerms === null
+              ? 'none it remembers'
+              : `${trade.heardTerms} kcal a unit, ${trade.heardHoursAgo ? `${formatHours(trade.heardHoursAgo)} ago` : 'this hour'}`}
+          </dd>
+          <dt>Has swapped</dt>
+          <dd className="num">
+            sold {formatUnits(trade.woodSold)}, bought {formatUnits(trade.woodBought)}
+          </dd>
+          {gifting && (
+            <>
+              <dt>Gifts</dt>
+              <dd className="num">
+                gave {formatKcal(summary.givenKcal)}, got {formatKcal(summary.receivedKcal)}
+              </dd>
+            </>
+          )}
         </dl>
-        <p className="life-note">
-          {summary.strategy}: {summary.rule}.
-          {event?.action === 'forage' && event.succeeded && ` It took a windfall of ${formatKcal(event.gatheredKcal)}.`}
-        </p>
+        {gifting && (
+          <p className="life-note">
+            {summary.strategy}: {summary.rule}.
+          </p>
+        )}
       </section>
 
-      {inspection && (
-        <section className="life-card life-inspector" aria-label={inspection.name}>
+      {(patch || grove) && (
+        <section className="life-card life-inspector" aria-label={(patch ?? grove)!.name}>
           <header>
-            <h2>{inspection.name}</h2>
-            <button type="button" className="icon-button" aria-label="Close" onClick={() => setSelectedPatchId(null)}>
+            <h2>{(patch ?? grove)!.name}</h2>
+            <button type="button" className="icon-button" aria-label="Close" onClick={() => setSelected(null)}>
               <Icon name="close" />
             </button>
           </header>
-          <dl>
-            <dt>Actually holds</dt>
-            <dd className="num">
-              {inspection.trueStockKcal.toLocaleString('en-US')} of {formatKcal(inspection.capacityKcal)}
-            </dd>
-            <dt>{name} remembers</dt>
-            <dd className="num">{formatKcal(inspection.rememberedStockKcal)}</dd>
-            <dt>Last seen</dt>
-            <dd>{inspection.seen}</dd>
-          </dl>
-          <p className="life-note">
-            {inspection.differenceKcal === 0
-              ? 'Its memory is up to date.'
-              : `It knows only what it last saw, so it ${inspection.differenceKcal > 0 ? 'underestimates' : 'overestimates'} this patch by ${formatKcal(Math.abs(inspection.differenceKcal))}.`}
-          </p>
+          {patch && (
+            <>
+              <dl>
+                <dt>Actually holds</dt>
+                <dd className="num">
+                  {patch.trueStockKcal.toLocaleString('en-US')} of {formatKcal(patch.capacityKcal)}
+                </dd>
+                <dt>{name} remembers</dt>
+                <dd className="num">{formatKcal(patch.rememberedStockKcal)}</dd>
+                <dt>Last seen</dt>
+                <dd>{patch.seen}</dd>
+              </dl>
+              <p className="life-note">
+                {patch.differenceKcal === 0
+                  ? 'Its memory is up to date.'
+                  : `It knows only what it last saw, so it ${patch.differenceKcal > 0 ? 'underestimates' : 'overestimates'} this patch by ${formatKcal(Math.abs(patch.differenceKcal))}.`}
+              </p>
+            </>
+          )}
+          {grove && (
+            <>
+              <dl>
+                <dt>Actually holds</dt>
+                <dd className="num">
+                  {grove.wood} of {formatUnits(grove.capacity)}
+                </dd>
+                <dt>{name} remembers</dt>
+                <dd className="num">{formatUnits(grove.rememberedWood)}</dd>
+                <dt>Last seen</dt>
+                <dd>{grove.seen}</dd>
+              </dl>
+              <p className="life-note">
+                {grove.difference === 0
+                  ? 'Its memory is up to date.'
+                  : `It knows only what it last saw, so it ${grove.difference > 0 ? 'underestimates' : 'overestimates'} this grove by ${formatUnits(Math.abs(grove.difference))}.`}
+              </p>
+            </>
+          )}
         </section>
       )}
 
       <section className="life-card life-history" aria-label="History">
         <details open={historyOpen} onToggle={(toggle) => setHistoryOpen(toggle.currentTarget.open)}>
           <summary>History and setup</summary>
+          <SpecializationChart points={specializationPoints(state)} config={config} followed={followed} />
           {days.length > 1 ? (
             <>
               <TimeChart
@@ -397,24 +469,14 @@ export default function LifeApp() {
                 format={(value) => String(Math.round(value))}
                 domain={[0, 'auto']}
                 series={[
-                  { key: 'keepers', name: 'Keepers alive', color: STRATEGY_COLORS.keeper },
-                  { key: 'sharers', name: 'Sharers alive', color: STRATEGY_COLORS.sharer },
-                  { key: 'reciprocators', name: 'Reciprocators alive', color: STRATEGY_COLORS.reciprocator },
+                  { key: 'swappedWood', name: 'Wood swapped each day', color: palette.accent },
+                  { key: 'coldHours', name: 'Hours slept cold each day', color: palette.firmA, dashed: true },
+                  { key: 'alive', name: 'Alive', color: palette.household },
                 ]}
               />
               <TimeChart
                 data={days}
-                height={100}
-                format={(value) => `${Math.round(value / 1000)}k`}
-                domain={[0, 'auto']}
-                series={[
-                  { key: 'given', name: 'Food given each day', color: palette.positive },
-                  { key: 'spoiled', name: 'Food spoiled each day', color: palette.negative, dashed: true },
-                ]}
-              />
-              <TimeChart
-                data={days}
-                height={120}
+                height={110}
                 format={(value) => `${Math.round(value / 1000)}k`}
                 series={[
                   { key: 'reserve', name: `${name}’s reserve at day’s end`, color: palette.accent },
@@ -423,7 +485,7 @@ export default function LifeApp() {
               />
             </>
           ) : (
-            <p className="life-note">The chart starts after the first full day.</p>
+            <p className="life-note">The charts over time start after the first full day.</p>
           )}
           <form className="life-setup" onSubmit={applySetup}>
             {SETUP_FIELDS.map(({ key, label }) => (
@@ -436,6 +498,16 @@ export default function LifeApp() {
                 />
               </label>
             ))}
+            {SETUP_SWITCHES.map(({ key, label }) => (
+              <label key={key} className="life-switch">
+                <input
+                  type="checkbox"
+                  checked={switches[key]}
+                  onChange={(change) => setSwitches({ ...switches, [key]: change.target.checked })}
+                />
+                {label}
+              </label>
+            ))}
             <button type="submit">Reset</button>
           </form>
           {setupError && (
@@ -444,16 +516,21 @@ export default function LifeApp() {
             </p>
           )}
           <p className="life-note">
-            Running seed {setup.seed}: {keepers} keepers, {setup.sharers} sharers and {setup.reciprocators}{' '}
-            reciprocators, who see{' '}
+            Running seed {setup.seed}: {setup.bandSize} foragers with skills from {setup.skillMinPercent}% to{' '}
+            {setup.skillMaxPercent}%, coloured from{' '}
+            <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
+            <span style={{ color: TERMS_COLORS.forager }}>relatively good at foraging</span>. They{' '}
+            {setup.swapping
+              ? `swap wood for food at camp${setup.quotes ? ', telling each other their terms' : ', without telling terms'}`
+              : 'never swap'}
+            , and see{' '}
             {seesEverything(state)
               ? 'every patch'
               : setup.perceptionRadiusTiles === 0
                 ? 'only their own tile'
                 : `${setup.perceptionRadiusTiles} tiles around them`}
-            , on {setup.patchCount} patches regrowing {setup.patchRegrowthKcalPerHour} kcal an hour each. An hour of
-            foraging {odds === 1 ? 'always yields' : `yields, about one time in ${odds},`}{' '}
-            {formatKcal(setup.harvestKcal)}; carried food{' '}
+            . There are {setup.patchCount} patches regrowing {setup.patchRegrowthKcalPerHour} kcal an hour each and{' '}
+            {setup.groveCount} groves; carried food{' '}
             {setup.shelfLifeHours === 0 ? 'keeps' : `spoils after ${formatHours(setup.shelfLifeHours)}`}.
           </p>
         </details>
@@ -463,7 +540,10 @@ export default function LifeApp() {
 }
 
 function stringify(setup: Setup) {
-  return Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, String(setup[key])])) as Record<keyof Setup, string>
+  return Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, String(setup[key])])) as Record<
+    keyof NumericSetup,
+    string
+  >
 }
 
 function snap(pair: DisplayPair, followed: number, interpolate: boolean): Snapshot {

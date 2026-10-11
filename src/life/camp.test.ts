@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE1_WORLD, LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE1_WORLD, LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, runLifeDays, stepLife } from './engine'
 import { decide, walkTarget } from './forager'
 import type { Forager, LifeConfig, Patch, Tile } from './types'
 import { campTile, generateLayout, isDaylight, mustGoHome, reachableInTime, sameTile, strategyOf } from './world'
 
 // The canonical world: a 12 × 12 grid with the camp at (6, 6), walking 3 tiles an hour, dusk at 18.
-const config: LifeConfig = LIFE_DEFAULT_CONFIG
+const config: LifeConfig = { ...LIFE_DEFAULT_CONFIG, ...LIFE2_WORLD }
 const camp = { x: 6, y: 6 }
 
 const patch = (id: number, x: number, y: number, stockKcal = 24_000): Patch => ({ id, tile: { x, y }, stockKcal })
@@ -23,6 +23,16 @@ const forager = (position: Tile, overrides: Partial<Forager> = {}): Forager => (
   strategy: 'keeper',
   carried: [],
   ledger: [],
+  forageRate: 1_200,
+  woodRate: 24,
+  wood: 0,
+  shortOfWood: false,
+  targetGroveId: null,
+  groveMemory: [],
+  heardTerms: null,
+  trip: null,
+  swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
+  hoursWorked: { forage: 0, gather: 0 },
   ...overrides,
 })
 
@@ -67,15 +77,28 @@ describe('going home', () => {
 
   it('comes before sleeping and foraging', () => {
     const patches = [patch(0, 0, 0)]
-    expect(decide(config, forager({ x: 0, y: 0 }), patches, 14)).toEqual({ action: 'walk', reason: 'going home' })
-    expect(decide(config, forager({ x: 0, y: 0 }), patches, 13)).toEqual({ action: 'forage', reason: 'foraging' })
-    expect(decide(config, forager({ x: 6, y: 5 }), patches, 2)).toEqual({ action: 'walk', reason: 'going home' })
-    expect(decide(config, forager(camp), patches, 2)).toEqual({ action: 'sleep', reason: 'night' })
-    expect(walkTarget(config, forager({ x: 0, y: 0 }), patches, 14)).toEqual({ tile: camp, patch: null })
+    expect(decide(config, forager({ x: 0, y: 0 }), patches, [], 14)).toMatchObject({
+      action: 'walk',
+      reason: 'going home',
+    })
+    expect(decide(config, forager({ x: 0, y: 0 }), patches, [], 13)).toMatchObject({
+      action: 'forage',
+      reason: 'foraging',
+    })
+    expect(decide(config, forager({ x: 6, y: 5 }), patches, [], 2)).toMatchObject({
+      action: 'walk',
+      reason: 'going home',
+    })
+    expect(decide(config, forager(camp), patches, [], 2)).toMatchObject({ action: 'sleep', reason: 'night' })
+    expect(walkTarget(config, forager({ x: 0, y: 0 }), patches, [], 14, 'food')).toEqual({
+      tile: camp,
+      patch: null,
+      grove: null,
+    })
   })
 
   it('brings every living forager home by nightfall, every night', () => {
-    let state = createLife()
+    let state = createLife(LIFE2_WORLD)
     for (let hour = 0; hour < 24 * 30; hour += 1) {
       state = stepLife(state)
       if (!isDaylight(config, state.tick - 1))
@@ -99,9 +122,12 @@ describe('setting out', () => {
 
   it('rests at camp when it is too late to set out', () => {
     const patches = [patch(0, 6, 6, 0), far]
-    expect(decide(config, forager(camp), patches, 9)).toEqual({ action: 'walk', reason: 'seeking food' })
-    expect(decide(config, forager(camp), patches, 10)).toEqual({ action: 'rest', reason: 'too late to set out' })
-    expect(decide(config, forager(camp), [patch(0, 6, 6, 0)], 10)).toEqual({
+    expect(decide(config, forager(camp), patches, [], 9)).toMatchObject({ action: 'walk', reason: 'seeking food' })
+    expect(decide(config, forager(camp), patches, [], 10)).toMatchObject({
+      action: 'rest',
+      reason: 'too late to set out',
+    })
+    expect(decide(config, forager(camp), [patch(0, 6, 6, 0)], [], 10)).toMatchObject({
       action: 'rest',
       reason: 'waiting for regrowth',
     })
@@ -115,14 +141,14 @@ describe('setting out', () => {
     ]
     const walking = forager({ x: 6, y: 4 }, { targetPatchId: 1, memory })
     // At 9:00 the far patch is still in reach and kept; at 12:00 it is not, so it takes the near one.
-    expect(walkTarget(config, walking, [near, far], 9)?.patch?.id).toBe(1)
-    expect(walkTarget(config, walking, [near, far], 12)?.patch?.id).toBe(0)
+    expect(walkTarget(config, walking, [near, far], [], 9, 'food')?.patch?.id).toBe(1)
+    expect(walkTarget(config, walking, [near, far], [], 12, 'food')?.patch?.id).toBe(0)
   })
 })
 
 describe('a camp band', () => {
   it('sleeps at camp and forages by day', () => {
-    const state = runLifeDays(createLife(), 10)
+    const state = runLifeDays(createLife(LIFE2_WORLD), 10)
     expect(state.days.every((day) => day.hours.sleep >= day.alive * 12)).toBe(true)
     expect(state.totals.gatheredKcal).toBeGreaterThan(0)
     expect(state.foragers.every((f) => !f.alive || sameTile(f.position, camp))).toBe(true)

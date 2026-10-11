@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE0_WORLD, LIFE1_WORLD, LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE0_WORLD, LIFE1_WORLD, LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, EVENT_HISTORY_DAYS, lastEventOf, runLifeDays, runLifeHours, stepLife } from './engine'
 import { assertLifeInvariants, lifeInvariantViolations } from './invariants'
 import type { Forager, LifeConfig, LifeState, Patch } from './types'
@@ -277,7 +277,7 @@ describe('a band', () => {
   })
 
   it('holds every invariant every hour of a canonical Life 2 run, with gifts made', () => {
-    let state = createLife()
+    let state = createLife(LIFE2_WORLD)
     for (let hour = 0; hour < 24 * 60; hour += 1) {
       state = stepLife(state)
       expect(lifeInvariantViolations(state)).toEqual([])

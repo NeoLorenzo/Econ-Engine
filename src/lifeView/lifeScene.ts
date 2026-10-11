@@ -2,22 +2,31 @@ import type { Group, Line, LineLoop, Mesh, MeshStandardMaterial, PointLight } fr
 import type { LifeState } from '../life/types'
 import { campTile } from '../life/world'
 import { hex, palette } from '../ui/theme'
+import { woodTarget } from '../life/wood'
 import {
   bundleScale,
   bushScale,
+  crownScale,
+  currentEvent,
   currentGifts,
+  currentSwaps,
   daylightAt,
   displayedCarried,
+  displayedGroveWood,
   displayedStock,
+  displayedWood,
   displayHours,
+  foragerColor,
   foragerPose,
   giftArcPoint,
   giftEnds,
+  hearthAt,
+  logScale,
   pairOffsets,
   perceptionOutline,
   seesEverything,
-  STRATEGY_COLORS,
   sunAt,
+  swapEnds,
   type DisplayPair,
 } from './lifeViewModel'
 
@@ -33,15 +42,22 @@ const DEAD = 0x6b6b66
 const BUNDLE = 0xb07a45
 const STONE = 0x6f6a60
 const FLAME = 0xffa040
+const EMBER = 0x3a3330
+const WOOD = 0x7a5232
+const TRUNK = 0x5a3d26
+const CROWN = 0x2d6b3c
 /** Points along each gift's arc. */
 const ARC_POINTS = 24
 
-/** What a click picked out: a patch to inspect or a forager to follow. */
-export type LifePick = { kind: 'patch'; id: number } | { kind: 'forager'; id: number }
+/** What a click picked out: a patch or grove to inspect, or a forager to follow. */
+export type LifePick = { kind: 'patch'; id: number } | { kind: 'grove'; id: number } | { kind: 'forager'; id: number }
+
+/** A site the inspector shows. */
+export type LifeSite = { kind: 'patch' | 'grove'; id: number }
 
 export interface DrawOptions {
   interpolate: boolean
-  selectedPatchId: number | null
+  selected: LifeSite | null
   followedId: number
   nowMs: number
 }
@@ -58,6 +74,12 @@ interface Bush {
   material: MeshStandardMaterial
 }
 
+/** A grove is a tree whose crown shrinks as its wood runs low. */
+interface Tree {
+  group: Group
+  crown: Group
+}
+
 /** Builds the scene inside `mount`. The caller drives drawing; nothing renders until `draw` is called. */
 interface Figure {
   group: Group
@@ -65,6 +87,11 @@ interface Figure {
   material: MeshStandardMaterial
   /** What it carries, slung at its side. */
   bundle: Mesh
+  /** The wood it holds, stacked at its other side. */
+  logs: Group
+  /** Its hearth at camp, shown while it sleeps: lit while it burns wood, dark when it sleeps cold. */
+  hearth: Group
+  hearthFlame: Mesh
 }
 
 interface Camp {
@@ -77,6 +104,13 @@ interface Camp {
 interface Arc {
   line: Line
   parcel: Mesh
+}
+
+/** A swap's arc, with wood travelling from seller to buyer and food the other way. */
+interface SwapArc {
+  line: Line
+  wood: Mesh
+  food: Mesh
 }
 
 export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePick | null) => void): Promise<LifeScene> {
@@ -92,7 +126,7 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
   renderer.domElement.tabIndex = 0
   renderer.domElement.setAttribute(
     'aria-label',
-    'The band’s world. Drag to orbit, scroll to zoom, click a bush to inspect its patch or a forager to follow it.',
+    'The band’s world. Drag to orbit, scroll to zoom, click a bush or tree to inspect it or a forager to follow it.',
   )
   mount.appendChild(renderer.domElement)
 
@@ -111,6 +145,7 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
   const world = new THREE.Group()
   scene.add(world)
   let bushes: Bush[] = []
+  let trees: Tree[] = []
   let ground: Mesh | null = null
   let gridLines: InstanceType<Three['LineSegments']> | null = null
   let gridWidth = 1
@@ -137,6 +172,20 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
   const headGeometry = new THREE.SphereGeometry(0.12, 16, 12)
   const bundleGeometry = new THREE.DodecahedronGeometry(0.11, 0)
   const bundleMaterial = new THREE.MeshStandardMaterial({ color: BUNDLE, roughness: 0.9, flatShading: true })
+  const logGeometry = new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6)
+  const woodMaterial = new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.9, flatShading: true })
+  const trunkGeometry = new THREE.CylinderGeometry(0.06, 0.08, 0.4, 6)
+  const trunkMaterial = new THREE.MeshStandardMaterial({ color: TRUNK, roughness: 1, flatShading: true })
+  const crownGeometry = new THREE.ConeGeometry(0.32, 0.7, 7)
+  const crownMaterial = new THREE.MeshStandardMaterial({ color: CROWN, roughness: 0.85, flatShading: true })
+  const hearthFlameGeometry = new THREE.ConeGeometry(0.05, 0.16, 6)
+  const hearthLitMaterial = new THREE.MeshStandardMaterial({
+    color: FLAME,
+    emissive: FLAME,
+    emissiveIntensity: 1.6,
+    roughness: 0.6,
+  })
+  const emberMaterial = new THREE.MeshStandardMaterial({ color: EMBER, roughness: 1, flatShading: true })
   let figures: Figure[] = []
   const band = new THREE.Group()
   scene.add(band)
@@ -183,6 +232,23 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
   // The followed forager's perception: the outline of every tile within its radius.
   let perception: LineLoop | null = null
 
+  // Swaps in the hour being drawn: an arc between seller and buyer, wood going one way and food the other.
+  const swapMaterial = new THREE.LineBasicMaterial({ color: hex(palette.accent), transparent: true, opacity: 0.9 })
+  const swapArcs: SwapArc[] = []
+  function swapArcAt(index: number): SwapArc {
+    while (swapArcs.length <= index) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(ARC_POINTS * 3), 3))
+      const line = new THREE.Line(geometry, swapMaterial)
+      const wood = new THREE.Mesh(logGeometry, woodMaterial)
+      wood.rotation.z = Math.PI / 2
+      const food = new THREE.Mesh(parcelGeometry, bundleMaterial)
+      arcGroup.add(line, wood, food)
+      swapArcs.push({ line, wood, food })
+    }
+    return swapArcs[index]!
+  }
+
   function makeFigure(id: number): Figure {
     const material = new THREE.MeshStandardMaterial({ color: hex(palette.household), roughness: 0.7 })
     const group = new THREE.Group()
@@ -197,10 +263,38 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       part.castShadow = true
       part.userData.foragerId = id
     }
-    body.add(torso, head, bundle)
+    const logs = new THREE.Group()
+    for (const [index, [x, y]] of [
+      [-0.03, 0],
+      [0.03, 0],
+      [0, 0.055],
+    ].entries()) {
+      const log = new THREE.Mesh(logGeometry, woodMaterial)
+      log.rotation.x = Math.PI / 2
+      log.position.set(x!, y!, 0)
+      log.castShadow = index === 0
+      log.userData.foragerId = id
+      logs.add(log)
+    }
+    logs.position.set(-0.19, 0.28, -0.02)
+    body.add(torso, head, bundle, logs)
     group.add(body)
+    // The hearth sits beside the sleeper, so it does not tip over with the body.
+    const hearth = new THREE.Group()
+    for (let index = 0; index < 5; index += 1) {
+      const stone = new THREE.Mesh(stoneGeometry, emberMaterial)
+      const angle = (index / 5) * Math.PI * 2
+      stone.position.set(0.09 * Math.cos(angle), 0.03, 0.09 * Math.sin(angle))
+      stone.scale.setScalar(0.6)
+      hearth.add(stone)
+    }
+    const hearthFlame = new THREE.Mesh(hearthFlameGeometry, hearthLitMaterial)
+    hearthFlame.position.y = 0.09
+    hearth.add(hearthFlame)
+    hearth.position.set(0.3, 0, 0.12)
+    group.add(hearth)
     band.add(group)
-    return { group, body, material, bundle }
+    return { group, body, material, bundle, logs, hearth, hearthFlame }
   }
 
   function clearWorld() {
@@ -225,6 +319,8 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       world.remove(bush.group)
     }
     bushes = []
+    for (const tree of trees) world.remove(tree.group)
+    trees = []
     if (ground) {
       ground.geometry.dispose()
       ;(ground.material as MeshStandardMaterial).dispose()
@@ -302,6 +398,32 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       bushes.push({ group, material })
     }
 
+    for (const grove of state.groves) {
+      const group = new THREE.Group()
+      const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial)
+      trunk.position.y = 0.2
+      const crown = new THREE.Group()
+      for (const [height, scale] of [
+        [0.55, 1],
+        [0.85, 0.75],
+      ] as const) {
+        const cone = new THREE.Mesh(crownGeometry, crownMaterial)
+        cone.position.y = height - 0.35
+        cone.scale.setScalar(scale)
+        cone.castShadow = true
+        cone.userData.groveId = grove.id
+        crown.add(cone)
+      }
+      crown.position.y = 0.35
+      trunk.castShadow = true
+      trunk.userData.groveId = grove.id
+      group.add(trunk, crown)
+      const { x, z } = toWorld(grove.tile.x, grove.tile.y)
+      group.position.set(x, 0, z)
+      world.add(group)
+      trees.push({ group, crown })
+    }
+
     const campAt = campTile(state.config)
     if (campAt) {
       const group = new THREE.Group()
@@ -360,7 +482,7 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
   const lush = new THREE.Color(LUSH)
   const bare = new THREE.Color(BARE)
 
-  function draw(pair: DisplayPair, { interpolate, selectedPatchId, followedId, nowMs }: DrawOptions) {
+  function draw(pair: DisplayPair, { interpolate, selected, followedId, nowMs }: DrawOptions) {
     const { config } = pair.next
     const hours = interpolate ? displayHours(pair) : pair.next.tick
     const hourOfDay = hours % 24
@@ -383,6 +505,9 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       bush.material.color.copy(bare).lerp(lush, Math.min(1, stock / config.patchCapacityKcal) ** 0.6)
     }
 
+    for (const [id, tree] of trees.entries())
+      tree.crown.scale.setScalar(crownScale(displayedGroveWood(pair, id, interpolate), config.groveCapacityWood))
+
     if (camp) {
       // The fire burns all the time and glows once the light fades; the flicker is only for the eye.
       const flicker = 1 + 0.12 * Math.sin(nowMs / 90) + 0.08 * Math.sin(nowMs / 37)
@@ -402,10 +527,18 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       figure.body.rotation.x = (-Math.PI / 2) * pose.lying
       figure.body.position.y = 0.14 * pose.lying
       const forager = pair.next.foragers[id]!
-      figure.material.color.set(!forager.alive ? DEAD : hex(STRATEGY_COLORS[forager.strategy]))
+      figure.material.color.set(!forager.alive ? DEAD : hex(foragerColor(config, forager)))
       const bundle = bundleScale(displayedCarried(pair, id, interpolate), config.harvestKcal)
       figure.bundle.visible = bundle > 0
       figure.bundle.scale.setScalar(Math.max(bundle, 0.01))
+      const logs = logScale(displayedWood(pair, id, interpolate), woodTarget(config))
+      figure.logs.visible = logs > 0
+      figure.logs.scale.setScalar(Math.max(logs, 0.01))
+      // The hearth shows once the forager has lain down for the night.
+      const hearth = interpolate || pose.lying > 0 ? hearthAt(pair, id) : null
+      figure.hearth.visible = hearth !== null && pose.lying > 0.5
+      figure.hearthFlame.visible = hearth === 'lit'
+      if (hearth === 'lit') figure.hearthFlame.scale.set(1, 1 + 0.15 * Math.sin(nowMs / 80 + id * 1.7), 1)
       if (id === followedId) {
         followRing.position.set(position.x, 0.02, position.z)
         if (perception) {
@@ -439,18 +572,55 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       arc.parcel.position.set(parcelAt.x, travelling.height, parcelAt.z)
     }
 
+    const swaps = interpolate ? currentSwaps(pair) : []
+    for (const [index, arc] of swapArcs.entries()) {
+      const shown = index < swaps.length
+      arc.line.visible = shown
+      arc.wood.visible = shown
+      arc.food.visible = shown
+    }
+    for (const [index, made] of swaps.entries()) {
+      const arc = swapArcAt(index)
+      const { from, to } = swapEnds(made, offsets)
+      const positions = arc.line.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+      for (let point = 0; point < ARC_POINTS; point += 1) {
+        const at = giftArcPoint(from, to, point / (ARC_POINTS - 1))
+        const spot = toWorld(at.x, at.y)
+        positions.setXYZ(point, spot.x, at.height, spot.z)
+      }
+      positions.needsUpdate = true
+      arc.line.geometry.computeBoundingSphere()
+      const woodAt = giftArcPoint(from, to, pair.alpha)
+      const foodAt = giftArcPoint(from, to, 1 - pair.alpha)
+      const woodSpot = toWorld(woodAt.x, woodAt.y)
+      const foodSpot = toWorld(foodAt.x, foodAt.y)
+      arc.wood.position.set(woodSpot.x, woodAt.height, woodSpot.z)
+      arc.food.position.set(foodSpot.x, foodAt.height, foodSpot.z)
+    }
+
+    // The followed forager's target: the grove it walks to for wood, or else its patch.
     const followed = pair.next.foragers[followedId]
-    const target = followed?.targetPatchId ?? null
-    targetRing.visible = target !== null && followed!.alive
-    if (target !== null) {
-      const tile = pair.next.patches[target]!.tile
-      const at = toWorld(tile.x, tile.y)
+    const working = followed && currentEvent(pair, followedId)
+    const targetTile =
+      followed && working?.workedFor === 'wood' && followed.targetGroveId !== null
+        ? pair.next.groves[followed.targetGroveId]!.tile
+        : followed && followed.targetPatchId !== null
+          ? pair.next.patches[followed.targetPatchId]!.tile
+          : null
+    targetRing.visible = targetTile !== null && followed!.alive
+    if (targetTile) {
+      const at = toWorld(targetTile.x, targetTile.y)
       targetRing.position.set(at.x, 0.02, at.z)
     }
-    selectRing.visible = selectedPatchId !== null && bushes[selectedPatchId] !== undefined
-    if (selectedPatchId !== null && pair.next.patches[selectedPatchId]) {
-      const tile = pair.next.patches[selectedPatchId]!.tile
-      const at = toWorld(tile.x, tile.y)
+    const selectedTile =
+      selected?.kind === 'patch'
+        ? pair.next.patches[selected.id]?.tile
+        : selected?.kind === 'grove'
+          ? pair.next.groves[selected.id]?.tile
+          : undefined
+    selectRing.visible = selectedTile !== undefined
+    if (selectedTile) {
+      const at = toWorld(selectedTile.x, selectedTile.y)
       selectRing.position.set(at.x, 0.015, at.z)
     }
     renderer.render(scene, camera)
@@ -491,15 +661,21 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
-    const hit = raycaster.intersectObjects([...bushes.map((bush) => bush.group), band], true)[0]
+    const hit = raycaster.intersectObjects(
+      [...bushes.map((bush) => bush.group), ...trees.map((tree) => tree.group), band],
+      true,
+    )[0]
     const foragerId = hit?.object.userData.foragerId as number | undefined
     const patchId = hit?.object.userData.patchId as number | undefined
+    const groveId = hit?.object.userData.groveId as number | undefined
     onPick(
       foragerId !== undefined
         ? { kind: 'forager', id: foragerId }
         : patchId !== undefined
           ? { kind: 'patch', id: patchId }
-          : null,
+          : groveId !== undefined
+            ? { kind: 'grove', id: groveId }
+            : null,
     )
   }
   const onWheel = (event: WheelEvent) => {
@@ -553,8 +729,19 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       flameGeometry.dispose()
       flameMaterial.dispose()
       for (const arc of arcs) arc.line.geometry.dispose()
+      for (const arc of swapArcs) arc.line.geometry.dispose()
       parcelGeometry.dispose()
       arcMaterial.dispose()
+      swapMaterial.dispose()
+      logGeometry.dispose()
+      woodMaterial.dispose()
+      trunkGeometry.dispose()
+      trunkMaterial.dispose()
+      crownGeometry.dispose()
+      crownMaterial.dispose()
+      hearthFlameGeometry.dispose()
+      hearthLitMaterial.dispose()
+      emberMaterial.dispose()
       renderer.dispose()
       canvas.remove()
     },

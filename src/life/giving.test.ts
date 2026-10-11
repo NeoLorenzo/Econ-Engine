@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, stepLife } from './engine'
 import { carriedKcal } from './food'
 import { assertLifeInvariants, lifeInvariantViolations } from './invariants'
 import { emptyLedger, owesNothing, recipientsInOrder, recordGift, requestKcal } from './sharing'
 import type { Forager, LifeState, Strategy, Tile } from './types'
 
-const config = LIFE_DEFAULT_CONFIG
+const config = { ...LIFE_DEFAULT_CONFIG, ...LIFE2_WORLD }
 const camp = { x: 6, y: 6 }
 
 const forager = (id: number, overrides: Partial<Forager> = {}): Forager => ({
@@ -21,6 +21,16 @@ const forager = (id: number, overrides: Partial<Forager> = {}): Forager => ({
   strategy: 'keeper',
   carried: [],
   ledger: emptyLedger(4),
+  forageRate: 1_200,
+  woodRate: 24,
+  wood: 0,
+  shortOfWood: false,
+  targetGroveId: null,
+  groveMemory: [],
+  heardTerms: null,
+  trip: null,
+  swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
+  hoursWorked: { forage: 0, gather: 0 },
   ...overrides,
 })
 
@@ -81,7 +91,7 @@ describe('strategies', () => {
 
 /** A band of three at camp at midnight: forager 0 carries food with a full reserve, 1 and 2 are as given. */
 function campAtNight(strategy: Strategy, others: Partial<Forager>[]): LifeState {
-  const state = createLife({ bandSize: 3, sharers: 0, reciprocators: 0 })
+  const state = createLife({ ...LIFE2_WORLD, bandSize: 3, sharers: 0, reciprocators: 0 })
   const foragers = state.foragers.map((f, id) =>
     id === 0
       ? { ...f, strategy, energyKcal: 20_000, hungry: false, carried: [{ kcal: 10_000, harvestTick: 0 }] }

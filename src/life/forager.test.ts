@@ -22,6 +22,16 @@ const forager = (position: Tile, overrides: Partial<Forager> = {}): Forager => (
   strategy: 'keeper',
   carried: [],
   ledger: [],
+  forageRate: 1_200,
+  woodRate: 24,
+  wood: 0,
+  shortOfWood: false,
+  targetGroveId: null,
+  groveMemory: [],
+  heardTerms: null,
+  trip: null,
+  swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
+  hoursWorked: { forage: 0, gather: 0 },
   ...overrides,
 })
 
@@ -64,27 +74,36 @@ describe('decision rules', () => {
   const patches = [patch(0, 0, 0, 1_200), patch(1, 5, 5)]
 
   it('sleeps at night, whatever else holds', () => {
-    expect(decide(config, forager({ x: 0, y: 0 }), patches, MIDNIGHT)).toEqual({ action: 'sleep', reason: 'night' })
-    expect(decide(config, forager({ x: 0, y: 0 }), patches, 5)).toEqual({ action: 'sleep', reason: 'night' })
-    expect(decide(config, forager({ x: 0, y: 0 }), patches, 18)).toEqual({ action: 'sleep', reason: 'night' })
+    expect(decide(config, forager({ x: 0, y: 0 }), patches, [], MIDNIGHT)).toMatchObject({
+      action: 'sleep',
+      reason: 'night',
+    })
+    expect(decide(config, forager({ x: 0, y: 0 }), patches, [], 5)).toMatchObject({ action: 'sleep', reason: 'night' })
+    expect(decide(config, forager({ x: 0, y: 0 }), patches, [], 18)).toMatchObject({ action: 'sleep', reason: 'night' })
   })
 
   it('rests in daylight once satiated', () => {
-    expect(decide(config, forager({ x: 0, y: 0 }, { hungry: false }), patches, NOON)).toEqual({
+    expect(decide(config, forager({ x: 0, y: 0 }, { hungry: false }), patches, [], NOON)).toMatchObject({
       action: 'rest',
       reason: 'satiated',
     })
   })
 
   it('forages only where a full hour’s harvest is available', () => {
-    expect(decide(config, forager({ x: 0, y: 0 }), patches, 6)).toEqual({ action: 'forage', reason: 'foraging' })
+    expect(decide(config, forager({ x: 0, y: 0 }), patches, [], 6)).toMatchObject({
+      action: 'forage',
+      reason: 'foraging',
+    })
     const thin = [patch(0, 0, 0, 1_199), patch(1, 5, 5)]
-    expect(decide(config, forager({ x: 0, y: 0 }), thin, NOON)).toEqual({ action: 'walk', reason: 'seeking food' })
+    expect(decide(config, forager({ x: 0, y: 0 }), thin, [], NOON)).toMatchObject({
+      action: 'walk',
+      reason: 'seeking food',
+    })
   })
 
   it('walks from open ground, and waits on a lone thin patch', () => {
-    expect(decide(config, forager({ x: 2, y: 2 }), patches, NOON).action).toBe('walk')
-    expect(decide(config, forager({ x: 0, y: 0 }), [patch(0, 0, 0, 100)], NOON)).toEqual({
+    expect(decide(config, forager({ x: 2, y: 2 }), patches, [], NOON).action).toBe('walk')
+    expect(decide(config, forager({ x: 0, y: 0 }), [patch(0, 0, 0, 100)], [], NOON)).toMatchObject({
       action: 'rest',
       reason: 'waiting for regrowth',
     })
@@ -102,17 +121,17 @@ describe('the walking target', () => {
     const walking = (targetSeenAt: number, targetStock: number) =>
       forager({ x: 2, y: 0 }, { targetPatchId: 1, memory: memory(targetSeenAt, targetStock) })
     // Seen empty before this hour, or seen full this hour: it walks on.
-    expect(walkTarget(config, walking(5, 0), patches, 12)?.patch?.id).toBe(1)
-    expect(walkTarget(config, walking(12, 1_200), patches, 12)?.patch?.id).toBe(1)
+    expect(walkTarget(config, walking(5, 0), patches, [], 12, 'food')?.patch?.id).toBe(1)
+    expect(walkTarget(config, walking(12, 1_200), patches, [], 12, 'food')?.patch?.id).toBe(1)
     // Seen empty this hour: it chooses again.
-    expect(walkTarget(config, walking(12, 1_199), patches, 12)?.patch?.id).toBe(0)
+    expect(walkTarget(config, walking(12, 1_199), patches, [], 12, 'food')?.patch?.id).toBe(0)
   })
 
   it('is chosen afresh with no target or on arrival', () => {
     const fresh = forager({ x: 2, y: 0 }, { memory: memory(0, 0) })
-    expect(walkTarget(config, fresh, patches, 12)?.patch?.id).toBe(0)
+    expect(walkTarget(config, fresh, patches, [], 12, 'food')?.patch?.id).toBe(0)
     const arrived = forager({ x: 4, y: 0 }, { targetPatchId: 1, memory: memory(12, 0) })
-    expect(walkTarget(config, arrived, patches, 12)?.patch?.id).toBe(0)
+    expect(walkTarget(config, arrived, patches, [], 12, 'food')?.patch?.id).toBe(0)
   })
 })
 
@@ -123,24 +142,32 @@ describe('choosing a patch', () => {
   it('prefers the fullest remembered patch, then the nearest, then the lowest ID', () => {
     const patches = [patch(0, 0, 0), patch(1, 4, 0), patch(2, 1, 0), patch(3, 2, 0)]
     expect(
-      choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]), NOON)?.id,
+      choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]), NOON, 1_200)
+        ?.id,
     ).toBe(3)
     expect(
-      choosePatch(config, { x: 3, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]), NOON)?.id,
+      choosePatch(config, { x: 3, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]), NOON, 1_200)
+        ?.id,
     ).toBe(1)
     const tied = [patch(0, 9, 9), patch(1, 2, 0), patch(2, 0, 2)]
-    expect(choosePatch(config, { x: 0, y: 0 }, tied, remembered([0, 0], [4_000, 0], [4_000, 0]), NOON)?.id).toBe(1)
+    expect(choosePatch(config, { x: 0, y: 0 }, tied, remembered([0, 0], [4_000, 0], [4_000, 0]), NOON, 1_200)?.id).toBe(
+      1,
+    )
   })
 
   it('falls back to the patch seen longest ago when none is remembered as worth foraging', () => {
     const patches = [patch(0, 0, 0), patch(1, 4, 0), patch(2, 1, 0)]
-    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 40]), NOON)?.id).toBe(1)
-    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 30]), NOON)?.id).toBe(2)
+    expect(
+      choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 40]), NOON, 1_200)?.id,
+    ).toBe(1)
+    expect(
+      choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 30]), NOON, 1_200)?.id,
+    ).toBe(2)
   })
 
   it('never chooses the patch underfoot, and has no choice on a lone patch', () => {
     const patches = [patch(0, 0, 0), patch(1, 4, 0)]
-    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([8_000, 0], [0, 0]), NOON)?.id).toBe(1)
-    expect(choosePatch(config, { x: 0, y: 0 }, [patch(0, 0, 0)], remembered([0, 0]), NOON)).toBeNull()
+    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([8_000, 0], [0, 0]), NOON, 1_200)?.id).toBe(1)
+    expect(choosePatch(config, { x: 0, y: 0 }, [patch(0, 0, 0)], remembered([0, 0]), NOON, 1_200)).toBeNull()
   })
 })

@@ -6,6 +6,49 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE3-Specialization-031] - (2026-10-11)
+
+### Problem
+
+Step 3 asks whether specialization and exchange emerge from differences in skill. Ricardo's comparative advantage says two producers gain by specializing and trading whenever their relative costs differ, and Smith adds the time saved by not switching between tasks. Both assume exchange already happens. Here nothing makes it happen: two foragers can swap only if they meet, one carries what the other wants, and both know a swap would pay.
+
+### Decisions
+
+- **The ladder's row was split.** Step 3's row bundled a second resource, conversion, recipes, tools, fire and shelter, and skills that differ and improve with practice. Following design rule 12, the owner chose wood and skill first and tools and practice as the next step, and chose to add swaps beside Life 2's food gifts rather than extend gifts to wood.
+- **Wood against cold, at a hearth of one's own.** Wood's single use is warmth, so its value is measured in kilocalories saved. Each forager burns its own wood, as each family keeps its own hearth in forager camps; a shared fire would have turned the question into one about free riders, which Life 2 asked.
+- **Own terms from the body alone.** A forager values a unit of wood at what it would cost it in foraging time, `g / w`, the autarky price of comparative advantage. Two foragers swap at the midpoint of their own terms, after Sugarscape's trade rule (Epstein and Axtell, 1996). No rate is posted.
+- **A prototype first, and it changed the design twice.**
+  - With steady harvests, no swap ever happened. A buyer must carry food, and a forager carries food only to buy wood, which it does only if it knows a swap would pay. Foragers now tell each other the terms they would accept when they could both gain.
+  - Working for trade starved the band. A hungry forager that had once heard good terms kept gathering wood that nobody bought; foragers died holding 300 to 500 units, and a band of 8 fell to 1.3 survivors. A forager now gathers wood to sell only once it has sold all its spare wood, as unsold stock tells a shop to stop.
+- **A band of 8.** Cold nights and trips for wood mean the land that carried Life 2's band of 12 with steady harvests carries 8; a band of 12 with equal skills collapsed on every prototype seed.
+- **Steady harvests for everyone.** A forager's harvest is the larger of `harvestKcal` and its own rate, and the canonical `harvestKcal` is the slowest rate, so a slow forager does not also face windfall risk.
+- **Life 2 reproduced bit for bit.** Checksums of three Life 2 runs, gifts included, were recorded from Life 2's code before any change.
+- **A fix that was tried and withdrawn.** A trace showed a poor forager that heard low terms foraging all day "to buy wood", eating every harvest because its reserve was never full, never carrying food to pay with, and sleeping cold. Making the rule count the room in a forager's reserve stopped that, but then no forager ever foraged to buy, and no swap happened in 60 days. The approved rule was kept, and the behaviour is recorded below.
+
+### Findings
+
+Over 400 days on the canonical world, 32 seeds, measured over days 21 to 400.
+
+- **Specialization follows comparative advantage once exchange is possible.** Without swaps, a forager relatively good at foraging spends relatively long gathering, because wood is slow for it: the correlation between own terms and the share of work spent gathering is +0.90. With swaps it is −0.78. The two foragers that gather most bring in 33% of the band's wood without swaps and 69% with them, and half the wood burned (49%) has been bought.
+- **Exchange keeps more of the band alive, mostly the least skilled.** Survivors average 7.5 of 8 with swaps and 6.9 without. The third with the lowest foraging rates survives 80% of the time against 52%. The gain grows with the spread of skills: at 25–175%, survivors rise from 5.8 to 6.7 and the least skilled third's survival from 16% to 61%. At 80–120%, where no one dies, swaps cut a forager's day from 3.40 hours of work and 3.79 of walking to 3.24 and 3.29, Smith's saving of time between tasks.
+- **Exchange does not start by itself.** With quotes off and steady harvests, nothing is ever swapped, and every run is identical to one without swapping. With windfalls, food carried home starts exchange without talk (651 swaps a run), but specialization stays weak (+0.86 to +0.23) and survival does not change. With talk in the same world, swaps triple, the correlation reaches −0.75 and 3.6 survive against 3.1.
+- **No single rate emerges.** Each pair splits the difference between its own fixed terms, so swaps settle anywhere from about 33 to 73 kcal per unit, with a mean of 51 and a standard deviation of 14 in the first quarter of a run's swaps and 52 and 14 in the last.
+- **Exchange costs some warmth.** The band sleeps cold in 16% of its night hours with swaps and 12% without. Traces show two mechanisms. A forager that hears low terms from another pair's swap forages to buy wood, but eats its harvest first; a poor forager's reserve never fills, so it never carries food to pay with. And a poor forager hungry day after day works only for food, because hunger comes first, so it never fetches wood, and cold nights make it hungrier: a poverty trap. An hour of gathering would save such a forager more energy than an hour of foraging earns, but the priority rules do not weigh one need against the other.
+- **Overheard terms mislead.** A forager remembers the last terms it heard, usually another pair's. Those terms can tell a good gatherer that selling does not pay, when the buyers around it would offer more.
+
+### Trade-offs
+
+- The Life tests take about two minutes instead of a minute and a half. The ensemble tests run on 16 seeds; the reported numbers use 32.
+- Foragers tell their true terms. Misstating them to win better terms is left out.
+- Quotes are frequent, about 50,000 a run, because every pair that could gain at camp quotes every hour. They are kept in the event record for the last 30 days, like every event.
+
+### Open questions
+
+- Would a forager that weighed its needs, rather than serving hunger first, escape the poverty trap by gathering the wood that saves it more than foraging earns?
+- Would foragers that remembered the terms each partner offered, rather than the last terms they overheard, converge on one rate for wood?
+- With practice (step 4), does specialization deepen as skill follows work, and does it appear even among identical foragers?
+- Which pays better against the same risks: Life 2's gifts or Life 3's swaps? Both are in the engine but have not yet been compared.
+
 ## [LIFE2-Sharing-030] - (2026-10-11)
 
 ### Problem

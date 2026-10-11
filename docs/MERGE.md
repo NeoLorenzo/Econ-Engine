@@ -68,9 +68,9 @@ Firms, posted-price markets, employment and payroll, Government and fiscal trans
 | Priority behaviour tree | Priority-ordered needs, with the reason for each action recorded in the ledger | 0 |
 | Perception: 15 m radius, 200° view, occlusion | A perception radius on the grid. Field of view and occlusion only if a question needs them. | 1 |
 | Memory: threat positions that expire | Memory of food patches, other agents and past exchanges, with forgetting | 1 |
-| Gathering, felling and multi-output conversion | Gathering materials and converting them, with exact conservation | 3 |
-| Crafting blueprints with lossless delivery | Recipes that consume exact inputs and produce exact outputs, including tools that raise productivity | 3 |
-| Thermal comfort, shade, campfires as heat sources | Cold raises energy use; fire and shelter reduce it, which gives crafting a purpose | 3 |
+| Gathering, felling and multi-output conversion | Gathering materials and converting them, with exact conservation | 3 (gathering), 4 (conversion) |
+| Crafting blueprints with lossless delivery | Recipes that consume exact inputs and produce exact outputs, including tools that raise productivity | 4 |
+| Thermal comfort, shade, campfires as heat sources | Cold raises energy use; fire and shelter reduce it, which gives crafting a purpose | 3 (cold and fire), 4 (shelter) |
 | Rigidbody steering, NavMesh, raycasts, camera modes, Unity asset pipeline | Left behind. Movement is a simulation of distance on the grid, and the view interpolates it. | — |
 
 ## Architecture of the new core
@@ -90,18 +90,21 @@ Each step adds one thing, answers one question that could come out either way, a
 | 0. One forager | One agent, one food that regrows on patches, an energy reserve, day and night; actions: forage, eat, rest, sleep, move | Does a bounded agent keep itself alive, and does it stop working once its needs are met? | Exact energy conservation every tick. Analytical survival thresholds: the agent survives above the patch's sustainable yield and dies below it. |
 | 1. A band | Many agents on one landscape, perception and memory of patches | Does the population settle at the land's carrying capacity, and how does competition for patches spread wellbeing? | Deaths and steady-state population against the analytical carrying capacity; Sugarscape (Epstein and Axtell, 1996) as a reference. |
 | 2. Sharing | Variable yields, spoilage, the ability to give food, and memory of who gave | When does sharing emerge, and when does hoarding? | Theory predicts more sharing where yields are variable and food perishable (Kaplan and Hill, 1985; Winterhalder, 1986). Ensembles vary each factor alone, with a giving-disabled counterfactual. |
-| 3. Materials and tools | A second resource, conversion, recipes, tools, fire and shelter against cold, skills that differ and improve with practice | Do specialization and exchange emerge from differences in skill? | Comparative advantage predicts specialization once exchange is possible. Exact conservation through every conversion. |
-| 4. Storage and claims | Durable stores, and the first objects of the rules layer: claims on stores and patches, with sanctions | Does property appear, and who ends up enforcing it? | Claims expressed in the Crawford and Ostrom (1995) grammar from the vision. Counterfactuals with claims unavailable. |
-| 5. Generations | Births, ageing, deaths from age, kin, inheritance | Do living standards return towards subsistence after a productivity gain? Does advantage persist across generations? | Malthusian dynamics, as named in the vision. |
-| 6. A medium of exchange | Goods that differ in how well they keep and how widely they are wanted | Does one good become accepted by agents who do not want to use it? | Kiyotaki and Wright (1989). |
+| 3. Wood and skill | A second resource, wood, burned against cold nights; skills that differ; swapping one good for another | Do specialization and exchange emerge from differences in skill? | Comparative advantage predicts specialization once exchange is possible. Exact conservation of wood. A counterfactual with swapping off. |
+| 4. Tools and practice | Recipes that convert materials into tools that raise productivity, shelter, and skills that improve with practice | Does practice alone make identical foragers specialize? | Learning by doing (Smith, 1776; Rosen, 1983). Exact conservation through every conversion. |
+| 5. Storage and claims | Durable stores, and the first objects of the rules layer: claims on stores and patches, with sanctions | Does property appear, and who ends up enforcing it? | Claims expressed in the Crawford and Ostrom (1995) grammar from the vision. Counterfactuals with claims unavailable. |
+| 6. Generations | Births, ageing, deaths from age, kin, inheritance | Do living standards return towards subsistence after a productivity gain? Does advantage persist across generations? | Malthusian dynamics, as named in the vision. |
+| 7. A medium of exchange | Goods that differ in how well they keep and how widely they are wanted | Does one good become accepted by agents who do not want to use it? | Kiyotaki and Wright (1989). |
 
-Beyond step 6, in the order questions demand them: claims on land with costs of exit (which makes Domar's hypothesis from the vision testable), groups and decision procedures, enforcement capacity, prices, wages, firms and government. These are the institutions MVP9 builds in. In the new core they have to be reached from below.
+Step 3's original row bundled a second resource, conversion, recipes, tools, fire and shelter, and skills that differ and improve with practice. On 2026-10-11 the owner split it in two, following design rule 12: wood and skill first, then tools and practice. Later steps moved down by one.
+
+Beyond step 7, in the order questions demand them: claims on land with costs of exit (which makes Domar's hypothesis from the vision testable), groups and decision procedures, enforcement capacity, prices, wages, firms and government. These are the institutions MVP9 builds in. In the new core they have to be reached from below.
 
 ## Changes to the vision
 
 The [vision](VISION.md) stands: primitives instead of institutions, the four layers, rules as data, observer-owned labels, collective authority, sources of change, politics and culture, and its validation targets. Two things change:
 
-- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above. The rules layer first appears at step 4, in an economy that has never had built-in institutions, instead of being fitted onto one that has.
+- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above. The rules layer first appears at step 5, in an economy that has never had built-in institutions, instead of being fitted onto one that has.
 - **The unit of time.** The vision asked when a simulated day stops being the right unit. The answer is now: from step 0, because bodies act within a day. The step 0 specification chooses the tick.
 
 ## Risks
@@ -109,7 +112,7 @@ The [vision](VISION.md) stands: primitives instead of institutions, the four lay
 - **Scope.** "A simulation of life" has no natural end. The defence is the ladder: no feature without a question it makes answerable.
 - **Familiar results.** Sugarscape covered much of steps 0 to 2. The contribution has to be what Sugarscape lacked: exact accounting, a causal record of every change, information limited to what agents perceive and remember, and rules as data. Steps 0 and 1 are foundations; step 2 is the first that can produce a new finding.
 - **Physiological detail.** Life Engine models drives in real units. Detail that changes no answer is cost without benefit, so physiology stays coarse until a question needs more.
-- **Long runs.** From step 5, runs span generations at sub-day ticks. Performance and ledger size will need attention before then.
+- **Long runs.** From step 6, runs span generations at sub-day ticks. Performance and ledger size will need attention before then.
 - **Two cores in one repository.** The MVP9 core must stay runnable but unchanged, and the observer must make clear which core a view shows.
 
 ## Open decisions
@@ -125,7 +128,7 @@ The [step 0 specification](LIFE0_SPEC.md) settled the tick (one hour), how decis
 The [step 1 specification](LIFE1_SPEC.md) settled step 1's open questions:
 
 - **Who acts first:** a seeded shuffle of the band every hour, from its own stream.
-- **Births:** none until step 5. Bands start above or below capacity and can only shrink.
+- **Births:** none until step 5 (now step 6). Bands start above or below capacity and can only shrink.
 - **Perception:** every patch within a radius, 2 tiles by default. Other foragers are not perceived or remembered yet.
 - **Carrying capacity in theory:** `K = 24·n·r / D*`, together with a search capacity `Kₛ`, the number the land could feed if every forager searched all day.
 - **One forager reproduces Life 0:** a band of one matches checksums recorded from Life 0's code.
@@ -142,12 +145,24 @@ The [step 2 specification](LIFE2_SPEC.md) settled step 2's design. A prototype s
 
 Its other choices:
 
-- **Who gives:** three fixed strategies compete, keepers, sharers and reciprocators. Whether a strategy that pays spreads needs births and inheritance, so it waits for step 5.
+- **Who gives:** three fixed strategies compete, keepers, sharers and reciprocators. Whether a strategy that pays spreads needs births and inheritance, so it waits for step 5 (now step 6).
 - **Memory of who gave:** every forager keeps a ledger of what it gave to and received from every other.
 - **Patch choice:** Life 1's fullest-first rule, limited to patches a forager can reach and return from before dark. Nearest-first crowded the patches around camp and starved even a band with steady harvests.
 - **One step, not two:** the run with giving switched off, a band of keepers, is the counterfactual.
 
 The answer to the step's question is that windfalls are deadly and sharing keeps more of a band alive, increasingly so as windfalls grow, though only a few percent of food changes hands. Perishability matters less than theory suggests, because the body is the main store. Within a mixed band no strategy clearly pays: keepers free-ride, but a sharer gives only what its body cannot hold, so sharing costs it almost nothing. The [lab notes](../LAB_NOTES.md) record the open questions this leaves.
+
+## Step 3: settled
+
+The [step 3 specification](LIFE3_SPEC.md) settled step 3's design. The owner split the ladder's row and chose to add swaps beside Life 2's food gifts. A prototype showed what else the step needed:
+
+- **Telling terms.** With steady harvests no forager carries spare food, so no swap can start. Two foragers at camp who could both gain tell each other the terms, and remember the last terms they heard for a day.
+- **Unsold stock stops production.** A hungry forager that once heard good terms kept gathering wood nobody bought, and starved. A forager now gathers wood to sell only once its spare wood has all been sold.
+- **A smaller band.** Cold nights and trips for wood mean Life 2's land carries a band of 8, not 12.
+
+Its other choices: each forager burns wood at its own hearth, so wood is not a public good; skills are drawn for each forager and fixed; a forager knows its own skills; and two foragers swap at the midpoint of what wood costs each of them in working time, after Sugarscape's trade rule.
+
+The answer to the step's question is that specialization follows comparative advantage once exchange is possible, and keeps more of the least skilled alive, but exchange has to be started by talk: without it, and with steady harvests, no swap ever happens. Terms never settle on one rate. The [lab notes](../LAB_NOTES.md) record the open questions this leaves.
 
 ## References
 
@@ -157,4 +172,7 @@ The answer to the step's question is that windfalls are deadly and sharing keeps
 - Humphrey, C. (1985). Barter and economic disintegration. *Man*, 20(1), 48–72.
 - Kaplan, H., and Hill, K. (1985). Food sharing among Ache foragers: Tests of explanatory hypotheses. *Current Anthropology*, 26(2), 223–246.
 - Kiyotaki, N., and Wright, R. (1989). On money as a medium of exchange. *Journal of Political Economy*, 97(4), 927–954.
+- Ricardo, D. (1817). *On the Principles of Political Economy and Taxation*. John Murray.
+- Rosen, S. (1983). Specialization and human capital. *Journal of Labor Economics*, 1(1), 43–49.
+- Smith, A. (1776). *An Inquiry into the Nature and Causes of the Wealth of Nations*. W. Strahan and T. Cadell.
 - Winterhalder, B. (1986). Diet choice, risk, and food sharing in a stochastic environment. *Journal of Anthropological Archaeology*, 5(4), 369–392.

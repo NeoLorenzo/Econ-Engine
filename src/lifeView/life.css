@@ -1,4 +1,4 @@
-/* The Life 0 observer: a full-screen world with a few cards over it. Tokens and buttons come from app.css. */
+/* The Life observer: a full-screen world with a few cards over it. Tokens and buttons come from app.css. */
 .life-app {
   position: fixed;
   inset: 0;
@@ -228,7 +228,7 @@
 .life-setup {
   margin-top: 10px;
   display: grid;
-  /* Nine fields and the button, three to a row. */
+  /* Twelve fields, two switches and the button, three to a row. */
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: end;
   gap: 8px;
@@ -272,4 +272,35 @@
   .life-inspector + .life-history {
     display: none;
   }
+}
+
+.life-switch {
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+  gap: 6px;
+}
+.life-switch input {
+  width: auto;
+}
+.life-scatter {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.life-scatter svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.life-scatter .axis {
+  stroke: var(--border);
+}
+.life-scatter .tick {
+  fill: var(--text-3);
+  font-size: 9px;
+}
+.life-scatter figcaption {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
 }
