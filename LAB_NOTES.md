@@ -6,6 +6,49 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE2-Sharing-030] - (2026-10-11)
+
+### Problem
+
+Step 2 asks when sharing emerges and when hoarding does. Theory points both ways. Sharing pools the risk of uneven returns (Winterhalder, 1986), and foragers share most where returns vary most and food keeps least (Kaplan and Hill, 1985). But among unconditional sharers a forager that only takes should do best, unless sharing is reciprocal (Trivers, 1971). Life 1 left a related question: could sharing smooth the hunger that sends a whole band searching at once?
+
+### Decisions
+
+- **A prototype first, and it changed the step.** A throwaway scratchpad version reproduced Life 1 exactly and then showed that the ladder's row ("variable yields, spoilage, the ability to give food, and memory of who gave") was not enough on its own:
+  - with harvests of up to 8,000 kcal, under 1% of food was ever given, whatever the rules, because a forager's body holds up to 20,000 and simply eats the harvest;
+  - with larger windfalls, foragers that wander alone almost never share a tile, so at most about 15% of food changed hands and giving barely changed who lived;
+  - with a shared camp, 20–50% of food changed hands in the same conditions.
+- **The owner chose a camp, competing strategies and a single step.** Fixed keepers, sharers and reciprocators make the question measurable as "which pays" without building sharing in; whether a paying strategy spreads needs inheritance, which is step 5. A band of keepers is the giving-disabled counterfactual, so the step was not split.
+- **Windfalls that keep the average.** An hour succeeds with probability `g / H` and takes `H`. A patch must hold a full windfall, keeping Life 0's rule that a forager never works a patch that cannot repay it. A variant that let a thin patch pay out whatever it held killed foragers by having them work patches that returned less than they cost, so it was dropped.
+- **Fullest-first stays.** Choosing the nearest patch instead looked sensible with a camp, but in the prototype every hungry forager then headed for the same few patches near camp, and even a band with steady food collapsed. The only change to patch choice is that a forager sets out only for patches it can forage and return from before dusk. A kept target is checked the same way; without that, a forager could arrive home an hour after dark, which the prototype caught.
+- **The canonical world** is Life 0's 12 × 12 grid with 32 patches at Life 1's regrowth, holding up to 24,000 kcal so a patch can hold several windfalls. With steady harvests a camp band of 12 is intact on every seed; in the prototype one of 13 collapsed on a third of the seeds and one of 14 on all, so 12 is the largest band this land reliably carries.
+- **Life 1 reproduced bit for bit.** Checksums of four Life 1 runs were recorded from Life 1's code before any change, and the new code matches them on `LIFE1_WORLD`.
+
+### Findings
+
+Over 400 days on the canonical world, 32 seeds unless stated.
+
+- **Bad luck alone matches the theory.** A lone forager whose patch always holds a windfall of 24,000 (a 5% chance an hour) starves in 13.8% of its hungry spells, against a predicted 12.9–15.0% for the 37–40 tries its reserve allows (400 seeds). Hunger starts at 14,000 of a 20,000 reserve, so a forager has only about three days of tries.
+- **Windfalls are deadly, and the deaths are steady rather than a collapse.** Bands of keepers keep 12.0, 10.5, 5.7 and 1.3 of 12 alive with windfalls of 1,200, 3,600, 6,000 and 9,600. At 6,000 the band is at 10.1, 8.5, 7.2, 6.5 and 5.7 on days 50, 100, 200, 300 and 400: runs of bad luck pick off foragers throughout the run, unlike Life 1's collapse within two weeks. With a camp, walking out and back takes up to eight daylight hours, which leaves fewer tries per day than on a single patch and makes each spell riskier.
+- **Sharing keeps more of a band alive, increasingly so as windfalls grow, through a small flow of food.** Bands of sharers keep 6.9 against keepers' 5.7 at 6,000 and 2.2 against 1.3 at 9,600; reciprocators keep 6.1 and 1.8. Sharers give 0.7%, 4.4% and 10.5% of their harvest at 3,600, 6,000 and 9,600. With steady harvests nothing is ever given, because nothing is ever left over.
+- **Perishability matters less than theory suggests.** At 9,600, keepers lose 0%, 1.1% and 7.5% of their harvest to spoilage with food that keeps, lasts 48 hours or lasts 12; sharers lose 0.1% and 2.1%. Survival barely moves with shelf life: sharers 2.8, 2.2 and 2.7, keepers 1.1, 1.3 and 1.1. The body is the main store: a forager eats a windfall into its reserve first and carries only the rest, which it eats within a day or two anyway.
+- **Within a mixed band no strategy clearly pays.** At 6,000, 51% of keepers, 50% of sharers and 53% of reciprocators survive (standard errors about 3 points, 64 seeds); at 3,600 and 9,600 the strategies are equally close. Keepers free-ride, receiving 14,300 kcal each and giving nothing, but gain nothing measurable by it; sharers give 30,100 and receive 17,600. Reciprocators receive about as much as sharers while giving two-thirds as much, because they stop giving to anyone who has not repaid them.
+- **Why sharing is nearly free (hypothesis).** A forager carries food only once its reserve is full, so a sharer gives away only what its body cannot hold at that moment. With perishable food much of that would have spoiled; with durable food it would have been eaten days later, when the sharer is not yet hungry. Either way the sharer loses little, so free riders have little to exploit and reciprocity has little to protect.
+
+### Trade-offs
+
+- The Life tests now take about a minute and a half instead of 20 seconds. The ensemble tests run on 16 seeds; the reported numbers use 32 and 64. The full set of experiments takes about six minutes.
+- The canonical band is 12, not the 25 or so of real forager bands, because the land must carry it with a camp on a small grid. Larger bands need a larger world, where walking to camp costs more.
+- The strategies are fixed rules, not choices. Theory's prediction that perishability raises sharing is about agents deciding how much to keep; here perishability can only change who loses food to rot, which is a weaker test.
+
+### Open questions
+
+- If foragers chose how much to keep, for example enough for the days until food spoils, would perishability then change how much is shared, as theory predicts?
+- With inheritance (step 5), would any strategy spread when the payoffs are this close, or would drift decide?
+- Would a forager that started foraging before it was hungry, learning a threshold from experience, avoid more bad-luck deaths than sharing does?
+- Do reciprocators settle into stable partnerships? The ledgers record every pair and could show it.
+- Would telling others where food is, or hunting together, pool risk more cheaply than giving food?
+
 ## [LIFE1-Band-029] - (2026-10-11)
 
 ### Problem

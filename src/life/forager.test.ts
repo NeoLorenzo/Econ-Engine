@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE1_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { choosePatch, decide, nextHungerMode, observe, walkTarget } from './forager'
-import type { Forager, Patch, Tile } from './types'
+import type { Forager, LifeConfig, Patch, Tile } from './types'
 
-const config = LIFE_DEFAULT_CONFIG
+// Life 1's world: no camp and steady harvests. The camp's rules are tested in camp.test.ts.
+const config: LifeConfig = { ...LIFE_DEFAULT_CONFIG, ...LIFE1_WORLD }
 const NOON = 12
 const MIDNIGHT = 0
 
@@ -18,6 +19,9 @@ const forager = (position: Tile, overrides: Partial<Forager> = {}): Forager => (
   memory: [],
   alive: true,
   deathTick: null,
+  strategy: 'keeper',
+  carried: [],
+  ledger: [],
   ...overrides,
 })
 
@@ -98,17 +102,17 @@ describe('the walking target', () => {
     const walking = (targetSeenAt: number, targetStock: number) =>
       forager({ x: 2, y: 0 }, { targetPatchId: 1, memory: memory(targetSeenAt, targetStock) })
     // Seen empty before this hour, or seen full this hour: it walks on.
-    expect(walkTarget(config, walking(5, 0), patches, 12)?.id).toBe(1)
-    expect(walkTarget(config, walking(12, 1_200), patches, 12)?.id).toBe(1)
+    expect(walkTarget(config, walking(5, 0), patches, 12)?.patch?.id).toBe(1)
+    expect(walkTarget(config, walking(12, 1_200), patches, 12)?.patch?.id).toBe(1)
     // Seen empty this hour: it chooses again.
-    expect(walkTarget(config, walking(12, 1_199), patches, 12)?.id).toBe(0)
+    expect(walkTarget(config, walking(12, 1_199), patches, 12)?.patch?.id).toBe(0)
   })
 
   it('is chosen afresh with no target or on arrival', () => {
     const fresh = forager({ x: 2, y: 0 }, { memory: memory(0, 0) })
-    expect(walkTarget(config, fresh, patches, 12)?.id).toBe(0)
+    expect(walkTarget(config, fresh, patches, 12)?.patch?.id).toBe(0)
     const arrived = forager({ x: 4, y: 0 }, { targetPatchId: 1, memory: memory(12, 0) })
-    expect(walkTarget(config, arrived, patches, 12)?.id).toBe(0)
+    expect(walkTarget(config, arrived, patches, 12)?.patch?.id).toBe(0)
   })
 })
 
@@ -119,24 +123,24 @@ describe('choosing a patch', () => {
   it('prefers the fullest remembered patch, then the nearest, then the lowest ID', () => {
     const patches = [patch(0, 0, 0), patch(1, 4, 0), patch(2, 1, 0), patch(3, 2, 0)]
     expect(
-      choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]))?.id,
+      choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]), NOON)?.id,
     ).toBe(3)
     expect(
-      choosePatch(config, { x: 3, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]))?.id,
+      choosePatch(config, { x: 3, y: 0 }, patches, remembered([0, 0], [5_000, 0], [3_000, 0], [5_000, 0]), NOON)?.id,
     ).toBe(1)
     const tied = [patch(0, 9, 9), patch(1, 2, 0), patch(2, 0, 2)]
-    expect(choosePatch(config, { x: 0, y: 0 }, tied, remembered([0, 0], [4_000, 0], [4_000, 0]))?.id).toBe(1)
+    expect(choosePatch(config, { x: 0, y: 0 }, tied, remembered([0, 0], [4_000, 0], [4_000, 0]), NOON)?.id).toBe(1)
   })
 
   it('falls back to the patch seen longest ago when none is remembered as worth foraging', () => {
     const patches = [patch(0, 0, 0), patch(1, 4, 0), patch(2, 1, 0)]
-    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 40]))?.id).toBe(1)
-    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 30]))?.id).toBe(2)
+    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 40]), NOON)?.id).toBe(1)
+    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([0, 50], [100, 30], [1_199, 30]), NOON)?.id).toBe(2)
   })
 
   it('never chooses the patch underfoot, and has no choice on a lone patch', () => {
     const patches = [patch(0, 0, 0), patch(1, 4, 0)]
-    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([8_000, 0], [0, 0]))?.id).toBe(1)
-    expect(choosePatch(config, { x: 0, y: 0 }, [patch(0, 0, 0)], remembered([0, 0]))).toBeNull()
+    expect(choosePatch(config, { x: 0, y: 0 }, patches, remembered([8_000, 0], [0, 0]), NOON)?.id).toBe(1)
+    expect(choosePatch(config, { x: 0, y: 0 }, [patch(0, 0, 0)], remembered([0, 0]), NOON)).toBeNull()
   })
 })
