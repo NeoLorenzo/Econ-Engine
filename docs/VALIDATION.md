@@ -118,3 +118,17 @@ Unit tests cover configuration validation, layout, regrowth, each priority rule,
 
 In the browser, the forager was checked walking, foraging and sleeping, the inspector and chart were checked on desktop, the layout at 375px, and both pages had no console errors.
 
+# Life 1
+
+Runtime invariants, checked after every hour of every test and experiment run, extend Life 0's to the band: exact energy conservation (patch stock + every reserve + energy metabolized = starting stock and reserves + energy regrown), stocks within capacity, every reserve within its bounds and 0 once dead, every forager on the grid with a target that is a patch, exactly one turn for each forager alive at the start of the hour, foraging only in daylight on a patch the forager saw holding a full hour's harvest in its own turn, and every patch within a forager's perception radius remembered with the stock it held at the start of that forager's turn.
+
+The experiments of the [specification](LIFE1_SPEC.md#experiments) are tests, on eight seeds over 400 days:
+
+- **A band of one is Life 0.** Seven Life 0 runs, five that survive and two that starve, reproduce checksums recorded from Life 0's code before the change. Life 0's three experiments pass unchanged on `LIFE0_WORLD`.
+- **Carrying capacity.** On the canonical world (`K ≈ 19.8`, `Kₛ = 10`), a band of 10 stays intact with a reserve that is not declining, and a band of 20 loses foragers. The largest intact band, searched from 20 down to 8, is 12–13, between `Kₛ` and `K`. A band of 40 collapses to 4–8 survivors, at most `Kₛ`, with every death before day 30 (the last between days 9 and 14), and no survivor's reserve declining.
+- **Local knowledge in a band.** Seeing only its own tile, a band of 10 walks to emptied patches (11–24% of walks). With full information no walk ends at an empty patch, yet a band of 40 still collapses to at most `Kₛ`.
+- **The cost of searching.** With walking costing 90 kcal an hour instead of 300, more of a band of 40 survive on every seed (14–16 against 4–8). At each cost the survivors number at most the smaller of `K` and that cost's `Kₛ`.
+
+Unit tests cover the new configuration rules, starting tiles (forager 0 where Life 0's started, shared tiles allowed), the turn order (deterministic, different each hour, everyone eventually first), perception exactly at and beyond the radius, two foragers on a one-hour patch (the first forages, the second sees it gone), choosing again when a target is seen emptied and walking on when it is not seen, death within a band, determinism and the invariants every hour of a 60-day canonical run. The observer's view model is tested for standing apart on a shared tile, moving between standing places, stepping through the living band, the perception outline and the inspector for the followed forager.
+
+In the browser, the collapse from 40, following a forager by click and by button, the inspector, setup validation (a band over 100 is refused) and the 375px layout were checked, with no console errors.

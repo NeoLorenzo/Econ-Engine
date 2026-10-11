@@ -1,4 +1,4 @@
-import type { Group, Mesh, MeshStandardMaterial } from 'three'
+import type { Group, LineLoop, Mesh, MeshStandardMaterial } from 'three'
 import type { LifeState } from '../life/types'
 import { hex, palette } from '../ui/theme'
 import {
@@ -7,6 +7,9 @@ import {
   displayedStock,
   displayHours,
   foragerPose,
+  pairOffsets,
+  perceptionOutline,
+  seesEverything,
   sunAt,
   type DisplayPair,
 } from './lifeViewModel'
@@ -19,12 +22,22 @@ const LUSH = 0x3f8f4a
 const BARE = 0x7a6440
 const GRASS = 0x2f5a35
 const GRASS_EDGE = 0x24432a
-const FORAGER_OFFSET = 0.3
+const DEAD = 0x6b6b66
+
+/** What a click picked out: a patch to inspect or a forager to follow. */
+export type LifePick = { kind: 'patch'; id: number } | { kind: 'forager'; id: number }
+
+export interface DrawOptions {
+  interpolate: boolean
+  selectedPatchId: number | null
+  followedId: number
+  nowMs: number
+}
 
 export interface LifeScene {
-  /** Rebuilds the board and bushes for a new run. */
+  /** Rebuilds the board, bushes and band for a new run. */
   setWorld(state: LifeState): void
-  draw(pair: DisplayPair, options: { interpolate: boolean; selectedPatchId: number | null; nowMs: number }): void
+  draw(pair: DisplayPair, options: DrawOptions): void
   dispose(): void
 }
 
@@ -34,10 +47,13 @@ interface Bush {
 }
 
 /** Builds the scene inside `mount`. The caller drives drawing; nothing renders until `draw` is called. */
-export async function createLifeScene(
-  mount: HTMLElement,
-  onSelectPatch: (patchId: number | null) => void,
-): Promise<LifeScene> {
+interface Figure {
+  group: Group
+  body: Group
+  material: MeshStandardMaterial
+}
+
+export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePick | null) => void): Promise<LifeScene> {
   const THREE: Three = await import('three')
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(NIGHT_SKY)
@@ -50,7 +66,7 @@ export async function createLifeScene(
   renderer.domElement.tabIndex = 0
   renderer.domElement.setAttribute(
     'aria-label',
-    'The forager’s world. Drag to orbit, scroll to zoom, click a bush to inspect its patch.',
+    'The band’s world. Drag to orbit, scroll to zoom, click a bush to inspect its patch or a forager to follow it.',
   )
   mount.appendChild(renderer.domElement)
 
@@ -75,7 +91,7 @@ export async function createLifeScene(
   let gridHeight = 1
   const toWorld = (x: number, y: number) => ({ x: x - (gridWidth - 1) / 2, z: y - (gridHeight - 1) / 2 })
 
-  // Shared geometry: every bush is three leafy lobes; the forager is a capsule and a head.
+  // Shared geometry: every bush is three leafy lobes; every forager is a capsule and a head.
   const lobe = new THREE.IcosahedronGeometry(0.3, 1)
   const ringGeometry = new THREE.RingGeometry(0.42, 0.5, 40)
   const targetRing = new THREE.Mesh(
@@ -91,19 +107,45 @@ export async function createLifeScene(
   selectRing.scale.setScalar(1.15)
   scene.add(targetRing, selectRing)
 
-  const forager = new THREE.Group()
-  const body = new THREE.Group()
-  const skin = new THREE.MeshStandardMaterial({ color: hex(palette.household), roughness: 0.7 })
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.36, 4, 10), skin)
-  torso.position.y = 0.33
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), skin)
-  head.position.y = 0.68
-  for (const part of [torso, head]) part.castShadow = true
-  body.add(torso, head)
-  forager.add(body)
-  scene.add(forager)
+  const torsoGeometry = new THREE.CapsuleGeometry(0.14, 0.36, 4, 10)
+  const headGeometry = new THREE.SphereGeometry(0.12, 16, 12)
+  let figures: Figure[] = []
+  const band = new THREE.Group()
+  scene.add(band)
+
+  // The followed forager's perception: the outline of every tile within its radius.
+  let perception: LineLoop | null = null
+
+  function makeFigure(id: number): Figure {
+    const material = new THREE.MeshStandardMaterial({ color: hex(palette.household), roughness: 0.7 })
+    const group = new THREE.Group()
+    const body = new THREE.Group()
+    const torso = new THREE.Mesh(torsoGeometry, material)
+    torso.position.y = 0.33
+    const head = new THREE.Mesh(headGeometry, material)
+    head.position.y = 0.68
+    for (const part of [torso, head]) {
+      part.castShadow = true
+      part.userData.foragerId = id
+    }
+    body.add(torso, head)
+    group.add(body)
+    band.add(group)
+    return { group, body, material }
+  }
 
   function clearWorld() {
+    for (const figure of figures) {
+      figure.material.dispose()
+      band.remove(figure.group)
+    }
+    figures = []
+    if (perception) {
+      perception.geometry.dispose()
+      ;(perception.material as InstanceType<Three['LineBasicMaterial']>).dispose()
+      scene.remove(perception)
+      perception = null
+    }
     for (const bush of bushes) {
       bush.material.dispose()
       world.remove(bush.group)
@@ -186,6 +228,18 @@ export async function createLifeScene(
       bushes.push({ group, material })
     }
 
+    figures = state.foragers.map((forager) => makeFigure(forager.id))
+    const outline = perceptionOutline(state.config.perceptionRadiusTiles).flatMap(([x, y]) => [x, 0.02, y])
+    const outlineGeometry = new THREE.BufferGeometry()
+    outlineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(outline, 3))
+    perception = new THREE.LineLoop(
+      outlineGeometry,
+      new THREE.LineBasicMaterial({ color: hex(palette.accent), transparent: true, opacity: 0.55 }),
+    )
+    // Full information needs no outline: it would only frame the whole board.
+    perception.userData.shown = !seesEverything(state)
+    scene.add(perception)
+
     const extent = Math.max(gridWidth, gridHeight)
     controls.baseRadius = Math.max(6, extent * 1.3 + 3)
     controls.zoom = 1
@@ -209,10 +263,7 @@ export async function createLifeScene(
   const lush = new THREE.Color(LUSH)
   const bare = new THREE.Color(BARE)
 
-  function draw(
-    pair: DisplayPair,
-    { interpolate, selectedPatchId, nowMs }: { interpolate: boolean; selectedPatchId: number | null; nowMs: number },
-  ) {
+  function draw(pair: DisplayPair, { interpolate, selectedPatchId, followedId, nowMs }: DrawOptions) {
     const { config } = pair.next
     const hours = interpolate ? displayHours(pair) : pair.next.tick
     const hourOfDay = hours % 24
@@ -235,19 +286,30 @@ export async function createLifeScene(
       bush.material.color.copy(bare).lerp(lush, Math.min(1, stock / config.patchCapacityKcal) ** 0.6)
     }
 
-    const pose = foragerPose(pair, interpolate)
-    const position = toWorld(pose.x, pose.y)
-    const bob = pose.walking ? Math.abs(Math.sin(nowMs / 110)) * 0.04 : 0
-    // Drawn a little off its tile's centre, so it stands beside a bush rather than inside it.
-    forager.position.set(position.x + FORAGER_OFFSET, bob, position.z + FORAGER_OFFSET)
-    if (pose.heading !== null) forager.rotation.y = pose.heading
-    // Lying down tips the body over at the feet.
-    body.rotation.x = (-Math.PI / 2) * pose.lying
-    body.position.y = 0.14 * pose.lying
-    skin.color.set(pair.next.forager.alive ? hex(palette.household) : 0x6b6b66)
+    const offsets = pairOffsets(pair)
+    for (const [id, figure] of figures.entries()) {
+      const pose = foragerPose(pair, id, interpolate, offsets)
+      const position = toWorld(pose.x + pose.offsetX, pose.y + pose.offsetY)
+      // Each forager bobs out of step with the others.
+      const bob = pose.walking ? Math.abs(Math.sin(nowMs / 110 + id)) * 0.04 : 0
+      figure.group.position.set(position.x, bob, position.z)
+      if (pose.heading !== null) figure.group.rotation.y = pose.heading
+      // Lying down tips the body over at the feet.
+      figure.body.rotation.x = (-Math.PI / 2) * pose.lying
+      figure.body.position.y = 0.14 * pose.lying
+      const alive = pair.next.foragers[id]!.alive
+      figure.material.color.set(!alive ? DEAD : id === followedId ? hex(palette.accent) : hex(palette.household))
+      if (id === followedId && perception) {
+        // The radius is measured from the tile the forager stands on, so the outline moves with it along its path.
+        const tile = toWorld(pose.x, pose.y)
+        perception.position.set(tile.x, 0, tile.z)
+        perception.visible = alive && perception.userData.shown === true
+      }
+    }
 
-    const target = pair.next.forager.targetPatchId
-    targetRing.visible = target !== null && pair.next.forager.alive
+    const followed = pair.next.foragers[followedId]
+    const target = followed?.targetPatchId ?? null
+    targetRing.visible = target !== null && followed!.alive
     if (target !== null) {
       const tile = pair.next.patches[target]!.tile
       const at = toWorld(tile.x, tile.y)
@@ -297,11 +359,16 @@ export async function createLifeScene(
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
-    const hit = raycaster.intersectObjects(
-      bushes.map((bush) => bush.group),
-      true,
-    )[0]
-    onSelectPatch((hit?.object.userData.patchId as number | undefined) ?? null)
+    const hit = raycaster.intersectObjects([...bushes.map((bush) => bush.group), band], true)[0]
+    const foragerId = hit?.object.userData.foragerId as number | undefined
+    const patchId = hit?.object.userData.patchId as number | undefined
+    onPick(
+      foragerId !== undefined
+        ? { kind: 'forager', id: foragerId }
+        : patchId !== undefined
+          ? { kind: 'patch', id: patchId }
+          : null,
+    )
   }
   const onWheel = (event: WheelEvent) => {
     event.preventDefault()
@@ -344,9 +411,8 @@ export async function createLifeScene(
       ringGeometry.dispose()
       ;(targetRing.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
       ;(selectRing.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
-      torso.geometry.dispose()
-      head.geometry.dispose()
-      skin.dispose()
+      torsoGeometry.dispose()
+      headGeometry.dispose()
       renderer.dispose()
       canvas.remove()
     },

@@ -74,10 +74,31 @@
   display: grid;
   gap: 10px;
 }
-.life-clock {
+.life-hud-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.life-clock,
+.life-band {
   color: var(--text-3);
   font-size: var(--fs-sm);
   font-weight: 600;
+}
+.life-follow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.life-follow .icon-button {
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+.life-follow-name {
+  min-width: 7.5em;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 700;
 }
 .life-activity {
   font-size: var(--fs-lg);
@@ -187,7 +208,8 @@
 .life-setup {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  /* Five fields and the button, three to a row. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: end;
   gap: 8px;
 }
@@ -229,11 +251,5 @@
   /* One card at a time at the top of a phone screen: the inspector covers the history while it is open. */
   .life-inspector + .life-history {
     display: none;
-  }
-  .life-setup {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .life-setup button {
-    grid-column: 1 / -1;
   }
 }

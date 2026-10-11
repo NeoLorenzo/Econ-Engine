@@ -5,27 +5,44 @@ import type { LifeConfig } from '../life/types'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
-import { createLifeScene, type LifeScene } from './lifeScene'
+import { createLifeScene, type LifePick, type LifeScene } from './lifeScene'
 import {
   advanceClock,
+  aliveCount,
   clockLabel,
   currentEvent,
   describeActivity,
   displayedEnergy,
   displayHours,
+  foragerName,
   formatKcal,
   LIFE_SPEEDS,
   patchInspection,
+  seesEverything,
+  stepFollowed,
   type DisplayPair,
 } from './lifeViewModel'
 
-type Setup = Pick<LifeConfig, 'seed' | 'patchCount' | 'patchRegrowthKcalPerHour'>
+type Setup = Pick<LifeConfig, 'seed' | 'bandSize' | 'perceptionRadiusTiles' | 'patchCount' | 'patchRegrowthKcalPerHour'>
+
+const SETUP_FIELDS: { key: keyof Setup; label: string }[] = [
+  { key: 'seed', label: 'Seed' },
+  { key: 'bandSize', label: 'Foragers' },
+  { key: 'perceptionRadiusTiles', label: 'Sight, tiles' },
+  { key: 'patchCount', label: 'Patches' },
+  { key: 'patchRegrowthKcalPerHour', label: 'Regrowth, kcal/h' },
+]
 
 const DEFAULT_SETUP: Setup = {
   seed: LIFE_DEFAULT_CONFIG.seed,
+  bandSize: LIFE_DEFAULT_CONFIG.bandSize,
+  perceptionRadiusTiles: LIFE_DEFAULT_CONFIG.perceptionRadiusTiles,
   patchCount: LIFE_DEFAULT_CONFIG.patchCount,
   patchRegrowthKcalPerHour: LIFE_DEFAULT_CONFIG.patchRegrowthKcalPerHour,
 }
+
+/** Every forager is drawn as its own figure, which stays smooth up to about this many. */
+const MAX_BAND = 100
 
 const startPair = (setup: Setup): DisplayPair => {
   const previous = createLife(setup)
@@ -35,6 +52,8 @@ const startPair = (setup: Setup): DisplayPair => {
 /** What the HUD shows, refreshed a few times a second rather than every frame. */
 interface Snapshot {
   pair: DisplayPair
+  /** The forager the HUD describes. */
+  followed: number
   energyKcal: number
   hours: number
 }
@@ -49,10 +68,11 @@ export default function LifeApp() {
   const [running, setRunning] = useState(true)
   const [speedIndex, setSpeedIndex] = useState(1)
   const [selectedPatchId, setSelectedPatchId] = useState<number | null>(null)
+  const [followedId, setFollowedId] = useState(0)
   const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP)
   const [draft, setDraft] = useState<Record<keyof Setup, string>>(() => stringify(DEFAULT_SETUP))
   const [setupError, setSetupError] = useState<string | null>(null)
-  const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, true))
+  const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0, true))
   const [sceneError, setSceneError] = useState(false)
   // History starts open on wide screens and folded on phones, where it would cover the world.
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
@@ -60,12 +80,14 @@ export default function LifeApp() {
   const runningRef = useRef(running)
   const speedRef = useRef(LIFE_SPEEDS[speedIndex]!)
   const selectedRef = useRef(selectedPatchId)
+  const followedRef = useRef(followedId)
   // The animation loop reads the latest controls through refs, so changing them never restarts it.
   useEffect(() => {
     runningRef.current = running
     speedRef.current = LIFE_SPEEDS[speedIndex]!
     selectedRef.current = selectedPatchId
-  }, [running, speedIndex, selectedPatchId])
+    followedRef.current = followedId
+  }, [running, speedIndex, selectedPatchId, followedId])
 
   // One loop advances the clock and draws; React only refreshes the HUD.
   useEffect(() => {
@@ -75,7 +97,13 @@ export default function LifeApp() {
     let frame = 0
     let lastFrame = performance.now()
     let lastHud = 0
-    createLifeScene(mount, (patchId) => setSelectedPatchId(patchId))
+    const onPick = (pick: LifePick | null) => {
+      if (pick?.kind === 'forager') {
+        followedRef.current = pick.id
+        setFollowedId(pick.id)
+      } else setSelectedPatchId(pick?.id ?? null)
+    }
+    createLifeScene(mount, onPick)
       .then((scene) => {
         if (disposed) return scene.dispose()
         sceneRef.current = scene
@@ -96,11 +124,12 @@ export default function LifeApp() {
           scene.draw(pairRef.current, {
             interpolate: speed.interpolate,
             selectedPatchId: selectedRef.current,
+            followedId: followedRef.current,
             nowMs: now,
           })
           if (now - lastHud >= HUD_INTERVAL_MS) {
             lastHud = now
-            setSnapshot(snap(pairRef.current, speed.interpolate))
+            setSnapshot(snap(pairRef.current, followedRef.current, speed.interpolate))
           }
           frame = requestAnimationFrame(loop)
         }
@@ -119,14 +148,23 @@ export default function LifeApp() {
     pairRef.current = startPair(nextSetup)
     sceneRef.current?.setWorld(pairRef.current.next)
     setSelectedPatchId(null)
-    setSnapshot(snap(pairRef.current, true))
+    followedRef.current = 0
+    setFollowedId(0)
+    setSnapshot(snap(pairRef.current, 0, true))
+  }, [])
+
+  /** Follows another forager and refreshes the HUD at once, even while paused. */
+  const follow = useCallback((id: number) => {
+    followedRef.current = id
+    setFollowedId(id)
+    setSnapshot(snap(pairRef.current, id, true))
   }, [])
 
   /** Finishes the hour in progress, then shows the next one from its start. */
   const stepHour = useCallback(() => {
     const { next } = pairRef.current
     pairRef.current = { previous: next, next: stepLife(next), alpha: 0 }
-    setSnapshot(snap(pairRef.current, true))
+    setSnapshot(snap(pairRef.current, followedRef.current, true))
   }, [])
 
   useEffect(() => {
@@ -143,12 +181,9 @@ export default function LifeApp() {
 
   const applySetup = (event: FormEvent) => {
     event.preventDefault()
-    const parsed: Setup = {
-      seed: Number(draft.seed),
-      patchCount: Number(draft.patchCount),
-      patchRegrowthKcalPerHour: Number(draft.patchRegrowthKcalPerHour),
-    }
+    const parsed = Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, Number(draft[key])])) as Setup
     const errors = lifeConfigErrors({ ...LIFE_DEFAULT_CONFIG, ...parsed })
+    if (!errors.length && parsed.bandSize > MAX_BAND) errors.push(`The observer shows at most ${MAX_BAND} foragers`)
     if (errors.length) {
       setSetupError(errors[0]!)
       return
@@ -158,15 +193,18 @@ export default function LifeApp() {
     reset(parsed)
   }
 
-  const { pair, energyKcal, hours } = snapshot
+  const { pair, energyKcal, hours, followed } = snapshot
   const state = pair.next
-  const { config, forager } = state
-  const event = currentEvent(pair)
-  const inspection = selectedPatchId === null ? null : patchInspection(state, selectedPatchId)
+  const { config } = state
+  const forager = state.foragers[followed]!
+  const event = currentEvent(pair, followed)
+  const name = foragerName(followed)
+  const inspection = selectedPatchId === null ? null : patchInspection(state, selectedPatchId, followed)
   const days = state.days.map((day) => ({
     day: day.day + 1,
-    reserve: day.endEnergyKcal,
-    stock: day.totalPatchStockKcal,
+    alive: day.alive,
+    reserve: day.endEnergyKcal[followed]!,
+    stock: day.totalPatchStockKcal / config.patchCount,
   }))
   const percent = (value: number) => `${(value / config.reserveMaxKcal) * 100}%`
 
@@ -181,7 +219,7 @@ export default function LifeApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 0 · one forager</span>
+        <span className="life-title">Life 1 · a band</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -219,10 +257,36 @@ export default function LifeApp() {
         </div>
       </header>
 
-      <section className="life-card life-hud" aria-label="The forager">
-        <div className="life-clock num">{clockLabel(hours)}</div>
+      <section className="life-card life-hud" aria-label={`The band, following ${name}`}>
+        <div className="life-hud-head">
+          <div className="life-clock num">{clockLabel(hours)}</div>
+          <div className="life-band num">
+            {aliveCount(state)} of {config.bandSize} alive
+          </div>
+        </div>
+        <div className="life-follow" role="group" aria-label="Followed forager">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Follow the previous forager"
+            title="Previous forager"
+            onClick={() => follow(stepFollowed(state, followed, -1))}
+          >
+            ‹
+          </button>
+          <span className="life-follow-name">{name}</span>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Follow the next forager"
+            title="Next forager"
+            onClick={() => follow(stepFollowed(state, followed, 1))}
+          >
+            ›
+          </button>
+        </div>
         <p className={`life-activity${forager.alive ? '' : ' is-dead'}`} aria-live="polite">
-          {describeActivity(pair)}
+          {describeActivity(pair, followed)}
         </p>
         <div className="life-energy">
           <div className="life-energy-head">
@@ -242,7 +306,7 @@ export default function LifeApp() {
             <div className="life-energy-mark" style={{ left: percent(config.satiatedAtKcal) }} title="Satiated at" />
           </div>
           <div className="life-energy-legend">
-            <span>{forager.hungry ? 'Hungry' : 'Not hungry'}</span>
+            <span>{!forager.alive ? 'Dead' : forager.hungry ? 'Hungry' : 'Not hungry'}</span>
             <span className="num">
               hungry below {formatKcal(config.hungryBelowKcal)} · full at {formatKcal(config.satiatedAtKcal)}
             </span>
@@ -266,7 +330,7 @@ export default function LifeApp() {
             <dd className="num">
               {inspection.trueStockKcal.toLocaleString('en-US')} of {formatKcal(inspection.capacityKcal)}
             </dd>
-            <dt>The forager remembers</dt>
+            <dt>{name} remembers</dt>
             <dd className="num">{formatKcal(inspection.rememberedStockKcal)}</dd>
             <dt>Last seen</dt>
             <dd>{inspection.seen}</dd>
@@ -283,43 +347,38 @@ export default function LifeApp() {
         <details open={historyOpen} onToggle={(toggle) => setHistoryOpen(toggle.currentTarget.open)}>
           <summary>History and setup</summary>
           {days.length > 1 ? (
-            <TimeChart
-              data={days}
-              height={150}
-              format={(value) => `${Math.round(value / 1000)}k`}
-              series={[
-                { key: 'reserve', name: 'Reserve at day’s end', color: palette.household },
-                { key: 'stock', name: 'Food on all patches', color: palette.positive, dashed: true },
-              ]}
-            />
+            <>
+              <TimeChart
+                data={days}
+                height={90}
+                format={(value) => String(Math.round(value))}
+                domain={[0, 'auto']}
+                series={[{ key: 'alive', name: 'Foragers alive', color: palette.household }]}
+              />
+              <TimeChart
+                data={days}
+                height={120}
+                format={(value) => `${Math.round(value / 1000)}k`}
+                series={[
+                  { key: 'reserve', name: `${name}’s reserve at day’s end`, color: palette.accent },
+                  { key: 'stock', name: 'Food per patch, on average', color: palette.positive, dashed: true },
+                ]}
+              />
+            </>
           ) : (
             <p className="life-note">The chart starts after the first full day.</p>
           )}
           <form className="life-setup" onSubmit={applySetup}>
-            <label>
-              Seed
-              <input
-                inputMode="numeric"
-                value={draft.seed}
-                onChange={(change) => setDraft({ ...draft, seed: change.target.value })}
-              />
-            </label>
-            <label>
-              Patches
-              <input
-                inputMode="numeric"
-                value={draft.patchCount}
-                onChange={(change) => setDraft({ ...draft, patchCount: change.target.value })}
-              />
-            </label>
-            <label>
-              Regrowth, kcal/h
-              <input
-                inputMode="numeric"
-                value={draft.patchRegrowthKcalPerHour}
-                onChange={(change) => setDraft({ ...draft, patchRegrowthKcalPerHour: change.target.value })}
-              />
-            </label>
+            {SETUP_FIELDS.map(({ key, label }) => (
+              <label key={key}>
+                {label}
+                <input
+                  inputMode="numeric"
+                  value={draft[key]}
+                  onChange={(change) => setDraft({ ...draft, [key]: change.target.value })}
+                />
+              </label>
+            ))}
             <button type="submit">Reset</button>
           </form>
           {setupError && (
@@ -328,8 +387,13 @@ export default function LifeApp() {
             </p>
           )}
           <p className="life-note">
-            Running seed {setup.seed} with {setup.patchCount} patches regrowing {setup.patchRegrowthKcalPerHour} kcal an
-            hour each.
+            Running seed {setup.seed}: {setup.bandSize} foragers who see{' '}
+            {seesEverything(state)
+              ? 'every patch'
+              : setup.perceptionRadiusTiles === 0
+                ? 'only their own tile'
+                : `${setup.perceptionRadiusTiles} tiles around them`}
+            , on {setup.patchCount} patches regrowing {setup.patchRegrowthKcalPerHour} kcal an hour each.
           </p>
         </details>
       </section>
@@ -337,18 +401,15 @@ export default function LifeApp() {
   )
 }
 
-function stringify(setup: Setup): Record<keyof Setup, string> {
-  return {
-    seed: String(setup.seed),
-    patchCount: String(setup.patchCount),
-    patchRegrowthKcalPerHour: String(setup.patchRegrowthKcalPerHour),
-  }
+function stringify(setup: Setup) {
+  return Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, String(setup[key])])) as Record<keyof Setup, string>
 }
 
-function snap(pair: DisplayPair, interpolate: boolean): Snapshot {
+function snap(pair: DisplayPair, followed: number, interpolate: boolean): Snapshot {
   return {
     pair,
-    energyKcal: displayedEnergy(pair, interpolate),
+    followed,
+    energyKcal: displayedEnergy(pair, followed, interpolate),
     hours: interpolate ? displayHours(pair) : pair.next.tick,
   }
 }

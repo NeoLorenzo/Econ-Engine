@@ -21,6 +21,10 @@ export interface LifeConfig {
   initialReserveKcal: number
   hungryBelowKcal: number
   satiatedAtKcal: number
+  /** The number of foragers at the start. There are no births. */
+  bandSize: number
+  /** A forager sees every patch within this Manhattan distance of its tile; 0 is its own tile only. */
+  perceptionRadiusTiles: number
 }
 
 export interface Tile {
@@ -34,7 +38,7 @@ export interface Patch {
   stockKcal: number
 }
 
-/** What the forager last saw at a patch. It never learns a stock it did not observe. */
+/** What a forager last saw at a patch. It never learns a stock it did not observe. */
 export interface PatchMemory {
   stockKcal: number
   observedTick: number
@@ -45,6 +49,8 @@ export type ForagerAction = 'sleep' | 'rest' | 'forage' | 'walk'
 export type ActionReason = 'night' | 'satiated' | 'foraging' | 'seeking food' | 'waiting for regrowth'
 
 export interface Forager {
+  /** Its index in the band. */
+  id: number
   position: Tile
   energyKcal: number
   hungry: boolean
@@ -57,6 +63,7 @@ export interface Forager {
 
 export interface ActionEvent {
   kind: 'action'
+  foragerId: number
   tick: number
   action: ForagerAction
   reason: ActionReason
@@ -72,6 +79,7 @@ export interface ActionEvent {
 
 export interface DeathEvent {
   kind: 'death'
+  foragerId: number
   tick: number
   cause: 'starvation'
 }
@@ -80,18 +88,22 @@ export type LifeEvent = ActionEvent | DeathEvent
 
 export type ActionHours = Record<ForagerAction, number>
 
+/** One day of the band. Hours, food and energy are summed over every forager that acted. */
 export interface DaySummary {
   day: number
   hours: ActionHours
   gatheredKcal: number
   spentKcal: number
-  endEnergyKcal: number
+  /** Foragers alive at the end of the day, and how many died during it. */
+  alive: number
+  deaths: number
   totalPatchStockKcal: number
-  alive: boolean
+  /** Every forager's reserve at the end of the day, indexed by forager ID. */
+  endEnergyKcal: number[]
 }
 
 export interface EnergyTotals {
-  /** Patch stock plus the reserve at tick 0. */
+  /** Patch stock plus every reserve at tick 0. */
   initialKcal: number
   regrownKcal: number
   metabolizedKcal: number
@@ -103,10 +115,11 @@ export interface LifeState {
   /** The next tick to run. Tick `t` covers hour `t mod 24` of day `floor(t / 24)`. */
   tick: number
   patches: Patch[]
-  forager: Forager
+  /** Indexed by forager ID. Dead foragers stay in the band. */
+  foragers: Forager[]
   totals: EnergyTotals
-  /** The action taken in the last tick run, or null before the first. */
-  lastEvent: ActionEvent | null
+  /** The actions taken in the last tick run, in turn order; empty before the first tick and once all are dead. */
+  lastEvents: ActionEvent[]
   /** Recent events, one array per day, oldest first, at most `EVENT_HISTORY_DAYS` days. */
   eventDays: LifeEvent[][]
   /** Every completed day. */

@@ -2,12 +2,24 @@ import { mixSeed, normalizeSeed, randomInt, seededShuffle } from '../sim/rng'
 import type { LifeConfig, Patch, Tile } from './types'
 
 const LAYOUT_STREAM_SALT = 0x4c49_4645
+const TURN_ORDER_STREAM_SALT = 0x5455_524e
 
-/** The layout is the only random draw in Life 0, so it has the only stream. */
+/** Patches and starting tiles. */
 export const deriveLayoutSeed = (seed: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ LAYOUT_STREAM_SALT) >>> 0))
 
-export function generateLayout(config: LifeConfig): { patches: Patch[]; start: Tile } {
+/** The turn order of hour `tick`. It depends on the hour, not on earlier draws, so any hour's order stands alone. */
+export const deriveTurnOrderSeed = (seed: number, tick: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ TURN_ORDER_STREAM_SALT ^ mixSeed(tick)) >>> 0))
+
+/** Every forager ID in the order they take their turns in hour `tick`. Dead foragers are skipped by the caller. */
+export const turnOrder = (seed: number, tick: number, bandSize: number) =>
+  seededShuffle(
+    Array.from({ length: bandSize }, (_, id) => id),
+    deriveTurnOrderSeed(seed, tick),
+  ).values
+
+export function generateLayout(config: LifeConfig): { patches: Patch[]; starts: Tile[] } {
   const tiles: Tile[] = []
   for (let y = 0; y < config.gridHeight; y += 1) for (let x = 0; x < config.gridWidth; x += 1) tiles.push({ x, y })
   const shuffled = seededShuffle(tiles, deriveLayoutSeed(config.seed))
@@ -16,9 +28,16 @@ export function generateLayout(config: LifeConfig): { patches: Patch[]; start: T
     tile,
     stockKcal: config.initialPatchStockKcal,
   }))
-  // Drawn from every tile, so the forager may start on a patch; on a one-tile world it always does.
-  const start = tiles[randomInt(shuffled.state, tiles.length).value]!
-  return { patches, start }
+  // Drawn from every tile, one forager after another, so foragers may start on a patch or on the same tile. Forager 0
+  // is drawn first and starts where Life 0's forager did.
+  const starts: Tile[] = []
+  let state = shuffled.state
+  for (let id = 0; id < config.bandSize; id += 1) {
+    const draw = randomInt(state, tiles.length)
+    state = draw.state
+    starts.push(tiles[draw.value]!)
+  }
+  return { patches, starts }
 }
 
 export const isDaylight = (config: LifeConfig, tick: number) => {

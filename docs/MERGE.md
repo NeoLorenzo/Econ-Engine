@@ -120,22 +120,18 @@ The [step 0 specification](LIFE0_SPEC.md) settled the tick (one hour), how decis
 - Whether the project is renamed, for example to Life Engine, once the merged core is the main line of work.
 - Which, if any, of Life Engine's low-poly art (trees, rocks, human models) is converted to glTF for the three.js world.
 
-## Step 1: open questions
+## Step 1: settled
 
-Step 1 puts several foragers on one landscape. Life 0's [lab notes](../LAB_NOTES.md) give it a sharper question: alone, a forager's out-of-date memory cost almost nothing, because a remembered patch can only have grown. With others eating, a patch remembered as full may have been emptied. Does the cost of local knowledge then rise sharply?
+The [step 1 specification](LIFE1_SPEC.md) settled step 1's open questions:
 
-The step 1 specification must settle:
+- **Who acts first:** a seeded shuffle of the band every hour, from its own stream.
+- **Births:** none until step 5. Bands start above or below capacity and can only shrink.
+- **Perception:** every patch within a radius, 2 tiles by default. Other foragers are not perceived or remembered yet.
+- **Carrying capacity in theory:** `K = 24·n·r / D*`, together with a search capacity `Kₛ`, the number the land could feed if every forager searched all day.
+- **One forager reproduces Life 0:** a band of one matches checksums recorded from Life 0's code.
+- **The observer:** it follows one forager at a time and draws up to 100 without instancing.
 
-- **Who acts first.** When two foragers want the same patch in the same hour, the order of actions decides who eats. The order must be deterministic and must not favour low IDs. Options include a seeded shuffle each tick, from a new named stream, or simultaneous claims split by a stated rule.
-- **Births.** The ladder asks whether the population settles at the land's carrying capacity, but births belong to step 5. With deaths alone, a population can only fall towards capacity. The specification chooses deliberately, either starting the band above capacity or bringing a minimal birth rule forward, and says what that choice means for the question.
-- **What foragers perceive.** This covers how far a forager sees patches and other foragers, and whether it remembers other foragers as well as patches.
-- **Carrying capacity in theory.** Extend `theory.ts` so experiments have a benchmark. Ignoring travel, `n` patches regrowing `r` kcal an hour feed at most `24·n·r / D*` foragers, where `D*` is one forager's daily need (about 2,182 kcal by default).
-- **One forager must reproduce Life 0.** The state's single `forager` becomes a list. A band of one must reproduce the Life 0 trajectory bit-for-bit, which makes the generalization a verifiable refactor.
-- **The observer.** `src/lifeView/` assumes one forager throughout: `state.forager` in the HUD, the pose, the inspector and the target ring. It needs:
-  - a way to follow one forager;
-  - a HUD for the forager being followed;
-  - an inspector that compares a patch with that forager's memory;
-  - instanced drawing if the band is large.
+The answer to the step's question is that a band does not settle at `K`: it collapses below `Kₛ`, because searching for food burns more than the land regrows. The [lab notes](../LAB_NOTES.md) record the open questions this leaves for step 2.
 
 ## References
 

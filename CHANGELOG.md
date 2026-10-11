@@ -2,6 +2,44 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE1-Band-029] - (2026-10-11)
+
+### Added
+
+- **Life 1, a band.** The Life core implements the [Life 1 specification](docs/LIFE1_SPEC.md):
+  - many foragers share one landscape, 40 by default on a 24×24 grid with 36 patches;
+  - each hour, the living foragers take turns in a seeded random order drawn afresh for that hour, from a new turn-order stream;
+  - each forager sees every patch within a perception radius (2 tiles by default) and updates its memory of them;
+  - a walking forager that sees its target emptied chooses again;
+  - there are no births, so a band can only shrink.
+
+  Energy is conserved exactly across the band and checked every hour, along with one turn per living forager and memories that match what each forager saw at the start of its turn.
+- **Theory.** `theory.ts` adds the carrying capacity `K = 24·n·r / D*` (19.8 foragers on the canonical world) and the search capacity `Kₛ`, the number the land could feed if every forager walked all day (10.0).
+- **Experiments.** A band of one reproduces Life 0, checked against checksums recorded from Life 0's code. Four new experiments cover carrying capacity, the cost of local knowledge in a band, the cost of searching, and who survives.
+- **The observer follows one forager.** Click a forager, or use the previous and next buttons, to follow it:
+  - the followed forager is drawn in the accent colour, with its target and the outline of what it can see;
+  - the HUD shows how many of the band are alive and the followed forager's activity and reserve;
+  - the inspector compares a patch with that forager's memory;
+  - charts show the number alive and the forager's reserve.
+
+  Foragers sharing a tile stand apart, and the dead lie where they fell. Setup adds the band size, up to 100, and the perception radius.
+
+### Changed
+
+- The default configuration is the Life 1 world. `LIFE0_WORLD` gives back Life 0, and Life 0's experiments run on it unchanged.
+- `stepLife` records every action of the hour in `lastEvents`, in turn order, in place of a single `lastEvent`. Events carry the forager's ID. Daily summaries count the living and the dead and keep every forager's end-of-day reserve.
+- `life.html` is retitled "Life 1 · Econ Engine". The README's Life section covers both steps, with a new screenshot replacing Life 0's.
+- The merge document's step 1 open questions are marked settled.
+- The MVP9 top bar's link to the Life page now reads "Life 1". The owner approved this one change to the frozen MVP9 observer; it changes no simulation.
+
+### Validation
+
+- **A band of one is Life 0:** seven Life 0 runs, five that survive and two that starve, reproduce their checksums exactly.
+- **Carrying capacity:** on all eight seeds, a band of 10 stays intact and a band of 20 does not. The largest intact band is 12–13, between `Kₛ` and `K`. A band of 40 collapses to 4–8 by day 14 and stays there.
+- **Local knowledge:** seeing only its own tile, a band of 10 walks to emptied patches on 11–24% of its walks. With full information no walk ends at an empty patch, but a band of 40 still collapses.
+- **Searching:** with walking as cheap as resting, 14–16 of 40 survive instead of 4–8.
+- No file under `src/sim/` changed. `npm run agent:check` passes. In the browser, the collapse, following a forager by click and by button, the inspector, setup validation and the 375px layout were checked, with no console errors.
+
 ## [LIFE0-Forager-028] - (2026-10-11)
 
 ### Added

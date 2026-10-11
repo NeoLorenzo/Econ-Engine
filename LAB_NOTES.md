@@ -6,6 +6,44 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE1-Band-029] - (2026-10-11)
+
+### Problem
+
+Step 1 of the bottom-up core puts many foragers on one landscape. Does the band settle at the land's carrying capacity, and how does competition for patches spread wellbeing? Life 0 left a sharper question: alone, out-of-date memory cost almost nothing, because a remembered patch could only have grown. With others eating, a patch remembered as full may have been emptied. Does local knowledge then become costly?
+
+### Decisions
+
+- **No births.** The owner agreed to leave births to step 5. A minimal birth rule would need an arbitrary threshold, and that threshold would set the population the band settles at. Without births a band can only shrink, so the question becomes whether it thins to capacity or collapses below it.
+- **A fresh turn order every hour.** Foragers act one at a time in a seeded shuffle. It favours no one in the long run and keeps Life 0's rule that a forager forages only a patch it has just seen holding a full hour's harvest. The order's seed comes from the run seed and the hour, so any hour's order stands alone. Simultaneous claims split by a rule were the alternative; they would need integer rounding and would break the full-hour rule.
+- **Perception as a radius over patches only.** Radius 0 is Life 0's forager, and a radius covering the grid gives full information as a free counterfactual. Other foragers are not perceived, because no rule would use them yet.
+- **One new rule.** A walking forager that sees its target emptied chooses again. At radius 0 it never fires, which keeps a band of one identical to Life 0.
+- **A band of one must reproduce Life 0 bit for bit.** Checksums of seven Life 0 runs were recorded from the old code before any change. The refactor reproduces all of them.
+- **A prototype before the spec.** A throwaway scratchpad version found the collapse and the search-capacity bracket before the spec was written, so the spec could state them as predictions. The implementation's turn-order stream differs from the prototype's, so the exact counts moved a little; the conclusions did not.
+
+### Findings
+
+- **The band does not settle at carrying capacity; it collapses well below it.** On the canonical world (`K ≈ 19.8`):
+  - the largest band that survives 400 days intact is 12–13 on the eight seeds;
+  - a band of 20 loses 11–14 foragers;
+  - a band of 40 falls to 4–8 survivors, 20–40% of `K`, all deaths coming between days 9 and 14. The survivors then live comfortably on a land that is mostly unused.
+- **Searching is what kills.** Once patches thin, hungry foragers spend most of their daylight walking towards patches someone else has emptied. Walking costs 300 kcal an hour against 90 for resting, so the band burns more than the land regrows and starves with food still on the ground, spread too thinly for a full hour's harvest. In the prototype, on the day before the first deaths, 9 foragers spent 95 of their 108 daylight hours walking. Making walking as cheap as resting lets 14–16 of 40 survive instead of 4–8, which confirms the mechanism rather than just describing the outcome.
+- **A simple bracket.** If every forager walked through every daylight hour, the land could feed `Kₛ = 24·n·r / (N·s + L·τ)` foragers, 10 here. On every seed, and on three other landscapes tried in the prototype, the largest intact band lay between `Kₛ` and `K`, and the survivors of a collapse numbered no more than `Kₛ`. Survivors stayed at or below `Kₛ` at every walking cost tested too.
+- **Local knowledge now costs something, but more knowledge is not the cure.** Seeing only its own tile, a band of 10 walks to emptied patches on 11–24% of its walks; alone, the forager never did. With full information no walk ends at an empty patch, and the largest intact band rises only from 11–13 to 13–14. After an overshoot, full information makes the collapse worse: a mean of 3.1 survivors from 40, against 5.3 seeing only their own tile. Every hungry forager heads for the same fullest patch.
+- **Who survives is luck.** Survivors started 2.6 tiles from the nearest patch on average and the dead 2.5. The prototype had suggested survivors started closer; the implementation does not bear that out. After the collapse, survivors forage 1.85–1.91 hours a day and walk 0.17–0.41, much like the lone forager. Competition decides who lives, not how well the living live.
+
+### Trade-offs
+
+- With 40 foragers, checking every invariant every hour costs about twice the step itself. Experiments 2 to 4 live in their own test files so they run in parallel; the Life tests take about 20 seconds.
+- Dead foragers stay in the state and are drawn lying down. A long run accumulates them, which is accurate but cluttered.
+
+### Open questions
+
+- Would a rule that waits on a thinning patch instead of searching avoid the collapse? It needs some sense of how fast patches regrow, which suggests learning from experience (design rule 10) rather than a fixed rule.
+- With births (step 5), does the band oscillate around `Kₛ` in boom and bust, or settle?
+- Would telling others where food is help, or make the herding worse, as full information does here?
+- Sharing food (step 2) could smooth the hunger that sends everyone searching at once. Does it raise the band the land can carry?
+
 ## [LIFE0-Forager-028] - (2026-10-11)
 
 ### Problem

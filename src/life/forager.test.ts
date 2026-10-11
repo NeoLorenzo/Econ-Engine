@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LIFE_DEFAULT_CONFIG } from './config'
-import { choosePatch, decide, nextHungerMode, observe } from './forager'
+import { choosePatch, decide, nextHungerMode, observe, walkTarget } from './forager'
 import type { Forager, Patch, Tile } from './types'
 
 const config = LIFE_DEFAULT_CONFIG
@@ -10,6 +10,7 @@ const MIDNIGHT = 0
 const patch = (id: number, x: number, y: number, stockKcal = 8_000): Patch => ({ id, tile: { x, y }, stockKcal })
 
 const forager = (position: Tile, overrides: Partial<Forager> = {}): Forager => ({
+  id: 0,
   position,
   energyKcal: 10_000,
   hungry: true,
@@ -30,17 +31,28 @@ describe('hunger', () => {
 })
 
 describe('observation', () => {
-  it('records only the patch the forager stands on', () => {
-    const patches = [patch(0, 0, 0, 500), patch(1, 3, 3, 7_000)]
-    const memory = [
-      { stockKcal: 8_000, observedTick: 0 },
-      { stockKcal: 8_000, observedTick: 0 },
-    ]
-    expect(observe(forager({ x: 0, y: 0 }, { memory }), patches, 30)).toEqual([
+  const patches = [patch(0, 0, 0, 500), patch(1, 3, 3, 7_000)]
+  const memory = [
+    { stockKcal: 8_000, observedTick: 0 },
+    { stockKcal: 8_000, observedTick: 0 },
+  ]
+  const radius = (perceptionRadiusTiles: number) => ({ ...config, perceptionRadiusTiles })
+
+  it('at radius 0, records only the patch the forager stands on', () => {
+    expect(observe(radius(0), forager({ x: 0, y: 0 }, { memory }), patches, 30)).toEqual([
       { stockKcal: 500, observedTick: 30 },
       { stockKcal: 8_000, observedTick: 0 },
     ])
-    expect(observe(forager({ x: 1, y: 1 }, { memory }), patches, 30)).toBe(memory)
+    expect(observe(radius(0), forager({ x: 1, y: 1 }, { memory }), patches, 30)).toBe(memory)
+  })
+
+  it('sees a patch exactly at the radius, and none beyond it', () => {
+    // Patch 1 is 4 tiles from (1, 1) and 6 from (0, 0).
+    expect(observe(radius(4), forager({ x: 1, y: 1 }, { memory }), patches, 30)).toEqual([
+      { stockKcal: 500, observedTick: 30 },
+      { stockKcal: 7_000, observedTick: 30 },
+    ])
+    expect(observe(radius(5), forager({ x: 0, y: 0 }, { memory }), patches, 30)[1]).toBe(memory[1])
   })
 })
 
@@ -72,6 +84,31 @@ describe('decision rules', () => {
       action: 'rest',
       reason: 'waiting for regrowth',
     })
+  })
+})
+
+describe('the walking target', () => {
+  const patches = [patch(0, 0, 0, 4_000), patch(1, 4, 0, 0)]
+  const memory = (targetSeenAt: number, targetStock: number) => [
+    { stockKcal: 4_000, observedTick: 0 },
+    { stockKcal: targetStock, observedTick: targetSeenAt },
+  ]
+
+  it('is kept until reached, unless it was just seen holding less than a full hour’s harvest', () => {
+    const walking = (targetSeenAt: number, targetStock: number) =>
+      forager({ x: 2, y: 0 }, { targetPatchId: 1, memory: memory(targetSeenAt, targetStock) })
+    // Seen empty before this hour, or seen full this hour: it walks on.
+    expect(walkTarget(config, walking(5, 0), patches, 12)?.id).toBe(1)
+    expect(walkTarget(config, walking(12, 1_200), patches, 12)?.id).toBe(1)
+    // Seen empty this hour: it chooses again.
+    expect(walkTarget(config, walking(12, 1_199), patches, 12)?.id).toBe(0)
+  })
+
+  it('is chosen afresh with no target or on arrival', () => {
+    const fresh = forager({ x: 2, y: 0 }, { memory: memory(0, 0) })
+    expect(walkTarget(config, fresh, patches, 12)?.id).toBe(0)
+    const arrived = forager({ x: 4, y: 0 }, { targetPatchId: 1, memory: memory(12, 0) })
+    expect(walkTarget(config, arrived, patches, 12)?.id).toBe(0)
   })
 })
 

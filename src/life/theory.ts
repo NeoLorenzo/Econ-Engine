@@ -1,8 +1,8 @@
 import type { LifeConfig } from './types'
 
 /**
- * What the forager's rules imply on a single patch, where it never walks, sleeps every night hour and rests every
- * daylight hour it does not forage. Experiments compare measured behaviour with these; the forager never uses them.
+ * What the foragers' rules imply. On a single patch a forager never walks, sleeps every night hour and rests every
+ * daylight hour it does not forage. Experiments compare measured behaviour with these; foragers never use them.
  */
 export function lifeTheory(config: LifeConfig) {
   const daylight = config.duskHour - config.dawnHour
@@ -16,6 +16,9 @@ export function lifeTheory(config: LifeConfig) {
   const dailyNeedKcal = forageHoursPerDay * g
   /** Below this regrowth rate a single patch cannot feed the forager, which eats all of it, `24·r` a day. */
   const singlePatchThresholdKcalPerHour = dailyNeedKcal / 24
+  const dailyRegrowthKcal = 24 * config.patchCount * config.patchRegrowthKcalPerHour
+  /** A day spent walking through every daylight hour, `N·s + L·τ`. */
+  const searchingDailyCostKcal = night * config.sleepKcalPerHour + daylight * config.travelKcalPerHour
   return {
     daylightHours: daylight,
     nightHours: night,
@@ -25,6 +28,11 @@ export function lifeTheory(config: LifeConfig) {
     singlePatchThresholdKcalPerHour,
     /** No forager, however well informed, survives below this rate per patch; walking only adds cost. */
     lowerBoundPerPatchKcalPerHour: singlePatchThresholdKcalPerHour / config.patchCount,
+    /** The most foragers the land can feed for long, however they behave: everything that regrows, `24·n·r` a day. */
+    carryingCapacity: dailyRegrowthKcal / dailyNeedKcal,
+    searchingDailyCostKcal,
+    /** How many foragers the land could feed if every one of them walked through every daylight hour. */
+    searchCapacity: dailyRegrowthKcal / searchingDailyCostKcal,
     dailyDeficitKcal: (regrowthKcalPerHour: number) =>
       fixedDailyCostKcal - (24 * regrowthKcalPerHour * netPerForageHour) / g,
     /**
