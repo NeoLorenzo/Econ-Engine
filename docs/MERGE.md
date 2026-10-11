@@ -63,7 +63,7 @@ Firms, posted-price markets, employment and payroll, Government and fiscal trans
 
 | Life Engine system | In the merged engine | First step |
 | --- | --- | --- |
-| Hunger (ghrelin in pg/mL) and sleep pressure (adenosine in nM) | An energy reserve in kilocalories and a fatigue level. Hormone units are dropped until a question needs them (design rule 27). | 0 |
+| Hunger (ghrelin in pg/mL) and sleep pressure (adenosine in nM) | An energy reserve in kilocalories. Sleep follows the night; a fatigue level is added when a question needs it. Hormone units are dropped until a question needs them (design rule 27). | 0 |
 | Day and night cycle, diurnal temperature curve | Simulated time of day, with light and temperature as functions of it | 0 |
 | Priority behaviour tree | Priority-ordered needs, with the reason for each action recorded in the ledger | 0 |
 | Perception: 15 m radius, 200° view, occlusion | A perception radius on the grid. Field of view and occlusion only if a question needs them. | 1 |
@@ -87,7 +87,7 @@ Each step adds one thing, answers one question that could come out either way, a
 
 | Step | Adds | Question | Validation |
 | --- | --- | --- | --- |
-| 0. One forager | One agent, one food that regrows on patches, energy and fatigue, day and night; actions: forage, eat, rest, sleep, move | Does a bounded agent keep itself alive, and does it stop working once its needs are met? | Exact energy conservation every tick. Analytical survival thresholds: the agent survives above the patch's sustainable yield and dies below it. |
+| 0. One forager | One agent, one food that regrows on patches, an energy reserve, day and night; actions: forage, eat, rest, sleep, move | Does a bounded agent keep itself alive, and does it stop working once its needs are met? | Exact energy conservation every tick. Analytical survival thresholds: the agent survives above the patch's sustainable yield and dies below it. |
 | 1. A band | Many agents on one landscape, perception and memory of patches | Does the population settle at the land's carrying capacity, and how does competition for patches spread wellbeing? | Deaths and steady-state population against the analytical carrying capacity; Sugarscape (Epstein and Axtell, 1996) as a reference. |
 | 2. Sharing | Variable yields, spoilage, the ability to give food, and memory of who gave | When does sharing emerge, and when does hoarding? | Theory predicts more sharing where yields are variable and food perishable (Kaplan and Hill, 1985; Winterhalder, 1986). Ensembles vary each factor alone, with a giving-disabled counterfactual. |
 | 3. Materials and tools | A second resource, conversion, recipes, tools, fire and shelter against cold, skills that differ and improve with practice | Do specialization and exchange emerge from differences in skill? | Comparative advantage predicts specialization once exchange is possible. Exact conservation through every conversion. |
@@ -114,7 +114,7 @@ The [vision](VISION.md) stands: primitives instead of institutions, the four lay
 
 ## Open decisions
 
-To be settled in the step 0 specification or later:
+To be settled in the step 0 specification or later. The [step 0 specification](LIFE0_SPEC.md) settles the tick (one hour), how decisions are made (priority rules), the new core's directory (`src/life/`) and the observer (a separate page).
 
 - The tick length, and whether the observer shows it hour by hour or in larger strides.
 - How decisions are made: fixed priority rules for bodily needs, bounded learning for choices such as where to forage, or both.
