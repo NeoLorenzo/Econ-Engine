@@ -2,6 +2,47 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE0-Forager-028] - (2026-10-11)
+
+### Added
+
+- **Life 0, the first step of the bottom-up core.** A new simulation in `src/life/`, independent of the MVP9 economy, implements the [Life 0 specification](docs/LIFE0_SPEC.md):
+  - one forager on a 12×12 grid with four food patches that deplete and regrow;
+  - an energy reserve in whole kilocalories;
+  - hourly ticks with day and night;
+  - priority rules: sleep at night, rest when fed, forage where a full hour's harvest is available, otherwise walk to the patch remembered as fullest or seen longest ago;
+  - a forager that knows only its own tile and what it last saw at each patch.
+
+  Energy is conserved exactly and checked every hour.
+- **Theory and experiments.** `theory.ts` derives the single-patch survival threshold (about 90.9 kcal/h), the foraging hours a day the forager needs (about 1.82), its predicted day of death below the threshold, and the four-patch lower bound (about 22.7 kcal/h per patch). `experiments.ts` runs the three experiments of the spec headless.
+- **The Life 0 observer.** A separate page, `life.html`, linked from the simulator's top bar and the README:
+  - The simulation advances in whole hours, and the view interpolates between hourly states: the forager walks its path tile by tile, lies down at dusk and gets up at dawn, bushes shrink and grow and change colour with their stock, and the sun and sky move continuously.
+  - A HUD shows the clock, the forager's activity and its reserve against the hunger thresholds.
+  - Clicking a bush compares what a patch really holds with what the forager remembers.
+  - A chart shows the end-of-day reserve and food on all patches; setup changes the seed, the number of patches and the regrowth rate.
+  - Speeds run from one hour per three seconds to ten days per second.
+- `.claude/launch.json` starts the dev server for browser previews.
+
+### Changed
+
+- The Life 0 specification now gives the day-of-death window with one night's regrowth allowed for, and defines a declining reserve with a 2 kcal-a-day tolerance; both came from running the experiments. Experiment 1 sweeps 46 to 136 kcal/h.
+- `vite.config.ts` builds both pages. The MVP9 top bar gains a "Life 0" link after its panel tabs.
+
+### Validation
+
+- All three experiments match the theory:
+  - **Threshold:** the forager starves at or below 81 kcal/h inside the predicted window, survives at or above 100, and its reserve stops declining exactly between 90 and 91.
+  - **Leisure:** it forages 1.81–1.82 hours a day at every abundance, against a predicted 1.818.
+  - **Local knowledge:** on the canonical world it dies on all eight seeds below the lower bound and survives on all of them at the canonical rate.
+- No file under `src/sim/` changed, so the MVP9 canonical trajectory is unchanged.
+- `npm run agent:check` passes. In the browser, walking, foraging, sleeping, the inspector, the chart and the 375px layout were checked, with no console errors on either page.
+
+## [MVP9-Life_Engine_Merge-027] - (2026-10-10)
+
+### Added
+
+- **Merge document.** [docs/MERGE.md](docs/MERGE.md) records the decision to merge Life Engine (a Unity project with embodied agents) into Econ-Engine and to keep TypeScript and three.js as the platform. A new simulation core will be built bottom-up, starting from a band of foragers, beside the frozen MVP9 core. The document sets out what carries over from each project, a seven-step ladder with a question and a validation target for each step, the risks and the open decisions. It replaces the vision's incremental path; VISION.md and the README now point to it. It is a direction document only; no simulation behaviour changed.
+
 ## [MVP9-Plots-026] - (2026-10-08)
 
 ### Changed

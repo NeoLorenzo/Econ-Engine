@@ -6,6 +6,63 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE0-Forager-028] - (2026-10-11)
+
+### Problem
+
+Step 0 of the bottom-up core: does a forager with only local knowledge and simple rules keep itself alive wherever the land could feed it, and how much of the land's capacity does it lose to travel and out-of-date knowledge? The owner also asked for the simulation to feel continuous, as Life Engine did in Unity, rather than visibly stepping.
+
+### Decisions
+
+- **Hourly ticks in the model, continuous time on screen.** Unity is not continuous either; it steps per frame and per physics tick, which is why Life Engine runs cannot be replayed. Life 0 keeps deterministic hourly steps and interpolates the display between two real states, so nothing on screen is invented. An event-driven model with exact action times stays in reserve for when agents meet and timing within an hour matters.
+- **Immutable hourly steps.** `stepLife` returns a new state, which lets the observer hold the states before and after the hour it is drawing. Events are kept one array per day so a step copies at most a day's events.
+- **Foraging only for a full hour's harvest.** Without this rule, a hungry forager on a nearly empty patch would spend 300 kcal an hour to gather 50, and the single-patch threshold would depend on how that waste played out. With it, every foraging hour gathers exactly 1,200 kcal and the threshold has a closed form.
+- **A one-tile world for the single-patch benchmark,** so the forager starts on its only patch and no opening walk distorts the predicted day of death.
+- **A separate page for the observer.** It shares the visual language of the MVP9 world but no state, so the frozen core and its observer are untouched apart from one link.
+
+### Findings
+
+- **The threshold matches the theory.** The reserve declines at every rate up to 90 kcal/h and at none from 91, against a predicted 90.9.
+- **The first prediction of the day of death was wrong.** A 5% tolerance around `E / deficit` failed: the forager died about 6% early. At death the patch may still hold food the forager never ate, up to one hour's harvest it was waiting for, plus a night's regrowth if it dies asleep. The window now runs from `(E − g − N·r) / deficit` to `E / deficit`, and every starving run falls inside it.
+- **A reserve's slope needs a tolerance.** A well-fed forager's reserve cycles between the hunger thresholds, so its least-squares slope wanders by about ±1.3 kcal a day. Sign alone misclassified well-fed runs as declining; a 2 kcal-a-day tolerance separates them from a forager losing 18 kcal a day at 90 kcal/h.
+- **Abundance does not raise working hours.** At 100 to 800 kcal/h the forager forages 1.81–1.82 hours a day, as predicted. It stops when fed.
+- **Local knowledge costs little when the forager is alone.** On the canonical world it survives with a reserve that is not declining at 24–26 kcal/h per patch on the eight seeds, 1.06–1.14 times the lower bound that no forager could beat. At the canonical 50 kcal/h:
+  - it forages 1.86–1.94 hours a day and walks 0.25–0.62;
+  - of its 65–67 trips over 400 days, none ended at a patch too empty to forage.
+- **Why local knowledge costs so little (hypothesis).** With no one else eating, a remembered patch can only have grown since it was last seen. Out-of-date memory therefore errs only by underestimating, which is the safe direction, and the remaining gap to the bound is mostly walking.
+
+### Open questions
+
+- With other foragers (step 1), memory can overestimate: a patch remembered as full may have been emptied by someone else. Does the cost of local knowledge then rise sharply, and does sharing information about patches start to pay?
+- Is the near-zero cost robust to fewer, richer patches or larger distances, or specific to this landscape?
+
+## [MVP9-Life_Engine_Merge-027] - (2026-10-10)
+
+### Problem
+
+The owner proposed stepping back from the MVP9 economy and returning to basics: identify the earliest economy in human history, model its agents, get it running, and only then add complexity. The engine has no target era; it models agents managing scarcity. Looking at Life Engine, a separate Unity project with embodied agents, the owner expected the two projects to converge and wanted them to: the goal is one simulation of life, with economics as one part. That raised a platform decision. The owner does not write code, so all of it is written by Claude Code, and leaned towards three.js in the browser while wondering whether Unity would be faster.
+
+### Decisions
+
+- **Merge into Econ-Engine; keep the browser.** Rendering speed was not decisive. Life Engine's simulation runs inside Unity's frame loop, with physics steering, raycast perception and unseeded randomness, so it cannot be replayed, run headless or repeated across seeds. Econ-Engine's core is already separate from its view. Claude Code can validate the TypeScript project headless in seconds and inspect it in a browser, whereas much of a Unity project lives in the editor. Life Engine is frozen as a design reference; its ideas are ported, not its code.
+- **Bottom-up instead of top-down.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time. Those institutions are the current engine, so every intermediate version would be a modern economy with parts missing. A new core starting from the economy with the fewest institutions, a forager band, reaches the vision's goal more directly. The MVP9 core stays as a reference.
+- **The earliest economy as a guide, not a period.** Foraging bands are the starting point because they have no money, prices, firms or government, not because the engine models prehistory.
+- **No barter assumption.** The barter-first story has little evidence behind it (Humphrey, 1985; Graeber, 2011). Agents may keep, give or swap; which prevails is an outcome.
+- **The individual as the agent.** Life Engine's embodied individual replaces the household. Its hormone-level physiology is reduced to energy and fatigue until a question needs more.
+- **A ladder of questions.** Seven steps, each with a question that could come out either way and a validation target from theory: survival and leisure, carrying capacity, sharing under risk and spoilage, specialization, property, Malthusian dynamics, and the emergence of a medium of exchange.
+
+### Trade-offs
+
+- Most of `src/sim` (firms, markets, payroll, Government) is unused by the early steps. The infrastructure carries over: RNG streams, invariants, the ledger, ensembles and the observer.
+- Sugarscape already covered much of the first three steps. The new core's contribution must come from exact accounting, the causal ledger, perception-limited information and rules as data.
+- The browser lacks Unity's animation, physics and terrain tooling. The simulation does not need them; the view can add web equivalents if wanted.
+
+### Open questions
+
+- The tick length, and whether bodily needs follow fixed priority rules, bounded learning, or both.
+- The new core's directory and name, whether the observer shows both cores, and whether the MVP9 core is eventually retired.
+- Whether the project should be renamed once the merged core is the main line of work.
+
 ## [MVP9-Plots-026] - (2026-10-08)
 
 ### Problem

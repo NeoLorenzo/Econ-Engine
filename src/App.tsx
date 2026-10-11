@@ -219,6 +219,9 @@ export default function App() {
                 {label}
               </button>
             ))}
+            <a className="tabs-link" href="life.html" title="Life 0: the bottom-up core, one forager">
+              Life 0
+            </a>
           </nav>
           <div className="controls" role="group" aria-label="Simulation controls">
             <span className={`run-status${running ? ' is-running' : ''}`}>
