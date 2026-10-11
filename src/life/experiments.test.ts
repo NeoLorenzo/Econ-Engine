@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE0_WORLD, LIFE1_WORLD, LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE0_WORLD, LIFE1_WORLD, LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import {
   bandOfOneExperiment,
   EXPERIMENT_SEEDS,
   isSustained,
   leisureExperiment,
   life1ReproducedExperiment,
+  life2ReproducedExperiment,
   localKnowledgeExperiment,
   runLife,
   singlePatchThresholdExperiment,
@@ -34,12 +35,13 @@ describe('theory', () => {
   })
 
   it('derives the risk of windfalls on the canonical Life 2 world', () => {
-    const theory = lifeTheory(LIFE_DEFAULT_CONFIG)
+    const life2 = { ...LIFE_DEFAULT_CONFIG, ...LIFE2_WORLD }
+    const theory = lifeTheory(life2)
     expect(theory.carryingCapacity).toBeCloseTo(17.6, 1)
     expect(theory.searchCapacity).toBeCloseTo(8.9, 1)
     expect(theory.harvestSuccessProbability).toBe(0.2)
     expect(theory.triesPerHungrySpell).toEqual({ min: 37, max: 40 })
-    const bigWindfall = lifeTheory({ ...LIFE_DEFAULT_CONFIG, harvestKcal: 24_000 }).starvationPerSpell()
+    const bigWindfall = lifeTheory({ ...life2, harvestKcal: 24_000 }).starvationPerSpell()
     expect(bigWindfall.low).toBeCloseTo(0.1285, 4)
     expect(bigWindfall.high).toBeCloseTo(0.1499, 4)
     expect(theory.roomWhenHungryKcal).toBe(6_000)
@@ -123,5 +125,11 @@ describe('Life 1 experiment 1: a band of one is Life 0', () => {
 describe('experiment 1: Life 1 reproduced', () => {
   it('reproduces Life 1’s checksums on Life 1’s world', () => {
     for (const { actual, expected } of life1ReproducedExperiment()) expect(actual).toBe(expected)
+  })
+})
+
+describe('Life 3 experiment 1: Life 2 reproduced', () => {
+  it('reproduces Life 2’s checksums on Life 2’s world', () => {
+    for (const { actual, expected } of life2ReproducedExperiment()) expect(actual).toBe(expected)
   })
 })

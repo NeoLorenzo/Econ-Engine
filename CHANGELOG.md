@@ -2,6 +2,40 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE3-Specialization-031] - (2026-10-11)
+
+### Added
+
+- **Life 3, specialization.** The Life core implements the [Life 3 specification](docs/LIFE3_SPEC.md):
+  - nights are cold: a forager sleeping without a fire burns 150 kcal an hour instead of 60, and burns a unit of wood an hour at its own hearth to sleep warm;
+  - wood grows in 8 groves that deplete and regrow, and a forager short of wood (below one night's 12 units) gathers until it holds two nights' worth;
+  - each forager has a foraging skill and a wood skill, drawn from 50% to 150% from a stream of their own and fixed for the run;
+  - at camp, two foragers may swap wood for food at the midpoint of what wood costs each of them in working time, only when both gain; foragers who could both gain tell each other the terms, and remember the last terms they heard for a day;
+  - a hungry forager gathers wood to sell when the terms it remembers pay better than foraging, but only once all its spare wood has sold, and a forager short of wood forages to buy it when that pays better than gathering.
+
+  Wood is conserved exactly beside energy. The invariants also check every swap and quote against the two foragers' own terms and every swap against what each held, gathering and burning against their rules, and remembered terms against the hour's swaps and quotes.
+- **Theory.** `theory.ts` adds a night's wood, what a unit of wood saves and costs, the hours a forager spends gathering without trade, and the share of its work it spends gathering, which rises with its own terms without trade; comparative advantage predicts the opposite with it.
+- **Experiments.** Life 2 reproduced from recorded checksums; wood and cold with equal skills; comparative advantage with swapping off and on; the spread of skills; and telling terms, with steady harvests and with windfalls.
+- **The observer shows specialization.** Groves are trees whose crowns shrink as they are cut. A stack of logs shows a forager's wood, and each sleeper has its own hearth, lit while it burns wood and dark when it sleeps cold. A swap is an arc with a log and a parcel crossing it. Foragers are coloured from cyan, relatively good at gathering, to gold, relatively good at foraging. The HUD adds a forager's skills, what wood costs it, its wood, the terms it heard and what it has swapped; the inspector shows groves. A new chart plots each forager's share of work spent gathering against what wood costs it; another shows wood swapped, hours slept cold and the band alive each day. Setup adds the skill range, groves, and switches for swapping and telling terms.
+
+### Changed
+
+- The default configuration is the Life 3 world: 8 keepers on Life 2's land, with groves, cold nights, skills from 50% to 150%, steady harvests (`harvestKcal` 600, the slowest rate) and swapping. `LIFE2_WORLD` gives back Life 2, and `LIFE1_WORLD` now builds on it.
+- A forager's harvest is the larger of `harvestKcal` and its own rate, and `forageSucceeds` takes that rate. Life 2's rule `forageKcalPerHour ≤ harvestKcal ≤ patchCapacityKcal` gives way to rules that a patch holds the largest harvest and a grove the largest hour of gathering.
+- `decide` and `walkTarget` take the groves, and `walkTarget` the good the forager works for; `choosePatch` takes the forager's harvest, and `chooseGrove` shares its logic. Action events add wood gathered and burned, whether the forager slept cold, the good it worked for, whether for trade, and its wood afterwards. New swap and quote events, `lastSwaps` and `lastQuotes`, and daily totals of wood gathered, burned and swapped, cold hours and swaps.
+- A turn ends with exchange (swaps, then gifts) and eating again, in which a seller eats the food it received. This changes nothing in Life 2, where a forager that still carries food has a full reserve.
+- `life.html` is retitled "Life 3 · Econ Engine". The README's Life section covers Life 3, with a new screenshot replacing Life 2's.
+- The MVP9 top bar's link to the Life page now reads "Life 3". The owner approved this one change to the frozen MVP9 observer; it changes no simulation.
+- The merge document's ladder splits step 3: "Wood and skill" is step 3 and "Tools and practice" a new step 4; later steps move down by one. It records step 3 as settled.
+
+### Validation
+
+- **Life 2 reproduced:** three Life 2 runs match their checksums exactly, gifts included, and Life 0's, Life 1's and Life 2's experiments pass unchanged on their worlds.
+- **Wood and cold:** with equal skills nothing is swapped, every hour is identical with swapping on and off, and the band of 8 is intact on every seed, sleeping cold 11% of its night hours.
+- **Comparative advantage:** over 32 seeds, the correlation between own terms and time spent gathering turns from +0.90 to −0.78 with swaps; the two best gatherers' share of the band's wood rises from 33% to 69%; survivors average 7.5 against 6.9, and the least skilled third survives 80% of the time against 52%.
+- **Telling terms:** with quotes off and steady harvests no swap ever happens; with windfalls swaps start, but specialization stays weak.
+- No file under `src/sim/` changed. `npm run agent:check` passes; the Life tests now take about two minutes. In the browser, trees, logs, hearths, a swap's arc, the new charts and HUD, setup validation and the 375px layout were checked, with no console errors.
+
 ## [LIFE2-Sharing-030] - (2026-10-11)
 
 ### Added

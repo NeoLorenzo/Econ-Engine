@@ -1,4 +1,5 @@
 import type { LifeConfig } from './types'
+import { nightWood } from './wood'
 
 /**
  * What the foragers' rules imply. On a single patch a forager never walks, sleeps every night hour and rests every
@@ -63,6 +64,22 @@ export function lifeTheory(config: LifeConfig) {
      * hour, so over a shelf life it can use about this much of what it carries. A keeper's surplus beyond it spoils.
      */
     usableCarriedKcal: (shelfLifeHours: number) => (fixedDailyCostKcal / 24) * shelfLifeHours,
+    /** The wood burned for one warm night. */
+    nightWood: nightWood(config),
+    /** What a unit of wood saves when burned, in kilocalories. */
+    woodValueKcal: (config.coldSleepKcalPerHour - config.sleepKcalPerHour) / config.fireWoodPerHour,
+    /** What gathering a unit costs a forager beyond resting, not counting the walk. */
+    woodCostKcal: (woodRate: number) => (config.forageCostKcalPerHour - config.restKcalPerHour) / woodRate,
+    /** Daylight hours a day spent gathering by a forager that burns a night's wood every night. */
+    woodHoursPerDay: (woodRate: number) => nightWood(config) / woodRate,
+    /**
+     * Without trade, the share of a forager's working hours spent gathering, given its daily food need `F`. It rises with
+     * its own terms `g / w`; comparative advantage predicts the opposite once exchange is possible.
+     */
+    autarkyWoodShare: (forageRate: number, woodRate: number, dailyFoodKcal: number) => {
+      const woodHours = nightWood(config) / woodRate
+      return woodHours / (woodHours + dailyFoodKcal / forageRate)
+    },
   }
 }
 

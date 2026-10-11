@@ -219,8 +219,12 @@ export default function App() {
                 {label}
               </button>
             ))}
-            <a className="tabs-link" href="life.html" title="Life 2: the bottom-up core, a band that shares food">
-              Life 2
+            <a
+              className="tabs-link"
+              href="life.html"
+              title="Life 3: the bottom-up core, a band that specializes and swaps"
+            >
+              Life 3
             </a>
           </nav>
           <div className="controls" role="group" aria-label="Simulation controls">

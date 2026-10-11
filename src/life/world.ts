@@ -1,9 +1,10 @@
 import { mixSeed, normalizeSeed, randomInt, seededShuffle } from '../sim/rng'
-import type { LifeConfig, Patch, Strategy, Tile } from './types'
+import type { Grove, LifeConfig, Patch, Strategy, Tile } from './types'
 
 const LAYOUT_STREAM_SALT = 0x4c49_4645
 const TURN_ORDER_STREAM_SALT = 0x5455_524e
 const LUCK_STREAM_SALT = 0x4c55_434b
+const SKILL_STREAM_SALT = 0x534b_494c
 
 /** Patches and starting tiles. */
 export const deriveLayoutSeed = (seed: number) =>
@@ -31,9 +32,35 @@ export const deriveLuckSeed = (seed: number, tick: number, foragerId: number) =>
     ),
   )
 
-/** An hour succeeds with probability `forageKcalPerHour / harvestKcal`; when the two are equal, always. */
-export const forageSucceeds = (config: LifeConfig, tick: number, foragerId: number) =>
-  randomInt(deriveLuckSeed(config.seed, tick, foragerId), config.harvestKcal).value < config.forageKcalPerHour
+/** A forager's harvest: the larger of `harvestKcal` and its own hourly rate. */
+export const harvestOf = (config: LifeConfig, forageRate: number) => Math.max(config.harvestKcal, forageRate)
+
+/** An hour succeeds with probability `rate / harvest`; when the two are equal, always. */
+export const forageSucceeds = (config: LifeConfig, tick: number, foragerId: number, forageRate: number) =>
+  randomInt(deriveLuckSeed(config.seed, tick, foragerId), harvestOf(config, forageRate)).value < forageRate
+
+/** Skills and starting tiles do not share draws: skills have their own stream. */
+export const deriveSkillSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ SKILL_STREAM_SALT) >>> 0))
+
+/**
+ * Every forager's hourly rates, by ID. For each forager in turn the stream draws its foraging skill and then its wood
+ * skill, uniformly from `skillMinPercent` to `skillMaxPercent`; a rate is the skill times the base rate, rounded down.
+ */
+export function drawRates(config: LifeConfig): { forageRate: number; woodRate: number }[] {
+  const span = config.skillMaxPercent - config.skillMinPercent + 1
+  let state = deriveSkillSeed(config.seed)
+  const rates = []
+  for (let id = 0; id < config.bandSize; id += 1) {
+    const forage = randomInt(state, span)
+    const wood = randomInt(forage.state, span)
+    state = wood.state
+    rates.push({
+      forageRate: Math.floor((config.forageKcalPerHour * (config.skillMinPercent + forage.value)) / 100),
+      woodRate: Math.floor((config.woodPerHour * (config.skillMinPercent + wood.value)) / 100),
+    })
+  }
+  return rates
+}
 
 /** The camp tile in the middle of the grid, or null without a camp. */
 export const campTile = (config: LifeConfig): Tile | null =>
@@ -46,7 +73,7 @@ export function strategyOf(config: LifeConfig, foragerId: number): Strategy {
   return foragerId < keepers + config.sharers ? 'sharer' : 'reciprocator'
 }
 
-export function generateLayout(config: LifeConfig): { patches: Patch[]; starts: Tile[] } {
+export function generateLayout(config: LifeConfig): { patches: Patch[]; groves: Grove[]; starts: Tile[] } {
   const tiles: Tile[] = []
   for (let y = 0; y < config.gridHeight; y += 1) for (let x = 0; x < config.gridWidth; x += 1) tiles.push({ x, y })
   const shuffled = seededShuffle(tiles, deriveLayoutSeed(config.seed))
@@ -55,9 +82,13 @@ export function generateLayout(config: LifeConfig): { patches: Patch[]; starts: 
     tile,
     stockKcal: config.initialPatchStockKcal,
   }))
+  // Groves take the tiles after the patches, so adding them moves no patch.
+  const groves = shuffled.values
+    .slice(config.patchCount, config.patchCount + config.groveCount)
+    .map((tile, id) => ({ id, tile, wood: config.initialGroveWood }))
   // With a camp the whole band starts there and nothing is drawn.
   const camp = campTile(config)
-  if (camp) return { patches, starts: Array.from({ length: config.bandSize }, () => ({ ...camp })) }
+  if (camp) return { patches, groves, starts: Array.from({ length: config.bandSize }, () => ({ ...camp })) }
   // Drawn from every tile, one forager after another, so foragers may start on a patch or on the same tile. Forager 0
   // is drawn first and starts where Life 0's forager did.
   const starts: Tile[] = []
@@ -67,7 +98,7 @@ export function generateLayout(config: LifeConfig): { patches: Patch[]; starts: 
     state = draw.state
     starts.push(tiles[draw.value]!)
   }
-  return { patches, starts }
+  return { patches, groves, starts }
 }
 
 export const isDaylight = (config: LifeConfig, tick: number) => {

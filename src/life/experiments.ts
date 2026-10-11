@@ -1,4 +1,4 @@
-import { LIFE0_WORLD, LIFE1_WORLD, LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE0_WORLD, LIFE1_WORLD, LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, stepLife, stockAtTurn } from './engine'
 import { assertLifeInvariants } from './invariants'
 import { lifeTheory } from './theory'
@@ -66,6 +66,24 @@ export interface LifeRunResult {
   hungrySpells: number
   /** The number alive at the end of each day. */
   aliveByDay: number[]
+  /** Each forager's hourly rates, by forager ID. */
+  forageRates: number[]
+  woodRates: number[]
+  /** Each forager's hours foraging, gathering and walking over the measured days, by forager ID. */
+  forageHoursById: number[]
+  gatherHoursById: number[]
+  walkHoursById: number[]
+  /** Foragers alive at the end of each measured day, summed. */
+  livingForagerDays: number
+  /** Over the measured days: swaps and quotes, wood swapped and burned, hours slept and slept cold. */
+  swaps: number
+  quotes: number
+  swappedWood: number
+  burnedWood: number
+  sleepHours: number
+  coldSleepHours: number
+  /** The terms of every swap over the measured days, in order. */
+  swapTerms: number[]
 }
 
 /** Alive at the end, intact, with no reserve declining. */
@@ -90,13 +108,13 @@ function slope(values: readonly number[]) {
   return numerator / denominator
 }
 
-const ACTIONS: (keyof ActionHours)[] = ['sleep', 'rest', 'forage', 'walk']
+const ACTIONS: (keyof ActionHours)[] = ['sleep', 'rest', 'forage', 'walk', 'gather']
 
 function meanHoursPerForager(days: readonly DaySummary[]): ActionHours {
   // On a day with no death, every forager alive at its end acted in all 24 of its hours.
   const counted = days.filter((day) => day.deaths === 0 && day.alive > 0)
   const foragerDays = counted.reduce((sum, day) => sum + day.alive, 0)
-  const mean: ActionHours = { sleep: 0, rest: 0, forage: 0, walk: 0 }
+  const mean: ActionHours = { sleep: 0, rest: 0, forage: 0, walk: 0, gather: 0 }
   for (const action of ACTIONS) {
     const hours = counted.reduce((sum, day) => sum + day.hours[action], 0)
     mean[action] = foragerDays ? hours / foragerDays : 0
@@ -126,10 +144,29 @@ export function runLife(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS):
   let forageHours = 0
   let successfulHours = 0
   let hungrySpells = 0
+  const byId = () => state.foragers.map(() => 0)
+  const forageHoursById = byId()
+  const gatherHoursById = byId()
+  const walkHoursById = byId()
+  let quotes = 0
+  let sleepHours = 0
+  let coldSleepHours = 0
+  const swapTerms: number[] = []
   for (let hour = 0; hour < days * 24 && state.foragers.some((forager) => forager.alive); hour += 1) {
     const before = state
     state = stepLife(state)
     assertLifeInvariants(state)
+    if (hour >= WARMUP_DAYS * 24) {
+      for (const event of state.lastEvents) {
+        if (event.action === 'forage') forageHoursById[event.foragerId]! += 1
+        if (event.action === 'gather') gatherHoursById[event.foragerId]! += 1
+        if (event.action === 'walk') walkHoursById[event.foragerId]! += 1
+        if (event.action === 'sleep') sleepHours += 1
+        if (event.sleptCold) coldSleepHours += 1
+      }
+      for (const made of state.lastSwaps) swapTerms.push(made.kcalPerWood)
+      quotes += state.lastQuotes.length
+    }
     for (const [index, event] of state.lastEvents.entries()) {
       if (event.action === 'forage') {
         forageHours += 1
@@ -175,6 +212,19 @@ export function runLife(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS):
     successfulHours,
     hungrySpells,
     aliveByDay: state.days.map((day) => day.alive),
+    forageRates: state.foragers.map((forager) => forager.forageRate),
+    woodRates: state.foragers.map((forager) => forager.woodRate),
+    forageHoursById,
+    gatherHoursById,
+    walkHoursById,
+    livingForagerDays: measured.reduce((sum, day) => sum + day.alive, 0),
+    swaps: swapTerms.length,
+    quotes,
+    swappedWood: measured.reduce((sum, day) => sum + day.swappedWood, 0),
+    burnedWood: measured.reduce((sum, day) => sum + day.burnedWood, 0),
+    sleepHours,
+    coldSleepHours,
+    swapTerms,
   }
   runCache.set(key, result)
   return result
@@ -463,8 +513,9 @@ export const WINDFALLS = [1_200, 3_600, 6_000, 9_600]
 export const UNIFORM_STRATEGIES: Strategy[] = ['keeper', 'sharer', 'reciprocator']
 
 export function uniformBand(strategy: Strategy): Partial<LifeConfig> {
-  const { bandSize } = LIFE_DEFAULT_CONFIG
+  const bandSize = LIFE2_WORLD.bandSize!
   return {
+    ...LIFE2_WORLD,
     sharers: strategy === 'sharer' ? bandSize : 0,
     reciprocators: strategy === 'reciprocator' ? bandSize : 0,
   }
@@ -515,7 +566,7 @@ const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + 
 
 /** A uniform band's runs at one windfall and shelf life, summarized across seeds. */
 function uniformRow(seeds: readonly number[], strategy: Strategy, harvestKcal: number, shelfLifeHours: number) {
-  const runs = seeds.map((seed) => runLife({ seed, harvestKcal, shelfLifeHours, ...uniformBand(strategy) }))
+  const runs = seeds.map((seed) => runLife({ ...uniformBand(strategy), seed, harvestKcal, shelfLifeHours }))
   const gathered = runs.reduce((sum, run) => sum + run.bandGatheredKcal, 0)
   return {
     strategy,
@@ -562,7 +613,7 @@ export function whoPaysExperiment(
 ) {
   return windfalls.flatMap((harvestKcal) =>
     shelfLives.map((shelfLifeHours) => {
-      const runs = seeds.map((seed) => runLife({ seed, harvestKcal, shelfLifeHours }))
+      const runs = seeds.map((seed) => runLife({ ...LIFE2_WORLD, seed, harvestKcal, shelfLifeHours }))
       const byStrategy = UNIFORM_STRATEGIES.map((strategy) => {
         const members = runs.flatMap((run) =>
           run.strategies.flatMap((own, id) =>
@@ -584,4 +635,269 @@ export function whoPaysExperiment(
       return { harvestKcal, shelfLifeHours, byStrategy }
     }),
   )
+}
+
+// Life 3's experiments.
+
+/**
+ * A checksum of every forager's action, reserve and carried food every hour, every gift, every patch stock every hour,
+ * and the daily summaries, in the form Life 2's code produced them. Experiment 1 compares it with checksums recorded
+ * from Life 2 before step 3.
+ */
+export function life2Checksum(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS) {
+  let state = createLife(overrides)
+  let hash = 2_166_136_261
+  for (let hour = 0; hour < days * 24; hour += 1) {
+    state = stepLife(state)
+    const events = state.lastEvents.map((event) => [
+      event.foragerId,
+      event.tick,
+      event.action,
+      event.reason,
+      event.from.x,
+      event.from.y,
+      event.position.x,
+      event.position.y,
+      event.targetPatchId,
+      event.patchId,
+      event.succeeded,
+      event.gatheredKcal,
+      event.spoiledKcal,
+      event.eatenKcal,
+      event.spentKcal,
+      event.energyAfterKcal,
+      event.carriedAfterKcal,
+    ])
+    const gifts = state.lastGifts.map((gift) => [
+      gift.tick,
+      gift.giverId,
+      gift.recipientId,
+      gift.tile.x,
+      gift.tile.y,
+      gift.requestKcal,
+      gift.kcal,
+    ])
+    hash = fnv1a(hash, JSON.stringify([events, gifts]))
+    hash = fnv1a(
+      hash,
+      JSON.stringify(state.patches.map((patch) => [patch.id, patch.tile.x, patch.tile.y, patch.stockKcal])),
+    )
+  }
+  const summaries = state.days.map((day) => [
+    day.day,
+    day.hours.sleep,
+    day.hours.rest,
+    day.hours.forage,
+    day.hours.walk,
+    day.gatheredKcal,
+    day.spentKcal,
+    day.alive,
+    day.deaths,
+    day.totalPatchStockKcal,
+    day.endEnergyKcal,
+    day.givenKcal,
+    day.spoiledKcal,
+    day.carriedKcal,
+    day.aliveByStrategy,
+  ])
+  return fnv1a(hash, JSON.stringify(summaries))
+}
+
+/** Seed, overrides on Life 2's world and checksum, recorded from Life 2's code. */
+export const LIFE2_CHECKSUMS: readonly [seed: number, overrides: Partial<LifeConfig>, checksum: number][] = [
+  [20260813, {}, 0xf67031fe],
+  [1, {}, 0x7911dcee],
+  [20260813, { sharers: 0, reciprocators: 0, harvestKcal: 9_600 }, 0x37e97742],
+]
+
+/** Experiment 1: on Life 2's world, with no groves, warm nights, equal skills and no swaps, the step reproduces Life 2. */
+export const life2ReproducedExperiment = () =>
+  LIFE2_CHECKSUMS.map(([seed, overrides, expected]) => ({
+    seed,
+    overrides,
+    expected,
+    actual: life2Checksum({ ...LIFE2_WORLD, ...overrides, seed }),
+  }))
+
+/**
+ * A checksum of everything that happens in every hour: every action, swap, quote and gift, and every patch and grove.
+ * Two runs with the same checksum are identical hour by hour.
+ */
+export function hourlyChecksum(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS) {
+  let state = createLife(overrides)
+  let hash = 2_166_136_261
+  for (let hour = 0; hour < days * 24; hour += 1) {
+    state = stepLife(state)
+    hash = fnv1a(
+      hash,
+      JSON.stringify([
+        state.lastEvents,
+        state.lastSwaps,
+        state.lastQuotes,
+        state.lastGifts,
+        state.patches,
+        state.groves,
+      ]),
+    )
+  }
+  return hash
+}
+
+/** A forager's share of its foraging and gathering hours spent gathering, or null if it did neither. */
+export const woodShare = (run: LifeRunResult, id: number) => {
+  const working = run.forageHoursById[id]! + run.gatherHoursById[id]!
+  return working ? run.gatherHoursById[id]! / working : null
+}
+
+/** Pearson's correlation, or null when either side does not vary. */
+function correlation(pairs: readonly [number, number][]) {
+  if (pairs.length < 2) return null
+  const meanX = mean(pairs.map(([x]) => x))
+  const meanY = mean(pairs.map(([, y]) => y))
+  let xy = 0
+  let xx = 0
+  let yy = 0
+  for (const [x, y] of pairs) {
+    xy += (x - meanX) * (y - meanY)
+    xx += (x - meanX) ** 2
+    yy += (y - meanY) ** 2
+  }
+  return xx && yy ? xy / Math.sqrt(xx * yy) : null
+}
+
+/** Across a band, the correlation between own terms and wood share, over foragers that worked at all. */
+export function specializationCorrelation(run: LifeRunResult) {
+  const pairs = run.forageRates.flatMap((forageRate, id): [number, number][] => {
+    const share = woodShare(run, id)
+    return share === null ? [] : [[forageRate / run.woodRates[id]!, share]]
+  })
+  return correlation(pairs)
+}
+
+/** The share of the band's wood, over the measured days, gathered by the two foragers that gathered the most. */
+export function woodConcentration(run: LifeRunResult) {
+  const gathered = run.gatherHoursById.map((hours, id) => hours * run.woodRates[id]!).sort((a, b) => b - a)
+  const total = gathered.reduce((sum, wood) => sum + wood, 0)
+  return total ? (gathered[0]! + (gathered[1] ?? 0)) / total : 0
+}
+
+/** The third of a band with the lowest foraging rates, ties to the lowest ID. */
+export function leastSkilledThird(run: LifeRunResult) {
+  const ids = run.forageRates.map((_, id) => id)
+  ids.sort((a, b) => run.forageRates[a]! - run.forageRates[b]! || a - b)
+  return ids.slice(0, Math.floor(ids.length / 3))
+}
+
+const total = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0)
+
+/** One configuration's runs across seeds, summarized by the specialization measures of the specification. */
+export function specializationRow(seeds: readonly number[], overrides: Partial<LifeConfig>) {
+  const runs = seeds.map((seed) => runLife({ ...overrides, seed }))
+  const correlations = runs.map(specializationCorrelation).filter((value) => value !== null)
+  const least = runs.flatMap((run) => leastSkilledThird(run).map((id) => (run.alive[id] ? 1 : 0)))
+  const sum = (pick: (run: LifeRunResult) => number) => total(runs.map(pick))
+  const livingDays = sum((run) => run.livingForagerDays)
+  const burned = sum((run) => run.burnedWood)
+  const slept = sum((run) => run.sleepHours)
+  return {
+    runs,
+    meanSurvivors: mean(runs.map((run) => run.survivors)),
+    leastSkilledAliveShare: mean(least),
+    /** The mean of each run's correlation, or null if no run's could be measured. */
+    correlation: correlations.length ? mean(correlations) : null,
+    concentration: mean(runs.map(woodConcentration)),
+    boughtShare: burned ? sum((run) => run.swappedWood) / burned : 0,
+    coldShare: slept ? sum((run) => run.coldSleepHours) / slept : 0,
+    /** Hours a day per living forager over the measured days. */
+    workHoursPerDay: livingDays
+      ? sum((run) => total(run.forageHoursById) + total(run.gatherHoursById)) / livingDays
+      : 0,
+    walkHoursPerDay: livingDays ? sum((run) => total(run.walkHoursById)) / livingDays : 0,
+    swapsPerRun: mean(runs.map((run) => run.swaps)),
+    quotesPerRun: mean(runs.map((run) => run.quotes)),
+    /** The mean number alive across runs at the end of each day. */
+    aliveByDay: Array.from({ length: Math.max(0, ...runs.map((run) => run.aliveByDay.length)) }, (_, day) =>
+      mean(runs.map((run) => run.aliveByDay[day] ?? 0)),
+    ),
+  }
+}
+
+export const EQUAL_SKILLS: Partial<LifeConfig> = { skillMinPercent: 100, skillMaxPercent: 100 }
+
+/** Experiment 2: bands with equal skills, with and without swapping. */
+export function woodAndColdExperiment(seeds: readonly number[] = life2Seeds(8)) {
+  const nightWood = lifeTheory(createLife(EQUAL_SKILLS).config).nightWood
+  return {
+    off: specializationRow(seeds, { ...EQUAL_SKILLS, swapping: false }),
+    on: specializationRow(seeds, EQUAL_SKILLS),
+    identical: seeds.map(
+      (seed) =>
+        hourlyChecksum({ ...EQUAL_SKILLS, seed }) === hourlyChecksum({ ...EQUAL_SKILLS, seed, swapping: false }),
+    ),
+    /** Each survivor's hours gathering a day, as a share of a night's wood over its wood rate. */
+    woodHoursAgainstTheory: seeds.flatMap((seed) => {
+      const run = runLife({ ...EQUAL_SKILLS, seed })
+      const measuredDays = run.aliveByDay.length - WARMUP_DAYS
+      return run.alive.flatMap((alive, id) =>
+        alive ? [run.gatherHoursById[id]! / measuredDays / (nightWood / run.woodRates[id]!)] : [],
+      )
+    }),
+  }
+}
+
+/** Experiment 3: the canonical band with swapping off and on. */
+export const comparativeAdvantageExperiment = (seeds: readonly number[] = life2Seeds(32)) => ({
+  off: specializationRow(seeds, { swapping: false }),
+  on: specializationRow(seeds, {}),
+})
+
+export const SKILL_SPREADS: readonly [min: number, max: number][] = [
+  [100, 100],
+  [80, 120],
+  [50, 150],
+  [25, 175],
+]
+
+/** Experiment 4: experiment 3 at each spread of skills. */
+export const skillSpreadExperiment = (seeds: readonly number[] = life2Seeds(32), spreads = SKILL_SPREADS) =>
+  spreads.map(([skillMinPercent, skillMaxPercent]) => ({
+    skillMinPercent,
+    skillMaxPercent,
+    off: specializationRow(seeds, { skillMinPercent, skillMaxPercent, swapping: false }),
+    on: specializationRow(seeds, { skillMinPercent, skillMaxPercent }),
+  }))
+
+/** Experiment 5: experiment 3 with quotes off, with steady harvests and with windfalls. */
+export function quotesExperiment(seeds: readonly number[] = life2Seeds(32), windfallKcal = 6_000) {
+  const windfall = { harvestKcal: windfallKcal }
+  return {
+    steady: {
+      off: specializationRow(seeds, { swapping: false }),
+      noQuotes: specializationRow(seeds, { quotes: false }),
+      identical: seeds.map(
+        (seed) => hourlyChecksum({ seed, quotes: false }) === hourlyChecksum({ seed, swapping: false }),
+      ),
+    },
+    windfall: {
+      off: specializationRow(seeds, { ...windfall, swapping: false }),
+      noQuotes: specializationRow(seeds, { ...windfall, quotes: false }),
+      quotes: specializationRow(seeds, windfall),
+    },
+  }
+}
+
+/** The mean and standard deviation of swap terms in the first and last quarter of each run's swaps, pooled. */
+export function termsDispersion(runs: readonly LifeRunResult[]) {
+  const spread = (values: readonly number[]) => {
+    const average = mean(values)
+    return { mean: average, sd: Math.sqrt(mean(values.map((value) => (value - average) ** 2))) }
+  }
+  const quarter = (run: LifeRunResult, last: boolean) => {
+    const size = Math.floor(run.swapTerms.length / 4)
+    return last ? run.swapTerms.slice(run.swapTerms.length - size) : run.swapTerms.slice(0, size)
+  }
+  return {
+    first: spread(runs.flatMap((run) => quarter(run, false))),
+    last: spread(runs.flatMap((run) => quarter(run, true))),
+  }
 }

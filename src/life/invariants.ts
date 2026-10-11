@@ -1,5 +1,7 @@
 import { carriedKcal } from './food'
-import { campTile, forageSucceeds, isDaylight, manhattan, sameTile } from './world'
+import { bothGain, pairTerms } from './trade'
+import { woodMatters, woodTarget } from './wood'
+import { campTile, forageSucceeds, harvestOf, isDaylight, manhattan, sameTile } from './world'
 import type { LifeState, Tile } from './types'
 
 /** Returns every invariant the state breaks; an empty list means the state is sound. */
@@ -19,6 +21,17 @@ export function lifeInvariantViolations(state: LifeState): string[] {
     if (patch.stockKcal < 0 || patch.stockKcal > config.patchCapacityKcal)
       violations.push(`Patch ${patch.id} stock ${patch.stockKcal} is outside 0–${config.patchCapacityKcal}`)
   }
+  const groveWood = state.groves.reduce((sum, grove) => sum + grove.wood, 0)
+  const heldWood = foragers.reduce((sum, forager) => sum + forager.wood, 0)
+  const woodNow = groveWood + heldWood + totals.burnedWood
+  if (woodNow !== totals.initialWood + totals.regrownWood)
+    violations.push(
+      `Wood is not conserved: groves + held + burned = ${woodNow}, start + regrown = ${totals.initialWood + totals.regrownWood}`,
+    )
+  for (const grove of state.groves) {
+    if (!Number.isInteger(grove.wood) || grove.wood < 0 || grove.wood > config.groveCapacityWood)
+      violations.push(`Grove ${grove.id} wood ${grove.wood} is outside 0–${config.groveCapacityWood}`)
+  }
 
   const lastTick = state.tick - 1
   const camp = campTile(config)
@@ -36,6 +49,14 @@ export function lifeInvariantViolations(state: LifeState): string[] {
     for (const [id, memory] of forager.memory.entries()) {
       if (memory.observedTick > state.tick) violations.push(`${name}'s memory of patch ${id} is from the future`)
     }
+    if (!Number.isInteger(forager.wood) || forager.wood < 0) violations.push(`${name} holds ${forager.wood} wood`)
+    const heard = forager.heardTerms
+    if (heard && heard.tick > lastTick) violations.push(`${name} remembers terms from the future`)
+    if (
+      heard?.tick === lastTick &&
+      ![...state.lastSwaps, ...state.lastQuotes].some((made) => made.kcalPerWood === heard.kcalPerWood)
+    )
+      violations.push(`${name} remembers terms no one agreed this hour`)
     for (const lot of forager.carried) {
       if (!Number.isInteger(lot.kcal) || lot.kcal <= 0) violations.push(`${name} carries a lot of ${lot.kcal} kcal`)
       if (lot.harvestTick > lastTick) violations.push(`${name} carries food harvested in the future`)
@@ -49,6 +70,15 @@ export function lifeInvariantViolations(state: LifeState): string[] {
         violations.push(`Forager ${forager.id} and forager ${other} disagree about what was given`)
     }
   }
+  const swapped = (pick: (forager: (typeof foragers)[number]) => number) =>
+    foragers.reduce((sum, forager) => sum + pick(forager), 0)
+  if (
+    swapped((f) => f.swapTotals.woodSold) !== totals.swappedWood ||
+    swapped((f) => f.swapTotals.woodBought) !== totals.swappedWood ||
+    swapped((f) => f.swapTotals.kcalReceived) !== totals.swappedKcal ||
+    swapped((f) => f.swapTotals.kcalPaid) !== totals.swappedKcal
+  )
+    violations.push('Foragers’ swap totals do not add up to the wood and food swapped')
   const recorded = foragers.reduce((sum, f) => sum + f.ledger.reduce((total, entry) => total + entry.givenKcal, 0), 0)
   if (recorded !== totals.givenKcal) violations.push(`Ledgers record ${recorded} kcal given, gifts ${totals.givenKcal}`)
 
@@ -64,9 +94,11 @@ export function lifeInvariantViolations(state: LifeState): string[] {
   // Walking back through the hour's turns, `takenSince[p]` is what this turn and later ones took from patch `p`, so the
   // stock at the start of this turn was the stock now plus that.
   const takenSince = patches.map(() => 0)
+  const woodSince = state.groves.map(() => 0)
   for (let index = lastEvents.length - 1; index >= 0; index -= 1) {
     const event = lastEvents[index]!
-    if (event.patchId !== null) takenSince[event.patchId]! += event.gatheredKcal
+    if (event.action === 'forage') takenSince[event.patchId!]! += event.gatheredKcal
+    if (event.action === 'gather') woodSince[event.patchId!]! += event.gatheredWood
     const forager = foragers[event.foragerId]!
     if (event.tick !== lastTick) violations.push(`Forager ${forager.id}'s last action is not from the last hour`)
     for (const patch of patches) {
@@ -75,20 +107,77 @@ export function lifeInvariantViolations(state: LifeState): string[] {
       if (memory.observedTick !== event.tick || memory.stockKcal !== patch.stockKcal + takenSince[patch.id]!)
         violations.push(`Forager ${forager.id}'s memory of patch ${patch.id} does not match what it saw`)
     }
+    for (const grove of state.groves) {
+      if (manhattan(grove.tile, event.from) > config.perceptionRadiusTiles) continue
+      const memory = forager.groveMemory[grove.id]!
+      if (memory.observedTick !== event.tick || memory.wood !== grove.wood + woodSince[grove.id]!)
+        violations.push(`Forager ${forager.id}'s memory of grove ${grove.id} does not match what it saw`)
+    }
+    if (event.action === 'gather') {
+      const memory = event.patchId === null ? undefined : forager.groveMemory[event.patchId]
+      if (!isDaylight(config, event.tick)) violations.push(`Forager ${forager.id} gathered at night`)
+      if (!memory || memory.observedTick !== event.tick || memory.wood < forager.woodRate)
+        violations.push(`Forager ${forager.id} gathered at a grove it had not seen holding an hour's wood`)
+      if (event.gatheredWood !== forager.woodRate)
+        violations.push(`Forager ${forager.id} gathered ${event.gatheredWood} wood in an hour`)
+    } else if (event.gatheredWood !== 0) violations.push(`Forager ${forager.id} gathered wood without gathering`)
+    if (event.burnedWood !== 0 && (event.action !== 'sleep' || event.burnedWood !== config.fireWoodPerHour))
+      violations.push(`Forager ${forager.id} burned ${event.burnedWood} wood while it took the action ${event.action}`)
+    if (event.burnedWood && !woodMatters(config))
+      violations.push(`Forager ${forager.id} burned wood that does not matter`)
+    const cold = event.action === 'sleep' && !event.burnedWood && config.coldSleepKcalPerHour > config.sleepKcalPerHour
+    if (event.sleptCold !== cold) violations.push(`Forager ${forager.id} slept cold wrongly`)
     if (event.action === 'forage') {
       if (!isDaylight(config, event.tick)) violations.push(`Forager ${forager.id} foraged at night`)
       const memory = event.patchId === null ? undefined : forager.memory[event.patchId]
-      if (!memory || memory.observedTick !== event.tick || memory.stockKcal < config.harvestKcal)
+      const harvest = harvestOf(config, forager.forageRate)
+      if (!memory || memory.observedTick !== event.tick || memory.stockKcal < harvest)
         violations.push(`Forager ${forager.id} foraged a patch it had not seen holding a full harvest`)
-      if (event.succeeded !== forageSucceeds(config, event.tick, forager.id))
+      if (event.succeeded !== forageSucceeds(config, event.tick, forager.id, forager.forageRate))
         violations.push(`Forager ${forager.id}'s luck does not match its stream`)
-      if (event.gatheredKcal !== (event.succeeded ? config.harvestKcal : 0))
+      if (event.gatheredKcal !== (event.succeeded ? harvest : 0))
         violations.push(`Forager ${forager.id} took ${event.gatheredKcal} kcal in an hour of foraging`)
     } else if (event.succeeded !== null || event.gatheredKcal !== 0)
       violations.push(`Forager ${forager.id} gathered food without foraging`)
   }
 
-  violations.push(...giftViolations(state))
+  violations.push(...giftViolations(state), ...swapViolations(state))
+  return violations
+}
+
+/** Every swap and quote of the last hour obeyed the rules of swapping. */
+function swapViolations(state: LifeState): string[] {
+  const { config, foragers, lastEvents, lastSwaps, lastQuotes } = state
+  const violations: string[] = []
+  if ((lastSwaps.length || lastQuotes.length) && (!config.swapping || !woodMatters(config)))
+    violations.push('Foragers swapped or quoted where swapping is off')
+  if (lastQuotes.length && !config.quotes) violations.push('Foragers quoted terms with quotes off')
+  const target = woodTarget(config)
+  const acted = new Map(lastEvents.map((event) => [event.foragerId, event]))
+  for (const made of [...lastSwaps, ...lastQuotes]) {
+    const seller = foragers[made.sellerId]!
+    const buyer = foragers[made.buyerId]!
+    const name = `Forager ${made.sellerId}'s ${made.kind} with forager ${made.buyerId}`
+    if (made.kcalPerWood !== pairTerms(seller, buyer) || !bothGain(seller, buyer, made.kcalPerWood))
+      violations.push(`${name} was not at the midpoint of their own terms, strictly between them`)
+    for (const forager of [seller, buyer]) {
+      if (!acted.has(forager.id)) violations.push(`${name} involved a forager that took no turn`)
+      else if (!forager.alive && forager.deathTick !== made.tick) violations.push(`${name} involved the dead`)
+    }
+  }
+  for (const made of lastSwaps) {
+    const name = `Forager ${made.sellerId}'s swap with forager ${made.buyerId}`
+    if (made.wood < 1 || made.kcal !== made.wood * made.kcalPerWood) violations.push(`${name} broke its quantities`)
+    if (made.sellerWoodBefore - made.wood < target || made.buyerWoodBefore + made.wood > target)
+      violations.push(`${name} sold wood the seller could not spare or the buyer did not want`)
+    if (made.kcal > made.buyerCarriedKcal || made.kcal > made.sellerRoomKcal)
+      violations.push(`${name} took more food than the buyer carried or the seller had room for`)
+    for (const id of [made.sellerId, made.buyerId]) {
+      const event = acted.get(id)
+      if (event && !sameTile(made.tile, event.position) && !sameTile(made.tile, event.from))
+        violations.push(`${name} was made away from forager ${id}`)
+    }
+  }
   return violations
 }
 

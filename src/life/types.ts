@@ -37,6 +37,28 @@ export interface LifeConfig {
   /** How many of the band are sharers and reciprocators. The rest are keepers. */
   sharers: number
   reciprocators: number
+  /** Groves of wood, on tiles without patches. With none, or with warm nights, wood never matters. */
+  groveCount: number
+  groveCapacityWood: number
+  initialGroveWood: number
+  groveRegrowthWoodPerHour: number
+  /** The wood a forager of skill 100% gathers in an hour. */
+  woodPerHour: number
+  /** The wood burned for an hour of warm sleep. */
+  fireWoodPerHour: number
+  /** An hour of sleep without a fire costs this instead of `sleepKcalPerHour`. */
+  coldSleepKcalPerHour: number
+  /** A forager short of wood gathers until it holds this many nights' wood. */
+  woodStockNights: number
+  /** Each forager's foraging and wood skills are drawn independently from this range, in percent. */
+  skillMinPercent: number
+  skillMaxPercent: number
+  /** Foragers may swap wood for food. */
+  swapping: boolean
+  /** Two foragers that could both gain from a swap tell each other the terms, even if they cannot complete it. */
+  quotes: boolean
+  /** A forager forgets terms it heard this many hours ago. */
+  termsMemoryHours: number
 }
 
 export interface Tile {
@@ -50,16 +72,52 @@ export interface Patch {
   stockKcal: number
 }
 
+/** A grove holds whole units of wood. */
+export interface Grove {
+  id: number
+  tile: Tile
+  wood: number
+}
+
 /** What a forager last saw at a patch. It never learns a stock it did not observe. */
 export interface PatchMemory {
   stockKcal: number
   observedTick: number
 }
 
-export type ForagerAction = 'sleep' | 'rest' | 'forage' | 'walk'
+/** What a forager last saw at a grove. */
+export interface GroveMemory {
+  wood: number
+  observedTick: number
+}
+
+/** The two goods a forager can work for. */
+export type Good = 'food' | 'wood'
+
+/** Terms of a swap, in kilocalories per unit of wood, and the tick a forager heard them. */
+export interface HeardTerms {
+  kcalPerWood: number
+  tick: number
+}
+
+/** A trip to gather wood for trade, and the spare wood it set out to hold. */
+export interface TradeTrip {
+  goalSpareWood: number
+}
+
+export type ForagerAction = 'sleep' | 'rest' | 'forage' | 'walk' | 'gather'
 
 export type ActionReason =
-  'night' | 'satiated' | 'foraging' | 'seeking food' | 'waiting for regrowth' | 'going home' | 'too late to set out'
+  | 'night'
+  | 'satiated'
+  | 'foraging'
+  | 'seeking food'
+  | 'waiting for regrowth'
+  | 'going home'
+  | 'too late to set out'
+  | 'gathering'
+  | 'seeking wood'
+  | 'waiting to swap'
 
 /** A keeper never gives; a sharer gives to anyone hungry; a reciprocator gives to those who owe it nothing. */
 export type Strategy = 'keeper' | 'sharer' | 'reciprocator'
@@ -92,6 +150,31 @@ export interface Forager {
   carried: FoodLot[]
   /** Indexed by forager ID; its own entry stays empty. */
   ledger: LedgerEntry[]
+  /** Its hourly rates: kilocalories foraging, units of wood gathering. It knows them. */
+  forageRate: number
+  woodRate: number
+  /** The wood it holds, in units. Wood keeps. */
+  wood: number
+  /** Wood need, with hysteresis. */
+  shortOfWood: boolean
+  targetGroveId: number | null
+  /** Indexed by grove ID. */
+  groveMemory: GroveMemory[]
+  /** The last terms it heard, if any. */
+  heardTerms: HeardTerms | null
+  /** A trip for trade under way today, if any. */
+  trip: TradeTrip | null
+  /** Everything it has swapped: wood sold and bought, and food received and paid for it. */
+  swapTotals: SwapTotals
+  /** Hours it has spent foraging and gathering. */
+  hoursWorked: { forage: number; gather: number }
+}
+
+export interface SwapTotals {
+  woodSold: number
+  woodBought: number
+  kcalReceived: number
+  kcalPaid: number
 }
 
 export interface ActionEvent {
@@ -116,6 +199,16 @@ export interface ActionEvent {
   energyAfterKcal: number
   /** What it carries at the end of its turn, after any gifts. */
   carriedAfterKcal: number
+  /** Taken from a grove in an hour of gathering. `patchId` is the grove's. */
+  gatheredWood: number
+  /** Burned for an hour of warm sleep, and whether it slept cold. */
+  burnedWood: number
+  sleptCold: boolean
+  /** The good it worked for, or walked towards, and whether to swap it. */
+  workedFor: Good | null
+  forTrade: boolean
+  /** The wood it holds at the end of its turn. */
+  woodAfter: number
 }
 
 export interface GiftEvent {
@@ -136,7 +229,33 @@ export interface DeathEvent {
   cause: 'starvation'
 }
 
-export type LifeEvent = ActionEvent | GiftEvent | DeathEvent
+/** Wood swapped for food at terms between the two foragers' own. */
+export interface SwapEvent {
+  kind: 'swap'
+  tick: number
+  tile: Tile
+  sellerId: number
+  buyerId: number
+  wood: number
+  kcal: number
+  kcalPerWood: number
+  /** What each held just before: the seller's wood and room for food, the buyer's wood and carried food. */
+  sellerWoodBefore: number
+  sellerRoomKcal: number
+  buyerWoodBefore: number
+  buyerCarriedKcal: number
+}
+
+/** Terms two foragers told each other, without completing a swap. */
+export interface QuoteEvent {
+  kind: 'quote'
+  tick: number
+  sellerId: number
+  buyerId: number
+  kcalPerWood: number
+}
+
+export type LifeEvent = ActionEvent | GiftEvent | DeathEvent | SwapEvent | QuoteEvent
 
 export type ActionHours = Record<ForagerAction, number>
 
@@ -158,6 +277,12 @@ export interface DaySummary {
   carriedKcal: number
   /** Foragers of each strategy alive at the end of the day. */
   aliveByStrategy: Record<Strategy, number>
+  gatheredWood: number
+  burnedWood: number
+  coldSleepHours: number
+  swaps: number
+  swappedWood: number
+  swappedKcal: number
 }
 
 export interface EnergyTotals {
@@ -168,6 +293,12 @@ export interface EnergyTotals {
   gatheredKcal: number
   spoiledKcal: number
   givenKcal: number
+  /** Grove wood at tick 0. */
+  initialWood: number
+  regrownWood: number
+  burnedWood: number
+  swappedWood: number
+  swappedKcal: number
 }
 
 export interface LifeState {
@@ -175,6 +306,7 @@ export interface LifeState {
   /** The next tick to run. Tick `t` covers hour `t mod 24` of day `floor(t / 24)`. */
   tick: number
   patches: Patch[]
+  groves: Grove[]
   /** Indexed by forager ID. Dead foragers stay in the band. */
   foragers: Forager[]
   totals: EnergyTotals
@@ -182,6 +314,9 @@ export interface LifeState {
   lastEvents: ActionEvent[]
   /** The gifts made in the last tick run, in the order they were made. */
   lastGifts: GiftEvent[]
+  /** The swaps and quotes of the last tick run, in the order they were made. */
+  lastSwaps: SwapEvent[]
+  lastQuotes: QuoteEvent[]
   /** Recent events, one array per day, oldest first, at most `EVENT_HISTORY_DAYS` days. */
   eventDays: LifeEvent[][]
   /** Every completed day. */

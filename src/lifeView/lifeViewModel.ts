@@ -1,6 +1,18 @@
 import { lastEventOf } from '../life/engine'
 import { carriedKcal } from '../life/food'
-import type { ActionEvent, GiftEvent, LifeState, Patch, Strategy, Tile } from '../life/types'
+import { knownTerms, ownTerms } from '../life/trade'
+import type {
+  ActionEvent,
+  Forager,
+  GiftEvent,
+  LifeConfig,
+  LifeState,
+  Patch,
+  Strategy,
+  SwapEvent,
+  Tile,
+} from '../life/types'
+import { woodTarget } from '../life/wood'
 import { campTile, sameTile, walkPath } from '../life/world'
 import { palette } from '../ui/theme'
 
@@ -242,24 +254,36 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   if (!pair.next.foragers[foragerId]!.alive && !event) return 'Dead of starvation'
   if (!event) return 'Waiting to start'
   const patch = (id: number | null) => `patch ${(id ?? 0) + 1}`
+  const toSwap = event.forTrade ? ' to swap' : ''
   switch (event.action) {
     case 'sleep':
-      return event.energyAfterKcal === 0 ? 'Starved in its sleep' : 'Sleeping through the night'
+      if (event.energyAfterKcal === 0) return 'Starved in its sleep'
+      return event.sleptCold ? 'Sleeping cold, with no wood to burn' : 'Sleeping through the night'
     case 'rest':
       if (event.reason === 'satiated') return 'Resting, well fed'
-      if (event.reason === 'too late to set out') return 'Hungry, but too late in the day to set out'
-      return `Hungry, waiting for ${patchAtTile(pair, event.position)} to regrow`
-    case 'forage':
-      return event.succeeded
-        ? `Foraging at ${patch(event.patchId)}, and striking lucky`
-        : `Foraging at ${patch(event.patchId)}, without luck this hour`
+      if (event.reason === 'waiting to swap') return 'Resting, carrying food to swap for wood'
+      if (event.reason === 'too late to set out') return 'Too late in the day to set out'
+      return event.workedFor === 'wood'
+        ? 'Short of wood, waiting for a grove to regrow'
+        : `Hungry, waiting for ${patchAtTile(pair, event.position)} to regrow`
+    case 'forage': {
+      const where = `Foraging${toSwap} at ${patch(event.patchId)}`
+      if (!event.succeeded) return `${where}, without luck this hour`
+      // A harvest larger than the forager's hourly rate is a windfall.
+      return event.gatheredKcal > foragerRateOf(pair, foragerId) ? `${where}, and striking lucky` : where
+    }
+    case 'gather':
+      return `Gathering wood${toSwap} at grove ${(event.patchId ?? 0) + 1}`
     case 'walk':
       if (event.reason === 'going home') return 'Walking home to camp'
+      if (event.workedFor === 'wood') return `Walking to a grove for wood${toSwap}`
       return event.targetPatchId === null
-        ? `Walking to ${patchAtTile(pair, event.position)}`
-        : `Walking to ${patch(event.targetPatchId)}`
+        ? `Walking${toSwap} to ${patchAtTile(pair, event.position)}`
+        : `Walking${toSwap} to ${patch(event.targetPatchId)}`
   }
 }
+
+const foragerRateOf = (pair: DisplayPair, foragerId: number) => pair.next.foragers[foragerId]!.forageRate
 
 const patchLabel = (patch: Patch | undefined) => (patch ? `patch ${patch.id + 1}` : 'open ground')
 
@@ -364,3 +388,121 @@ export function foragerSummary(state: LifeState, foragerId: number) {
     receivedKcal: forager.ledger.reduce((sum, entry) => sum + entry.receivedKcal, 0),
   }
 }
+
+/** A grove's wood, part of the way through the hour. */
+export function displayedGroveWood(pair: DisplayPair, groveId: number, interpolate = true) {
+  const before = pair.previous.groves[groveId]!.wood
+  const after = pair.next.groves[groveId]!.wood
+  return interpolate ? lerp(before, after, pair.alpha) : after
+}
+
+/** A tree's crown shrinks as its grove runs low, but never vanishes. */
+export const crownScale = (wood: number, capacity: number) => 0.35 + 0.65 * Math.sqrt(Math.max(0, wood) / capacity)
+
+/** The wood a forager holds, part of the way through the hour. */
+export function displayedWood(pair: DisplayPair, foragerId: number, interpolate = true) {
+  const before = pair.previous.foragers[foragerId]!.wood
+  const after = pair.next.foragers[foragerId]!.wood
+  return interpolate ? lerp(before, after, pair.alpha) : after
+}
+
+/** A stack of logs beside a forager: none when it holds no wood, full size at its target or more. */
+export const logScale = (wood: number, target: number) =>
+  wood <= 0 ? 0 : 0.45 + 0.55 * Math.min(1, Math.sqrt(wood / Math.max(1, target)))
+
+/**
+ * Where a forager's own terms fall between the lowest and highest the skill range allows, on a log scale: 0 for a
+ * forager as good at gathering and as poor at foraging as the range allows, 1 for the opposite, ½ with equal skills.
+ */
+export function ownTermsPosition(config: LifeConfig, forager: Forager) {
+  const span = Math.log(config.skillMaxPercent / config.skillMinPercent)
+  if (span === 0) return 0.5
+  const base = Math.log(config.forageKcalPerHour / config.woodPerHour)
+  return Math.min(1, Math.max(0, (Math.log(ownTerms(forager)) - base + span) / (2 * span)))
+}
+
+const mix = (from: string, to: string, t: number) => {
+  const channel = (color: string, at: number) => parseInt(color.slice(at, at + 2), 16)
+  const value = (at: number) => Math.round(channel(from, at) + (channel(to, at) - channel(from, at)) * t)
+  return `#${[1, 3, 5].map((at) => value(at).toString(16).padStart(2, '0')).join('')}`
+}
+
+/** Foragers relatively good at gathering wear the cool colour, those relatively good at foraging the warm one. */
+export const TERMS_COLORS = { gatherer: palette.firmA, forager: palette.warning }
+
+export const foragerColor = (config: LifeConfig, forager: Forager) =>
+  mix(TERMS_COLORS.gatherer, TERMS_COLORS.forager, ownTermsPosition(config, forager))
+
+/** The swaps made in the hour being drawn. */
+export const currentSwaps = ({ previous, next }: DisplayPair): SwapEvent[] =>
+  next.lastSwaps.filter((made) => made.tick === previous.tick)
+
+/** Where a swap's arc runs: from seller to buyer, each at its place on the swap's tile by the hour's end. */
+export function swapEnds(made: SwapEvent, offsets: { next: StandingOffset[] }) {
+  const at = (foragerId: number) => ({
+    x: made.tile.x + offsets.next[foragerId]!.x,
+    y: made.tile.y + offsets.next[foragerId]!.y,
+  })
+  return { from: at(made.sellerId), to: at(made.buyerId) }
+}
+
+/** Whether a forager's hearth is lit in the hour being drawn, dark because it sleeps cold, or not in use. */
+export function hearthAt(pair: DisplayPair, foragerId: number): 'lit' | 'cold' | null {
+  const event = currentEvent(pair, foragerId)
+  if (event?.action !== 'sleep') return null
+  if (event.burnedWood > 0) return 'lit'
+  return event.sleptCold ? 'cold' : null
+}
+
+/** What the inspector shows for a grove: the truth beside what the followed forager believes. */
+export function groveInspection(state: LifeState, groveId: number, foragerId: number) {
+  const grove = state.groves[groveId]!
+  const memory = state.foragers[foragerId]!.groveMemory[groveId]!
+  const hoursAgo = state.tick - 1 - memory.observedTick
+  return {
+    name: `Grove ${grove.id + 1}`,
+    wood: grove.wood,
+    capacity: state.config.groveCapacityWood,
+    rememberedWood: memory.wood,
+    seen: memory.observedTick === 0 ? 'at the start' : hoursAgo <= 0 ? 'this hour' : `${formatHours(hoursAgo)} ago`,
+    difference: grove.wood - memory.wood,
+  }
+}
+
+/** What the HUD says about a forager's skills, wood and swaps. */
+export function tradeSummary(state: LifeState, foragerId: number) {
+  const forager = state.foragers[foragerId]!
+  const { config } = state
+  const terms = knownTerms(config, forager, state.tick)
+  const worked = forager.hoursWorked.forage + forager.hoursWorked.gather
+  return {
+    forageRate: forager.forageRate,
+    woodRate: forager.woodRate,
+    ownTerms: ownTerms(forager),
+    wood: forager.wood,
+    woodTarget: woodTarget(config),
+    heardTerms: terms,
+    /** Hours since it heard the terms it remembers; null if it remembers none. */
+    heardHoursAgo: terms === null ? null : Math.max(0, state.tick - 1 - forager.heardTerms!.tick),
+    ...forager.swapTotals,
+    /** The share of its working hours spent gathering, or null before it has worked. */
+    woodShare: worked ? forager.hoursWorked.gather / worked : null,
+  }
+}
+
+/** Each forager's own terms and share of working hours spent gathering, for the specialization chart. */
+export const specializationPoints = (state: LifeState) =>
+  state.foragers.flatMap((forager) => {
+    const worked = forager.hoursWorked.forage + forager.hoursWorked.gather
+    return worked
+      ? [
+          {
+            id: forager.id,
+            ownTerms: ownTerms(forager),
+            woodShare: forager.hoursWorked.gather / worked,
+            alive: forager.alive,
+            color: foragerColor(state.config, forager),
+          },
+        ]
+      : []
+  })
