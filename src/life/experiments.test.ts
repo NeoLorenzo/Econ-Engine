@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { LIFE0_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import {
+  bandOfOneExperiment,
   EXPERIMENT_SEEDS,
   isSustained,
   leisureExperiment,
@@ -8,11 +10,10 @@ import {
   singlePatchThresholdExperiment,
 } from './experiments'
 import { lifeTheory } from './theory'
-import { LIFE_DEFAULT_CONFIG } from './config'
 
 describe('theory', () => {
-  it('derives the canonical predictions', () => {
-    const theory = lifeTheory(LIFE_DEFAULT_CONFIG)
+  it('derives Life 0’s predictions on Life 0’s world', () => {
+    const theory = lifeTheory({ ...LIFE_DEFAULT_CONFIG, ...LIFE0_WORLD })
     expect(theory.fixedDailyCostKcal).toBe(1_800)
     expect(theory.forageHoursPerDay).toBeCloseTo(1.818, 3)
     expect(theory.dailyNeedKcal).toBeCloseTo(2_181.8, 1)
@@ -21,10 +22,17 @@ describe('theory', () => {
     expect(theory.dailyDeficitKcal(theory.singlePatchThresholdKcalPerHour)).toBeCloseTo(0, 9)
     expect(theory.deathDayWindow(100, 16_000)).toBeNull()
   })
+
+  it('derives the band’s capacities on the canonical world', () => {
+    const theory = lifeTheory(LIFE_DEFAULT_CONFIG)
+    expect(theory.carryingCapacity).toBeCloseTo(19.8, 1)
+    expect(theory.searchingDailyCostKcal).toBe(4_320)
+    expect(theory.searchCapacity).toBe(10)
+  })
 })
 
 // Every run below checks every invariant, including exact energy conservation, after every hour.
-describe('experiment 1: the single-patch threshold', () => {
+describe('Life 0 experiment 1: the single-patch threshold', () => {
   const result = singlePatchThresholdExperiment()
 
   it('sweeps 0.5 to 1.5 times the threshold', () => {
@@ -52,7 +60,7 @@ describe('experiment 1: the single-patch threshold', () => {
   })
 })
 
-describe('experiment 2: leisure', () => {
+describe('Life 0 experiment 2: leisure', () => {
   const { expectedForageHoursPerDay, rows } = leisureExperiment()
 
   it('forages the hours its needs require, however abundant the food', () => {
@@ -65,13 +73,14 @@ describe('experiment 2: leisure', () => {
   })
 })
 
-describe('experiment 3: the cost of local knowledge', () => {
+describe('Life 0 experiment 3: the cost of local knowledge', () => {
   it('dies on every seed below the lower bound, as physics requires', () => {
-    for (const seed of EXPERIMENT_SEEDS) expect(runLife({ seed, patchRegrowthKcalPerHour: 20 }).survived).toBe(false)
+    for (const seed of EXPERIMENT_SEEDS)
+      expect(runLife({ ...LIFE0_WORLD, seed, patchRegrowthKcalPerHour: 20 }).survived).toBe(false)
   })
 
   it('survives on every seed at the canonical rate', () => {
-    for (const seed of EXPERIMENT_SEEDS) expect(isSustained(runLife({ seed }))).toBe(true)
+    for (const seed of EXPERIMENT_SEEDS) expect(isSustained(runLife({ ...LIFE0_WORLD, seed }))).toBe(true)
   })
 
   it('finds a frontier between the lower bound and the canonical rate on every seed', () => {
@@ -81,5 +90,15 @@ describe('experiment 3: the cost of local knowledge', () => {
       expect(frontier!).toBeGreaterThan(lowerBound)
       expect(frontier!).toBeLessThanOrEqual(50)
     }
+  })
+
+  it('never walks to a patch too empty to forage', () => {
+    for (const seed of EXPERIMENT_SEEDS) expect(runLife({ ...LIFE0_WORLD, seed }).emptyArrivals).toBe(0)
+  })
+})
+
+describe('experiment 1: a band of one is Life 0', () => {
+  it('reproduces Life 0’s checksums, starving runs included', () => {
+    for (const { actual, expected } of bandOfOneExperiment()) expect(actual).toBe(expected)
   })
 })

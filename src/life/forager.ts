@@ -8,13 +8,18 @@ export function nextHungerMode(config: LifeConfig, energyKcal: number, hungry: b
   return hungry
 }
 
-/** The forager sees only its own tile. Standing on a patch, it records that patch's stock and the tick. */
-export function observe(forager: Forager, patches: readonly Patch[], tick: number): PatchMemory[] {
-  const here = patches.find((patch) => sameTile(patch.tile, forager.position))
-  if (!here) return forager.memory
-  const memory = [...forager.memory]
-  memory[here.id] = { stockKcal: here.stockKcal, observedTick: tick }
-  return memory
+/**
+ * The forager records the stock of every patch within its perception radius, and the tick. At radius 0 it sees only
+ * its own tile, as Life 0's forager did. It does not perceive other foragers.
+ */
+export function observe(config: LifeConfig, forager: Forager, patches: readonly Patch[], tick: number): PatchMemory[] {
+  let memory: PatchMemory[] | null = null
+  for (const patch of patches) {
+    if (manhattan(patch.tile, forager.position) > config.perceptionRadiusTiles) continue
+    memory ??= [...forager.memory]
+    memory[patch.id] = { stockKcal: patch.stockKcal, observedTick: tick }
+  }
+  return memory ?? forager.memory
 }
 
 /**
@@ -34,6 +39,20 @@ export function decide(
   if (here && here.stockKcal >= config.forageKcalPerHour) return { action: 'forage', reason: 'foraging' }
   if (patches.some((patch) => patch !== here)) return { action: 'walk', reason: 'seeking food' }
   return { action: 'rest', reason: 'waiting for regrowth' }
+}
+
+/**
+ * Where a walking forager heads this hour. It keeps its target until it reaches it, unless it has just seen the target
+ * holding less than a full hour's harvest; then, as on arrival, it chooses again. At radius 0 a forager first sees its
+ * target on arrival, so it always walks on, as in Life 0.
+ */
+export function walkTarget(config: LifeConfig, forager: Forager, patches: readonly Patch[], tick: number) {
+  const current = forager.targetPatchId === null ? null : patches[forager.targetPatchId]!
+  if (current && !sameTile(current.tile, forager.position)) {
+    const seen = forager.memory[current.id]!
+    if (seen.observedTick !== tick || seen.stockKcal >= config.forageKcalPerHour) return current
+  }
+  return choosePatch(config, forager.position, patches, forager.memory)
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE_DEFAULT_CONFIG, lifeConfigErrors, resolveLifeConfig } from './config'
+import { LIFE0_WORLD, LIFE_DEFAULT_CONFIG, lifeConfigErrors, resolveLifeConfig } from './config'
 import type { LifeConfig } from './types'
 
 const errorsFor = (overrides: Partial<LifeConfig>) => lifeConfigErrors({ ...LIFE_DEFAULT_CONFIG, ...overrides })
@@ -8,6 +8,7 @@ describe('Life configuration', () => {
   it('accepts the canonical defaults', () => {
     expect(lifeConfigErrors(LIFE_DEFAULT_CONFIG)).toEqual([])
     expect(resolveLifeConfig()).toEqual(LIFE_DEFAULT_CONFIG)
+    expect(resolveLifeConfig(LIFE0_WORLD)).toMatchObject({ bandSize: 1, perceptionRadiusTiles: 0, patchCount: 4 })
   })
 
   it('refuses each broken rule', () => {
@@ -25,6 +26,9 @@ describe('Life configuration', () => {
     expect(errorsFor({ hungryBelowKcal: 18_000 })[0]).toMatch(/hungryBelowKcal < satiatedAtKcal/)
     expect(errorsFor({ satiatedAtKcal: 21_000 })[0]).toMatch(/satiatedAtKcal ≤ reserveMaxKcal/)
     expect(errorsFor({ initialReserveKcal: 0 })[0]).toMatch(/initialReserveKcal/)
+    expect(errorsFor({ bandSize: 0 })).toEqual(['bandSize must be at least 1'])
+    expect(errorsFor({ perceptionRadiusTiles: -1 })).toEqual(['perceptionRadiusTiles must not be negative'])
+    expect(errorsFor({ bandSize: 2.5 })).toEqual(['bandSize must be an integer'])
   })
 
   it('throws with every error when resolving an invalid configuration', () => {

@@ -1,5 +1,6 @@
-import type { ActionEvent, LifeState, Patch } from '../life/types'
-import { walkPath } from '../life/world'
+import { lastEventOf } from '../life/engine'
+import type { ActionEvent, LifeState, Patch, Tile } from '../life/types'
+import { sameTile, walkPath } from '../life/world'
 
 /**
  * The simulation advances in whole hours; the display does not. It keeps the state before and after the hour in
@@ -42,9 +43,11 @@ export function advanceClock(alpha: number, elapsedSeconds: number, hoursPerSeco
 
 const lerp = (from: number, to: number, t: number) => from + (to - from) * t
 
-/** The hour in progress: what the forager is doing between `previous` and `next`, if it is alive to do anything. */
-export const currentEvent = ({ previous, next }: DisplayPair): ActionEvent | null =>
-  next.lastEvent && next.lastEvent.tick === previous.tick ? next.lastEvent : null
+/** The hour in progress: what a forager is doing between `previous` and `next`, if it is alive to do anything. */
+export function currentEvent({ previous, next }: DisplayPair, foragerId: number): ActionEvent | null {
+  const event = lastEventOf(next, foragerId)
+  return event && event.tick === previous.tick ? event : null
+}
 
 /** Hours since midnight of day 0, continuously. */
 export const displayHours = ({ previous, alpha }: DisplayPair) => previous.tick + alpha
@@ -76,8 +79,12 @@ export function sunAt(hourOfDay: number, dawnHour: number, duskHour: number) {
 }
 
 export interface ForagerPose {
+  /** The forager's position in tiles. */
   x: number
   y: number
+  /** Where it stands on its tile, beside the bush and apart from others sharing the tile, in tiles. */
+  offsetX: number
+  offsetY: number
   /** 0 standing, 1 lying down. */
   lying: number
   /** Direction of travel in radians, or null when standing still. */
@@ -88,38 +95,110 @@ export interface ForagerPose {
 /** How much of the hour lying down or getting up takes on screen. */
 const POSTURE_FRACTION = 0.25
 
+/** A lone forager stands this far from its tile's centre, diagonally, so it is beside the bush rather than in it. */
+const STAND_RADIUS = 0.42
+/** Above this many foragers on one tile, the ring they stand on widens, up to the edge of the tile. */
+const RING_CAPACITY = 8
+
+export interface StandingOffset {
+  x: number
+  y: number
+}
+
 /**
- * Where the forager is drawn. A walk follows the simulated path tile by tile at the forager's walking speed, so a
+ * Where each forager stands on its tile in a state: foragers sharing a tile stand evenly around a ring, in ID order.
+ * It depends only on positions, so the display moves each forager between its places in two real states.
+ */
+export function standingOffsets(state: LifeState): StandingOffset[] {
+  const byTile = new Map<string, number[]>()
+  for (const forager of state.foragers) {
+    const key = `${forager.position.x},${forager.position.y}`
+    const ids = byTile.get(key)
+    if (ids) ids.push(forager.id)
+    else byTile.set(key, [forager.id])
+  }
+  const offsets: StandingOffset[] = state.foragers.map(() => ({ x: 0, y: 0 }))
+  for (const ids of byTile.values()) {
+    const radius = Math.min(0.48, STAND_RADIUS * Math.max(1, ids.length / RING_CAPACITY))
+    for (const [rank, id] of ids.entries()) {
+      const angle = Math.PI / 4 + (2 * Math.PI * rank) / ids.length
+      offsets[id] = { x: radius * Math.cos(angle), y: radius * Math.sin(angle) }
+    }
+  }
+  return offsets
+}
+
+/** The standing offsets of both states of a pair, which a frame drawing the whole band computes once. */
+export const pairOffsets = (pair: DisplayPair) => ({
+  previous: standingOffsets(pair.previous),
+  next: standingOffsets(pair.next),
+})
+
+/**
+ * Where a forager is drawn. A walk follows the simulated path tile by tile at the forager's walking speed, so a
  * walk shorter than the hour's limit ends early and the forager stands for the rest of the hour.
  */
-export function foragerPose(pair: DisplayPair, interpolate = true): ForagerPose {
+export function foragerPose(
+  pair: DisplayPair,
+  foragerId: number,
+  interpolate = true,
+  offsets = pairOffsets(pair),
+): ForagerPose {
   const { previous, next } = pair
   const alpha = interpolate ? pair.alpha : 1
-  const event = currentEvent(pair)
-  const lyingBefore = previous.lastEvent?.action === 'sleep' || !previous.forager.alive
-  const lyingAfter = event ? event.action === 'sleep' : !next.forager.alive
+  const event = currentEvent(pair, foragerId)
+  const before = previous.foragers[foragerId]!
+  const after = next.foragers[foragerId]!
+  const lyingBefore = lastEventOf(previous, foragerId)?.action === 'sleep' || !before.alive
+  const lyingAfter = event ? event.action === 'sleep' : !after.alive
   const transition = Math.min(1, alpha / POSTURE_FRACTION)
   const lying = lyingBefore === lyingAfter ? (lyingAfter ? 1 : 0) : lyingAfter ? transition : 1 - transition
+  const offset = {
+    offsetX: lerp(offsets.previous[foragerId]!.x, offsets.next[foragerId]!.x, alpha),
+    offsetY: lerp(offsets.previous[foragerId]!.y, offsets.next[foragerId]!.y, alpha),
+  }
 
   if (event?.action !== 'walk') {
-    const { x, y } = next.forager.position
-    return { x, y, lying, heading: null, walking: false }
+    const { x, y } = after.position
+    return { x, y, ...offset, lying, heading: null, walking: false }
   }
   const path = [event.from, ...walkPath(event.from, event.position, previous.config.tilesPerHour)]
   const travelled = Math.min(path.length - 1, alpha * previous.config.tilesPerHour)
   const index = Math.min(path.length - 2, Math.floor(travelled))
-  if (index < 0) return { ...event.from, lying, heading: null, walking: false }
+  if (index < 0) return { ...event.from, ...offset, lying, heading: null, walking: false }
   const from = path[index]!
   const to = path[index + 1]!
   const t = travelled - index
   return {
     x: lerp(from.x, to.x, t),
     y: lerp(from.y, to.y, t),
+    ...offset,
     lying,
     heading: Math.atan2(to.x - from.x, to.y - from.y),
     walking: travelled < path.length - 1,
   }
 }
+
+/**
+ * The outline of every tile within `radius` of a tile, by Manhattan distance, as a closed staircase of corner points
+ * relative to the tile's centre, in tiles. It runs down the right-hand side and back up the left.
+ */
+export function perceptionOutline(radius: number): [number, number][] {
+  const points: [number, number][] = []
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    const reach = radius - Math.abs(dy) + 0.5
+    points.push([reach, dy - 0.5], [reach, dy + 0.5])
+  }
+  for (let dy = radius; dy >= -radius; dy -= 1) {
+    const reach = radius - Math.abs(dy) + 0.5
+    points.push([-reach, dy + 0.5], [-reach, dy - 0.5])
+  }
+  return points
+}
+
+/** Whether a radius takes in the whole grid from any tile, so every forager sees every patch. */
+export const seesEverything = (state: LifeState) =>
+  state.config.perceptionRadiusTiles >= state.config.gridWidth + state.config.gridHeight - 2
 
 /** A patch's stock, part of the way through the hour. */
 export function displayedStock(pair: DisplayPair, patchId: number, interpolate = true) {
@@ -132,21 +211,42 @@ export function displayedStock(pair: DisplayPair, patchId: number, interpolate =
 export const bushScale = (stockKcal: number, capacityKcal: number) =>
   0.3 + 0.7 * Math.sqrt(Math.max(0, stockKcal) / capacityKcal)
 
-export const displayedEnergy = (pair: DisplayPair, interpolate = true) =>
+export const displayedEnergy = (pair: DisplayPair, foragerId: number, interpolate = true) =>
   interpolate
-    ? lerp(pair.previous.forager.energyKcal, pair.next.forager.energyKcal, pair.alpha)
-    : pair.next.forager.energyKcal
+    ? lerp(pair.previous.foragers[foragerId]!.energyKcal, pair.next.foragers[foragerId]!.energyKcal, pair.alpha)
+    : pair.next.foragers[foragerId]!.energyKcal
 
-export function describeActivity(pair: DisplayPair) {
-  const event = currentEvent(pair)
-  if (!pair.next.forager.alive && !event) return 'Dead of starvation'
+export const aliveCount = (state: LifeState) => state.foragers.filter((forager) => forager.alive).length
+
+/** Forager IDs count from 0; people count from 1. */
+export const foragerName = (foragerId: number) => `Forager ${foragerId + 1}`
+
+/**
+ * The forager to follow after `current` in `direction` (1 forward, −1 back), wrapping around. It steps through the
+ * living; once all are dead, through everyone.
+ */
+export function stepFollowed(state: LifeState, current: number, direction: 1 | -1) {
+  const count = state.foragers.length
+  const anyAlive = state.foragers.some((forager) => forager.alive)
+  for (let step = 1; step <= count; step += 1) {
+    const id = (((current + direction * step) % count) + count) % count
+    if (!anyAlive || state.foragers[id]!.alive) return id
+  }
+  return current
+}
+
+export function describeActivity(pair: DisplayPair, foragerId: number) {
+  const event = currentEvent(pair, foragerId)
+  if (!pair.next.foragers[foragerId]!.alive && !event) return 'Dead of starvation'
   if (!event) return 'Waiting to start'
   const patch = (id: number | null) => `patch ${(id ?? 0) + 1}`
   switch (event.action) {
     case 'sleep':
       return event.energyAfterKcal === 0 ? 'Starved in its sleep' : 'Sleeping through the night'
     case 'rest':
-      return event.reason === 'satiated' ? 'Resting, well fed' : `Hungry, waiting for ${patchHere(pair)} to regrow`
+      return event.reason === 'satiated'
+        ? 'Resting, well fed'
+        : `Hungry, waiting for ${patchAtTile(pair, event.position)} to regrow`
     case 'forage':
       return `Foraging at ${patch(event.patchId)}`
     case 'walk':
@@ -158,20 +258,13 @@ export function describeActivity(pair: DisplayPair) {
 
 const patchLabel = (patch: Patch | undefined) => (patch ? `patch ${patch.id + 1}` : 'open ground')
 
-const patchHere = (pair: DisplayPair) =>
-  patchLabel(
-    pair.next.patches.find(
-      (patch) => patch.tile.x === pair.next.forager.position.x && patch.tile.y === pair.next.forager.position.y,
-    ),
-  )
+const patchAtTile = (pair: DisplayPair, tile: Tile) =>
+  patchLabel(pair.next.patches.find((patch) => sameTile(patch.tile, tile)))
 
-const patchAtTile = (pair: DisplayPair, tile: { x: number; y: number }) =>
-  patchLabel(pair.next.patches.find((patch) => patch.tile.x === tile.x && patch.tile.y === tile.y))
-
-/** What the inspector shows for a patch: the truth beside what the forager believes. */
-export function patchInspection(state: LifeState, patchId: number) {
+/** What the inspector shows for a patch: the truth beside what the followed forager believes. */
+export function patchInspection(state: LifeState, patchId: number, foragerId: number) {
   const patch = state.patches[patchId]!
-  const memory = state.forager.memory[patchId]!
+  const memory = state.foragers[foragerId]!.memory[patchId]!
   // An observation made during hour `t` is "this hour" until hour `t + 1` begins.
   const hoursAgo = state.tick - 1 - memory.observedTick
   return {

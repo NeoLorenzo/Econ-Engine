@@ -1,10 +1,11 @@
 import type { LifeConfig } from './types'
 
+/** The canonical Life 1 world: a band of about twice the land's carrying capacity. */
 export const LIFE_DEFAULT_CONFIG: LifeConfig = {
   seed: 20260813,
-  gridWidth: 12,
-  gridHeight: 12,
-  patchCount: 4,
+  gridWidth: 24,
+  gridHeight: 24,
+  patchCount: 36,
   patchCapacityKcal: 8_000,
   patchRegrowthKcalPerHour: 50,
   initialPatchStockKcal: 8_000,
@@ -20,6 +21,17 @@ export const LIFE_DEFAULT_CONFIG: LifeConfig = {
   initialReserveKcal: 16_000,
   hungryBelowKcal: 14_000,
   satiatedAtKcal: 18_000,
+  bandSize: 40,
+  perceptionRadiusTiles: 2,
+}
+
+/** The overrides that give back Life 0: one forager, seeing only its own tile, on Life 0's world. */
+export const LIFE0_WORLD: Partial<LifeConfig> = {
+  gridWidth: 12,
+  gridHeight: 12,
+  patchCount: 4,
+  bandSize: 1,
+  perceptionRadiusTiles: 0,
 }
 
 /** Returns every rule the configuration breaks, in the order the specification lists them. */
@@ -57,6 +69,8 @@ export function lifeConfigErrors(config: LifeConfig): string[] {
     errors.push('Thresholds must satisfy 0 < hungryBelowKcal < satiatedAtKcal ≤ reserveMaxKcal')
   if (config.initialReserveKcal <= 0 || config.initialReserveKcal > config.reserveMaxKcal)
     errors.push('initialReserveKcal must be between 1 and reserveMaxKcal')
+  if (config.bandSize < 1) errors.push('bandSize must be at least 1')
+  if (config.perceptionRadiusTiles < 0) errors.push('perceptionRadiusTiles must not be negative')
   return errors
 }
 

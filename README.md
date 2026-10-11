@@ -75,15 +75,20 @@ Pushes to `main` validate and deploy the static Vite bundle to [GitHub Pages](ht
 
 Government is deliberately narrow and stylized: one flat cash-wealth tax, one Gini objective, no forecasting, and one equalizing transfer rule. There are no other taxes, benefits, public purchases, borrowing, money creation, monetary policy, or welfare/consumption objectives.
 
-## Life 0: the bottom-up core
+## Life: the bottom-up core
 
-A second, separate simulation has started beside the MVP9 economy. It begins from the economy with the fewest institutions: one forager on a landscape of food patches that deplete and regrow, with an energy reserve, day and night, and only what it can see and remember to decide with. There is no money, no market and no one else. Each step up the [merge document's ladder](docs/MERGE.md#the-ladder) adds one thing and one question.
+A second, separate simulation has started beside the MVP9 economy. It begins from the economy with the fewest institutions: foragers on a landscape of food patches that deplete and regrow, each with an energy reserve, living through day and night and deciding only from what it can see and remember. There is no money and no market. Each step up the [merge document's ladder](docs/MERGE.md#the-ladder) adds one thing and one question. Life 1, the current step, is a band of 40 foragers sharing one landscape.
 
-**[▶ Open Life 0](https://neolorenzo.github.io/Econ-Engine/life.html)**, also linked from the simulator's top bar. The simulation advances in whole hours; the view moves continuously between them, so the forager walks, forages and sleeps on screen. Click a bush to compare what a patch really holds with what the forager remembers.
+**[▶ Open Life 1](https://neolorenzo.github.io/Econ-Engine/life.html)**, also linked from the simulator's top bar. The simulation advances in whole hours; the view moves continuously between them, so foragers walk, forage and sleep on screen. Click a forager to follow it, and a bush to compare what a patch really holds with what that forager remembers.
 
-![Life 0: a forager walking across a grass board towards a bush marked as its target, past a depleted brown bush, with its energy reserve and a chart of its reserve and the food on all patches](docs/images/life0.jpg)
+![Life 1: a band of foragers on a grass board after a collapse, most lying grey where they starved, one highlighted forager walking inside the outline of what it can see, with a chart of the band falling from 40 to 6](docs/images/life1.jpg)
 
-The first result: alone on the land, a forager that knows only what it last saw survives with food supplies just 6–14% above the theoretical minimum. With no one else eating, a remembered patch can only have grown, so stale memory errs in the safe direction. Details are in the [Life 0 specification](docs/LIFE0_SPEC.md) and the [lab notes](LAB_NOTES.md).
+The results so far:
+
+- **Life 0, alone.** A forager that knows only what it last saw survives with food supplies just 6–14% above the theoretical minimum. With no one else eating, a remembered patch can only have grown, so stale memory errs in the safe direction.
+- **Life 1, a band.** The band does not settle at the number the land could feed. A band of 40, on land that could feed about 20, collapses to 4–8 within two weeks. Hungry foragers spend their days walking to patches others have emptied, and walking costs more than the land regrows. Even knowing every patch's stock does not prevent it.
+
+Details are in the [Life 0](docs/LIFE0_SPEC.md) and [Life 1](docs/LIFE1_SPEC.md) specifications and the [lab notes](LAB_NOTES.md).
 
 ## Direction
 
