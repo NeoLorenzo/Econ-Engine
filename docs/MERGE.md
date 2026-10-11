@@ -114,14 +114,28 @@ The [vision](VISION.md) stands: primitives instead of institutions, the four lay
 
 ## Open decisions
 
-To be settled in the step 0 specification or later. The [step 0 specification](LIFE0_SPEC.md) settles the tick (one hour), how decisions are made (priority rules), the new core's directory (`src/life/`) and the observer (a separate page).
+The [step 0 specification](LIFE0_SPEC.md) settled the tick (one hour), how decisions are made (priority rules for now), the new core's directory (`src/life/`) and the observer (a separate page, `life.html`). Still open:
 
-- The tick length, and whether the observer shows it hour by hour or in larger strides.
-- How decisions are made: fixed priority rules for bodily needs, bounded learning for choices such as where to forage, or both.
-- The new core's directory and name, and whether the observer runs both cores or only the new one.
 - Whether and when the MVP9 core is eventually retired.
 - Whether the project is renamed, for example to Life Engine, once the merged core is the main line of work.
 - Which, if any, of Life Engine's low-poly art (trees, rocks, human models) is converted to glTF for the three.js world.
+
+## Step 1: open questions
+
+Step 1 puts several foragers on one landscape. Life 0's [lab notes](../LAB_NOTES.md) give it a sharper question: alone, a forager's out-of-date memory cost almost nothing, because a remembered patch can only have grown. With others eating, a patch remembered as full may have been emptied. Does the cost of local knowledge then rise sharply?
+
+The step 1 specification must settle:
+
+- **Who acts first.** When two foragers want the same patch in the same hour, the order of actions decides who eats. The order must be deterministic and must not favour low IDs. Options include a seeded shuffle each tick, from a new named stream, or simultaneous claims split by a stated rule.
+- **Births.** The ladder asks whether the population settles at the land's carrying capacity, but births belong to step 5. With deaths alone, a population can only fall towards capacity. The specification chooses deliberately, either starting the band above capacity or bringing a minimal birth rule forward, and says what that choice means for the question.
+- **What foragers perceive.** This covers how far a forager sees patches and other foragers, and whether it remembers other foragers as well as patches.
+- **Carrying capacity in theory.** Extend `theory.ts` so experiments have a benchmark. Ignoring travel, `n` patches regrowing `r` kcal an hour feed at most `24·n·r / D*` foragers, where `D*` is one forager's daily need (about 2,182 kcal by default).
+- **One forager must reproduce Life 0.** The state's single `forager` becomes a list. A band of one must reproduce the Life 0 trajectory bit-for-bit, which makes the generalization a verifiable refactor.
+- **The observer.** `src/lifeView/` assumes one forager throughout: `state.forager` in the HUD, the pose, the inspector and the target ring. It needs:
+  - a way to follow one forager;
+  - a HUD for the forager being followed;
+  - an inspector that compares a patch with that forager's memory;
+  - instanced drawing if the band is large.
 
 ## References
 
