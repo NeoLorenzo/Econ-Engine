@@ -81,3 +81,15 @@ The draw sequence is therefore: one orientation draw per non-square plot, one po
 
 The 3D world draws each firm and Government across its plot: `buildingScale` stretches the building model to the plot, less a 0.1-tile inset, and raises it with the square root of the plot's area. The camera's default distance, zoom-out limit, fog and far plane scale with the grid, and Locate stays further out for bigger plots.
 
+## Life 0: the bottom-up core
+
+`src/life/` is a second simulation core, independent of `src/sim/`. It imports only the random-number functions from `src/sim/rng.ts`; nothing under `src/sim/` depends on it, so MVP9 is unchanged. The [Life 0 specification](LIFE0_SPEC.md) is authoritative.
+
+- `types.ts` and `config.ts` define the configuration, its defaults and validation. Every food and energy quantity is an integer number of kilocalories.
+- `world.ts` draws the layout from a layout seed derived with `mixSeed`, the only random stream in Life 0, and provides daylight, distance and the x-then-y walking path.
+- `forager.ts` holds the forager's side: observation of its own tile, hunger with hysteresis, the priority rules and patch choice. It reads only the forager's state, its memory and the patch underfoot.
+- `engine.ts` runs one hour as a pure function, `stepLife(previous) → next`: regrowth, observation, decision, action, metabolism, record. Events are kept one array per day for the last 30 days; daily summaries are kept for the whole run.
+- `invariants.ts` checks exact energy conservation and the other invariants; `theory.ts` derives the analytical predictions; `experiments.ts` runs the three experiments headless, checking invariants every hour.
+
+`src/lifeView/` is the observer, a separate page (`life.html`, a second Vite entry). One `requestAnimationFrame` loop advances a display clock and draws; React only refreshes the HUD ten times a second. The display keeps the states before and after the hour in progress and draws the world part of the way between them (`lifeViewModel.ts`): the forager follows its simulated path at walking speed, bushes and the reserve change linearly, and light follows a continuous time of day. It never draws a state the simulation did not produce. A long gap between frames counts as at most a quarter of a second, so a background tab resumes rather than leaping ahead. `lifeScene.ts` owns the three.js scene.
+

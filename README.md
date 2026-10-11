@@ -75,6 +75,16 @@ Pushes to `main` validate and deploy the static Vite bundle to [GitHub Pages](ht
 
 Government is deliberately narrow and stylized: one flat cash-wealth tax, one Gini objective, no forecasting, and one equalizing transfer rule. There are no other taxes, benefits, public purchases, borrowing, money creation, monetary policy, or welfare/consumption objectives.
 
+## Life 0: the bottom-up core
+
+A second, separate simulation has started beside the MVP9 economy. It begins from the economy with the fewest institutions: one forager on a landscape of food patches that deplete and regrow, with an energy reserve, day and night, and only what it can see and remember to decide with. There is no money, no market and no one else. Each step up the [merge document's ladder](docs/MERGE.md#the-ladder) adds one thing and one question.
+
+**[▶ Open Life 0](https://neolorenzo.github.io/Econ-Engine/life.html)**, also linked from the simulator's top bar. The simulation advances in whole hours; the view moves continuously between them, so the forager walks, forages and sleeps on screen. Click a bush to compare what a patch really holds with what the forager remembers.
+
+![Life 0: a forager walking across a grass board towards a bush marked as its target, past a depleted brown bush, with its energy reserve and a chart of its reserve and the food on all patches](docs/images/life0.jpg)
+
+The first result: alone on the land, a forager that knows only what it last saw survives with food supplies just 6–14% above the theoretical minimum. With no one else eating, a remembered patch can only have grown, so stale memory errs in the safe direction. Details are in the [Life 0 specification](docs/LIFE0_SPEC.md) and the [lab notes](LAB_NOTES.md).
+
 ## Direction
 
 The long-term aim is an institution-agnostic engine: markets, taxes, governments and other institutions should emerge from agents' decisions instead of being built in. The [vision document](docs/VISION.md) describes that direction. The [merge document](docs/MERGE.md) records the decision to merge Life Engine into this project and build a new core bottom-up, starting from a band of foragers. Neither is a description of the current model.

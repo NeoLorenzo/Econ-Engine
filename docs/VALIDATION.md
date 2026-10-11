@@ -104,3 +104,17 @@ No existing simulation test needed a new expected value: they assert behaviour r
 
 The eight-seed MVP8/MVP9 comparison is in [MVP9_SPEC.md](MVP9_SPEC.md#mvp8-and-mvp9-compared). The fast-mode browser check passed with a pause latency of 256 ms. In the browser, the 40×40 town, plot buildings, the overlay and scenery, clicking a plot, Locate, the 2D market map and the 375px layout were checked with no console errors.
 
+# Life 0
+
+Runtime invariants, checked after every hour of every test and experiment run: exact energy conservation (patch stock + reserve + energy metabolized = starting stock and reserve + energy regrown), stocks within capacity, the reserve within its bounds and 0 once dead, a dead forager taking no action, the forager on the grid with a target that is a patch, foraging only in daylight on a patch observed to hold a full hour's harvest, and memory that matches what the forager stood on.
+
+The three experiments of the [specification](LIFE0_SPEC.md#experiments) are tests:
+
+- **Single-patch threshold.** On one tile with an empty patch, at every rate from 46 to 136 kcal/h for 400 days, the forager starves at 81 kcal/h or less, inside the predicted window for its day of death, and survives at 100 or more. Its reserve declines by more than 2 kcal a day at every rate up to 90 and at none from 91, matching `r* ≈ 90.9`.
+- **Leisure.** At 100, 200, 400 and 800 kcal/h it forages 1.81–1.82 hours a day over days 21–400, against a predicted 1.818, and sleeps 12.
+- **Local knowledge.** On the canonical four-patch world, it dies on all eight seeds at 20 kcal/h per patch, below the lower bound of 22.7, and survives on all of them at 50. The lowest sustained rate is 24–26 kcal/h per patch, 1.06–1.14 times the bound.
+
+Unit tests cover configuration validation, layout, regrowth, each priority rule, hunger hysteresis, both patch-choice rules and tie-breaks, movement through the night, starvation, daily summaries, the 30-day event window and determinism. The observer's view model is tested for the display clock, light, the forager's path, posture at dusk and dawn, bush interpolation and the inspector.
+
+In the browser, the forager was checked walking, foraging and sleeping, the inspector and chart were checked on desktop, the layout at 375px, and both pages had no console errors.
+

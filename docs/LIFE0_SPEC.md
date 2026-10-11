@@ -142,7 +142,7 @@ Let `N` be night hours, `L` daylight hours, `s`, `ρ`, `φ` the sleep, rest and 
 - **Fixed daily cost:** `F = N·s + L·ρ`.
 - **Foraging hours needed per day:** `f* = F / (g − φ + ρ)`. Each foraging hour replaces an hour of rest, so it adds `φ − ρ` to the day's cost.
 - **Single-patch threshold:** the regrowth rate below which the forager must starve, `r* = g·F / (24·(g − φ + ρ))`. In steady state the forager eats everything that regrows, `24·r` per day.
-- **Daily deficit below the threshold:** `F − 24·r·(g − φ + ρ) / g`. Starting from a reserve `E` and an empty patch, the forager dies between day `(E − g) / deficit` and day `E / deficit`. It dies before the upper bound because, at death, the patch may still hold up to one hour's harvest that the forager was waiting for.
+- **Daily deficit below the threshold:** `F − 24·r·(g − φ + ρ) / g`. Starting from a reserve `E` and an empty patch, the forager dies between day `(E − g − N·r) / deficit` and day `E / deficit`. It dies before the upper bound because, at death, the patch may still hold food it never ate: up to one hour's harvest it was waiting for, plus one night's regrowth if it dies in its sleep.
 - **Multi-patch lower bound:** no forager, however well informed, can survive when `patchCount · r < r*`. Walking only adds cost.
 
 With the defaults: `F = 1,800` kcal, `f* ≈ 1.82` hours a day, a daily need of about 2,182 kcal, and `r* ≈ 90.9` kcal per hour. The four-patch lower bound is about 22.7 kcal per hour per patch, so the canonical 50 is about 2.2 times the bound.
@@ -153,13 +153,13 @@ All three experiments are deterministic and run headless in `src/life/experiment
 
 ### 1. The single-patch threshold
 
-A 1 × 1 world with one patch that starts empty, run for 400 days at every integer regrowth rate from 45 to 136 (0.5 to 1.5 times `r*`).
+A 1 × 1 world with one patch that starts empty, run for 400 days at every integer regrowth rate from 46 to 136 (0.5 to 1.5 times `r*`).
 
 Expected:
 
 - At `r ≤ 81` (0.9 `r*`) the forager dies within 400 days, inside the predicted window for its day of death.
 - At `r ≥ 100` (1.1 `r*`) it is alive at day 400.
-- The slope of the end-of-day reserve over days 21 to 400 changes sign within 2 kcal per hour of `r*`.
+- The end-of-day reserve over days 21 to 400 declines, by more than 2 kcal a day, at every rate below `r*` and at no rate above it. A well-fed forager's reserve cycles between the hunger thresholds, so its measured slope wanders by about 1 kcal a day either side of zero; the 2 kcal tolerance covers that.
 
 ### 2. Leisure
 
@@ -178,7 +178,7 @@ Expected:
 
 Reported, not tested:
 
-- For each seed, the smallest rate at which the forager survives with a non-negative trend in its reserve, and its ratio to the lower bound. The ratio measures the cost of travel and out-of-date knowledge.
+- For each seed, the smallest rate at which the forager survives with a reserve that is not declining (by the same 2 kcal tolerance), and its ratio to the lower bound. The ratio measures the cost of travel and out-of-date knowledge.
 - At the canonical rate: foraging, walking, resting and sleeping hours per day, and the share of walks that ended at a patch too empty to forage.
 
 ## Ledger and metrics
