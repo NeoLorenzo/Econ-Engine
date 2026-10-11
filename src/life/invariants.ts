@@ -1,5 +1,6 @@
-import { isDaylight, manhattan } from './world'
-import type { LifeState } from './types'
+import { carriedKcal } from './food'
+import { campTile, forageSucceeds, isDaylight, manhattan, sameTile } from './world'
+import type { LifeState, Tile } from './types'
 
 /** Returns every invariant the state breaks; an empty list means the state is sound. */
 export function lifeInvariantViolations(state: LifeState): string[] {
@@ -7,21 +8,26 @@ export function lifeInvariantViolations(state: LifeState): string[] {
   const violations: string[] = []
   const stock = patches.reduce((sum, patch) => sum + patch.stockKcal, 0)
   const reserves = foragers.reduce((sum, forager) => sum + forager.energyKcal, 0)
-  const held = stock + reserves + totals.metabolizedKcal
+  const carried = foragers.reduce((sum, forager) => sum + carriedKcal(forager.carried), 0)
+  const held = stock + reserves + carried + totals.metabolizedKcal + totals.spoiledKcal
   const supplied = totals.initialKcal + totals.regrownKcal
   if (held !== supplied)
-    violations.push(`Energy is not conserved: stock + reserves + metabolized = ${held}, start + regrown = ${supplied}`)
+    violations.push(
+      `Energy is not conserved: stock + reserves + carried + metabolized + spoiled = ${held}, start + regrown = ${supplied}`,
+    )
   for (const patch of patches) {
     if (patch.stockKcal < 0 || patch.stockKcal > config.patchCapacityKcal)
       violations.push(`Patch ${patch.id} stock ${patch.stockKcal} is outside 0–${config.patchCapacityKcal}`)
   }
 
   const lastTick = state.tick - 1
+  const camp = campTile(config)
   for (const forager of foragers) {
     const name = `Forager ${forager.id}`
     if (forager.energyKcal < 0 || forager.energyKcal > config.reserveMaxKcal)
       violations.push(`${name}'s reserve ${forager.energyKcal} is outside 0–${config.reserveMaxKcal}`)
     if (!forager.alive && forager.energyKcal !== 0) violations.push(`${name} is dead but has a reserve`)
+    if (!forager.alive && forager.carried.length) violations.push(`${name} is dead but carries food`)
     const { x, y } = forager.position
     if (x < 0 || y < 0 || x >= config.gridWidth || y >= config.gridHeight)
       violations.push(`${name} is off the grid at ${x},${y}`)
@@ -30,7 +36,21 @@ export function lifeInvariantViolations(state: LifeState): string[] {
     for (const [id, memory] of forager.memory.entries()) {
       if (memory.observedTick > state.tick) violations.push(`${name}'s memory of patch ${id} is from the future`)
     }
+    for (const lot of forager.carried) {
+      if (!Number.isInteger(lot.kcal) || lot.kcal <= 0) violations.push(`${name} carries a lot of ${lot.kcal} kcal`)
+      if (lot.harvestTick > lastTick) violations.push(`${name} carries food harvested in the future`)
+      if (config.shelfLifeHours > 0 && lot.harvestTick <= lastTick - config.shelfLifeHours)
+        violations.push(`${name} carries food that should have spoiled`)
+    }
+    if (camp && forager.alive && state.tick > 0 && !isDaylight(config, lastTick) && !sameTile(forager.position, camp))
+      violations.push(`${name} is away from camp at night`)
+    for (const [other, entry] of forager.ledger.entries()) {
+      if (entry.givenKcal !== foragers[other]!.ledger[forager.id]!.receivedKcal)
+        violations.push(`Forager ${forager.id} and forager ${other} disagree about what was given`)
+    }
   }
+  const recorded = foragers.reduce((sum, f) => sum + f.ledger.reduce((total, entry) => total + entry.givenKcal, 0), 0)
+  if (recorded !== totals.givenKcal) violations.push(`Ledgers record ${recorded} kcal given, gifts ${totals.givenKcal}`)
 
   if (state.tick > 0) {
     // Everyone alive at the start of the hour took exactly one turn: the living, and those who died this hour.
@@ -58,9 +78,64 @@ export function lifeInvariantViolations(state: LifeState): string[] {
     if (event.action === 'forage') {
       if (!isDaylight(config, event.tick)) violations.push(`Forager ${forager.id} foraged at night`)
       const memory = event.patchId === null ? undefined : forager.memory[event.patchId]
-      if (!memory || memory.observedTick !== event.tick || memory.stockKcal < config.forageKcalPerHour)
-        violations.push(`Forager ${forager.id} foraged a patch it had not seen holding a full hour’s harvest`)
+      if (!memory || memory.observedTick !== event.tick || memory.stockKcal < config.harvestKcal)
+        violations.push(`Forager ${forager.id} foraged a patch it had not seen holding a full harvest`)
+      if (event.succeeded !== forageSucceeds(config, event.tick, forager.id))
+        violations.push(`Forager ${forager.id}'s luck does not match its stream`)
+      if (event.gatheredKcal !== (event.succeeded ? config.harvestKcal : 0))
+        violations.push(`Forager ${forager.id} took ${event.gatheredKcal} kcal in an hour of foraging`)
+    } else if (event.succeeded !== null || event.gatheredKcal !== 0)
+      violations.push(`Forager ${forager.id} gathered food without foraging`)
+  }
+
+  violations.push(...giftViolations(state))
+  return violations
+}
+
+/** Every gift of the last hour obeyed the rules of giving and its giver's strategy. */
+function giftViolations(state: LifeState): string[] {
+  const { foragers, lastEvents, lastGifts } = state
+  const violations: string[] = []
+  const turnIndex = new Map(lastEvents.map((event, index) => [event.foragerId, index]))
+  // Each ledger as it stood before the hour's gifts, replayed gift by gift.
+  const before = new Map<string, { givenKcal: number; receivedKcal: number }>()
+  const entry = (from: number, to: number) => {
+    const key = `${from}>${to}`
+    if (!before.has(key)) {
+      let { givenKcal, receivedKcal } = foragers[from]!.ledger[to]!
+      for (const gift of lastGifts) {
+        if (gift.giverId === from && gift.recipientId === to) givenKcal -= gift.kcal
+        if (gift.giverId === to && gift.recipientId === from) receivedKcal -= gift.kcal
+      }
+      before.set(key, { givenKcal, receivedKcal })
     }
+    return before.get(key)!
+  }
+  const positionAt = (foragerId: number, giverIndex: number): Tile | null => {
+    const index = turnIndex.get(foragerId)
+    if (index === undefined) return null
+    const event = lastEvents[index]!
+    return index < giverIndex ? event.position : event.from
+  }
+  for (const gift of lastGifts) {
+    const name = `Forager ${gift.giverId}'s gift to forager ${gift.recipientId}`
+    const giver = foragers[gift.giverId]!
+    const recipient = foragers[gift.recipientId]!
+    const giverIndex = turnIndex.get(gift.giverId)
+    if (giverIndex === undefined || !sameTile(lastEvents[giverIndex]!.position, gift.tile))
+      violations.push(`${name} was not made where the giver stood`)
+    if (gift.giverId === gift.recipientId) violations.push(`${name} went to itself`)
+    if (gift.kcal <= 0 || gift.kcal > gift.requestKcal)
+      violations.push(`${name} of ${gift.kcal} kcal broke its request`)
+    if (!recipient.alive && recipient.deathTick !== gift.tick) violations.push(`${name} went to the dead`)
+    const where = giverIndex === undefined ? null : positionAt(gift.recipientId, giverIndex)
+    if (!where || !sameTile(where, gift.tile)) violations.push(`${name} went to a forager on another tile`)
+    if (giver.strategy === 'keeper') violations.push(`${name} was made by a keeper`)
+    const given = entry(gift.giverId, gift.recipientId)
+    if (giver.strategy === 'reciprocator' && given.receivedKcal < given.givenKcal)
+      violations.push(`${name} went to a forager that owed the reciprocator`)
+    given.givenKcal += gift.kcal
+    entry(gift.recipientId, gift.giverId).receivedKcal += gift.kcal
   }
   return violations
 }

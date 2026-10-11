@@ -1,6 +1,8 @@
 import { lastEventOf } from '../life/engine'
-import type { ActionEvent, LifeState, Patch, Tile } from '../life/types'
-import { sameTile, walkPath } from '../life/world'
+import { carriedKcal } from '../life/food'
+import type { ActionEvent, GiftEvent, LifeState, Patch, Strategy, Tile } from '../life/types'
+import { campTile, sameTile, walkPath } from '../life/world'
+import { palette } from '../ui/theme'
 
 /**
  * The simulation advances in whole hours; the display does not. It keeps the state before and after the hour in
@@ -244,12 +246,15 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
     case 'sleep':
       return event.energyAfterKcal === 0 ? 'Starved in its sleep' : 'Sleeping through the night'
     case 'rest':
-      return event.reason === 'satiated'
-        ? 'Resting, well fed'
-        : `Hungry, waiting for ${patchAtTile(pair, event.position)} to regrow`
+      if (event.reason === 'satiated') return 'Resting, well fed'
+      if (event.reason === 'too late to set out') return 'Hungry, but too late in the day to set out'
+      return `Hungry, waiting for ${patchAtTile(pair, event.position)} to regrow`
     case 'forage':
-      return `Foraging at ${patch(event.patchId)}`
+      return event.succeeded
+        ? `Foraging at ${patch(event.patchId)}, and striking lucky`
+        : `Foraging at ${patch(event.patchId)}, without luck this hour`
     case 'walk':
+      if (event.reason === 'going home') return 'Walking home to camp'
       return event.targetPatchId === null
         ? `Walking to ${patchAtTile(pair, event.position)}`
         : `Walking to ${patch(event.targetPatchId)}`
@@ -286,3 +291,76 @@ export function formatHours(hours: number) {
 }
 
 export const formatKcal = (kcal: number) => `${Math.round(kcal).toLocaleString('en-US')} kcal`
+
+export const STRATEGY_LABELS: Record<Strategy, string> = {
+  keeper: 'Keeper',
+  sharer: 'Sharer',
+  reciprocator: 'Reciprocator',
+}
+
+/** What each strategy does, in a few words for the HUD. */
+export const STRATEGY_RULES: Record<Strategy, string> = {
+  keeper: 'never gives',
+  sharer: 'gives to anyone hungry',
+  reciprocator: 'gives to those who owe it nothing',
+}
+
+export const STRATEGY_COLORS: Record<Strategy, string> = {
+  keeper: palette.firmB,
+  sharer: palette.positive,
+  reciprocator: palette.firmA,
+}
+
+/** Food a forager carries, part of the way through the hour. */
+export function displayedCarried(pair: DisplayPair, foragerId: number, interpolate = true) {
+  const before = carriedKcal(pair.previous.foragers[foragerId]!.carried)
+  const after = carriedKcal(pair.next.foragers[foragerId]!.carried)
+  return interpolate ? lerp(before, after, pair.alpha) : after
+}
+
+/** A bundle's size beside a forager: none when it carries nothing, full size for a whole windfall or more. */
+export const bundleScale = (carried: number, harvestKcal: number) =>
+  carried <= 0 ? 0 : 0.5 + 0.5 * Math.min(1, Math.sqrt(carried / harvestKcal))
+
+/** The gifts made in the hour being drawn. */
+export const currentGifts = ({ previous, next }: DisplayPair): GiftEvent[] =>
+  next.lastGifts.filter((gift) => gift.tick === previous.tick)
+
+/** A point on a gift's arc, `t` of the way from giver to recipient, rising highest halfway. In tiles; `height` in world units. */
+export function giftArcPoint(from: { x: number; y: number }, to: { x: number; y: number }, t: number) {
+  return { x: lerp(from.x, to.x, t), y: lerp(from.y, to.y, t), height: 0.75 + 0.45 * Math.sin(Math.PI * t) }
+}
+
+/**
+ * Where a gift's arc runs: from the giver to the recipient on the tile where the gift was made, each at its place
+ * there by the hour's end. A giver walking home hands over its food on arrival, not from where it set out.
+ */
+export function giftEnds(gift: GiftEvent, offsets: { next: StandingOffset[] }) {
+  const at = (foragerId: number) => ({
+    x: gift.tile.x + offsets.next[foragerId]!.x,
+    y: gift.tile.y + offsets.next[foragerId]!.y,
+  })
+  return { from: at(gift.giverId), to: at(gift.recipientId) }
+}
+
+/** Whether a tile is the camp. */
+export const isCamp = (state: LifeState, tile: Tile) => {
+  const camp = campTile(state.config)
+  return camp !== null && sameTile(camp, tile)
+}
+
+/** What the HUD says about a forager's strategy, food and gifts. */
+export function foragerSummary(state: LifeState, foragerId: number) {
+  const forager = state.foragers[foragerId]!
+  const oldest = forager.carried[0]
+  const { shelfLifeHours } = state.config
+  return {
+    strategy: STRATEGY_LABELS[forager.strategy],
+    rule: STRATEGY_RULES[forager.strategy],
+    carriedKcal: carriedKcal(forager.carried),
+    /** Hours until its oldest food spoils at the start of its turn; 0 means in the coming hour. Null if it keeps. */
+    spoilsInHours: oldest && shelfLifeHours > 0 ? Math.max(0, oldest.harvestTick + shelfLifeHours - state.tick) : null,
+    givenKcal: forager.ledger.reduce((sum, entry) => sum + entry.givenKcal, 0),
+    receivedKcal: forager.ledger.reduce((sum, entry) => sum + entry.receivedKcal, 0),
+  }
+}

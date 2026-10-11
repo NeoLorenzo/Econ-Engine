@@ -77,18 +77,19 @@ Government is deliberately narrow and stylized: one flat cash-wealth tax, one Gi
 
 ## Life: the bottom-up core
 
-A second, separate simulation has started beside the MVP9 economy. It begins from the economy with the fewest institutions: foragers on a landscape of food patches that deplete and regrow, each with an energy reserve, living through day and night and deciding only from what it can see and remember. There is no money and no market. Each step up the [merge document's ladder](docs/MERGE.md#the-ladder) adds one thing and one question. Life 1, the current step, is a band of 40 foragers sharing one landscape.
+A second, separate simulation has started beside the MVP9 economy. It begins from the economy with the fewest institutions: foragers on a landscape of food patches that deplete and regrow, each with an energy reserve, living through day and night and deciding only from what it can see and remember. There is no money and no market. Each step up the [merge document's ladder](docs/MERGE.md#the-ladder) adds one thing and one question. Life 2, the current step, is a band of 12 that sleeps at a camp, forages for uneven windfalls of food that spoils, and can give food away.
 
-**[▶ Open Life 1](https://neolorenzo.github.io/Econ-Engine/life.html)**, also linked from the simulator's top bar. The simulation advances in whole hours; the view moves continuously between them, so foragers walk, forage and sleep on screen. Click a forager to follow it, and a bush to compare what a patch really holds with what that forager remembers.
+**[▶ Open Life 2](https://neolorenzo.github.io/Econ-Engine/life.html)**, also linked from the simulator's top bar. The simulation advances in whole hours; the view moves continuously between them, so foragers walk out from camp, forage, walk home and sleep around the fire on screen. Each wears its strategy's colour: keepers orange, sharers green, reciprocators blue. A bundle shows what a forager carries, and an arc shows a gift as it is made. Click a forager to follow it, and a bush to compare what a patch really holds with what that forager remembers.
 
-![Life 1: a band of foragers on a grass board after a collapse, most lying grey where they starved, one highlighted forager walking inside the outline of what it can see, with a chart of the band falling from 40 to 6](docs/images/life1.jpg)
+![Life 2: a band gathered at its camp at dusk in orange, green and blue, a gift arcing from one forager to another, the dead lying grey on the grass, and charts of each strategy's survivors and the food given each day](docs/images/life2.jpg)
 
 The results so far:
 
 - **Life 0, alone.** A forager that knows only what it last saw survives with food supplies just 6–14% above the theoretical minimum. With no one else eating, a remembered patch can only have grown, so stale memory errs in the safe direction.
 - **Life 1, a band.** The band does not settle at the number the land could feed. A band of 40, on land that could feed about 20, collapses to 4–8 within two weeks. Hungry foragers spend their days walking to patches others have emptied, and walking costs more than the land regrows. Even knowing every patch's stock does not prevent it.
+- **Life 2, sharing.** Uneven harvests kill: a band of 12 that lives on steady harvests loses half its members within 400 days when food comes as windfalls of 6,000 kcal, mostly to runs of bad luck. Bands that share keep more alive (6.9 against 5.7), though only about 4% of food changes hands. Within a mixed band, keepers live off the sharers' gifts, yet no strategy clearly outlives the others: a sharer gives only what its body cannot hold, so sharing costs it almost nothing.
 
-Details are in the [Life 0](docs/LIFE0_SPEC.md) and [Life 1](docs/LIFE1_SPEC.md) specifications and the [lab notes](LAB_NOTES.md).
+Details are in the [Life 0](docs/LIFE0_SPEC.md), [Life 1](docs/LIFE1_SPEC.md) and [Life 2](docs/LIFE2_SPEC.md) specifications and the [lab notes](LAB_NOTES.md).
 
 ## Direction
 

@@ -2,6 +2,41 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE2-Sharing-030] - (2026-10-11)
+
+### Added
+
+- **Life 2, sharing.** The Life core implements the [Life 2 specification](docs/LIFE2_SPEC.md):
+  - the band sleeps at a camp in the middle of the land, walks home before dark, and sets out only for patches it can forage and return from before dusk;
+  - an hour of foraging either succeeds and takes a windfall (`harvestKcal`, 6,000 kcal by default) or gathers nothing, with the same expected harvest as before; luck comes from a new stream seeded by the run, the hour and the forager;
+  - food a forager cannot eat is carried, eaten as its reserve has room, and spoils `shelfLifeHours` after the harvest (48 by default; 0 keeps);
+  - hungry foragers ask for what would satiate them, and each forager follows a strategy: keepers never give, sharers give to anyone hungry on their tile, and reciprocators give only to those who owe them nothing;
+  - every forager keeps a ledger of what it has given to and received from every other.
+
+  Energy is conserved exactly, counting carried and spoiled food. The invariants also check every gift against its rules and its giver's strategy, the ledgers on both sides, luck against its stream, and the whole band at camp every night.
+- **Theory.** `theory.ts` adds the chance of a windfall, the 37 to 40 tries a hungry forager has before it starves, the resulting risk per hungry spell `(1 − p)ⁿ`, the room a hungry forager has for a windfall, and how much carried food a forager can use before it spoils.
+- **Experiments.** Life 1 reproduced from recorded checksums; bad luck on a single patch against theory; windfalls with and without sharing; perishability; and who pays in a mixed band.
+- **The observer shows sharing.** The camp is a fire that glows at night. Foragers wear their strategy's colour, with an accent ring under the followed one. Bundles show what each carries, and an arc shows each gift as it is made. The HUD adds the followed forager's strategy, what it carries and when it spoils, and what it has given and received. The charts show each strategy's survivors and the food given and spoiled each day. Setup adds the numbers of sharers and reciprocators, the windfall size and the shelf life.
+
+### Changed
+
+- The default configuration is the Life 2 world: 12 foragers (4 keepers, 4 sharers, 4 reciprocators) on a 12 × 12 grid with 32 patches holding up to 24,000 kcal. `LIFE1_WORLD` gives back Life 1, and `LIFE0_WORLD` now builds on it.
+- `choosePatch` takes the hour, so it can exclude patches out of reach before dusk. `walkTarget` returns the tile to walk to and the patch, if any.
+- Action events add the forage hour's outcome, what was eaten from carried food, what spoiled, and what is carried afterwards. A new gift event, `lastGifts`, and daily totals of food given, spoiled and carried, with survivors by strategy.
+- Experiment runs end once every forager is dead.
+- The energy legend in the HUD wraps rather than widening the card, which it had done by about 14 px since Life 0.
+- `life.html` is retitled "Life 2 · Econ Engine". The README's Life section covers Life 2, with a new screenshot replacing Life 1's.
+- The merge document records step 2 as settled.
+- The MVP9 top bar's link to the Life page now reads "Life 2". The owner approved this one change to the frozen MVP9 observer; it changes no simulation.
+
+### Validation
+
+- **Life 1 reproduced:** four Life 1 runs (bands of 10 and 40 on two seeds) match their checksums exactly, and Life 0's and Life 1's experiments pass unchanged on their worlds.
+- **Bad luck:** 13.8% of 2,878 hungry spells end in starvation against a theoretical 12.9–15.0%.
+- **Windfalls and sharing:** over 32 seeds, bands of keepers keep 12.0, 10.5, 5.7 and 1.3 of 12 alive as windfalls grow from 1,200 to 9,600; bands of sharers keep 6.9 at 6,000 and 2.2 at 9,600, against keepers' 5.7 and 1.3. The share of food given rises with the windfall.
+- **Spoilage:** a 12-hour shelf life costs keepers 7.5% of their harvest at 9,600 and sharers 2.1%.
+- No file under `src/sim/` changed. `npm run agent:check` passes; the Life tests now take about a minute and a half. In the browser, the camp and fire at night, bundles, a gift's arc, the new HUD and charts, setup validation and the 375px layout were checked, with no console errors from the page.
+
 ## [LIFE1-Band-029] - (2026-10-11)
 
 ### Added

@@ -1,15 +1,22 @@
-import type { Group, LineLoop, Mesh, MeshStandardMaterial } from 'three'
+import type { Group, Line, LineLoop, Mesh, MeshStandardMaterial, PointLight } from 'three'
 import type { LifeState } from '../life/types'
+import { campTile } from '../life/world'
 import { hex, palette } from '../ui/theme'
 import {
+  bundleScale,
   bushScale,
+  currentGifts,
   daylightAt,
+  displayedCarried,
   displayedStock,
   displayHours,
   foragerPose,
+  giftArcPoint,
+  giftEnds,
   pairOffsets,
   perceptionOutline,
   seesEverything,
+  STRATEGY_COLORS,
   sunAt,
   type DisplayPair,
 } from './lifeViewModel'
@@ -23,6 +30,11 @@ const BARE = 0x7a6440
 const GRASS = 0x2f5a35
 const GRASS_EDGE = 0x24432a
 const DEAD = 0x6b6b66
+const BUNDLE = 0xb07a45
+const STONE = 0x6f6a60
+const FLAME = 0xffa040
+/** Points along each gift's arc. */
+const ARC_POINTS = 24
 
 /** What a click picked out: a patch to inspect or a forager to follow. */
 export type LifePick = { kind: 'patch'; id: number } | { kind: 'forager'; id: number }
@@ -51,6 +63,20 @@ interface Figure {
   group: Group
   body: Group
   material: MeshStandardMaterial
+  /** What it carries, slung at its side. */
+  bundle: Mesh
+}
+
+interface Camp {
+  group: Group
+  flame: Mesh
+  glow: PointLight
+}
+
+/** A gift's arc and the parcel travelling along it. */
+interface Arc {
+  line: Line
+  parcel: Mesh
 }
 
 export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePick | null) => void): Promise<LifeScene> {
@@ -109,9 +135,50 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
 
   const torsoGeometry = new THREE.CapsuleGeometry(0.14, 0.36, 4, 10)
   const headGeometry = new THREE.SphereGeometry(0.12, 16, 12)
+  const bundleGeometry = new THREE.DodecahedronGeometry(0.11, 0)
+  const bundleMaterial = new THREE.MeshStandardMaterial({ color: BUNDLE, roughness: 0.9, flatShading: true })
   let figures: Figure[] = []
   const band = new THREE.Group()
   scene.add(band)
+
+  // The followed forager wears the accent ring at its feet; its body keeps its strategy's colour.
+  const followRing = new THREE.Mesh(
+    ringGeometry,
+    new THREE.MeshBasicMaterial({ color: hex(palette.accent), transparent: true, opacity: 0.95 }),
+  )
+  followRing.rotation.x = -Math.PI / 2
+  followRing.scale.setScalar(0.62)
+  scene.add(followRing)
+
+  // The camp: a ring of stones around a fire that glows at night.
+  const stoneGeometry = new THREE.DodecahedronGeometry(0.07, 0)
+  const stoneMaterial = new THREE.MeshStandardMaterial({ color: STONE, roughness: 1, flatShading: true })
+  const flameGeometry = new THREE.ConeGeometry(0.1, 0.32, 7)
+  const flameMaterial = new THREE.MeshStandardMaterial({
+    color: FLAME,
+    emissive: FLAME,
+    emissiveIntensity: 1.4,
+    roughness: 0.6,
+  })
+  let camp: Camp | null = null
+
+  // Gifts in the hour being drawn: an arc from giver to recipient, with a parcel travelling along it.
+  const parcelGeometry = new THREE.DodecahedronGeometry(0.08, 0)
+  const arcMaterial = new THREE.LineBasicMaterial({ color: hex(palette.positive), transparent: true, opacity: 0.9 })
+  const arcs: Arc[] = []
+  const arcGroup = new THREE.Group()
+  scene.add(arcGroup)
+  function arcAt(index: number): Arc {
+    while (arcs.length <= index) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(ARC_POINTS * 3), 3))
+      const line = new THREE.Line(geometry, arcMaterial)
+      const parcel = new THREE.Mesh(parcelGeometry, bundleMaterial)
+      arcGroup.add(line, parcel)
+      arcs.push({ line, parcel })
+    }
+    return arcs[index]!
+  }
 
   // The followed forager's perception: the outline of every tile within its radius.
   let perception: LineLoop | null = null
@@ -124,14 +191,16 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     torso.position.y = 0.33
     const head = new THREE.Mesh(headGeometry, material)
     head.position.y = 0.68
-    for (const part of [torso, head]) {
+    const bundle = new THREE.Mesh(bundleGeometry, bundleMaterial)
+    bundle.position.set(0.17, 0.3, -0.04)
+    for (const part of [torso, head, bundle]) {
       part.castShadow = true
       part.userData.foragerId = id
     }
-    body.add(torso, head)
+    body.add(torso, head, bundle)
     group.add(body)
     band.add(group)
-    return { group, body, material }
+    return { group, body, material, bundle }
   }
 
   function clearWorld() {
@@ -140,6 +209,11 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       band.remove(figure.group)
     }
     figures = []
+    if (camp) {
+      scene.remove(camp.group)
+      camp.glow.dispose()
+      camp = null
+    }
     if (perception) {
       perception.geometry.dispose()
       ;(perception.material as InstanceType<Three['LineBasicMaterial']>).dispose()
@@ -228,6 +302,29 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       bushes.push({ group, material })
     }
 
+    const campAt = campTile(state.config)
+    if (campAt) {
+      const group = new THREE.Group()
+      for (let index = 0; index < 8; index += 1) {
+        const stone = new THREE.Mesh(stoneGeometry, stoneMaterial)
+        const angle = (index / 8) * Math.PI * 2
+        stone.position.set(0.2 * Math.cos(angle), 0.04, 0.2 * Math.sin(angle))
+        stone.castShadow = true
+        group.add(stone)
+      }
+      const flame = new THREE.Mesh(flameGeometry, flameMaterial)
+      flame.position.y = 0.16
+      const glow = new THREE.PointLight(FLAME, 0, 6, 1.6)
+      glow.position.y = 0.5
+      group.add(flame, glow)
+      const { x, z } = toWorld(campAt.x, campAt.y)
+      // A patch on the camp tile keeps the middle; the fire moves to a corner.
+      const shared = state.patches.some((patch) => patch.tile.x === campAt.x && patch.tile.y === campAt.y)
+      group.position.set(x + (shared ? -0.3 : 0), 0, z + (shared ? 0.3 : 0))
+      scene.add(group)
+      camp = { group, flame, glow }
+    }
+
     figures = state.foragers.map((forager) => makeFigure(forager.id))
     const outline = perceptionOutline(state.config.perceptionRadiusTiles).flatMap(([x, y]) => [x, 0.02, y])
     const outlineGeometry = new THREE.BufferGeometry()
@@ -286,6 +383,13 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       bush.material.color.copy(bare).lerp(lush, Math.min(1, stock / config.patchCapacityKcal) ** 0.6)
     }
 
+    if (camp) {
+      // The fire burns all the time and glows once the light fades; the flicker is only for the eye.
+      const flicker = 1 + 0.12 * Math.sin(nowMs / 90) + 0.08 * Math.sin(nowMs / 37)
+      camp.flame.scale.set(1, flicker, 1)
+      camp.glow.intensity = (1 - light) * 2.2 * flicker
+    }
+
     const offsets = pairOffsets(pair)
     for (const [id, figure] of figures.entries()) {
       const pose = foragerPose(pair, id, interpolate, offsets)
@@ -297,14 +401,42 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       // Lying down tips the body over at the feet.
       figure.body.rotation.x = (-Math.PI / 2) * pose.lying
       figure.body.position.y = 0.14 * pose.lying
-      const alive = pair.next.foragers[id]!.alive
-      figure.material.color.set(!alive ? DEAD : id === followedId ? hex(palette.accent) : hex(palette.household))
-      if (id === followedId && perception) {
-        // The radius is measured from the tile the forager stands on, so the outline moves with it along its path.
-        const tile = toWorld(pose.x, pose.y)
-        perception.position.set(tile.x, 0, tile.z)
-        perception.visible = alive && perception.userData.shown === true
+      const forager = pair.next.foragers[id]!
+      figure.material.color.set(!forager.alive ? DEAD : hex(STRATEGY_COLORS[forager.strategy]))
+      const bundle = bundleScale(displayedCarried(pair, id, interpolate), config.harvestKcal)
+      figure.bundle.visible = bundle > 0
+      figure.bundle.scale.setScalar(Math.max(bundle, 0.01))
+      if (id === followedId) {
+        followRing.position.set(position.x, 0.02, position.z)
+        if (perception) {
+          // The radius is measured from the tile the forager stands on, so the outline moves with it along its path.
+          const tile = toWorld(pose.x, pose.y)
+          perception.position.set(tile.x, 0, tile.z)
+          perception.visible = forager.alive && perception.userData.shown === true
+        }
       }
+    }
+    followRing.visible = followedId < figures.length
+
+    const gifts = interpolate ? currentGifts(pair) : []
+    for (const [index, arc] of arcs.entries()) {
+      arc.line.visible = index < gifts.length
+      arc.parcel.visible = index < gifts.length
+    }
+    for (const [index, gift] of gifts.entries()) {
+      const arc = arcAt(index)
+      const { from, to } = giftEnds(gift, offsets)
+      const positions = arc.line.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+      for (let point = 0; point < ARC_POINTS; point += 1) {
+        const at = giftArcPoint(from, to, point / (ARC_POINTS - 1))
+        const spot = toWorld(at.x, at.y)
+        positions.setXYZ(point, spot.x, at.height, spot.z)
+      }
+      positions.needsUpdate = true
+      arc.line.geometry.computeBoundingSphere()
+      const travelling = giftArcPoint(from, to, pair.alpha)
+      const parcelAt = toWorld(travelling.x, travelling.y)
+      arc.parcel.position.set(parcelAt.x, travelling.height, parcelAt.z)
     }
 
     const followed = pair.next.foragers[followedId]
@@ -413,6 +545,16 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       ;(selectRing.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
       torsoGeometry.dispose()
       headGeometry.dispose()
+      bundleGeometry.dispose()
+      bundleMaterial.dispose()
+      ;(followRing.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
+      stoneGeometry.dispose()
+      stoneMaterial.dispose()
+      flameGeometry.dispose()
+      flameMaterial.dispose()
+      for (const arc of arcs) arc.line.geometry.dispose()
+      parcelGeometry.dispose()
+      arcMaterial.dispose()
       renderer.dispose()
       canvas.remove()
     },

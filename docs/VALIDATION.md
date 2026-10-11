@@ -132,3 +132,27 @@ The experiments of the [specification](LIFE1_SPEC.md#experiments) are tests, on 
 Unit tests cover the new configuration rules, starting tiles (forager 0 where Life 0's started, shared tiles allowed), the turn order (deterministic, different each hour, everyone eventually first), perception exactly at and beyond the radius, two foragers on a one-hour patch (the first forages, the second sees it gone), choosing again when a target is seen emptied and walking on when it is not seen, death within a band, determinism and the invariants every hour of a 60-day canonical run. The observer's view model is tested for standing apart on a shared tile, moving between standing places, stepping through the living band, the perception outline and the inspector for the followed forager.
 
 In the browser, the collapse from 40, following a forager by click and by button, the inspector, setup validation (a band over 100 is refused) and the 375px layout were checked, with no console errors.
+
+# Life 2
+
+Runtime invariants, checked after every hour of every test and experiment run, extend Life 1's:
+
+- exact energy conservation counting carried and spoiled food (patch stock + every reserve + all carried food + energy metabolized + food spoiled = starting stock and reserves + energy regrown);
+- every carried lot positive, harvested in the past and not yet due to spoil, and nothing carried by the dead;
+- foraging only on a patch the forager saw holding a full harvest, with luck matching the forager's stream for that hour, taking exactly `harvestKcal` on success and nothing on failure;
+- every gift positive, no larger than the recipient asked, from a forager that is not a keeper to a living forager on the same tile at that point in the hour, and from a reciprocator only to a forager that owed it nothing before the gift;
+- ledgers that agree on both sides of every pair and add up to all food given;
+- with a camp, every living forager on the camp tile at the end of every night hour.
+
+The experiments of the [specification](LIFE2_SPEC.md#experiments) are tests. Experiments 3 to 5 use the first 16 seeds in the tests; the numbers below come from `experiments.ts` on 32 seeds (64 for experiment 6), over 400 days.
+
+- **Life 1 reproduced.** On `LIFE1_WORLD`, four runs (bands of 10 and 40 on two seeds) reproduce checksums recorded from Life 1's code before the change, field for field. Life 0's and Life 1's experiments pass unchanged on their worlds.
+- **Bad luck on a single patch.** A lone keeper whose patch always holds a windfall of 24,000 (`p = 0.05`), over 400 seeds: 4.99% of foraging hours succeed (standard error 0.10%), and 13.8% of 2,878 hungry spells end in starvation (standard error 0.6%), inside the theoretical 12.9–15.0% for 37 to 40 tries.
+- **Windfalls bring risk.** Bands of 12 keepers keep 12.0, 10.5, 5.7 and 1.3 survivors on average with windfalls of 1,200, 3,600, 6,000 and 9,600. With steady harvests the band is intact on every seed and nothing is ever carried.
+- **Sharing as insurance.** Bands of sharers keep 6.9 against keepers' 5.7 at 6,000, and 2.2 against 1.3 at 9,600. Sharers give 0.7%, 4.4% and 10.5% of the harvest at 3,600, 6,000 and 9,600; reciprocators 0.5%, 3.3% and 7.7%. Nothing is given with steady harvests.
+- **Perishability.** At 9,600, keepers lose 0%, 1.1% and 7.5% of their harvest to spoilage with food that keeps, lasts 48 hours or lasts 12; sharers lose 0.1% and 2.1% at the two finite shelf lives.
+- **Who pays.** In mixed bands keepers receive gifts and give none. Survival by strategy is reported in the [lab notes](../LAB_NOTES.md): no strategy clearly leads.
+
+Unit tests cover the new configuration rules; the camp tile and starting there; strategies by ID; the luck stream (deterministic, always successful when a harvest is one hour's food, and near its expected rate otherwise); a successful harvest eaten up to a full reserve with the rest carried, a failed hour, eating carried food oldest first and spoiling exactly on time; heading home exactly when the walk takes every daylight hour left, setting out only for patches reachable in time, dropping a target that is no longer reachable, and the whole band at camp every night of a 30-day run; requests; each strategy's order of service, including a reciprocator refusing until it is repaid in full; gifts at camp, capped by what the giver carries, eaten at the recipient's next turn; and the invariants catching a keeper's gift and ledgers that disagree. The observer's view model is tested for bundle sizes, the hour's gifts and their arcs on the gift's tile, the HUD's summary of a forager's strategy, food and gifts, and the walk home.
+
+In the browser, the camp at night with its fire, bundles, a gift's arc at camp, the new HUD lines and charts, setup validation of strategy counts and the 375px layout were checked, with no console errors from the page.

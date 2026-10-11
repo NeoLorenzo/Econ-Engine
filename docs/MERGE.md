@@ -133,6 +133,22 @@ The [step 1 specification](LIFE1_SPEC.md) settled step 1's open questions:
 
 The answer to the step's question is that a band does not settle at `K`: it collapses below `Kₛ`, because searching for food burns more than the land regrows. The [lab notes](../LAB_NOTES.md) record the open questions this leaves for step 2.
 
+## Step 2: settled
+
+The [step 2 specification](LIFE2_SPEC.md) settled step 2's design. A prototype showed that the ladder's row needed two things it did not name:
+
+- **A meeting place.** Foragers that wander alone almost never share a tile, so they can rarely give. The band now sleeps at a camp in the middle of the land, where everyone meets each night.
+- **Windfalls larger than a body.** A forager's reserve holds up to 20,000 kcal, so ordinary harvests are simply eaten. Variable yields are windfalls: an hour of foraging succeeds with probability `forageKcalPerHour / harvestKcal` and then takes `harvestKcal`, so the average is unchanged.
+
+Its other choices:
+
+- **Who gives:** three fixed strategies compete, keepers, sharers and reciprocators. Whether a strategy that pays spreads needs births and inheritance, so it waits for step 5.
+- **Memory of who gave:** every forager keeps a ledger of what it gave to and received from every other.
+- **Patch choice:** Life 1's fullest-first rule, limited to patches a forager can reach and return from before dark. Nearest-first crowded the patches around camp and starved even a band with steady harvests.
+- **One step, not two:** the run with giving switched off, a band of keepers, is the counterfactual.
+
+The answer to the step's question is that windfalls are deadly and sharing keeps more of a band alive, increasingly so as windfalls grow, though only a few percent of food changes hands. Perishability matters less than theory suggests, because the body is the main store. Within a mixed band no strategy clearly pays: keepers free-ride, but a sharer gives only what its body cannot hold, so sharing costs it almost nothing. The [lab notes](../LAB_NOTES.md) record the open questions this leaves.
+
 ## References
 
 - Epstein, J. M., and Axtell, R. (1996). *Growing Artificial Societies: Social Science from the Bottom Up*. MIT Press.

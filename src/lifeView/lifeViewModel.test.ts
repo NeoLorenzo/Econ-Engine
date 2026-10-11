@@ -1,22 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE0_WORLD } from '../life/config'
+import { LIFE0_WORLD, LIFE_DEFAULT_CONFIG } from '../life/config'
 import { createLife, lastEventOf, runLifeHours, stepLife } from '../life/engine'
 import type { LifeConfig, LifeState } from '../life/types'
 import {
   advanceClock,
   aliveCount,
+  bundleScale,
   bushScale,
   clockLabel,
+  currentGifts,
   daylightAt,
   describeActivity,
+  displayedCarried,
   displayedStock,
   foragerName,
   foragerPose,
+  foragerSummary,
+  giftArcPoint,
+  giftEnds,
+  isCamp,
   MAX_FRAME_SECONDS,
+  pairOffsets,
   patchInspection,
   perceptionOutline,
   standingOffsets,
   stepFollowed,
+  STRATEGY_COLORS,
   type DisplayPair,
 } from './lifeViewModel'
 
@@ -182,5 +191,77 @@ describe('the band on screen', () => {
     expect(outline).toHaveLength(20)
     expect(Math.max(...outline.map(([x]) => x))).toBe(2.5)
     expect(Math.max(...outline.map(([, y]) => y))).toBe(2.5)
+  })
+})
+
+describe('sharing on screen', () => {
+  /** The canonical band at midnight: forager 4, a sharer, carries 3,000 kcal with a full reserve; forager 0 is hungry. */
+  function campWithFood(): LifeState {
+    const state = createLife()
+    const foragers = state.foragers.map((forager) =>
+      forager.id === 4
+        ? { ...forager, energyKcal: 20_000, hungry: false, carried: [{ kcal: 3_000, harvestTick: 0 }] }
+        : forager.id === 0
+          ? { ...forager, energyKcal: 9_000, hungry: true }
+          : forager,
+    )
+    const initialKcal = state.totals.initialKcal - 16_000 * 2 + 20_000 + 3_000 + 9_000
+    return { ...state, foragers, totals: { ...state.totals, initialKcal } }
+  }
+
+  it('draws a bundle sized by what a forager carries, and none when it carries nothing', () => {
+    expect(bundleScale(0, 6_000)).toBe(0)
+    expect(bundleScale(1_500, 6_000)).toBeCloseTo(0.75, 9)
+    expect(bundleScale(60_000, 6_000)).toBe(1)
+  })
+
+  it('shows the gifts of the hour being drawn, moving along an arc that peaks halfway', () => {
+    const pair = pairAt(campWithFood(), 0.5)
+    const gifts = currentGifts(pair)
+    expect(gifts).toHaveLength(1)
+    expect(gifts[0]).toMatchObject({ giverId: 4, recipientId: 0, kcal: 3_000 })
+    expect(displayedCarried(pair, 4)).toBe(1_500)
+    expect(displayedCarried(pair, 4, false)).toBe(0)
+    expect(currentGifts(pairAt(pair.next, 0.5))).toEqual([])
+    // The arc runs between the two on the camp tile, where the gift was made.
+    const { from, to } = giftEnds(gifts[0]!, pairOffsets(pair))
+    expect(Math.hypot(from.x - 6, from.y - 6)).toBeLessThan(0.5)
+    expect(Math.hypot(to.x - 6, to.y - 6)).toBeLessThan(0.5)
+    expect(from).not.toEqual(to)
+    const middle = giftArcPoint({ x: 0, y: 0 }, { x: 1, y: 0 }, 0.5)
+    expect(middle.x).toBe(0.5)
+    expect(middle.height).toBeGreaterThan(giftArcPoint({ x: 0, y: 0 }, { x: 1, y: 0 }, 0).height)
+  })
+
+  it('summarizes a forager’s strategy, food and gifts', () => {
+    const state = stepLife(campWithFood())
+    expect(foragerSummary(state, 4)).toMatchObject({
+      strategy: 'Sharer',
+      rule: 'gives to anyone hungry',
+      carriedKcal: 0,
+      spoilsInHours: null,
+      givenKcal: 3_000,
+    })
+    // Forager 0 received the gift. If its turn came after the gift it has eaten it; if before, it carries it until its
+    // next turn, and the food, harvested at tick 0, keeps for 47 more hours.
+    const recipient = foragerSummary(state, 0)
+    expect(recipient).toMatchObject({ strategy: 'Keeper', receivedKcal: 3_000 })
+    if (recipient.carriedKcal) expect(recipient).toMatchObject({ carriedKcal: 3_000, spoilsInHours: 47 })
+    else expect(state.lastEvents.find((event) => event.foragerId === 0)!.eatenKcal).toBe(3_000)
+    expect(STRATEGY_COLORS.sharer).not.toBe(STRATEGY_COLORS.keeper)
+  })
+
+  it('knows the camp, and describes the walk home', () => {
+    const state = createLife()
+    expect(isCamp(state, { x: 6, y: 6 })).toBe(true)
+    expect(isCamp(state, { x: 0, y: 0 })).toBe(false)
+    expect(isCamp(createLife(LIFE0_WORLD), { x: 6, y: 6 })).toBe(false)
+    const away = {
+      ...state,
+      tick: 17,
+      foragers: state.foragers.map((forager) => ({ ...forager, position: { x: 6, y: 5 } })),
+    }
+    expect(describeActivity(pairAt(away, 0.5), 0)).toBe('Walking home to camp')
+    expect(LIFE_DEFAULT_CONFIG.hasCamp).toBe(true)
   })
 })

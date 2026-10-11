@@ -15,31 +15,43 @@ import {
   displayedEnergy,
   displayHours,
   foragerName,
+  foragerSummary,
+  formatHours,
   formatKcal,
   LIFE_SPEEDS,
   patchInspection,
   seesEverything,
   stepFollowed,
+  STRATEGY_COLORS,
   type DisplayPair,
 } from './lifeViewModel'
 
-type Setup = Pick<LifeConfig, 'seed' | 'bandSize' | 'perceptionRadiusTiles' | 'patchCount' | 'patchRegrowthKcalPerHour'>
+type Setup = Pick<
+  LifeConfig,
+  | 'seed'
+  | 'bandSize'
+  | 'sharers'
+  | 'reciprocators'
+  | 'harvestKcal'
+  | 'shelfLifeHours'
+  | 'perceptionRadiusTiles'
+  | 'patchCount'
+  | 'patchRegrowthKcalPerHour'
+>
 
 const SETUP_FIELDS: { key: keyof Setup; label: string }[] = [
   { key: 'seed', label: 'Seed' },
   { key: 'bandSize', label: 'Foragers' },
+  { key: 'sharers', label: 'Sharers' },
+  { key: 'reciprocators', label: 'Reciprocators' },
+  { key: 'harvestKcal', label: 'Windfall, kcal' },
+  { key: 'shelfLifeHours', label: 'Keeps, h (0 = ∞)' },
   { key: 'perceptionRadiusTiles', label: 'Sight, tiles' },
   { key: 'patchCount', label: 'Patches' },
   { key: 'patchRegrowthKcalPerHour', label: 'Regrowth, kcal/h' },
 ]
 
-const DEFAULT_SETUP: Setup = {
-  seed: LIFE_DEFAULT_CONFIG.seed,
-  bandSize: LIFE_DEFAULT_CONFIG.bandSize,
-  perceptionRadiusTiles: LIFE_DEFAULT_CONFIG.perceptionRadiusTiles,
-  patchCount: LIFE_DEFAULT_CONFIG.patchCount,
-  patchRegrowthKcalPerHour: LIFE_DEFAULT_CONFIG.patchRegrowthKcalPerHour,
-}
+const DEFAULT_SETUP = Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, LIFE_DEFAULT_CONFIG[key]])) as Setup
 
 /** Every forager is drawn as its own figure, which stays smooth up to about this many. */
 const MAX_BAND = 100
@@ -200,12 +212,19 @@ export default function LifeApp() {
   const event = currentEvent(pair, followed)
   const name = foragerName(followed)
   const inspection = selectedPatchId === null ? null : patchInspection(state, selectedPatchId, followed)
+  const summary = foragerSummary(state, followed)
+  const keepers = config.bandSize - config.sharers - config.reciprocators
   const days = state.days.map((day) => ({
     day: day.day + 1,
-    alive: day.alive,
+    keepers: day.aliveByStrategy.keeper,
+    sharers: day.aliveByStrategy.sharer,
+    reciprocators: day.aliveByStrategy.reciprocator,
+    given: day.givenKcal,
+    spoiled: day.spoiledKcal,
     reserve: day.endEnergyKcal[followed]!,
     stock: day.totalPatchStockKcal / config.patchCount,
   }))
+  const odds = Math.round(config.harvestKcal / config.forageKcalPerHour)
   const percent = (value: number) => `${(value / config.reserveMaxKcal) * 100}%`
 
   return (
@@ -219,7 +238,7 @@ export default function LifeApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 1 · a band</span>
+        <span className="life-title">Life 2 · sharing</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -274,7 +293,14 @@ export default function LifeApp() {
           >
             ‹
           </button>
-          <span className="life-follow-name">{name}</span>
+          <span className="life-follow-name">
+            <span
+              className="life-strategy-dot"
+              aria-hidden="true"
+              style={{ background: STRATEGY_COLORS[forager.strategy] }}
+            />
+            {name} · {summary.strategy}
+          </span>
           <button
             type="button"
             className="icon-button"
@@ -312,9 +338,26 @@ export default function LifeApp() {
             </span>
           </div>
         </div>
-        {event?.action === 'forage' && (
-          <p className="life-note">Gathering {formatKcal(event.gatheredKcal)} this hour</p>
-        )}
+        <dl className="life-food">
+          <dt>Carries</dt>
+          <dd className="num">
+            {summary.carriedKcal ? formatKcal(summary.carriedKcal) : 'nothing'}
+            {summary.carriedKcal > 0 &&
+              (summary.spoilsInHours === null
+                ? ', which keeps'
+                : summary.spoilsInHours === 0
+                  ? ', some spoiling this hour'
+                  : `, oldest spoils in ${formatHours(summary.spoilsInHours)}`)}
+          </dd>
+          <dt>Has given</dt>
+          <dd className="num">{formatKcal(summary.givenKcal)}</dd>
+          <dt>Has received</dt>
+          <dd className="num">{formatKcal(summary.receivedKcal)}</dd>
+        </dl>
+        <p className="life-note">
+          {summary.strategy}: {summary.rule}.
+          {event?.action === 'forage' && event.succeeded && ` It took a windfall of ${formatKcal(event.gatheredKcal)}.`}
+        </p>
       </section>
 
       {inspection && (
@@ -350,10 +393,24 @@ export default function LifeApp() {
             <>
               <TimeChart
                 data={days}
-                height={90}
+                height={100}
                 format={(value) => String(Math.round(value))}
                 domain={[0, 'auto']}
-                series={[{ key: 'alive', name: 'Foragers alive', color: palette.household }]}
+                series={[
+                  { key: 'keepers', name: 'Keepers alive', color: STRATEGY_COLORS.keeper },
+                  { key: 'sharers', name: 'Sharers alive', color: STRATEGY_COLORS.sharer },
+                  { key: 'reciprocators', name: 'Reciprocators alive', color: STRATEGY_COLORS.reciprocator },
+                ]}
+              />
+              <TimeChart
+                data={days}
+                height={100}
+                format={(value) => `${Math.round(value / 1000)}k`}
+                domain={[0, 'auto']}
+                series={[
+                  { key: 'given', name: 'Food given each day', color: palette.positive },
+                  { key: 'spoiled', name: 'Food spoiled each day', color: palette.negative, dashed: true },
+                ]}
               />
               <TimeChart
                 data={days}
@@ -387,13 +444,17 @@ export default function LifeApp() {
             </p>
           )}
           <p className="life-note">
-            Running seed {setup.seed}: {setup.bandSize} foragers who see{' '}
+            Running seed {setup.seed}: {keepers} keepers, {setup.sharers} sharers and {setup.reciprocators}{' '}
+            reciprocators, who see{' '}
             {seesEverything(state)
               ? 'every patch'
               : setup.perceptionRadiusTiles === 0
                 ? 'only their own tile'
                 : `${setup.perceptionRadiusTiles} tiles around them`}
-            , on {setup.patchCount} patches regrowing {setup.patchRegrowthKcalPerHour} kcal an hour each.
+            , on {setup.patchCount} patches regrowing {setup.patchRegrowthKcalPerHour} kcal an hour each. An hour of
+            foraging {odds === 1 ? 'always yields' : `yields, about one time in ${odds},`}{' '}
+            {formatKcal(setup.harvestKcal)}; carried food{' '}
+            {setup.shelfLifeHours === 0 ? 'keeps' : `spoils after ${formatHours(setup.shelfLifeHours)}`}.
           </p>
         </details>
       </section>

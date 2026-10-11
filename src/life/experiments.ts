@@ -1,8 +1,8 @@
-import { LIFE0_WORLD } from './config'
+import { LIFE0_WORLD, LIFE1_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, stepLife, stockAtTurn } from './engine'
 import { assertLifeInvariants } from './invariants'
 import { lifeTheory } from './theory'
-import type { ActionEvent, ActionHours, DaySummary, LifeConfig, Patch } from './types'
+import type { ActionEvent, ActionHours, DaySummary, LifeConfig, Patch, Strategy } from './types'
 import { manhattan, patchAt } from './world'
 
 export const EXPERIMENT_DAYS = 400
@@ -51,6 +51,21 @@ export interface LifeRunResult {
   startDistances: number[]
   /** Whether each forager is alive at the end, by forager ID. */
   alive: boolean[]
+  /** Each forager's strategy, and the food it gave and received over the run, by forager ID. */
+  strategies: Strategy[]
+  givenKcal: number[]
+  receivedKcal: number[]
+  /** Food taken from patches, given and spoiled by the whole band over the run. */
+  bandGatheredKcal: number
+  bandGivenKcal: number
+  bandSpoiledKcal: number
+  /** Hours of foraging, and how many succeeded. */
+  forageHours: number
+  successfulHours: number
+  /** Hungry spells that ended, in satiation or death; one still under way at the end is not counted. */
+  hungrySpells: number
+  /** The number alive at the end of each day. */
+  aliveByDay: number[]
 }
 
 /** Alive at the end, intact, with no reserve declining. */
@@ -95,7 +110,10 @@ const nearestPatchDistance = (patches: readonly Patch[], tile: { x: number; y: n
 // Runs are deterministic, so experiments that share a configuration share its run.
 const runCache = new Map<string, LifeRunResult>()
 
-/** Runs one configuration headless, checking every invariant after every hour. */
+/**
+ * Runs one configuration headless, checking every invariant after every hour. A run ends early once every forager is
+ * dead, since nothing but regrowth can happen after that.
+ */
 export function runLife(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS): LifeRunResult {
   const key = JSON.stringify([Object.entries(overrides).sort(([a], [b]) => a.localeCompare(b)), days])
   const cached = runCache.get(key)
@@ -105,15 +123,27 @@ export function runLife(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS):
   const startDistances = state.foragers.map((forager) => nearestPatchDistance(state.patches, forager.position))
   let arrivals = 0
   let emptyArrivals = 0
-  for (let hour = 0; hour < days * 24; hour += 1) {
+  let forageHours = 0
+  let successfulHours = 0
+  let hungrySpells = 0
+  for (let hour = 0; hour < days * 24 && state.foragers.some((forager) => forager.alive); hour += 1) {
+    const before = state
     state = stepLife(state)
     assertLifeInvariants(state)
     for (const [index, event] of state.lastEvents.entries()) {
-      // A walk clears its target exactly when it arrives. Turns after it this hour may have foraged there since.
-      if (event.action !== 'walk' || event.targetPatchId !== null) continue
+      if (event.action === 'forage') {
+        forageHours += 1
+        if (event.succeeded) successfulHours += 1
+      }
+      // A spell ends when the forager is satiated again, or dies.
+      const wasHungry = before.foragers[event.foragerId]!.hungry
+      const after = state.foragers[event.foragerId]!
+      if (wasHungry && (!after.hungry || !after.alive)) hungrySpells += 1
+      // A walk towards a patch clears its target exactly when it arrives. Turns after it may have foraged there since.
+      if (event.action !== 'walk' || event.reason !== 'seeking food' || event.targetPatchId !== null) continue
       arrivals += 1
       const patch = patchAt(state.patches, event.position)
-      if (!patch || stockAtTurn(state, index, patch.id) < state.config.forageKcalPerHour) emptyArrivals += 1
+      if (!patch || stockAtTurn(state, index, patch.id) < state.config.harvestKcal) emptyArrivals += 1
     }
   }
   const measured = state.days.slice(WARMUP_DAYS)
@@ -135,6 +165,16 @@ export function runLife(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS):
     emptyArrivals,
     startDistances,
     alive: state.foragers.map((forager) => forager.alive),
+    strategies: state.foragers.map((forager) => forager.strategy),
+    givenKcal: state.foragers.map((forager) => forager.ledger.reduce((sum, entry) => sum + entry.givenKcal, 0)),
+    receivedKcal: state.foragers.map((forager) => forager.ledger.reduce((sum, entry) => sum + entry.receivedKcal, 0)),
+    bandGatheredKcal: state.totals.gatheredKcal,
+    bandGivenKcal: state.totals.givenKcal,
+    bandSpoiledKcal: state.totals.spoiledKcal,
+    forageHours,
+    successfulHours,
+    hungrySpells,
+    aliveByDay: state.days.map((day) => day.alive),
   }
   runCache.set(key, result)
   return result
@@ -259,7 +299,7 @@ export const LIFE0_CHECKSUMS: readonly [seed: number, rate: number, checksum: nu
   [4, 20, 0x1d3ced6f],
 ]
 
-/** Experiment 1: a band of one on Life 0's world reproduces Life 0. */
+/** Life 1 experiment 1: a band of one on Life 0's world reproduces Life 0. */
 export const bandOfOneExperiment = () =>
   LIFE0_CHECKSUMS.map(([seed, rate, expected]) => ({
     seed,
@@ -274,9 +314,9 @@ export function largestIntactBand(overrides: Partial<LifeConfig>, sizes: readonl
   return descending.find((bandSize) => runLife({ ...overrides, bandSize }).survived) ?? null
 }
 
-/** The canonical world's capacities, and the band sizes the experiments are built around. */
+/** Life 1's canonical world's capacities, and the band sizes Life 1's experiments are built around. */
 export function canonicalCapacities(overrides: Partial<LifeConfig> = {}) {
-  const config = createLife({ ...overrides, bandSize: 1 }).config
+  const config = createLife({ ...LIFE1_WORLD, ...overrides, bandSize: 1 }).config
   const { carryingCapacity, searchCapacity } = lifeTheory(config)
   return {
     carryingCapacity,
@@ -290,20 +330,20 @@ export function canonicalCapacities(overrides: Partial<LifeConfig> = {}) {
   }
 }
 
-/** Experiment 2: the canonical world at the canonical radius, with the band size varied. */
+/** Life 1 experiment 2: Life 1's canonical world at the canonical radius, with the band size varied. */
 export function carryingCapacityExperiment(seeds: readonly number[] = EXPERIMENT_SEEDS, sizes = range(8, 20)) {
   const capacities = canonicalCapacities()
   const perSeed = seeds.map((seed) => ({
     seed,
-    small: runLife({ seed, bandSize: capacities.smallBand }),
-    full: runLife({ seed, bandSize: capacities.fullBand }),
-    large: runLife({ seed, bandSize: capacities.largeBand }),
-    largestIntact: largestIntactBand({ seed }, sizes),
+    small: runLife({ ...LIFE1_WORLD, seed, bandSize: capacities.smallBand }),
+    full: runLife({ ...LIFE1_WORLD, seed, bandSize: capacities.fullBand }),
+    large: runLife({ ...LIFE1_WORLD, seed, bandSize: capacities.largeBand }),
+    largestIntact: largestIntactBand({ ...LIFE1_WORLD, seed }, sizes),
   }))
   return { ...capacities, perSeed }
 }
 
-/** Experiment 3: the bands of experiment 2 at radius 0, the canonical radius and full information. */
+/** Life 1 experiment 3: the bands of experiment 2 at radius 0, the canonical radius and full information. */
 export function knowledgeInABandExperiment(
   seeds: readonly number[] = EXPERIMENT_SEEDS,
   radii: readonly number[] = [0, 2, FULL_INFORMATION_RADIUS],
@@ -313,14 +353,14 @@ export function knowledgeInABandExperiment(
     perceptionRadiusTiles,
     perSeed: seeds.map((seed) => ({
       seed,
-      small: runLife({ seed, perceptionRadiusTiles, bandSize: capacities.smallBand }),
-      large: runLife({ seed, perceptionRadiusTiles, bandSize: capacities.largeBand }),
+      small: runLife({ ...LIFE1_WORLD, seed, perceptionRadiusTiles, bandSize: capacities.smallBand }),
+      large: runLife({ ...LIFE1_WORLD, seed, perceptionRadiusTiles, bandSize: capacities.largeBand }),
     })),
   }))
   return { ...capacities, perRadius }
 }
 
-/** Experiment 4: a large band at the canonical radius, with walking costing more or less. */
+/** Life 1 experiment 4: a large band at the canonical radius, with walking costing more or less. */
 export function searchCostExperiment(
   seeds: readonly number[] = EXPERIMENT_SEEDS,
   travelCosts: readonly number[] = [300, 200, 90],
@@ -329,14 +369,14 @@ export function searchCostExperiment(
   return travelCosts.map((travelKcalPerHour) => ({
     travelKcalPerHour,
     ...canonicalCapacities({ travelKcalPerHour }),
-    perSeed: seeds.map((seed) => runLife({ seed, travelKcalPerHour, bandSize: largeBand })),
+    perSeed: seeds.map((seed) => runLife({ ...LIFE1_WORLD, seed, travelKcalPerHour, bandSize: largeBand })),
   }))
 }
 
-/** Experiment 5: who survives the collapse of a large band, and how the survivors live. */
+/** Life 1 experiment 5: who survives the collapse of a large band, and how the survivors live. */
 export function whoSurvivesExperiment(seeds: readonly number[] = EXPERIMENT_SEEDS) {
   const { largeBand } = canonicalCapacities()
-  const runs = seeds.map((seed) => runLife({ seed, bandSize: largeBand }))
+  const runs = seeds.map((seed) => runLife({ ...LIFE1_WORLD, seed, bandSize: largeBand }))
   const distances = (alive: boolean) =>
     runs.flatMap((run) => run.startDistances.filter((_, id) => run.alive[id] === alive))
   const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / (values.length || 1)
@@ -347,4 +387,201 @@ export function whoSurvivesExperiment(seeds: readonly number[] = EXPERIMENT_SEED
     survivors: distances(true).length,
     dead: distances(false).length,
   }
+}
+
+// Life 2's experiments.
+
+/**
+ * A checksum of every forager's action every hour, every patch stock every hour, and the daily summaries, in the form
+ * Life 1's code produced them. Experiment 1 compares it with checksums recorded from Life 1 before step 2.
+ */
+export function life1Checksum(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS) {
+  let state = createLife(overrides)
+  let hash = 2_166_136_261
+  for (let hour = 0; hour < days * 24; hour += 1) {
+    state = stepLife(state)
+    const events = state.lastEvents.map((event) => [
+      event.foragerId,
+      event.tick,
+      event.action,
+      event.reason,
+      event.from.x,
+      event.from.y,
+      event.position.x,
+      event.position.y,
+      event.targetPatchId,
+      event.patchId,
+      event.gatheredKcal,
+      event.spentKcal,
+      event.energyAfterKcal,
+    ])
+    hash = fnv1a(hash, JSON.stringify(events))
+    hash = fnv1a(
+      hash,
+      JSON.stringify(state.patches.map((patch) => [patch.id, patch.tile.x, patch.tile.y, patch.stockKcal])),
+    )
+  }
+  const summaries = state.days.map((day) => [
+    day.day,
+    day.hours.sleep,
+    day.hours.rest,
+    day.hours.forage,
+    day.hours.walk,
+    day.gatheredKcal,
+    day.spentKcal,
+    day.alive,
+    day.deaths,
+    day.totalPatchStockKcal,
+    day.endEnergyKcal,
+  ])
+  return fnv1a(hash, JSON.stringify(summaries))
+}
+
+/** Seed, band size and checksum on Life 1's world, recorded from Life 1's code. */
+export const LIFE1_CHECKSUMS: readonly [seed: number, bandSize: number, checksum: number][] = [
+  [20260813, 10, 0x5d45bbce],
+  [1, 10, 0x2706f12e],
+  [20260813, 40, 0xb3229d91],
+  [1, 40, 0x88514433],
+]
+
+/** Experiment 1: on Life 1's world, with no camp, steady harvests and only keepers, the step reproduces Life 1. */
+export const life1ReproducedExperiment = () =>
+  LIFE1_CHECKSUMS.map(([seed, bandSize, expected]) => ({
+    seed,
+    bandSize,
+    expected,
+    actual: life1Checksum({ ...LIFE1_WORLD, seed, bandSize }),
+  }))
+
+/** Seeds for Life 2's ensembles: the canonical seed, then 1, 2, 3, … */
+export const life2Seeds = (count: number) => [20260813, ...range(1, count - 1)]
+
+export const WINDFALLS = [1_200, 3_600, 6_000, 9_600]
+
+/** Bands made up entirely of one strategy, the size of the canonical band. */
+export const UNIFORM_STRATEGIES: Strategy[] = ['keeper', 'sharer', 'reciprocator']
+
+export function uniformBand(strategy: Strategy): Partial<LifeConfig> {
+  const { bandSize } = LIFE_DEFAULT_CONFIG
+  return {
+    sharers: strategy === 'sharer' ? bandSize : 0,
+    reciprocators: strategy === 'reciprocator' ? bandSize : 0,
+  }
+}
+
+/**
+ * The bad-luck benchmark: a lone keeper on one tile whose patch always holds a full harvest, with food that keeps.
+ * Its only risk is a run of failed hours.
+ */
+export const BAD_LUCK_WORLD: Partial<LifeConfig> = {
+  ...LIFE0_WORLD,
+  gridWidth: 1,
+  gridHeight: 1,
+  patchCount: 1,
+  patchCapacityKcal: 48_000,
+  initialPatchStockKcal: 48_000,
+  patchRegrowthKcalPerHour: 5_000,
+  harvestKcal: 24_000,
+  shelfLifeHours: 0,
+}
+
+/** Experiment 2: bad luck on a single patch, against `(1 − p)ⁿ`. */
+export function badLuckExperiment(seeds: readonly number[] = life2Seeds(400)) {
+  const theory = lifeTheory(createLife(BAD_LUCK_WORLD).config)
+  const runs = seeds.map((seed) => runLife({ ...BAD_LUCK_WORLD, seed }))
+  const sum = (pick: (run: LifeRunResult) => number) => runs.reduce((total, run) => total + pick(run), 0)
+  const forageHours = sum((run) => run.forageHours)
+  const successfulHours = sum((run) => run.successfulHours)
+  const spells = sum((run) => run.hungrySpells)
+  const deaths = sum((run) => run.bandSize - run.survivors)
+  const probability = theory.harvestSuccessProbability
+  const starvationRate = deaths / spells
+  return {
+    probability,
+    forageHours,
+    successRate: successfulHours / forageHours,
+    successRateStandardError: Math.sqrt((probability * (1 - probability)) / forageHours),
+    spells,
+    deaths,
+    starvationRate,
+    starvationRateStandardError: Math.sqrt((starvationRate * (1 - starvationRate)) / spells),
+    tries: theory.triesPerHungrySpell,
+    expected: theory.starvationPerSpell(),
+  }
+}
+
+const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / (values.length || 1)
+
+/** A uniform band's runs at one windfall and shelf life, summarized across seeds. */
+function uniformRow(seeds: readonly number[], strategy: Strategy, harvestKcal: number, shelfLifeHours: number) {
+  const runs = seeds.map((seed) => runLife({ seed, harvestKcal, shelfLifeHours, ...uniformBand(strategy) }))
+  const gathered = runs.reduce((sum, run) => sum + run.bandGatheredKcal, 0)
+  return {
+    strategy,
+    harvestKcal,
+    shelfLifeHours,
+    runs,
+    meanSurvivors: mean(runs.map((run) => run.survivors)),
+    /** Shares of all food taken from patches, over every seed. */
+    givenShare: gathered ? runs.reduce((sum, run) => sum + run.bandGivenKcal, 0) / gathered : 0,
+    spoiledShare: gathered ? runs.reduce((sum, run) => sum + run.bandSpoiledKcal, 0) / gathered : 0,
+    carried: runs.some((run) => run.bandGivenKcal + run.bandSpoiledKcal > 0),
+  }
+}
+
+/** Experiment 3: bands of keepers as windfalls grow, at the canonical shelf life. */
+export const windfallRiskExperiment = (seeds: readonly number[] = life2Seeds(32), windfalls = WINDFALLS) =>
+  windfalls.map((harvestKcal) => uniformRow(seeds, 'keeper', harvestKcal, LIFE_DEFAULT_CONFIG.shelfLifeHours))
+
+/** Experiment 4: bands of each strategy as windfalls grow, at the canonical shelf life. */
+export const sharingInsuranceExperiment = (seeds: readonly number[] = life2Seeds(32), windfalls = WINDFALLS) =>
+  windfalls.map((harvestKcal) => ({
+    harvestKcal,
+    byStrategy: UNIFORM_STRATEGIES.map((strategy) =>
+      uniformRow(seeds, strategy, harvestKcal, LIFE_DEFAULT_CONFIG.shelfLifeHours),
+    ),
+  }))
+
+/** Experiment 5: bands of each strategy with food that keeps, lasts 48 hours or lasts 12. */
+export const perishabilityExperiment = (
+  seeds: readonly number[] = life2Seeds(32),
+  harvestKcal = 9_600,
+  shelfLives: readonly number[] = [0, 48, 12],
+) =>
+  shelfLives.map((shelfLifeHours) => ({
+    shelfLifeHours,
+    byStrategy: UNIFORM_STRATEGIES.map((strategy) => uniformRow(seeds, strategy, harvestKcal, shelfLifeHours)),
+  }))
+
+/** Experiment 6: the canonical mixed band, with each strategy's survival and the food it gave and received. */
+export function whoPaysExperiment(
+  seeds: readonly number[] = life2Seeds(64),
+  windfalls: readonly number[] = [3_600, 6_000, 9_600],
+  shelfLives: readonly number[] = [0, 48, 12],
+) {
+  return windfalls.flatMap((harvestKcal) =>
+    shelfLives.map((shelfLifeHours) => {
+      const runs = seeds.map((seed) => runLife({ seed, harvestKcal, shelfLifeHours }))
+      const byStrategy = UNIFORM_STRATEGIES.map((strategy) => {
+        const members = runs.flatMap((run) =>
+          run.strategies.flatMap((own, id) =>
+            own === strategy
+              ? [{ alive: run.alive[id]!, given: run.givenKcal[id]!, received: run.receivedKcal[id]! }]
+              : [],
+          ),
+        )
+        const aliveShare = mean(members.map((member) => (member.alive ? 1 : 0)))
+        return {
+          strategy,
+          foragers: members.length,
+          aliveShare,
+          aliveShareStandardError: Math.sqrt((aliveShare * (1 - aliveShare)) / (members.length || 1)),
+          meanGivenKcal: mean(members.map((member) => member.given)),
+          meanReceivedKcal: mean(members.map((member) => member.received)),
+        }
+      })
+      return { harvestKcal, shelfLifeHours, byStrategy }
+    }),
+  )
 }
