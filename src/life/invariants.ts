@@ -1,4 +1,5 @@
 import { carriedKcal } from './food'
+import { ratesOf } from './practice'
 import { bothGain, pairTerms } from './trade'
 import { woodMatters, woodTarget } from './wood'
 import { campTile, forageSucceeds, harvestOf, isDaylight, manhattan, sameTile } from './world'
@@ -141,7 +142,63 @@ export function lifeInvariantViolations(state: LifeState): string[] {
       violations.push(`Forager ${forager.id} gathered food without foraging`)
   }
 
-  violations.push(...giftViolations(state), ...swapViolations(state))
+  violations.push(...giftViolations(state), ...swapViolations(state), ...practiceViolations(state))
+  return violations
+}
+
+/** Every forager's practice log, hours and rates agree, and practice happened only at midnight. */
+function practiceViolations(state: LifeState): string[] {
+  const { config, foragers, lastEvents, lastPractice } = state
+  const violations: string[] = []
+  // Hours of the current day already run: a whole day once the last hour of a day has run.
+  const hoursOfDay = state.tick === 0 ? 0 : ((state.tick - 1) % 24) + 1
+  for (const forager of foragers) {
+    const name = `Forager ${forager.id}`
+    for (const task of ['forage', 'gather'] as const) {
+      const log = forager.practiceLog[task]
+      if (log.length !== config.practiceDays) violations.push(`${name}'s ${task} log has ${log.length} days`)
+      if (log.some((hours) => !Number.isInteger(hours) || hours < 0 || hours > 24))
+        violations.push(`${name}'s ${task} log holds an impossible day`)
+      if (forager.hoursWorked[task] !== forager.loggedHours[task] + forager.hoursToday[task])
+        violations.push(`${name}'s ${task} hours worked do not match its log and its hours today`)
+    }
+    const today = forager.hoursToday.forage + forager.hoursToday.gather
+    if (
+      !Number.isInteger(today) ||
+      forager.hoursToday.forage < 0 ||
+      forager.hoursToday.gather < 0 ||
+      // A dead forager's hours stay as they were on the day it died.
+      (forager.alive && today > hoursOfDay)
+    )
+      violations.push(`${name} worked ${today} hours in the ${hoursOfDay} hours of today`)
+    const rates = ratesOf(config, forager.foragingSkill, forager.woodSkill, forager.practiceLog)
+    if (forager.forageRate !== rates.forageRate || forager.woodRate !== rates.woodRate)
+      violations.push(`${name}'s rates do not match its born skills and practice`)
+  }
+  const lastTick = state.tick - 1
+  const midnight = lastTick > 0 && lastTick % 24 === 0
+  if (lastPractice.length && !midnight) violations.push('Foragers practised other than at midnight')
+  if (midnight) {
+    const practised = new Set(lastPractice.map((event) => event.foragerId))
+    const actors = new Set(lastEvents.map((event) => event.foragerId))
+    if (
+      practised.size !== lastPractice.length ||
+      practised.size !== actors.size ||
+      [...actors].some((id) => !practised.has(id))
+    )
+      violations.push('Midnight’s practice does not match the foragers alive at its start')
+  }
+  for (const event of lastPractice) {
+    const forager = foragers[event.foragerId]!
+    if (event.tick !== lastTick) violations.push(`Forager ${event.foragerId}'s practice is not from the last hour`)
+    if (event.forageRate !== forager.forageRate || event.woodRate !== forager.woodRate)
+      violations.push(`Forager ${event.foragerId}'s rates changed after midnight`)
+    if (
+      event.added.forage !== forager.practiceLog.forage.at(-1) ||
+      event.added.gather !== forager.practiceLog.gather.at(-1)
+    )
+      violations.push(`Forager ${event.foragerId}'s log does not end with the hours practice added`)
+  }
   return violations
 }
 

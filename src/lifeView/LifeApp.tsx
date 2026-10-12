@@ -12,6 +12,7 @@ import {
   clockLabel,
   describeActivity,
   fireSaving,
+  ownTermsByDay,
   displayedEnergy,
   displayHours,
   foragerColor,
@@ -45,8 +46,13 @@ type NumericSetup = Pick<
   | 'patchCount'
   | 'patchRegrowthKcalPerHour'
   | 'groveCount'
+  | 'practiceDays'
+  | 'practiceHalfHours'
+  | 'practiceMinPercent'
+  | 'practiceMaxPercent'
 >
-type Setup = NumericSetup & Pick<LifeConfig, 'swapping' | 'quotes'>
+type SwitchKey = 'swapping' | 'quotes' | 'practice'
+type Setup = NumericSetup & Pick<LifeConfig, SwitchKey>
 
 const SETUP_FIELDS: { key: keyof NumericSetup; label: string }[] = [
   { key: 'seed', label: 'Seed' },
@@ -61,9 +67,14 @@ const SETUP_FIELDS: { key: keyof NumericSetup; label: string }[] = [
   { key: 'patchCount', label: 'Patches' },
   { key: 'patchRegrowthKcalPerHour', label: 'Regrowth, kcal/h' },
   { key: 'groveCount', label: 'Groves' },
+  { key: 'practiceDays', label: 'Practice, days' },
+  { key: 'practiceHalfHours', label: 'Half way, h' },
+  { key: 'practiceMinPercent', label: 'Practice from, %' },
+  { key: 'practiceMaxPercent', label: 'Practice to, %' },
 ]
 
-const SETUP_SWITCHES: { key: 'swapping' | 'quotes'; label: string }[] = [
+const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
+  { key: 'practice', label: 'Practice' },
   { key: 'swapping', label: 'Swapping' },
   { key: 'quotes', label: 'Telling terms' },
 ]
@@ -91,6 +102,10 @@ interface Snapshot {
 
 const HUD_INTERVAL_MS = 100
 
+/** A rate's change at the last midnight, shown only when there was one. */
+const formatChange = (change: number) =>
+  change ? ` (${change > 0 ? '+' : '−'}${Math.abs(change).toLocaleString('en-US')})` : ''
+
 const formatUnits = (units: number) => `${units.toLocaleString('en-US')} ${units === 1 ? 'unit' : 'units'}`
 
 export default function LifeApp() {
@@ -104,7 +119,11 @@ export default function LifeApp() {
   const [followedId, setFollowedId] = useState(0)
   const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP)
   const [draft, setDraft] = useState<Record<keyof NumericSetup, string>>(() => stringify(DEFAULT_SETUP))
-  const [switches, setSwitches] = useState({ swapping: DEFAULT_SETUP.swapping, quotes: DEFAULT_SETUP.quotes })
+  const [switches, setSwitches] = useState<Pick<Setup, SwitchKey>>({
+    practice: DEFAULT_SETUP.practice,
+    swapping: DEFAULT_SETUP.swapping,
+    quotes: DEFAULT_SETUP.quotes,
+  })
   const [setupError, setSetupError] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0, true))
   const [sceneError, setSceneError] = useState(false)
@@ -262,7 +281,7 @@ export default function LifeApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 3 · specialization</span>
+        <span className="life-title">Life 4 · practice</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -366,8 +385,21 @@ export default function LifeApp() {
         <dl className="life-food">
           <dt>Skills</dt>
           <dd className="num">
-            {formatKcal(trade.forageRate)}/h · {trade.woodRate} wood/h
+            {formatKcal(trade.forageRate)}/h{formatChange(trade.forageRateChange)} · {trade.woodRate} wood/h
+            {formatChange(trade.woodRateChange)}
           </dd>
+          {config.practice && (
+            <>
+              <dt>Foraging practice</dt>
+              <dd className="num">
+                {trade.foragePercent}% from {trade.forageHours} h in {config.practiceDays} days
+              </dd>
+              <dt>Wood practice</dt>
+              <dd className="num">
+                {trade.woodPercent}% from {trade.gatherHours} h in {config.practiceDays} days
+              </dd>
+            </>
+          )}
           <dt>Wood costs it</dt>
           <dd className="num">{Math.round(trade.ownTerms)} kcal a unit</dd>
           <dt>Holds</dt>
@@ -474,6 +506,17 @@ export default function LifeApp() {
           {days.length > 1 ? (
             <>
               <TimeChart
+                data={ownTermsByDay(state, followed)}
+                height={100}
+                format={(value) => String(Math.round(value))}
+                domain={[0, 'auto']}
+                series={[
+                  { key: 'highest', name: 'Wood costs, highest', color: TERMS_COLORS.forager },
+                  { key: 'lowest', name: 'Wood costs, lowest', color: TERMS_COLORS.gatherer },
+                  { key: 'followed', name: `Wood costs ${name}`, color: palette.accent, dashed: true },
+                ]}
+              />
+              <TimeChart
                 data={days}
                 height={100}
                 format={(value) => String(Math.round(value))}
@@ -526,8 +569,14 @@ export default function LifeApp() {
             </p>
           )}
           <p className="life-note">
-            Running seed {setup.seed}: {setup.bandSize} foragers with skills from {setup.skillMinPercent}% to{' '}
-            {setup.skillMaxPercent}%, coloured from{' '}
+            Running seed {setup.seed}: {setup.bandSize} foragers born with skills{' '}
+            {setup.skillMinPercent === setup.skillMaxPercent
+              ? `of ${setup.skillMinPercent}%`
+              : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
+            {setup.practice
+              ? `, which grow with practice over ${setup.practiceDays} days from ${setup.practiceMinPercent}% towards ${setup.practiceMaxPercent}%`
+              : ', fixed for life'}
+            . Each is coloured by what wood costs it, from{' '}
             <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at foraging</span>. They{' '}
             {setup.swapping

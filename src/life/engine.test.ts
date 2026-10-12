@@ -162,7 +162,9 @@ describe('the hourly step', () => {
     expect(state.days[0]).toMatchObject({ alive: 1, deaths: 0, endEnergyKcal: [expect.any(Number)] })
     expect(state.eventDays).toHaveLength(EVENT_HISTORY_DAYS)
     expect(state.eventDays.at(-1)).toEqual([])
-    expect(state.eventDays[0]).toHaveLength(24)
+    // Each day after the first opens with the forager's practice at midnight, then its 24 actions.
+    expect(state.eventDays[0]).toHaveLength(25)
+    expect(state.eventDays[0]![0]).toMatchObject({ kind: 'practice', tick: 11 * 24 })
   })
 
   it('walks to food when hungry and the patch underfoot is empty', () => {

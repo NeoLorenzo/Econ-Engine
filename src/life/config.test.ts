@@ -69,6 +69,24 @@ describe('Life configuration', () => {
     expect(errorsFor({ termsMemoryHours: -1 })).toEqual(['termsMemoryHours must not be negative'])
   })
 
+  it('refuses each broken rule of practice', () => {
+    expect(errorsFor({ practice: 1 as unknown as boolean })).toEqual(['practice must be true or false'])
+    expect(errorsFor({ practiceDays: 0 })).toEqual(['practiceDays must be at least 1'])
+    expect(errorsFor({ practiceHalfHours: 0 })).toEqual(['practiceHalfHours must be at least 1'])
+    expect(errorsFor({ startPracticeHoursPerDay: 25 })).toEqual(['startPracticeHoursPerDay must be between 0 and 24'])
+    expect(errorsFor({ practiceMinPercent: 0 })[0]).toMatch(/1 ≤ practiceMinPercent ≤ practiceMaxPercent/)
+    expect(errorsFor({ practiceMinPercent: 160 })[0]).toMatch(/1 ≤ practiceMinPercent ≤ practiceMaxPercent/)
+    // At 4% practice, a forager born at 100% gathers floor(24 × 100 × 4 / 10,000) = 0 units an hour. Practice off, it
+    // gathers 24.
+    expect(errorsFor({ practiceMinPercent: 4 })).toEqual(['The lowest foraging and wood rates must be at least 1'])
+    expect(errorsFor({ practiceMinPercent: 4, practice: false })).toEqual([])
+    // At 1,100% practice, a forager forages 13,200 kcal an hour, and gathers 264 units, more than a grove holds.
+    expect(errorsFor({ practiceMaxPercent: 1_100 })).toEqual([
+      'A grove must hold the largest hour of gathering: the fastest wood rate ≤ groveCapacityWood',
+    ])
+    expect(errorsFor({ practiceMaxPercent: 2_100 })[0]).toMatch(/A patch must hold the largest harvest/)
+  })
+
   it('throws with every error when resolving an invalid configuration', () => {
     expect(() => resolveLifeConfig({ tilesPerHour: 0, travelKcalPerHour: -1 })).toThrow(
       /tilesPerHour must be at least 1; Costs must not be negative/,

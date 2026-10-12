@@ -1,4 +1,5 @@
 import type { LifeConfig } from '../life/types'
+import { ownTermsRange } from './lifeViewModel'
 
 export interface SpecializationPoint {
   id: number
@@ -13,8 +14,8 @@ const HEIGHT = 130
 const PAD = { left: 30, right: 8, top: 8, bottom: 22 }
 
 /**
- * Each forager as a point: across, what wood costs it in food (its own terms, on a log scale over the range its skills
- * allow); up, the share of its working hours spent gathering. Without swaps the points rise to the right; when foragers
+ * Each forager as a point: across, what wood costs it in food (its own terms, on a log scale over the range its born
+ * skills and practice allow); up, the share of its working hours spent gathering. Without swaps the points rise to the right; when foragers
  * specialize by comparative advantage they fall.
  */
 export function SpecializationChart({
@@ -26,14 +27,13 @@ export function SpecializationChart({
   config: LifeConfig
   followed: number
 }) {
-  const base = config.forageKcalPerHour / config.woodPerHour
-  const ratio = config.skillMaxPercent / config.skillMinPercent
-  const low = Math.log(base / ratio)
-  const high = Math.log(base * ratio)
+  const range = ownTermsRange(config)
+  const low = Math.log(range.low)
+  const high = Math.log(range.high)
   const x = (terms: number) =>
     PAD.left + (high > low ? (Math.log(terms) - low) / (high - low) : 0.5) * (WIDTH - PAD.left - PAD.right)
   const y = (share: number) => PAD.top + (1 - share) * (HEIGHT - PAD.top - PAD.bottom)
-  const ticks = [base / ratio, base, base * ratio]
+  const ticks = [range.low, range.base, range.high]
   return (
     <figure className="life-scatter">
       <svg

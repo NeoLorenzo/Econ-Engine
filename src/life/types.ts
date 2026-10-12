@@ -50,7 +50,7 @@ export interface LifeConfig {
   coldSleepKcalPerHour: number
   /** A forager short of wood gathers until it holds this many nights' wood. */
   woodStockNights: number
-  /** Each forager's foraging and wood skills are drawn independently from this range, in percent. */
+  /** Each forager's born skills at foraging and at gathering wood are drawn independently from this range, in percent. */
   skillMinPercent: number
   skillMaxPercent: number
   /** Foragers may swap wood for food. */
@@ -59,6 +59,16 @@ export interface LifeConfig {
   quotes: boolean
   /** A forager forgets terms it heard this many hours ago. */
   termsMemoryHours: number
+  /** Skill grows with practice and fades without it. Off, every rate is the born rate. */
+  practice: boolean
+  /** A forager's practice at a task is its hours at it over this many days. */
+  practiceDays: number
+  /** Practice percentages run from the minimum with no hours towards the maximum, half way at these hours. */
+  practiceHalfHours: number
+  practiceMinPercent: number
+  practiceMaxPercent: number
+  /** Every day of a forager's practice log starts with this many hours at each task. */
+  startPracticeHoursPerDay: number
 }
 
 export interface Tile {
@@ -98,6 +108,18 @@ export type Good = 'food' | 'wood'
 export interface HeardTerms {
   kcalPerWood: number
   tick: number
+}
+
+/** Hours at each task: foraging and gathering wood. */
+export interface TaskHours {
+  forage: number
+  gather: number
+}
+
+/** A forager's hours at each task on each of its last `practiceDays` days, oldest first. */
+export interface PracticeLog {
+  forage: number[]
+  gather: number[]
 }
 
 /** A trip to gather wood for trade, and the spare wood it set out to hold. */
@@ -150,9 +172,18 @@ export interface Forager {
   carried: FoodLot[]
   /** Indexed by forager ID; its own entry stays empty. */
   ledger: LedgerEntry[]
-  /** Its hourly rates: kilocalories foraging, units of wood gathering. It knows them. */
+  /** Its born skills at foraging and at gathering wood, in percent. */
+  foragingSkill: number
+  woodSkill: number
+  /** Its hourly rates for the day: kilocalories foraging, units of wood gathering. It knows them. */
   forageRate: number
   woodRate: number
+  /** Its hours at each task on each of its last `practiceDays` days. */
+  practiceLog: PracticeLog
+  /** Its hours at each task since midnight. */
+  hoursToday: TaskHours
+  /** Every hour it has added to its log since tick 0. */
+  loggedHours: TaskHours
   /** The wood it holds, in units. Wood keeps. */
   wood: number
   /** Wood need, with hysteresis. */
@@ -167,7 +198,7 @@ export interface Forager {
   /** Everything it has swapped: wood sold and bought, and food received and paid for it. */
   swapTotals: SwapTotals
   /** Hours it has spent foraging and gathering. */
-  hoursWorked: { forage: number; gather: number }
+  hoursWorked: TaskHours
 }
 
 export interface SwapTotals {
@@ -255,7 +286,23 @@ export interface QuoteEvent {
   kcalPerWood: number
 }
 
-export type LifeEvent = ActionEvent | GiftEvent | DeathEvent | SwapEvent | QuoteEvent
+/** A forager's practice at midnight: yesterday's hours entered in its log, and its rates for the new day. */
+export interface PracticeEvent {
+  kind: 'practice'
+  tick: number
+  foragerId: number
+  /** Yesterday's hours at each task, added to the log. */
+  added: TaskHours
+  /** Its practice percentage at each task for the new day. */
+  foragePercent: number
+  woodPercent: number
+  forageRateBefore: number
+  woodRateBefore: number
+  forageRate: number
+  woodRate: number
+}
+
+export type LifeEvent = ActionEvent | GiftEvent | DeathEvent | SwapEvent | QuoteEvent | PracticeEvent
 
 export type ActionHours = Record<ForagerAction, number>
 
@@ -283,6 +330,9 @@ export interface DaySummary {
   swaps: number
   swappedWood: number
   swappedKcal: number
+  /** Every forager's rates during the day, indexed by forager ID. */
+  forageRates: number[]
+  woodRates: number[]
 }
 
 export interface EnergyTotals {
@@ -317,6 +367,8 @@ export interface LifeState {
   /** The swaps and quotes of the last tick run, in the order they were made. */
   lastSwaps: SwapEvent[]
   lastQuotes: QuoteEvent[]
+  /** The practice of the last tick run: one event per living forager in the first hour of a day, otherwise none. */
+  lastPractice: PracticeEvent[]
   /** Recent events, one array per day, oldest first, at most `EVENT_HISTORY_DAYS` days. */
   eventDays: LifeEvent[][]
   /** Every completed day. */
