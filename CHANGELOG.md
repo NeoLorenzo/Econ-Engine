@@ -2,6 +2,37 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE5-RealScale-035] - (2026-10-12)
+
+### Added
+
+- **Life 5, real scale.** A new core in `src/valley/` implements the [Life 5 specification](docs/LIFE5_SPEC.md):
+  - the band lives in a valley 600 m across, in one-minute ticks, with positions in whole centimetres and straight-line walking at 4.5 km/h;
+  - food is berries on 1,920 individual bushes in 32 thickets, and wood is deadwood under 64 individual trees in 8 stands, growing exactly what Life 4's land grew;
+  - a minute may hold a short walk and then work, and hourly rates and costs are paid second by second with exact remainders;
+  - foragers see 25 m, work within 1 m, swap and tell terms within 20 m, sleep at hearths on a spiral around the camp's fire, choose the nearest bush or tree worth working, and bring firewood home in loads of 30 kg;
+  - Life 4's rules for hunger, wood, choosing work, trips for trade, swaps, terms and practice carry over, with practice counted in seconds.
+
+  A checker replays every minute's regrowth and recorded work onto its own copy of every plant and checks exact energy and wood conservation, movement, reach, memory, sleep, loads, practice and swaps every minute.
+- **Theory.** `src/valley/theory.ts` predicts time use with walking at real scale, the valley's capacity, and the loads that can never leave a forager with spare wood.
+- **Experiments.** Time at real scale; no surplus, no exchange; loads from 0 to 40 kg in a band born equal and in Life 3's band; Life 4's practice and exchange in the valley with its counterfactuals; and how many the valley feeds, each beside Life 4's hourly core on the same seeds.
+- **The observer at real scale.** `life.html` shows the valley: people about 1.75 m tall who walk, pick, stoop to gather deadwood and lie down at their hearths, bushes whose berries are picked one by one, trees with piles of deadwood at their feet, a bundle on a forager's back for the load it is gathering and a stack by its hearth for the rest. A strategy-game camera pans, zooms from the whole valley to a few metres, rotates, tilts towards eye level close in, and follows a forager. Time runs from real time to a day a second, and steps a minute at a time.
+
+### Changed
+
+- The hourly Life core in `src/life/` is frozen as a reference. Its observer moves, unchanged, to `life4.html`. The MVP9 top bar's link reads "Life 5".
+- `src/lifeView`'s colour scale and specialization chart accept any configuration with the fields they read, and the chart names its unit of wood; Life 4's page is unchanged.
+- The test runner's limit per test is 60 seconds rather than 5, because the valley's experiments load every core and slowed an unchanged Life 0 test past the old limit.
+- The merge document's ladder inserts step 5, "Real scale"; tools and shelter become step 6 and later steps move down by one. `AGENTS.md` points new Life work at `src/valley/` and `src/valleyView/`.
+
+### Validation
+
+- **No surplus, no exchange:** without loads, no forager in any of 64 runs ever holds spare wood, and nothing is swapped or quoted, whether the band is born equal or unequal.
+- **Loads:** a band born equal never swaps with loads up to 24 kg, swaps in every run at 30 and 40 kg, but in only 8 of 32 at 36 kg; Life 3's band swaps in every run from 26 kg.
+- **Practice and exchange:** with 30 kg loads every band born equal divides, but the first swap comes on day 140 on average against 15.5 in Life 4, and the top two gatherers bring in 36% of the wood against 53%. Without swaps, or without telling terms, or without practice, nothing is swapped.
+- **Capacity:** the valley keeps a band of 12 intact in every run, which Life 4's land does not; a band of 16 falls to 5.4.
+- Nothing under `src/sim/` or `src/life/` changed, so MVP9 and Life 0 to Life 4 keep their trajectories. `npm run agent:check` passes; the tests take about three minutes. In the browser, walking, picking, gathering and sleeping, following, the inspector, the HUD, the charts, the whole-valley view, the 375px layout and `life4.html` were checked, with no console errors.
+
 ## [LIFE4-Practice-034] - (2026-10-12)
 
 ### Added

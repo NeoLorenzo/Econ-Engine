@@ -202,3 +202,30 @@ The experiments of the [specification](LIFE4_SPEC.md#experiments) are tests. The
 Unit tests cover the new configuration rules; the practice percentage at no hours, half way and far beyond, and the steady percentages of the specification's table; every forager starting at 100%; rates from born skill and practice, rounded down, and Life 3's rates with practice off whatever the log; the midnight update, which enters yesterday's hours, drops the oldest day, sets the rates and restarts the day's hours; rates changing only at midnight while the dead are left alone; and the invariants catching a rate that does not match the log, an hour missing from the log, and practice away from midnight. The observer's view model is tested for the colour scale over born skill and practice, the HUD's practice percentages, hours and rate changes, and the chart of own terms by day.
 
 In the browser, the HUD's practice lines and rate changes, the chart of own terms fanning out from one line, the colours drifting apart, the setup's practice switch and fields and its validation of the practice range, and the 375px layout were checked, with no console errors.
+
+# Life 5
+
+Runtime invariants, checked after every minute of every test and experiment run by a checker that replays regrowth and recorded work onto its own copy of every plant:
+
+- exact energy conservation (bush stock, reserves, carried food, energy metabolized and food spoiled against starting stock, starting reserves and regrowth) and exact wood conservation (tree stock, wood held and burned against starting wood and regrowth);
+- every plant worked this minute matching the replay, and every plant matching it in the first minute of every hour;
+- every forager's seconds adding up to 60, its move no longer than its walking seconds allow, and its position inside the valley;
+- work only in daylight, within reach, at a plant holding a minute's work, and never more than the plant held;
+- memory of the plant worked or targeted matching what was seen this minute, and of every plant in view in the first minute of every hour;
+- sleep only at the hearth and only at night, every living forager home or walking home at night, wood burned once an hour at most and only asleep;
+- `tripWood` 0 at the hearth, and work to fill a load only with a load under way;
+- remainders between 0 and 3,599, reserves in range, the dead without a reserve, carried lots positive, in order and unspoiled (every lot hourly, the oldest and newest every minute), terms heard only when agreed, swaps that pay both sides and add up, and swap totals that agree with the band's;
+- exactly one turn per living forager, practice exactly once at midnight for each forager alive, hours worked equal to the hours logged plus today's, and rates that follow from born skill and practice at midnight and do not change during the day.
+
+The experiments of the [specification](LIFE5_SPEC.md#experiments) are tests, on the first 8 seeds, over 100 or 30 days where the expectation holds at any horizon. The numbers below come from 32 seeds over 400 days, measured over days 21 to 400, with Life 4's hourly core on the same seeds.
+
+- **Time at real scale.** Without swaps every band is intact; a forager works 2.67 hours a day and walks 0.10, against 3.24 and 3.56 in Life 4; the prediction gives 2.65 hours of work. Nobody sleeps cold.
+- **No surplus, no exchange.** Without loads, in the band born equal and in Life 3's band, no forager ever holds spare wood and nothing is swapped or quoted on any seed.
+- **Loads.** In the band born equal, exchange starts in 0 runs of 32 with loads up to 24 kg, 9 at 26 kg, 29 at 28 kg, 32 at 30 kg, 8 at 36 kg and 32 at 40 kg. In Life 3's band it starts in 15 runs at 20 and 24 kg and in every run from 26 kg, within three days.
+- **Practice and exchange.** With 30 kg loads every run swaps; the first swap comes on day 140 on average (latest 253) against 15.5 in Life 4; the top two gatherers bring in 36% of the wood (32% to 41%) against 53% in Life 4 and 25% without swaps; own terms spread 1.06 times by day 100 and 1.61 by day 400; 18% of the wood burned is bought; cold nights rise from none to 7%. Without swaps the band stays undivided. With quotes off nothing is swapped and every run is identical, day for day, to the run without swapping; with practice off nothing is swapped.
+- **Capacity.** Bands of 8 and 12 are intact in every run; bands of 16, 24 and 32 fall to 5.4, 4.9 and 2.8. On Life 4's land a band of 12 falls to 4.6 and a band of 16 to 4.5.
+
+Unit tests cover the configuration's rules and a layout that cannot be drawn; the layout's determinism, spacing, radii and spiral of hearths; the spatial index against a search of every plant; integer distances, walking times and steps; regrowth shares and remainders that make an hour exact; filling a load, hunger interrupting it and the load ending at the hearth; walking to a bush and picking it in the same minute; sleeping warm and cold; choosing the nearest worthwhile bush, the one seen longest ago, and keeping or dropping a target; swapping within talking distance and not beyond; determinism, `runValley` against single steps, and neither changing its input; eating carried food exactly as Life's `takeOldest`; and the checker catching a broken balance, a plant changed without a record, a step too long, work out of reach and a sleeper away from its hearth. The observer's view model is tested for a minute that holds a walk and then work, sleeping, the wood on a forager's back and by its hearth, the clock, berries shared out one by one, the inspector, and the camera's limits and tilt.
+
+In the browser, people walking, picking, gathering deadwood and sleeping were checked close up and from the whole valley, with following, the inspector, the HUD, the charts, the 375px layout and the Life 4 page at `life4.html`, and no console errors.
+
