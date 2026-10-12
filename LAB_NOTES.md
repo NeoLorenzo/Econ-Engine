@@ -6,7 +6,22 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
-## [LIFE3-Thickets-032] - (2026-10-12)
+## [LIFE3-Foragers-033] - (2026-10-12)
+
+### Problem
+
+Looking at Life 3, the owner found the foragers out of proportion with their land, and asked what the point of gathering wood was. Each forager stood about 0.8 tiles tall, as tall as a full-grown tree and three times a bush. The panel said a forager was "sleeping cold, with no wood to burn" but never what that cost, so wood looked like busywork.
+
+### Decisions
+
+- **Half size, not true scale.** At true scale a person would be a fifth of a tree and a speck at the default zoom. Half size puts a forager at about half a tree and a little above the bushes, and keeps it easy to see and click. The scale is one constant, `FIGURE_SCALE`; hearths, the follow ring and the gift and swap arcs follow it.
+- **The value of wood in the panel's own unit.** The panel states what a night's fire burns and what it saves against sleeping cold, in kilocalories, the unit everything else is measured in: 12 units saving 1,080 kcal on the canonical settings. It is computed from the configuration, so it stays right if the settings change, and it is hidden where nights are not cold. A forager that burns wood is now "sleeping warm by its fire", so warm and cold nights read differently.
+
+### Findings
+
+None; the simulation is unchanged. This is an observer change only.
+
+ - (2026-10-12)
 
 ### Problem
 
