@@ -5,10 +5,10 @@ import type { LifeConfig, LifeState } from '../life/types'
 import {
   advanceClock,
   aliveCount,
+  BERRIES_PER_BUSH,
+  berryFills,
   bundleScale,
-  bushScale,
   clockLabel,
-  crownScale,
   currentGifts,
   currentSwaps,
   daylightAt,
@@ -16,6 +16,7 @@ import {
   displayedCarried,
   displayedStock,
   displayedWood,
+  fillInTurn,
   foragerColor,
   foragerName,
   foragerPose,
@@ -31,13 +32,18 @@ import {
   pairOffsets,
   patchInspection,
   perceptionOutline,
+  SITE_RADIUS,
+  sitePlants,
   specializationPoints,
+  STAND_TREES,
   standingOffsets,
   stepFollowed,
   STRATEGY_COLORS,
   swapEnds,
   TERMS_COLORS,
+  THICKET_BUSHES,
   tradeSummary,
+  treeFills,
   type DisplayPair,
 } from './lifeViewModel'
 
@@ -130,9 +136,35 @@ describe('bushes', () => {
     expect(displayedStock(pair, 0, false)).toBe(after)
   })
 
-  it('never vanish', () => {
-    expect(bushScale(0, 8_000)).toBeCloseTo(0.3, 9)
-    expect(bushScale(8_000, 8_000)).toBe(1)
+  it('carry their food as berries, picked bush by bush from the outside in', () => {
+    const berries = THICKET_BUSHES * BERRIES_PER_BUSH
+    expect(berryFills(24_000, 24_000)).toEqual(Array(berries).fill(1))
+    expect(berryFills(0, 24_000)).toEqual(Array(berries).fill(0))
+    const half = berryFills(12_000, 24_000)
+    expect(half.slice(0, berries / 2)).toEqual(Array(berries / 2).fill(1))
+    expect(half.slice(berries / 2)).toEqual(Array(berries / 2).fill(0))
+  })
+})
+
+describe('sites', () => {
+  it('stand inside their tile, the same in every run, and differ between kinds and IDs', () => {
+    for (const kind of ['patch', 'grove'] as const)
+      for (const id of [0, 1, 7, 31]) {
+        const plants = sitePlants(kind, id, 6)
+        expect(plants).toHaveLength(6)
+        expect(sitePlants(kind, id, 6)).toEqual(plants)
+        for (const plant of plants) expect(Math.hypot(plant.x, plant.z)).toBeLessThanOrEqual(SITE_RADIUS)
+      }
+    expect(sitePlants('patch', 1, 6)).not.toEqual(sitePlants('patch', 0, 6))
+    expect(sitePlants('grove', 0, 6)).not.toEqual(sitePlants('patch', 0, 6))
+  })
+
+  it('share an amount out part by part, adding up to its share of capacity', () => {
+    expect(fillInTurn(50, 100, 4)).toEqual([1, 1, 0, 0])
+    expect(fillInTurn(-5, 100, 3)).toEqual([0, 0, 0])
+    expect(fillInTurn(500, 100, 3)).toEqual([1, 1, 1])
+    const fills = fillInTurn(2_900, 8_000, 7)
+    expect(fills.reduce((sum, fill) => sum + fill, 0)).toBeCloseTo((2_900 / 8_000) * 7, 9)
   })
 })
 
@@ -297,9 +329,10 @@ describe('specialization on screen', () => {
     return { ...state, tick: 20, foragers }
   }
 
-  it('sizes trees and log stacks, which never vanish while there is wood', () => {
-    expect(crownScale(200, 200)).toBe(1)
-    expect(crownScale(0, 200)).toBeCloseTo(0.35, 9)
+  it('fells trees to stumps one at a time, and sizes log stacks, which never vanish while there is wood', () => {
+    expect(treeFills(200, 200)).toEqual(Array(STAND_TREES).fill(1))
+    expect(treeFills(0, 200)).toEqual(Array(STAND_TREES).fill(0))
+    expect(treeFills(120, 200)).toEqual([1, 1, 1, 0, 0])
     expect(logScale(0, 24)).toBe(0)
     expect(logScale(6, 24)).toBeCloseTo(0.725, 9)
     expect(logScale(100, 24)).toBe(1)

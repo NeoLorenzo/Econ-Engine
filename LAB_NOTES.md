@@ -6,6 +6,31 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE3-Thickets-032] - (2026-10-12)
+
+### Problem
+
+The owner noticed that each patch was drawn as one bush, which reads as one plant, though a patch is a collection of food. The numbers agree. On Life 1's land a patch regrows 1,200 kcal a day, about 440,000 kcal a year: roughly 70 kg of nuts or most of a tonne of berries, the crop of dozens of shrubs. The same holds for a grove: 200 units of wood is a stand, not a tree.
+
+A first attempt drew each patch as a grove of shrubs and two trees that browned as they were eaten. It was built on a copy of `main` from before Life 2, and the owner caught the flaw: Life 3 already draws wood groves as trees, so food patches with trees in them would look like wood. Browning was wrong as well, since picking fruit does not kill leaves. That attempt was set aside unmerged.
+
+### Decisions
+
+- **Change the picture, not the model.** The owner also suggested 100 m tiles. A tile is about 1.5 km, a scale that is only a note in the specifications, chosen so that walking 3 tiles an hour is about 4.5 km/h. Relabelling the tiles alone would have foragers walking 300 m an hour. Rescaling everything consistently would let a forager cross dozens of tiles within one hourly tick, so space would be far finer than time. Shrinking the tiles while keeping walking distances short would make walking almost free, removing the cost that drives Life 1's collapse. The owner agreed to keep the 1.5 km tiles until the model moves to finer time.
+- **Fruit means food; trunks mean wood.** A patch is a thicket of low, round bushes with red berries, and a grove a stand of tall conifers. The two read apart by shape and colour at any zoom, including at 375 px, and any future scenery can be kept free of fruit.
+- **Show the good itself.** The berries are the food, so they are what is picked; the bushes stay green. A stand's trees are its wood, so they are felled to stumps and grow back from them. A stump keeps an empty grove visible and clickable, as the shrunken bush and crown did before.
+- **One part at a time.** A stock is shared out among its parts one after another (`fillInTurn`), so a thicket shows some bushes full and some picked rather than every berry shrinking a little, and the parts drawn add up to the stock's share of capacity. Thirty berries make each one about 800 kcal on Life 3's land; five trees make each one 40 units of wood.
+- **The layout is decoration.** It comes from the site's kind and ID through the shared hash, not from the run's seed or any simulation stream, so it cannot disturb a trajectory.
+- **Instancing.** Life 3's 32 thickets alone have about 580 leaf lobes and 960 berries. All leaves, berries, trunks and crowns are four instanced meshes rather than meshes per site, and picking maps an instance back to its site.
+
+### Observations
+
+- By day 6 of the canonical run, thickets near the camp were picked down to a few berries while far ones stayed full. Run with a single grove, the band had cut it to one standing tree among stumps by day 4. These were seen in screenshots, not measured.
+
+### Open questions
+
+- When the model moves to finer time, should tiles shrink and plants become individual sources of food and wood, so that a site is literally its plants?
+
 ## [LIFE3-Specialization-031] - (2026-10-11)
 
 ### Problem
