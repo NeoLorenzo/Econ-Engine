@@ -14,6 +14,7 @@ import type {
 } from '../life/types'
 import { woodTarget } from '../life/wood'
 import { campTile, sameTile, walkPath } from '../life/world'
+import { mixSeed, randomDraw } from '../sim/rng'
 import { palette } from '../ui/theme'
 
 /**
@@ -221,9 +222,72 @@ export function displayedStock(pair: DisplayPair, patchId: number, interpolate =
   return interpolate ? lerp(before, after, pair.alpha) : after
 }
 
-/** A bush never vanishes: an empty patch is still a patch, drawn as a small bare shrub. */
-export const bushScale = (stockKcal: number, capacityKcal: number) =>
-  0.3 + 0.7 * Math.sqrt(Math.max(0, stockKcal) / capacityKcal)
+/**
+ * A site is many plants, not one: a patch's regrowth is a thicket's crop and a grove's wood a stand of trees. A patch
+ * is drawn as a thicket of fruit bushes whose berries are its food; a grove as a stand of trees felled for its wood.
+ * Fruit means food and trunks mean wood, at any zoom.
+ */
+export const THICKET_BUSHES = 6
+export const BERRIES_PER_BUSH = 5
+export const STAND_TREES = 5
+
+/** How far from its tile's centre a site's plants may stand, in tiles. */
+export const SITE_RADIUS = 0.33
+
+const SITE_LAYOUT_SALT = { patch: 0x5448_4b54, grove: 0x5354_4e44 } as const
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+
+export interface SitePlant {
+  /** Offset from the tile's centre, in tiles. */
+  x: number
+  z: number
+  /** Relative size, about 1. */
+  size: number
+  /** A turn about the plant's own axis, so plants are not stamped alike. */
+  turn: number
+}
+
+/**
+ * Where a site's plants stand within its tile. The layout is fixed by the site's kind and ID, so a site looks the
+ * same in every run; it is decoration and draws nothing from the simulation's streams. Plant 0 stands nearest the
+ * centre.
+ */
+export function sitePlants(kind: 'patch' | 'grove', id: number, count: number): SitePlant[] {
+  let state = mixSeed((id ^ SITE_LAYOUT_SALT[kind]) >>> 0)
+  const next = () => {
+    const draw = randomDraw(state)
+    state = draw.state
+    return draw.value
+  }
+  const spin = next() * Math.PI * 2
+  return Array.from({ length: count }, (_, index) => {
+    // A sunflower spiral spreads the plants evenly; a little jitter keeps sites from looking alike.
+    const radius = (SITE_RADIUS - 0.04) * Math.sqrt((index + 0.5) / count) + (next() - 0.5) * 0.08
+    const angle = spin + index * GOLDEN_ANGLE
+    return {
+      x: radius * Math.cos(angle),
+      z: radius * Math.sin(angle),
+      size: 0.85 + next() * 0.3,
+      turn: next() * Math.PI * 2,
+    }
+  })
+}
+
+/**
+ * Shares `amount` out among `count` parts one after another, each from 0 (empty) to 1 (full). The fills add up to
+ * the amount's share of capacity, so what is drawn stays proportional to what is there. The last parts empty first.
+ */
+export const fillInTurn = (amount: number, capacity: number, count: number) =>
+  Array.from({ length: count }, (_, index) =>
+    Math.min(1, Math.max(0, (Math.max(0, amount) / capacity) * count - index)),
+  )
+
+/** Every berry in a thicket: its food shared out berry by berry, so the outer bushes are picked bare first. */
+export const berryFills = (stockKcal: number, capacityKcal: number) =>
+  fillInTurn(stockKcal, capacityKcal, THICKET_BUSHES * BERRIES_PER_BUSH)
+
+/** Every tree in a stand: its wood shared out tree by tree, so trees are felled to stumps one at a time and regrow. */
+export const treeFills = (wood: number, capacity: number) => fillInTurn(wood, capacity, STAND_TREES)
 
 export const displayedEnergy = (pair: DisplayPair, foragerId: number, interpolate = true) =>
   interpolate
@@ -395,9 +459,6 @@ export function displayedGroveWood(pair: DisplayPair, groveId: number, interpola
   const after = pair.next.groves[groveId]!.wood
   return interpolate ? lerp(before, after, pair.alpha) : after
 }
-
-/** A tree's crown shrinks as its grove runs low, but never vanishes. */
-export const crownScale = (wood: number, capacity: number) => 0.35 + 0.65 * Math.sqrt(Math.max(0, wood) / capacity)
 
 /** The wood a forager holds, part of the way through the hour. */
 export function displayedWood(pair: DisplayPair, foragerId: number, interpolate = true) {

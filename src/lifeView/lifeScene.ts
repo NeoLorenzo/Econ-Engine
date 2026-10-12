@@ -1,12 +1,12 @@
-import type { Group, Line, LineLoop, Mesh, MeshStandardMaterial, PointLight } from 'three'
+import type { Group, InstancedMesh, Line, LineLoop, Mesh, MeshStandardMaterial, PointLight } from 'three'
 import type { LifeState } from '../life/types'
 import { campTile } from '../life/world'
 import { hex, palette } from '../ui/theme'
 import { woodTarget } from '../life/wood'
 import {
+  BERRIES_PER_BUSH,
+  berryFills,
   bundleScale,
-  bushScale,
-  crownScale,
   currentEvent,
   currentGifts,
   currentSwaps,
@@ -25,8 +25,12 @@ import {
   pairOffsets,
   perceptionOutline,
   seesEverything,
+  sitePlants,
+  STAND_TREES,
   sunAt,
   swapEnds,
+  THICKET_BUSHES,
+  treeFills,
   type DisplayPair,
 } from './lifeViewModel'
 
@@ -35,7 +39,7 @@ type Three = typeof import('three')
 const NIGHT_SKY = 0x070a12
 const DAY_SKY = 0x6f97ab
 const LUSH = 0x3f8f4a
-const BARE = 0x7a6440
+const BERRY = 0xd8324c
 const GRASS = 0x2f5a35
 const GRASS_EDGE = 0x24432a
 const DEAD = 0x6b6b66
@@ -63,22 +67,49 @@ export interface DrawOptions {
 }
 
 export interface LifeScene {
-  /** Rebuilds the board, bushes and band for a new run. */
+  /** Rebuilds the board, thickets, stands and band for a new run. */
   setWorld(state: LifeState): void
   draw(pair: DisplayPair, options: DrawOptions): void
   dispose(): void
 }
 
-interface Bush {
-  group: Group
-  material: MeshStandardMaterial
+/** A berry on a thicket's bush, at its place on the board. Its slot is its place in the thicket's `berryFills`. */
+interface Berry {
+  patchId: number
+  slot: number
+  x: number
+  y: number
+  z: number
 }
 
-/** A grove is a tree whose crown shrinks as its wood runs low. */
-interface Tree {
-  group: Group
-  crown: Group
+/** A tree in a grove's stand, at its base on the board. Its slot is its place in the stand's `treeFills`. */
+interface StandTree {
+  groveId: number
+  slot: number
+  x: number
+  z: number
+  size: number
+  turn: number
 }
+
+/** A bush's three leafy lobes: offset and radius, in tiles. */
+const BUSH_LOBES: [number, number, number, number][] = [
+  [0, 0.13, 0, 0.11],
+  [0.08, 0.09, 0.05, 0.085],
+  [-0.07, 0.085, -0.06, 0.08],
+]
+const BERRY_RADIUS = 0.034
+/** A full-grown tree's trunk, and the stump left when it is felled. */
+const TRUNK_HEIGHT = 0.3
+const STUMP_HEIGHT = 0.06
+/** A tree's two crown cones: height of each centre above the trunk, and scale. */
+const CROWN_CONES: [number, number][] = [
+  [0.19, 1],
+  [0.36, 0.72],
+]
+/** On a camp tile the fire takes a corner, so the thicket draws in towards the opposite one. */
+const CAMP_THICKET_SCALE = 0.7
+const CAMP_THICKET_SHIFT = 0.1
 
 /** Builds the scene inside `mount`. The caller drives drawing; nothing renders until `draw` is called. */
 interface Figure {
@@ -144,16 +175,29 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
 
   const world = new THREE.Group()
   scene.add(world)
-  let bushes: Bush[] = []
-  let trees: Tree[] = []
+  // Every bush's leaves across all thickets share one instanced mesh, as do the berries, the trunks and the crowns.
+  // Each instance maps back to its site.
+  let leaves: InstancedMesh | null = null
+  let berryMesh: InstancedMesh | null = null
+  let trunks: InstancedMesh | null = null
+  let crowns: InstancedMesh | null = null
+  let leafPatches: number[] = []
+  let berries: Berry[] = []
+  let standTrees: StandTree[] = []
   let ground: Mesh | null = null
   let gridLines: InstanceType<Three['LineSegments']> | null = null
   let gridWidth = 1
   let gridHeight = 1
   const toWorld = (x: number, y: number) => ({ x: x - (gridWidth - 1) / 2, z: y - (gridHeight - 1) / 2 })
 
-  // Shared geometry: every bush is three leafy lobes; every forager is a capsule and a head.
-  const lobe = new THREE.IcosahedronGeometry(0.3, 1)
+  // Shared geometry: every bush is three leafy lobes with berries; every tree a trunk and two cones; every forager a
+  // capsule and a head. Lobes, berries and trunks are unit shapes, sized per instance.
+  const leafGeometry = new THREE.IcosahedronGeometry(1, 1)
+  const leafMaterial = new THREE.MeshStandardMaterial({ color: LUSH, roughness: 0.8, flatShading: true })
+  const berryGeometry = new THREE.IcosahedronGeometry(1, 0)
+  const berryMaterial = new THREE.MeshStandardMaterial({ color: BERRY, roughness: 0.45 })
+  const siteMatrix = new THREE.Matrix4()
+  const siteScale = new THREE.Vector3()
   const ringGeometry = new THREE.RingGeometry(0.42, 0.5, 40)
   const targetRing = new THREE.Mesh(
     ringGeometry,
@@ -174,9 +218,10 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
   const bundleMaterial = new THREE.MeshStandardMaterial({ color: BUNDLE, roughness: 0.9, flatShading: true })
   const logGeometry = new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6)
   const woodMaterial = new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.9, flatShading: true })
-  const trunkGeometry = new THREE.CylinderGeometry(0.06, 0.08, 0.4, 6)
+  const trunkGeometry = new THREE.CylinderGeometry(0.035, 0.05, 1, 6)
+  trunkGeometry.translate(0, 0.5, 0)
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: TRUNK, roughness: 1, flatShading: true })
-  const crownGeometry = new THREE.ConeGeometry(0.32, 0.7, 7)
+  const crownGeometry = new THREE.ConeGeometry(0.19, 0.42, 7)
   const crownMaterial = new THREE.MeshStandardMaterial({ color: CROWN, roughness: 0.85, flatShading: true })
   const hearthFlameGeometry = new THREE.ConeGeometry(0.05, 0.16, 6)
   const hearthLitMaterial = new THREE.MeshStandardMaterial({
@@ -314,13 +359,18 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       scene.remove(perception)
       perception = null
     }
-    for (const bush of bushes) {
-      bush.material.dispose()
-      world.remove(bush.group)
+    for (const mesh of [leaves, berryMesh, trunks, crowns]) {
+      if (!mesh) continue
+      mesh.dispose()
+      world.remove(mesh)
     }
-    bushes = []
-    for (const tree of trees) world.remove(tree.group)
-    trees = []
+    leaves = null
+    berryMesh = null
+    trunks = null
+    crowns = null
+    leafPatches = []
+    berries = []
+    standTrees = []
     if (ground) {
       ground.geometry.dispose()
       ;(ground.material as MeshStandardMaterial).dispose()
@@ -350,6 +400,45 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     camera.lookAt(0, 0, 0)
   }
 
+  /** Sizes every berry by its fill: ripe at 1, gone at 0. */
+  function placeBerries(fills: number[]) {
+    if (!berryMesh) return
+    for (const [index, berry] of berries.entries()) {
+      // A picked berry shrinks to nothing rather than being removed, so instance indices stay fixed.
+      const radius = Math.max(1e-5, BERRY_RADIUS * fills[index]!)
+      berryMesh.setMatrixAt(index, siteMatrix.makeScale(radius, radius, radius).setPosition(berry.x, berry.y, berry.z))
+    }
+    berryMesh.instanceMatrix.needsUpdate = true
+  }
+
+  /** Grows every tree by its fill: full-grown at 1, a bare stump at 0. */
+  function placeTrees(fills: number[]) {
+    if (!trunks || !crowns) return
+    for (const [index, tree] of standTrees.entries()) {
+      const fill = fills[index]!
+      const height = (STUMP_HEIGHT + (TRUNK_HEIGHT - STUMP_HEIGHT) * fill) * tree.size
+      trunks.setMatrixAt(
+        index,
+        siteMatrix
+          .makeRotationY(tree.turn)
+          .scale(siteScale.set(tree.size, height, tree.size))
+          .setPosition(tree.x, 0, tree.z),
+      )
+      for (const [cone, [above, scale]] of CROWN_CONES.entries()) {
+        const size = Math.max(1e-5, fill * scale * tree.size)
+        crowns.setMatrixAt(
+          index * CROWN_CONES.length + cone,
+          siteMatrix
+            .makeRotationY(tree.turn)
+            .scale(siteScale.set(size, size, size))
+            .setPosition(tree.x, height + above * fill * tree.size, tree.z),
+        )
+      }
+    }
+    trunks.instanceMatrix.needsUpdate = true
+    crowns.instanceMatrix.needsUpdate = true
+  }
+
   function setWorld(state: LifeState) {
     clearWorld()
     gridWidth = state.config.gridWidth
@@ -376,55 +465,77 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     )
     world.add(gridLines)
 
-    for (const patch of state.patches) {
-      const material = new THREE.MeshStandardMaterial({ color: LUSH, roughness: 0.8, flatShading: true })
-      const group = new THREE.Group()
-      const offsets: [number, number, number][] = [
-        [0, 0.28, 0],
-        [0.22, 0.2, 0.1],
-        [-0.17, 0.18, -0.14],
-      ]
-      for (const [x, y, z] of offsets) {
-        const mesh = new THREE.Mesh(lobe, material)
-        mesh.position.set(x, y, z)
-        mesh.castShadow = true
-        mesh.userData.patchId = patch.id
-        group.add(mesh)
-      }
-      const { x, z } = toWorld(patch.tile.x, patch.tile.y)
-      group.position.set(x, 0, z)
-      group.userData.patchId = patch.id
-      world.add(group)
-      bushes.push({ group, material })
-    }
-
-    for (const grove of state.groves) {
-      const group = new THREE.Group()
-      const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial)
-      trunk.position.y = 0.2
-      const crown = new THREE.Group()
-      for (const [height, scale] of [
-        [0.55, 1],
-        [0.85, 0.75],
-      ] as const) {
-        const cone = new THREE.Mesh(crownGeometry, crownMaterial)
-        cone.position.y = height - 0.35
-        cone.scale.setScalar(scale)
-        cone.castShadow = true
-        cone.userData.groveId = grove.id
-        crown.add(cone)
-      }
-      crown.position.y = 0.35
-      trunk.castShadow = true
-      trunk.userData.groveId = grove.id
-      group.add(trunk, crown)
-      const { x, z } = toWorld(grove.tile.x, grove.tile.y)
-      group.position.set(x, 0, z)
-      world.add(group)
-      trees.push({ group, crown })
-    }
-
     const campAt = campTile(state.config)
+
+    // Thickets: each bush's leaves are fixed; its berries ripen and are picked.
+    const leafMatrices: InstanceType<Three['Matrix4']>[] = []
+    for (const patch of state.patches) {
+      const centre = toWorld(patch.tile.x, patch.tile.y)
+      const atCamp = campAt !== null && patch.tile.x === campAt.x && patch.tile.y === campAt.y
+      const spread = atCamp ? CAMP_THICKET_SCALE : 1
+      const shift = atCamp ? CAMP_THICKET_SHIFT : 0
+      for (const [bush, plant] of sitePlants('patch', patch.id, THICKET_BUSHES).entries()) {
+        const baseX = centre.x + shift + plant.x * spread
+        const baseZ = centre.z - shift + plant.z * spread
+        const cos = Math.cos(plant.turn)
+        const sin = Math.sin(plant.turn)
+        const lobes = BUSH_LOBES.map(([x, y, z, radius]) => ({
+          x: baseX + (x * cos - z * sin) * plant.size,
+          y: y * plant.size,
+          z: baseZ + (x * sin + z * cos) * plant.size,
+          radius: radius * plant.size,
+        }))
+        for (const lobe of lobes) {
+          leafMatrices.push(
+            new THREE.Matrix4().makeScale(lobe.radius, lobe.radius, lobe.radius).setPosition(lobe.x, lobe.y, lobe.z),
+          )
+          leafPatches.push(patch.id)
+        }
+        // Berries hang on the upper sides of the lobes, spread around the bush.
+        for (let index = 0; index < BERRIES_PER_BUSH; index += 1) {
+          const lobe = lobes[index % lobes.length]!
+          const around = plant.turn + index * 2.4
+          const up = 0.35 + 0.35 * (index % 2)
+          const reach = lobe.radius * 0.95
+          berries.push({
+            patchId: patch.id,
+            slot: bush * BERRIES_PER_BUSH + index,
+            x: lobe.x + Math.cos(up) * Math.cos(around) * reach,
+            y: lobe.y + Math.sin(up) * reach,
+            z: lobe.z + Math.cos(up) * Math.sin(around) * reach,
+          })
+        }
+      }
+    }
+    leaves = new THREE.InstancedMesh(leafGeometry, leafMaterial, leafMatrices.length)
+    for (const [index, matrix] of leafMatrices.entries()) leaves.setMatrixAt(index, matrix)
+    berryMesh = new THREE.InstancedMesh(berryGeometry, berryMaterial, berries.length)
+
+    // Stands: each tree is felled to a stump as its share of the wood is cut, and grows back as the wood regrows.
+    for (const grove of state.groves) {
+      const centre = toWorld(grove.tile.x, grove.tile.y)
+      for (const [slot, plant] of sitePlants('grove', grove.id, STAND_TREES).entries())
+        standTrees.push({
+          groveId: grove.id,
+          slot,
+          x: centre.x + plant.x,
+          z: centre.z + plant.z,
+          size: plant.size,
+          turn: plant.turn,
+        })
+    }
+    trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, standTrees.length)
+    crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, standTrees.length * CROWN_CONES.length)
+
+    // Bounds are taken with every berry ripe and every tree grown, the largest the sites can be.
+    placeBerries(berries.map(() => 1))
+    placeTrees(standTrees.map(() => 1))
+    for (const mesh of [leaves, berryMesh, trunks, crowns]) {
+      mesh.castShadow = true
+      mesh.computeBoundingSphere()
+      world.add(mesh)
+    }
+
     if (campAt) {
       const group = new THREE.Group()
       for (let index = 0; index < 8; index += 1) {
@@ -479,8 +590,6 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
   const night = new THREE.Color(NIGHT_SKY)
   const day = new THREE.Color(DAY_SKY)
   const sky = new THREE.Color()
-  const lush = new THREE.Color(LUSH)
-  const bare = new THREE.Color(BARE)
 
   function draw(pair: DisplayPair, { interpolate, selected, followedId, nowMs }: DrawOptions) {
     const { config } = pair.next
@@ -499,14 +608,14 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     sun.color.setHSL(0.1, 0.6, 0.6 + 0.35 * Math.max(0, elevation))
     moon.intensity = 0.35 * (1 - light)
 
-    for (const [id, bush] of bushes.entries()) {
-      const stock = displayedStock(pair, id, interpolate)
-      bush.group.scale.setScalar(bushScale(stock, config.patchCapacityKcal))
-      bush.material.color.copy(bare).lerp(lush, Math.min(1, stock / config.patchCapacityKcal) ** 0.6)
-    }
-
-    for (const [id, tree] of trees.entries())
-      tree.crown.scale.setScalar(crownScale(displayedGroveWood(pair, id, interpolate), config.groveCapacityWood))
+    const ripe = pair.next.patches.map((patch) =>
+      berryFills(displayedStock(pair, patch.id, interpolate), config.patchCapacityKcal),
+    )
+    placeBerries(berries.map((berry) => ripe[berry.patchId]![berry.slot]!))
+    const grown = pair.next.groves.map((grove) =>
+      treeFills(displayedGroveWood(pair, grove.id, interpolate), config.groveCapacityWood),
+    )
+    placeTrees(standTrees.map((tree) => grown[tree.groveId]![tree.slot]!))
 
     if (camp) {
       // The fire burns all the time and glows once the light fades; the flicker is only for the eye.
@@ -626,7 +735,17 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     renderer.render(scene, camera)
   }
 
-  // Orbit by dragging, zoom with the wheel, click a bush to select its patch.
+  /** The site an instance of a thicket's or stand's mesh belongs to. */
+  function siteOf(object: unknown, instance: number | undefined): LifeSite | null {
+    if (instance === undefined) return null
+    if (object === leaves) return { kind: 'patch', id: leafPatches[instance]! }
+    if (object === berryMesh) return { kind: 'patch', id: berries[instance]!.patchId }
+    if (object === trunks) return { kind: 'grove', id: standTrees[instance]!.groveId }
+    if (object === crowns) return { kind: 'grove', id: standTrees[Math.floor(instance / CROWN_CONES.length)]!.groveId }
+    return null
+  }
+
+  // Orbit by dragging, zoom with the wheel, click a bush to select its patch or a tree its grove.
   const canvas = renderer.domElement
   const raycaster = new THREE.Raycaster()
   const pointer = new THREE.Vector2()
@@ -661,22 +780,10 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
-    const hit = raycaster.intersectObjects(
-      [...bushes.map((bush) => bush.group), ...trees.map((tree) => tree.group), band],
-      true,
-    )[0]
+    const sites = [leaves, berryMesh, trunks, crowns].filter((mesh) => mesh !== null)
+    const hit = raycaster.intersectObjects([...sites, band], true)[0]
     const foragerId = hit?.object.userData.foragerId as number | undefined
-    const patchId = hit?.object.userData.patchId as number | undefined
-    const groveId = hit?.object.userData.groveId as number | undefined
-    onPick(
-      foragerId !== undefined
-        ? { kind: 'forager', id: foragerId }
-        : patchId !== undefined
-          ? { kind: 'patch', id: patchId }
-          : groveId !== undefined
-            ? { kind: 'grove', id: groveId }
-            : null,
-    )
+    onPick(foragerId !== undefined ? { kind: 'forager', id: foragerId } : siteOf(hit?.object, hit?.instanceId))
   }
   const onWheel = (event: WheelEvent) => {
     event.preventDefault()
@@ -715,7 +822,10 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       canvas.removeEventListener('pointercancel', onPointerUp)
       canvas.removeEventListener('wheel', onWheel)
       clearWorld()
-      lobe.dispose()
+      leafGeometry.dispose()
+      leafMaterial.dispose()
+      berryGeometry.dispose()
+      berryMaterial.dispose()
       ringGeometry.dispose()
       ;(targetRing.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
       ;(selectRing.material as InstanceType<Three['MeshBasicMaterial']>).dispose()

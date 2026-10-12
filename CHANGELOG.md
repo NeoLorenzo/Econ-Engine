@@ -2,6 +2,24 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE3-Thickets-032] - (2026-10-12)
+
+### Changed
+
+- **Food and wood are drawn as many plants, told apart by fruit and trunks.** In the Life observer:
+  - each patch is a thicket of six low bushes spread across its tile. Its food is shown as red berries, 30 to a thicket, picked bare bush by bush from the outside in as it is eaten and ripening again as it regrows. The bushes stay green throughout. This replaces a single bush that shrank and browned;
+  - each grove is a stand of five conifers. As its wood is cut, trees are felled to stumps one at a time, and they grow back from the stump as the wood regrows. This replaces a single tree whose crown shrank.
+
+  The berries and trees drawn are always proportional to what a site holds. A site's layout is fixed by its kind and ID. All leaves, berries, trunks and crowns are four instanced meshes, and clicking any bush or tree still opens its site in the inspector. On a camp tile the thicket draws in towards the corner away from the fire.
+- `bushScale` and `crownScale` are replaced by `sitePlants`, `fillInTurn`, `berryFills` and `treeFills` in `lifeViewModel.ts`.
+- The README's Life 3 screenshot is retaken at midday with thickets and stands, and its text describes them. The Life 3 specification's observer section, the architecture and the validation docs describe them too.
+
+### Validation
+
+- The simulation is unchanged; every Life test and checksum passes as before.
+- New view-model tests: sites stand inside their tile with the same layout every run, differing by kind and ID; stocks are shared out part by part in proportion to capacity; berries are picked from the outer bushes first; trees are felled one at a time.
+- Checked in the browser: full and part-picked thickets, a single-grove run cut down to one standing tree among stumps, clicking a stand to open its grove, the camp tile, 375 px wide, and the console.
+
 ## [LIFE3-Specialization-031] - (2026-10-11)
 
 ### Added
