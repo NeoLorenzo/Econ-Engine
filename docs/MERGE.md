@@ -92,20 +92,21 @@ Each step adds one thing, answers one question that could come out either way, a
 | 2. Sharing | Variable yields, spoilage, the ability to give food, and memory of who gave | When does sharing emerge, and when does hoarding? | Theory predicts more sharing where yields are variable and food perishable (Kaplan and Hill, 1985; Winterhalder, 1986). Ensembles vary each factor alone, with a giving-disabled counterfactual. |
 | 3. Wood and skill | A second resource, wood, burned against cold nights; skills that differ; swapping one good for another | Do specialization and exchange emerge from differences in skill? | Comparative advantage predicts specialization once exchange is possible. Exact conservation of wood. A counterfactual with swapping off. |
 | 4. Practice | Skills that grow with practice and fade without it | Does practice alone make identical foragers specialize? | Learning by doing (Smith, 1776; Rosen, 1983). Life 3 reproduced with practice off. |
-| 5. Tools and shelter | Recipes that convert materials into tools that raise productivity, and shelter | Do tools concentrate in the hands of those who make them, and does making them become a trade? | Exact conservation through every conversion. |
-| 6. Storage and claims | Durable stores, and the first objects of the rules layer: claims on stores and patches, with sanctions | Does property appear, and who ends up enforcing it? | Claims expressed in the Crawford and Ostrom (1995) grammar from the vision. Counterfactuals with claims unavailable. |
-| 7. Generations | Births, ageing, deaths from age, kin, inheritance | Do living standards return towards subsistence after a productivity gain? Does advantage persist across generations? | Malthusian dynamics, as named in the vision. |
-| 8. A medium of exchange | Goods that differ in how well they keep and how widely they are wanted | Does one good become accepted by agents who do not want to use it? | Kiyotaki and Wright (1989). |
+| 5. Real scale | Minutes and centimetres in a small valley: individual bushes and trees, walking real distances, firewood carried home in loads | Do Life 3's and Life 4's findings survive real scale: does exchange start, and does practice still divide a band born equal? | Exact conservation every minute. Life 4's experiments repeated beside the hourly core on the same seeds. A theorem that loads too small leave no surplus to trade. |
+| 6. Tools and shelter | Recipes that convert materials into tools that raise productivity, and shelter | Do tools concentrate in the hands of those who make them, and does making them become a trade? | Exact conservation through every conversion. |
+| 7. Storage and claims | Durable stores, and the first objects of the rules layer: claims on stores and patches, with sanctions | Does property appear, and who ends up enforcing it? | Claims expressed in the Crawford and Ostrom (1995) grammar from the vision. Counterfactuals with claims unavailable. |
+| 8. Generations | Births, ageing, deaths from age, kin, inheritance | Do living standards return towards subsistence after a productivity gain? Does advantage persist across generations? | Malthusian dynamics, as named in the vision. |
+| 9. A medium of exchange | Goods that differ in how well they keep and how widely they are wanted | Does one good become accepted by agents who do not want to use it? | Kiyotaki and Wright (1989). |
 
-Step 3's original row bundled a second resource, conversion, recipes, tools, fire and shelter, and skills that differ and improve with practice. On 2026-10-11 the owner split it in two, following design rule 12: wood and skill first, then tools and practice. Later steps moved down by one. On 2026-10-12 the owner split tools and practice in two the same way: practice first, because the ladder's question for it was about practice alone, then tools and shelter. Later steps moved down by one again. Step 5's question is provisional until its specification is written.
+Step 3's original row bundled a second resource, conversion, recipes, tools, fire and shelter, and skills that differ and improve with practice. On 2026-10-11 the owner split it in two, following design rule 12: wood and skill first, then tools and practice. Later steps moved down by one. On 2026-10-12 the owner split tools and practice in two the same way: practice first, because the ladder's question for it was about practice alone, then tools and shelter. Later steps moved down by one again. Later on 2026-10-12 the owner asked to see people work at real size rather than on 1.5 km tiles, and chose to make it a step of its own: "Real scale" became step 5, tools and shelter step 6, and later steps moved down by one again. Step 6's question is provisional until its specification is written.
 
-Beyond step 8, in the order questions demand them: claims on land with costs of exit (which makes Domar's hypothesis from the vision testable), groups and decision procedures, enforcement capacity, prices, wages, firms and government. These are the institutions MVP9 builds in. In the new core they have to be reached from below.
+Beyond step 9, in the order questions demand them: claims on land with costs of exit (which makes Domar's hypothesis from the vision testable), groups and decision procedures, enforcement capacity, prices, wages, firms and government. These are the institutions MVP9 builds in. In the new core they have to be reached from below.
 
 ## Changes to the vision
 
 The [vision](VISION.md) stands: primitives instead of institutions, the four layers, rules as data, observer-owned labels, collective authority, sources of change, politics and culture, and its validation targets. Two things change:
 
-- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above. The rules layer first appears at step 6, in an economy that has never had built-in institutions, instead of being fitted onto one that has.
+- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above. The rules layer first appears at step 7, in an economy that has never had built-in institutions, instead of being fitted onto one that has.
 - **The unit of time.** The vision asked when a simulated day stops being the right unit. The answer is now: from step 0, because bodies act within a day. The step 0 specification chooses the tick.
 
 ## Risks
@@ -113,7 +114,7 @@ The [vision](VISION.md) stands: primitives instead of institutions, the four lay
 - **Scope.** "A simulation of life" has no natural end. The defence is the ladder: no feature without a question it makes answerable.
 - **Familiar results.** Sugarscape covered much of steps 0 to 2. The contribution has to be what Sugarscape lacked: exact accounting, a causal record of every change, information limited to what agents perceive and remember, and rules as data. Steps 0 and 1 are foundations; step 2 is the first that can produce a new finding.
 - **Physiological detail.** Life Engine models drives in real units. Detail that changes no answer is cost without benefit, so physiology stays coarse until a question needs more.
-- **Long runs.** From step 7, runs span generations at sub-day ticks. Performance and ledger size will need attention before then.
+- **Long runs.** From step 8, runs span generations at sub-day ticks. From step 5 the tick is a minute, so a run of 400 days is already 576,000 ticks. Performance and ledger size will need attention before then.
 - **Two cores in one repository.** The MVP9 core must stay runnable but unchanged, and the observer must make clear which core a view shows.
 
 ## Open decisions
@@ -129,7 +130,7 @@ The [step 0 specification](LIFE0_SPEC.md) settled the tick (one hour), how decis
 The [step 1 specification](LIFE1_SPEC.md) settled step 1's open questions:
 
 - **Who acts first:** a seeded shuffle of the band every hour, from its own stream.
-- **Births:** none until step 5 (now step 7). Bands start above or below capacity and can only shrink.
+- **Births:** none until step 5 (now step 8). Bands start above or below capacity and can only shrink.
 - **Perception:** every patch within a radius, 2 tiles by default. Other foragers are not perceived or remembered yet.
 - **Carrying capacity in theory:** `K = 24·n·r / D*`, together with a search capacity `Kₛ`, the number the land could feed if every forager searched all day.
 - **One forager reproduces Life 0:** a band of one matches checksums recorded from Life 0's code.
@@ -146,7 +147,7 @@ The [step 2 specification](LIFE2_SPEC.md) settled step 2's design. A prototype s
 
 Its other choices:
 
-- **Who gives:** three fixed strategies compete, keepers, sharers and reciprocators. Whether a strategy that pays spreads needs births and inheritance, so it waits for step 5 (now step 7).
+- **Who gives:** three fixed strategies compete, keepers, sharers and reciprocators. Whether a strategy that pays spreads needs births and inheritance, so it waits for step 5 (now step 8).
 - **Memory of who gave:** every forager keeps a ledger of what it gave to and received from every other.
 - **Patch choice:** Life 1's fullest-first rule, limited to patches a forager can reach and return from before dark. Nearest-first crowded the patches around camp and starved even a band with steady harvests.
 - **One step, not two:** the run with giving switched off, a band of keepers, is the counterfactual.
@@ -177,6 +178,17 @@ Its choices:
 - **No foresight:** a forager knows its rates for the day, not that practice will change them.
 
 The answer to the step's question is that practice alone does not make identical foragers specialize, but practice with exchange does, in every band: one or two become wood gatherers and the rest buy from them, from differences that luck in the turn order opens. Roles are spells rather than castes; they last as long as skill is remembered. With born differences, practice keeps specialization aligned with born advantage and widens it. The [lab notes](../LAB_NOTES.md) record the open questions this leaves.
+
+## Step 5: settled
+
+The [step 5 specification](LIFE5_SPEC.md) settled step 5's design. The owner asked to watch people forage and gather at real size, like a strategy game that can be paused and sped up but not controlled, and chose a small, dense valley over realistic sparse land. Its choices:
+
+- **A new core.** The valley core in `src/valley/` works in one-minute ticks and whole centimetres, with 1,920 bushes and 64 trees that together grow what Life 4's land grew. The hourly core in `src/life/` is frozen as a reference, and its observer moves to `life4.html`. This replaces the grid of tiles in the [architecture](#architecture-of-the-new-core) above.
+- **Seconds within a minute.** A forager may walk to the next bush and pick it in the same minute, and hourly rates are paid second by second with exact remainders.
+- **Deadwood, not felling.** Foragers gather dead branches under standing trees; felling waits for the axes of the next step.
+- **Loads.** A prototype showed that at real scale nobody ever has wood to spare, so exchange never starts. Foragers now bring firewood home in loads of 30 kg, a common headload, and the load's size is an experiment.
+
+The answer to the step's question is that Life 4's finding survives, weakened. Exchange needs a surplus, which at real scale only loads provide, and loads larger than what a forager keeps do not always provide one: identical routines can keep every forager's surplus and every forager's need apart. With 30 kg loads every band born equal divides its work, but the first swap comes around day 140 rather than day 15, and the top two gatherers bring in about a third of the wood rather than half. Walking costs minutes instead of hours, so the valley feeds a band of 12 that Life 4's land could not. The [lab notes](../LAB_NOTES.md) record the open questions this leaves.
 
 ## References
 

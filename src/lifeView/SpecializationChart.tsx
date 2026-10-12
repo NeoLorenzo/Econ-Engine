@@ -1,5 +1,4 @@
-import type { LifeConfig } from '../life/types'
-import { ownTermsRange } from './lifeViewModel'
+import { ownTermsRange, type TermsConfig } from './lifeViewModel'
 
 export interface SpecializationPoint {
   id: number
@@ -22,10 +21,13 @@ export function SpecializationChart({
   points,
   config,
   followed,
+  woodUnit = 'unit',
 }: {
   points: SpecializationPoint[]
-  config: LifeConfig
+  config: TermsConfig
   followed: number
+  /** What a unit of wood is called: a unit in Life 4, a kilogram in the valley. */
+  woodUnit?: string
 }) {
   const range = ownTermsRange(config)
   const low = Math.log(range.low)
@@ -66,7 +68,7 @@ export function SpecializationChart({
         ))}
       </svg>
       <figcaption>
-        Share of work spent gathering, by what wood costs each forager in kcal a unit (hollow: dead)
+        Share of work spent gathering, by what wood costs each forager in kcal a {woodUnit} (hollow: dead)
       </figcaption>
     </figure>
   )

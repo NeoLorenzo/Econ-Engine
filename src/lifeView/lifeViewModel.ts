@@ -483,7 +483,22 @@ export const logScale = (wood: number, target: number) =>
  * The lowest and highest own terms that born skill and practice allow, and the terms at 100% of both: a forager as
  * good at gathering and as poor at foraging as they allow has the lowest.
  */
-export function ownTermsRange(config: LifeConfig) {
+/** What the colour scale of own terms needs to know of a configuration; the valley's has the same fields. */
+export type TermsConfig = Pick<
+  LifeConfig,
+  | 'forageKcalPerHour'
+  | 'woodPerHour'
+  | 'practice'
+  | 'practiceMinPercent'
+  | 'practiceMaxPercent'
+  | 'skillMinPercent'
+  | 'skillMaxPercent'
+>
+
+/** A forager's rates, all the colour scale reads of it. */
+export type Rates = Pick<Forager, 'forageRate' | 'woodRate'>
+
+export function ownTermsRange(config: TermsConfig) {
   const base = config.forageKcalPerHour / config.woodPerHour
   const practice = config.practice ? config.practiceMaxPercent / config.practiceMinPercent : 1
   const ratio = (config.skillMaxPercent / config.skillMinPercent) * practice
@@ -491,10 +506,11 @@ export function ownTermsRange(config: LifeConfig) {
 }
 
 /** Where a forager's own terms fall in that range, on a log scale: 0 at the lowest, 1 at the highest, ½ at 100%. */
-export function ownTermsPosition(config: LifeConfig, forager: Forager) {
+export function ownTermsPosition(config: TermsConfig, forager: Rates) {
   const { low, high } = ownTermsRange(config)
   if (high === low) return 0.5
-  const position = (Math.log(ownTerms(forager)) - Math.log(low)) / (Math.log(high) - Math.log(low))
+  const terms = forager.forageRate / forager.woodRate
+  const position = (Math.log(terms) - Math.log(low)) / (Math.log(high) - Math.log(low))
   return Math.min(1, Math.max(0, position))
 }
 
@@ -507,7 +523,7 @@ const mix = (from: string, to: string, t: number) => {
 /** Foragers relatively good at gathering wear the cool colour, those relatively good at foraging the warm one. */
 export const TERMS_COLORS = { gatherer: palette.firmA, forager: palette.warning }
 
-export const foragerColor = (config: LifeConfig, forager: Forager) =>
+export const foragerColor = (config: TermsConfig, forager: Rates) =>
   mix(TERMS_COLORS.gatherer, TERMS_COLORS.forager, ownTermsPosition(config, forager))
 
 /** The swaps made in the hour being drawn. */

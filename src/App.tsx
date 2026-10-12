@@ -222,9 +222,9 @@ export default function App() {
             <a
               className="tabs-link"
               href="life.html"
-              title="Life 4: the bottom-up core, a band that divides its work through practice"
+              title="Life 5: the bottom-up core at real scale, a band working bush by bush in a small valley"
             >
-              Life 4
+              Life 5
             </a>
           </nav>
           <div className="controls" role="group" aria-label="Simulation controls">

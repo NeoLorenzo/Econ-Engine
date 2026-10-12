@@ -6,6 +6,57 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE5-RealScale-035] - (2026-10-12)
+
+### Problem
+
+The owner found Life too abstract: tiles 1.5 km wide, patches and groves that are pools rather than plants, and people out of scale. They wanted to watch people forage and gather at real size, as in a real-time strategy game that can be paused and sped up but not controlled. The abstraction was not only in the picture. The hourly core decides in hours on tiles, so drawing people walking between bushes would have shown things the simulation never decided. Life 3's notes had already asked whether tiles should shrink and plants become individual sources once time became finer. The step's question became whether Life 3's and Life 4's findings survive real scale.
+
+### Decisions
+
+- **A new core, not a new picture.** Ticks are minutes, positions whole centimetres, and food and wood individual bushes and trees. The hourly core is frozen as a reference, as MVP9 was, because its results cannot be replayed at real scale, only compared.
+- **A small, dense valley.** The owner chose a valley 600 m across that a viewer can take in, over realistic sparse land with a following camera. It grows exactly what Life 4's land grew, so the two can be compared. It is far richer than real land, and that is labelled experimental.
+- **Seconds inside a minute.** Bushes stand 2 to 3 m apart, so a minute may hold a short walk and then work. Spending whole minutes on two-second walks would have been an artifact of the tick.
+- **Remainders instead of fractions.** Rates and costs stay per hour and are paid second by second, each forager carrying the fraction to the next minute in 3,600ths, so an hour of work at rate `r` takes exactly `r` units.
+- **Deadwood, not felling.** Foragers gather dead branches under standing trees. Felling a live tree without an axe is slow and green wood burns badly, so felling waits for tools. The owner had heard "chop a tree" in the first discussion; the spec flagged the change and the owner approved it.
+- **No trigonometry in the simulation.** Distances are integer square roots, which are exact in IEEE arithmetic; hearths lie on a square spiral rather than a circle, so runs are identical on every machine.
+- **Loads.** See the prototype's findings below. The size, 30 kg, is a common firewood headload, chosen before its effect was known, and varied in experiment 3.
+- **Nearest bush first.** At real scale people pick the nearest bush worth picking. Life's "fullest patch first" would send a forager across the valley past food.
+
+### What the prototype found
+
+A throwaway prototype in plain JavaScript, on 32 seeds, before the specification:
+
+- **Exchange never started.** At minute scale a forager gathering wood stops within the minute it reaches its target, so nobody ever held spare wood, nobody could offer any, no terms were told and nothing was swapped: not once in 64 runs, even in Life 3's band born with own terms 3.7 times apart. In the hourly core, an hour of gathering overshot the target and left spare wood that no rule had planned. The lump was doing work no one had designed.
+- **Loads restored it.** With a forager that brings home a full load once it has set out, which central-place foraging predicts (Orians and Pearson, 1979), exchange returned once a load was larger than the wood a forager keeps.
+- **The valley fed more.** Walking fell from hours a day to minutes.
+
+### Findings
+
+From `experiments.ts` on 32 seeds over 400 days, measured over days 21 to 400, with Life 4's hourly core on the same seeds.
+
+- **Real scale saves time.** Without swaps a forager works 2.67 hours a day and walks 0.10, against 3.24 and 3.56 in Life 4; the time-use prediction gives 2.65. Nobody sleeps cold.
+- **No surplus, no exchange.** Without loads no forager ever holds spare wood, and nothing is swapped or quoted, whatever the skills. This is a theorem for loads up to 13 kg on the canonical settings and was found for all loads up to 24 kg in a band born equal.
+- **Loads decide, but not as a threshold.** In a band born equal, exchange starts in 0 runs of 32 with loads up to 24 kg, 9 at 26 kg, 29 at 28 kg, all 32 at 30 kg, only 8 at 36 kg and all 32 at 40 kg. The dip at 36 kg was not predicted. Traced through the routine a load sets: with 36 kg a forager's wood runs 36, 24, 12, 0 and round again, so it has spare wood only on the evening it comes home, when every other forager born alike has just come home too. Trade needs a surplus and a want at the same time, and identical routines keep them apart. This explanation fits the numbers but has not been tested directly, for instance by staggering the band's starting wood. In Life 3's band, born unequal, the routines drift apart at once and every load from 26 kg starts exchange within three days.
+- **The division Life 4 found survives, but much weaker and later.** With 30 kg loads every band born equal swaps, but the first swap comes on day 140 on average (latest 253) against 15.5 in Life 4. The top two gatherers bring in 36% of the wood (32% to 41%) against 53% in Life 4 and 25% without swaps; own terms spread 1.06 times by day 100 and 1.61 by day 400, against 1.86 at day 100. 18% of the wood burned is bought, against 39%. Roles turn over more (3.0 lead gatherers, persistence 0.43, against 2.2 and 0.67). Most of Life 4's early division came from luck that the hourly lumps amplified; at real scale there is little of it, and the division builds slowly from small differences.
+- **Exchange still costs warmth.** Cold nights rise from none to 7% of night hours with swaps, as in Life 4.
+- **The valley carries more.** Bands of 8 and 12 are intact in every run; a band of 16 falls to 5.4, 24 to 4.9 and 32 to 2.8. On Life 4's land a band of 12 falls to 4.6. As in Life 1, a band near the capacity `K` (about 16) collapses.
+- **The implementation differed from the prototype.** The prototype found the first swap around day 80, the top two at 42%, and every run swapping from 30 kg up. Layouts, streams and tie-breaks differ between the two, so the numbers were expected to move; the direction of every finding held except the claim about larger loads, which the implementation corrected.
+
+### Trade-offs
+
+- **Speed.** A canonical run of 400 days takes about 2 seconds, and about 3 with every invariant checked every minute, against the specification's target of under 2 with invariants. The tests use 8 seeds, 100 or 30 days where an expectation holds at any horizon, and run each configuration once; they take about three minutes with the rest of the suite. Profiling showed that carried food, kept as one lot per minute picked, dominated: eating and adding lots now avoid copying and sorting, with results checked identical to Life's functions, and the checker checks every lot hourly and the oldest and newest every minute.
+- **The test timeout.** With the valley's experiments loading every core, a Life 0 test that takes a second alone took over five in the full suite. The runner's limit per test was raised to 60 seconds; no test changed.
+- **Quotes are many.** Foragers that could both gain tell each other terms every minute they meet, about 1.4 million times in a run. They are kept as events for the observer's last three days only; experiments keep no events.
+- **The observer shares Life 4's view code.** Its colour scale and specialization chart now accept the valley's configuration, a type-only change to `src/lifeView`. The MVP9 top bar's link reads "Life 5", following earlier steps.
+
+### Open questions
+
+- Would staggering a band born equal, giving foragers different starting wood or hearths at different distances, remove the dip at 36 kg and make the division start sooner?
+- Should a forager's own terms count the walking its work needs? At real scale its picking and gathering rates overstate what an hour of work brings home.
+- With tools next, does felling with an axe make wood lumpy again, and does that bring back Life 4's quick division?
+- What would realistic productivity, with the band spread over square kilometres, do to exchange when people rarely meet?
+
 ## [LIFE4-Practice-034] - (2026-10-12)
 
 ### Problem
