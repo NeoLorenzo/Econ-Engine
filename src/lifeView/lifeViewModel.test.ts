@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE0_WORLD, LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from '../life/config'
+import { LIFE0_WORLD, LIFE2_WORLD, LIFE3_WORLD, LIFE_DEFAULT_CONFIG } from '../life/config'
 import { createLife, lastEventOf, runLifeHours, stepLife } from '../life/engine'
 import type { LifeConfig, LifeState } from '../life/types'
 import {
@@ -35,6 +35,8 @@ import {
   perceptionOutline,
   SITE_RADIUS,
   sitePlants,
+  ownTermsByDay,
+  ownTermsRange,
   specializationPoints,
   STAND_TREES,
   standingOffsets,
@@ -320,9 +322,9 @@ describe('sharing on screen', () => {
 })
 
 describe('specialization on screen', () => {
-  /** The canonical band at 20:00: forager 0 holds spare wood and forager 1 wants wood and carries food to pay. */
+  /** Life 3's band at 20:00: forager 0 holds spare wood and forager 1 wants wood and carries food to pay. */
   function campReadyToSwap(): LifeState {
-    const state = createLife()
+    const state = createLife(LIFE3_WORLD)
     const [seller, buyer] = [...state.foragers]
       .sort((a, b) => a.forageRate * b.woodRate - b.forageRate * a.woodRate)
       .filter((_, index, sorted) => index === 0 || index === sorted.length - 1)
@@ -346,7 +348,7 @@ describe('specialization on screen', () => {
   })
 
   it('colours foragers by own terms, from gatherers to foragers', () => {
-    const { config, foragers } = createLife()
+    const { config, foragers } = createLife(LIFE3_WORLD)
     const at = (forageRate: number, woodRate: number) =>
       ownTermsPosition(config, { ...foragers[0]!, forageRate, woodRate })
     expect(at(600, 36)).toBe(0)
@@ -355,6 +357,40 @@ describe('specialization on screen', () => {
     expect(ownTermsPosition({ ...config, skillMinPercent: 100, skillMaxPercent: 100 }, foragers[0]!)).toBe(0.5)
     expect(foragerColor(config, { ...foragers[0]!, forageRate: 600, woodRate: 36 })).toBe(TERMS_COLORS.gatherer)
     expect(foragerColor(config, { ...foragers[0]!, forageRate: 1_800, woodRate: 12 })).toBe(TERMS_COLORS.forager)
+  })
+
+  it('scales colours over the range born skill and practice allow', () => {
+    // Born equal, with practice from 50% to 150%: a rate can halve or grow by half, so own terms span 9 times.
+    const life4 = createLife()
+    expect(ownTermsRange(life4.config)).toEqual({ low: 50 / 3, base: 50, high: 150 })
+    expect(ownTermsPosition(life4.config, life4.foragers[0]!)).toBeCloseTo(0.5, 9)
+    expect(ownTermsRange({ ...life4.config, practice: false })).toEqual({ low: 50, base: 50, high: 50 })
+    expect(ownTermsPosition({ ...life4.config, practice: false }, life4.foragers[0]!)).toBe(0.5)
+  })
+
+  it('shows practice: the hours behind each skill, and how each rate changed at midnight', () => {
+    const state = runLifeHours(createLife(), 24 * 3 + 1)
+    const forager = state.foragers[0]!
+    const summary = tradeSummary(state, 0)
+    expect(summary.forageHours).toBe(forager.practiceLog.forage.reduce((sum, hours) => sum + hours, 0))
+    expect(summary.gatherHours).toBe(forager.practiceLog.gather.reduce((sum, hours) => sum + hours, 0))
+    expect(summary.forageRate).toBe(Math.floor((1_200 * summary.foragePercent) / 100))
+    expect(summary.forageRateChange).toBe(forager.forageRate - state.days.at(-1)!.forageRates[0]!)
+    expect(tradeSummary(createLife(), 0)).toMatchObject({ forageRateChange: 0, foragePercent: 100, forageHours: 60 })
+  })
+
+  it('charts the band’s highest and lowest own terms each day, and the followed forager’s', () => {
+    const state = runLifeHours(createLife(), 24 * 3)
+    const days = ownTermsByDay(state, 2)
+    expect(days.map((day) => day.day)).toEqual([1, 2, 3])
+    for (const [index, day] of days.entries()) {
+      const terms = state.days[index]!.forageRates.map((rate, id) => rate / state.days[index]!.woodRates[id]!)
+      expect(day.highest).toBe(Math.max(...terms))
+      expect(day.lowest).toBe(Math.min(...terms))
+      expect(day.followed).toBe(terms[2])
+    }
+    // Born equal, the band starts as one line.
+    expect(days[0]).toMatchObject({ highest: 50, lowest: 50, followed: 50 })
   })
 
   it('shows the swaps of the hour being drawn, between the two on the swap’s tile', () => {

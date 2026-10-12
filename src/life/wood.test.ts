@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE2_WORLD, LIFE3_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, stepLife } from './engine'
 import { life2Seeds, woodAndColdExperiment } from './experiments'
 import { decide } from './forager'
 import { lifeInvariantViolations } from './invariants'
 import type { Forager, Grove, LifeConfig, Tile } from './types'
 import { nextShortOfWood, nightWood, sleepHour, spareWood, wantedWood, woodMatters, woodTarget } from './wood'
-import { drawRates, forageSucceeds, generateLayout, harvestOf } from './world'
+import { ratesOf, startingLog } from './practice'
+import { drawSkills, forageSucceeds, generateLayout, harvestOf } from './world'
 
-// The canonical Life 3 world: 12 night hours, so a night's wood is 12 units and the target 24.
-const config: LifeConfig = LIFE_DEFAULT_CONFIG
+// Life 3's world: 12 night hours, so a night's wood is 12 units and the target 24.
+const config: LifeConfig = { ...LIFE_DEFAULT_CONFIG, ...LIFE3_WORLD }
 const camp = { x: 6, y: 6 }
 
 const forager = (position: Tile, overrides: Partial<Forager> = {}): Forager => ({
@@ -24,8 +25,13 @@ const forager = (position: Tile, overrides: Partial<Forager> = {}): Forager => (
   strategy: 'keeper',
   carried: [],
   ledger: [],
+  foragingSkill: 100,
+  woodSkill: 100,
   forageRate: 1_200,
   woodRate: 24,
+  practiceLog: { forage: [], gather: [] },
+  hoursToday: { forage: 0, gather: 0 },
+  loggedHours: { forage: 0, gather: 0 },
   wood: 0,
   shortOfWood: true,
   targetGroveId: null,
@@ -75,7 +81,7 @@ describe('sleeping', () => {
   })
 
   it('burns a unit an hour through the night, and costs more once the wood runs out', () => {
-    let state = createLife({ bandSize: 1 })
+    let state = createLife({ ...LIFE3_WORLD, bandSize: 1 })
     state = { ...state, tick: 18, foragers: [{ ...state.foragers[0]!, wood: 5, shortOfWood: false }] }
     for (let hour = 0; hour < 12; hour += 1) state = stepLife(state)
     const nights = state.eventDays.flat().filter((event) => event.kind === 'action' && event.action === 'sleep')
@@ -102,9 +108,12 @@ describe('groves and skills', () => {
   })
 
   it('are drawn from their own stream, within range, and 100% gives the base rates', () => {
-    const rates = drawRates(config)
-    expect(drawRates(config)).toEqual(rates)
-    expect(drawRates({ ...config, seed: 2 })).not.toEqual(rates)
+    const skills = drawSkills(config)
+    expect(drawSkills(config)).toEqual(skills)
+    expect(drawSkills({ ...config, seed: 2 })).not.toEqual(skills)
+    const rates = skills.map(({ foragingSkill, woodSkill }) =>
+      ratesOf(config, foragingSkill, woodSkill, startingLog(config)),
+    )
     for (const { forageRate, woodRate } of rates) {
       expect(forageRate).toBeGreaterThanOrEqual(600)
       expect(forageRate).toBeLessThanOrEqual(1_800)
@@ -112,9 +121,11 @@ describe('groves and skills', () => {
       expect(woodRate).toBeLessThanOrEqual(36)
     }
     expect(new Set(rates.map((rate) => rate.forageRate)).size).toBeGreaterThan(1)
-    const equal = drawRates({ ...config, skillMinPercent: 100, skillMaxPercent: 100 })
-    expect(equal.every((rate) => rate.forageRate === 1_200 && rate.woodRate === 24)).toBe(true)
-    expect(createLife().foragers.map(({ forageRate, woodRate }) => ({ forageRate, woodRate }))).toEqual(rates)
+    const equal = drawSkills({ ...config, skillMinPercent: 100, skillMaxPercent: 100 })
+    expect(equal.every((skill) => skill.foragingSkill === 100 && skill.woodSkill === 100)).toBe(true)
+    expect(createLife(LIFE3_WORLD).foragers.map(({ forageRate, woodRate }) => ({ forageRate, woodRate }))).toEqual(
+      rates,
+    )
   })
 
   it('give each forager its own harvest, which is steady when its rate reaches harvestKcal', () => {
@@ -151,7 +162,7 @@ describe('gathering', () => {
   })
 
   it('takes exactly the forager’s rate from the grove, and wood is conserved', () => {
-    let state = createLife({ bandSize: 1, skillMinPercent: 100, skillMaxPercent: 100 })
+    let state = createLife({ ...LIFE3_WORLD, bandSize: 1, skillMinPercent: 100, skillMaxPercent: 100 })
     const first = state.groves[0]!
     state = { ...state, tick: 9, foragers: [{ ...state.foragers[0]!, position: first.tile, energyKcal: 16_000 }] }
     state = stepLife(state)
@@ -165,7 +176,7 @@ describe('gathering', () => {
 
 describe('a canonical Life 3 band', () => {
   it('holds every invariant every hour, gathers and burns wood, and swaps', () => {
-    let state = createLife()
+    let state = createLife(LIFE3_WORLD)
     for (let hour = 0; hour < 24 * 30; hour += 1) {
       state = stepLife(state)
       expect(lifeInvariantViolations(state)).toEqual([])

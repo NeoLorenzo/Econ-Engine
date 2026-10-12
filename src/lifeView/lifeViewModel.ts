@@ -1,5 +1,6 @@
 import { lastEventOf } from '../life/engine'
 import { carriedKcal } from '../life/food'
+import { practicePercents } from '../life/practice'
 import { knownTerms, ownTerms } from '../life/trade'
 import type {
   ActionEvent,
@@ -479,14 +480,22 @@ export const logScale = (wood: number, target: number) =>
   wood <= 0 ? 0 : 0.45 + 0.55 * Math.min(1, Math.sqrt(wood / Math.max(1, target)))
 
 /**
- * Where a forager's own terms fall between the lowest and highest the skill range allows, on a log scale: 0 for a
- * forager as good at gathering and as poor at foraging as the range allows, 1 for the opposite, ½ with equal skills.
+ * The lowest and highest own terms that born skill and practice allow, and the terms at 100% of both: a forager as
+ * good at gathering and as poor at foraging as they allow has the lowest.
  */
+export function ownTermsRange(config: LifeConfig) {
+  const base = config.forageKcalPerHour / config.woodPerHour
+  const practice = config.practice ? config.practiceMaxPercent / config.practiceMinPercent : 1
+  const ratio = (config.skillMaxPercent / config.skillMinPercent) * practice
+  return { low: base / ratio, base, high: base * ratio }
+}
+
+/** Where a forager's own terms fall in that range, on a log scale: 0 at the lowest, 1 at the highest, ½ at 100%. */
 export function ownTermsPosition(config: LifeConfig, forager: Forager) {
-  const span = Math.log(config.skillMaxPercent / config.skillMinPercent)
-  if (span === 0) return 0.5
-  const base = Math.log(config.forageKcalPerHour / config.woodPerHour)
-  return Math.min(1, Math.max(0, (Math.log(ownTerms(forager)) - base + span) / (2 * span)))
+  const { low, high } = ownTermsRange(config)
+  if (high === low) return 0.5
+  const position = (Math.log(ownTerms(forager)) - Math.log(low)) / (Math.log(high) - Math.log(low))
+  return Math.min(1, Math.max(0, position))
 }
 
 const mix = (from: string, to: string, t: number) => {
@@ -537,15 +546,27 @@ export function groveInspection(state: LifeState, groveId: number, foragerId: nu
   }
 }
 
-/** What the HUD says about a forager's skills, wood and swaps. */
+const sumHours = (hours: readonly number[]) => hours.reduce((sum, value) => sum + value, 0)
+
+/** What the HUD says about a forager's skills, practice, wood and swaps. */
 export function tradeSummary(state: LifeState, foragerId: number) {
   const forager = state.foragers[foragerId]!
   const { config } = state
   const terms = knownTerms(config, forager, state.tick)
   const worked = forager.hoursWorked.forage + forager.hoursWorked.gather
+  const percent = practicePercents(config, forager.practiceLog)
+  const yesterday = state.days.at(-1)
   return {
     forageRate: forager.forageRate,
     woodRate: forager.woodRate,
+    /** How each rate changed at the last midnight; 0 on the first day. */
+    forageRateChange: yesterday ? forager.forageRate - yesterday.forageRates[foragerId]! : 0,
+    woodRateChange: yesterday ? forager.woodRate - yesterday.woodRates[foragerId]! : 0,
+    /** Its practice percentages, and the hours behind them over the last `practiceDays` days. */
+    foragePercent: percent.forage,
+    woodPercent: percent.gather,
+    forageHours: sumHours(forager.practiceLog.forage),
+    gatherHours: sumHours(forager.practiceLog.gather),
     ownTerms: ownTerms(forager),
     wood: forager.wood,
     woodTarget: woodTarget(config),
@@ -556,6 +577,20 @@ export function tradeSummary(state: LifeState, foragerId: number) {
     /** The share of its working hours spent gathering, or null before it has worked. */
     woodShare: worked ? forager.hoursWorked.gather / worked : null,
   }
+}
+
+/**
+ * The band's own terms each day: the highest and lowest among those alive at the day's end, and the followed
+ * forager's, for the chart of own terms over time. In a band born equal the three start together and fan out as the
+ * band divides its work.
+ */
+export function ownTermsByDay(state: LifeState, foragerId: number) {
+  return state.days.flatMap((day) => {
+    const terms = day.forageRates.flatMap((rate, id) => (day.endEnergyKcal[id]! > 0 ? [rate / day.woodRates[id]!] : []))
+    if (!terms.length) return []
+    const followed = day.endEnergyKcal[foragerId]! > 0 ? day.forageRates[foragerId]! / day.woodRates[foragerId]! : null
+    return [{ day: day.day + 1, highest: Math.max(...terms), lowest: Math.min(...terms), followed }]
+  })
 }
 
 /** Each forager's own terms and share of working hours spent gathering, for the specialization chart. */

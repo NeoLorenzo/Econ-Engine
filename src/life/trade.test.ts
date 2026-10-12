@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE3_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, stepLife } from './engine'
 import { chooseWork } from './forager'
 import { lifeInvariantViolations } from './invariants'
@@ -7,7 +7,7 @@ import { bothGain, buyingPays, knownTerms, pairTerms, sellingPays, swap, tradePa
 import type { Forager, LifeConfig, LifeState } from './types'
 
 // The canonical Life 3 world: a wood target of 24 units, satiated at 18,000 kcal.
-const config: LifeConfig = LIFE_DEFAULT_CONFIG
+const config: LifeConfig = { ...LIFE_DEFAULT_CONFIG, ...LIFE3_WORLD }
 const camp = { x: 6, y: 6 }
 
 const forager = (id: number, overrides: Partial<Forager> = {}): Forager => ({
@@ -22,8 +22,13 @@ const forager = (id: number, overrides: Partial<Forager> = {}): Forager => ({
   strategy: 'keeper',
   carried: [],
   ledger: [],
+  foragingSkill: 100,
+  woodSkill: 100,
   forageRate: 1_200,
   woodRate: 24,
+  practiceLog: { forage: [], gather: [] },
+  hoursToday: { forage: 0, gather: 0 },
+  loggedHours: { forage: 0, gather: 0 },
   wood: 24,
   shortOfWood: false,
   targetGroveId: null,
@@ -37,9 +42,17 @@ const forager = (id: number, overrides: Partial<Forager> = {}): Forager => ({
 
 // A gatherer whose wood costs it 20 kcal a unit, and a forager to whom it costs 100.
 const gatherer = (id: number, overrides: Partial<Forager> = {}) =>
-  forager(id, { forageRate: 600, woodRate: 30, wood: 40, ...overrides })
+  forager(id, { foragingSkill: 50, woodSkill: 125, forageRate: 600, woodRate: 30, wood: 40, ...overrides })
 const buyer = (id: number, overrides: Partial<Forager> = {}) =>
-  forager(id, { forageRate: 1_800, woodRate: 18, wood: 4, carried: [{ kcal: 5_000, harvestTick: 10 }], ...overrides })
+  forager(id, {
+    foragingSkill: 150,
+    woodSkill: 75,
+    forageRate: 1_800,
+    woodRate: 18,
+    wood: 4,
+    carried: [{ kcal: 5_000, harvestTick: 10 }],
+    ...overrides,
+  })
 
 describe('terms', () => {
   it('are the midpoint of two foragers’ own terms, rounded down, strictly between them', () => {
@@ -155,13 +168,15 @@ describe('swapping', () => {
   })
 
   it('lets the seller eat what it received at once, in the engine', () => {
-    let state = createLife({ bandSize: 2, skillMinPercent: 100, skillMaxPercent: 100 })
+    let state = createLife({ ...LIFE3_WORLD, bandSize: 2, skillMinPercent: 100, skillMaxPercent: 100 })
     state = {
       ...state,
       tick: 20,
       foragers: [gatherer(0, { energyKcal: 15_000 }), buyer(1)].map(
-        ({ forageRate, woodRate, wood, carried, energyKcal }, id) => ({
+        ({ foragingSkill, woodSkill, forageRate, woodRate, wood, carried, energyKcal }, id) => ({
           ...state.foragers[id]!,
+          foragingSkill,
+          woodSkill,
           forageRate,
           woodRate,
           wood,
@@ -213,7 +228,7 @@ describe('choosing work', () => {
 
 describe('the invariants of swapping', () => {
   it('catch a swap outside the two own terms', () => {
-    let state: LifeState = createLife()
+    let state: LifeState = createLife(LIFE3_WORLD)
     while (!state.lastSwaps.length) state = stepLife(state)
     expect(lifeInvariantViolations(state)).toEqual([])
     const [made] = state.lastSwaps

@@ -6,6 +6,48 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE4-Practice-034] - (2026-10-12)
+
+### Problem
+
+Step 4 asks whether practice alone makes identical foragers specialize. Smith held that differences in skill follow the division of labour rather than cause it; Rosen showed that when skill is built by doing, even identical people gain by specializing completely. But Rosen's people choose careers knowing that practice pays. Life's foragers do not: each works for what it needs today at today's rates, and swaps only when terms it has heard make that quicker.
+
+### Decisions
+
+- **The ladder's row was split again.** Step 4's row bundled recipes, tools, shelter and practice, but its question was about practice alone. The owner chose practice as step 4 and tools and shelter as step 5.
+- **Skill follows the last month's work.** A forager's practice at a task is its hours at it over its last 30 days, rising from 50% with none towards 150%, half way at 60 hours. A window of days is easy to state and to check, and forgetting by disuse comes with it. Rates change only at midnight.
+- **Born skill stays beside practice.** A rate is the base rate times born skill times practice, so one rule covers a band born equal and Life 3's band of unequals, and the two can be compared.
+- **A band born equal, starting at 100%.** Every forager starts with two hours a day at each task behind it, which is exactly Life 3's equal rates, so any difference comes from what happens in the run.
+- **No foresight.** A forager knows its rates for the day, not that practice will change them. Nothing tells it that specializing would pay.
+- **A prototype first.** It showed that practice alone leaves a band undivided, that practice with exchange divides every band, that roles change hands, and that the length of memory, not the starting skill, decides how long roles last. Starting with no practice at all, or with the same hours at both tasks, gave nearly the same results.
+- **Life 3 reproduced bit for bit.** Hourly checksums of three Life 3 runs were recorded from Life 3's code before any change.
+- **One line per forager became three.** The chart of own terms over time plots the band's highest, its lowest and the followed forager's, which shows the band fanning out as well as a line per forager would and stays readable for a band of 100.
+
+### Findings
+
+Over 400 days on the canonical world, 32 seeds, measured over days 21 to 400.
+
+- **Practice alone does not divide work.** Without swaps, every forager in a band born equal spends 20% to 21% of its working hours gathering, and own terms stay within 11% of each other. Practice makes every forager better at foraging and worse at wood, about 106% and 74%, because foraging takes most of its working hours; its own terms rise from 50 to about 70 kcal a unit, but alike for all. Cold nights fall from 11% of night hours to 3%, probably because faster foraging leaves more daylight for wood; this has not been traced.
+- **Practice with exchange divides every band.** The first swap comes within 12 to 26 days, once luck in the turn order has opened a gap between two foragers' own terms wide enough for a midpoint to fall strictly between them. From there the gap widens: a seller gathers more and gets better at it, a buyer forages more and loses its skill with wood. By day 100 the highest own terms in a band are 1.86 times the lowest. The two keenest gatherers bring in 53% of the band's wood, against 25% without swaps, and 39% of the wood burned is bought. This is Rosen's increasing returns, reached without anyone planning it.
+- **The division is partial.** The keenest gatherer spends 41% of its working hours on wood, not all of them, and its wood rate rises only to about 21 units an hour, far below the 36 that full-time gathering would bring. A hungry forager still works for food first, and the band's whole need for wood is a few hours' work a day.
+- **Roles are spells, not castes.** Over nine 40-day windows, 2.2 different foragers lead wood gathering on average, and the correlation between a forager's wood share in the first and second halves of a run is 0.67. With 10 days of memory roles turn over constantly (4.8 leaders, 0.10), with 90 days they barely change (1.2 leaders, 0.96). Longer memory also delays the first swap, to day 32, because skills move more slowly.
+- **How much practice matters sets the depth of the division, not its extent.** With practice from 80% to 120%, own terms spread only 1.24 times, but the top two still bring in 51% of the wood; from 25% to 175%, 3.1 times and 52%. With weak practice the first swap can wait until day 82.
+- **With born differences, practice deepens what birth began.** In Life 3's band, practice keeps specialization aligned with born advantage (−0.83 against −0.78) and widens own terms from 3.7 to 5.8 times. Survivors rise from 7.50 to 7.94 and the least skilled third's survival from 80% to 98%. Most of that is not specialization: without swaps, practice alone raises survivors from 6.88 to 7.75, because everyone gets better at foraging, the task each does most. Wood is less concentrated with practice (61% against 69%), which has not been explained.
+- **Exchange still costs warmth.** As in Life 3, cold nights rise with swaps, from 3% to 15% of night hours.
+
+### Trade-offs
+
+- The Life tests still take about two minutes; the new ensembles run in parallel on 16 seeds, and the reported numbers use 32.
+- The practice log is kept, and practice events recorded, with practice off too. It costs little and keeps one set of invariants.
+- The MVP9 top bar's link label was changed to "Life 4" without a separate approval, following the change approved for Life 3.
+
+### Open questions
+
+- Why does practice make wood less concentrated in a band of born differences, when it makes it more concentrated in a band born equal?
+- Would a forager that weighed its needs, rather than serving hunger first, specialize fully, as Rosen predicts?
+- What happens to a band that has divided its work when its wood gatherer dies? Its buyers have lost their skill with wood.
+- Would teaching, or learning by watching others, make roles last longer or turn over faster?
+
 ## [LIFE3-Foragers-033] - (2026-10-12)
 
 ### Problem

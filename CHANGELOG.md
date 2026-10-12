@@ -2,6 +2,37 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE4-Practice-034] - (2026-10-12)
+
+### Added
+
+- **Life 4, practice.** The Life core implements the [Life 4 specification](docs/LIFE4_SPEC.md):
+  - a forager's skill at a task now follows its work: its practice is its hours at the task over its last 30 days, which give a percentage from 50% with no hours towards 150%, 100% at two hours a day;
+  - a rate is the base rate times the forager's born skill times its practice, set at midnight from the day just ended and fixed for the day;
+  - the canonical band is born equal, and starts at exactly Life 3's equal rates;
+  - a forager knows its rates for the day but not that practice will change them. Choosing work, swapping and telling terms are Life 3's.
+
+  The invariants also check every forager's practice log, that its hours worked add up to the hours in its log and its hours today, that its rates are the ones its born skills and log give, and that practice happens only at midnight.
+- **Theory.** `theory.ts` adds the practice percentage a forager settles at by working a given number of hours a day at a task.
+- **Experiments.** Life 3 reproduced from recorded checksums, with practice fixed at 100% changing nothing; practice alone; practice and exchange, with swaps, telling terms and practice each switched off; how long skill lasts, at 10, 30 and 90 days of memory; how much practice matters, from 80–120% to 25–175%; and practice in Life 3's band of born differences.
+- **The observer shows practice.** The HUD shows each practice percentage with the hours behind it, and how each rate changed at the last midnight. A new chart plots the band's highest and lowest own terms each day, with the followed forager's: in a band born equal the three start as one line and fan out. Colours, and the specialization chart, span the range born skill and practice allow, so a band born equal starts one colour and drifts apart. Setup adds a switch for practice, the memory in days, the hours half way and the practice range.
+
+### Changed
+
+- The default configuration is the Life 4 world: Life 3's, with every born skill at 100% and practice on. `LIFE3_WORLD` gives back Life 3 (born skills from 50% to 150%, practice off), and `LIFE2_WORLD` now builds on it. Life 3's experiments run on `LIFE3_WORLD`.
+- `drawRates` gives way to `drawSkills`, which draws born skills from the same stream; `practice.ts` turns them into rates. Foragers add born skills, a practice log, hours today and hours entered in the log; a new practice event goes to `lastPractice` and opens each day's events; daily summaries add every forager's rates.
+- Experiment measures read born rates for own terms and the least skilled third, and the wood each forager actually gathered for concentration; for Life 3, where rates never change, these are the same as before. Runs also record the spread of own terms, the first swap, the lead gatherer of each 40-day window and wood shares in each half of the run.
+- `life.html` is retitled "Life 4 · Econ Engine". The README's Life section covers Life 4, with a new screenshot replacing Life 3's. As in Life 3, the MVP9 top bar's link to the Life page now reads "Life 4"; it changes no simulation.
+- The merge document's ladder splits step 4: "Practice" is step 4 and "Tools and shelter" a new step 5; later steps move down by one. It records step 4 as settled.
+
+### Validation
+
+- **Life 3 reproduced:** three Life 3 runs match hourly checksums recorded before the change, and Life 0's to Life 3's experiments pass unchanged on their worlds. A band born equal with practice fixed at 100% is identical, hour by hour, to one with practice off.
+- **Practice alone:** over 32 seeds without swaps, every forager spends 20–21% of its work on wood and the band stays undivided.
+- **Practice and exchange:** with swaps every band divides; the first swap comes by day 26 at the latest, own terms spread 1.86 times by day 100, and the two keenest gatherers bring in 53% of the wood against 25% without swaps. Every band is intact.
+- **Memory:** persistence of roles rises from 0.10 at 10 days of memory to 0.67 at 30 and 0.96 at 90.
+- No file under `src/sim/` changed. `npm run agent:check` passes; the Life tests take about two minutes. In the browser, the HUD's practice lines, the chart of own terms, the colours, setup validation and the 375px layout were checked, with no console errors.
+
 ## [LIFE3-Foragers-033] - (2026-10-12)
 
 ### Changed

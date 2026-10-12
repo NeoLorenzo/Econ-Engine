@@ -1,4 +1,5 @@
 import type { LifeConfig } from './types'
+import { practicePercent } from './practice'
 import { nightWood } from './wood'
 
 /**
@@ -80,6 +81,8 @@ export function lifeTheory(config: LifeConfig) {
       const woodHours = nightWood(config) / woodRate
       return woodHours / (woodHours + dailyFoodKcal / forageRate)
     },
+    /** The practice percentage a forager settles at by working `hoursPerDay` at a task every day. */
+    steadyPracticePercent: (hoursPerDay: number) => practicePercent(config, config.practiceDays * hoursPerDay),
   }
 }
 

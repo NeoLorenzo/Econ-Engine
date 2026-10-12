@@ -7,6 +7,7 @@ import {
   leisureExperiment,
   life1ReproducedExperiment,
   life2ReproducedExperiment,
+  life3ReproducedExperiment,
   localKnowledgeExperiment,
   runLife,
   singlePatchThresholdExperiment,
@@ -131,5 +132,17 @@ describe('experiment 1: Life 1 reproduced', () => {
 describe('Life 3 experiment 1: Life 2 reproduced', () => {
   it('reproduces Life 2’s checksums on Life 2’s world', () => {
     for (const { actual, expected } of life2ReproducedExperiment()) expect(actual).toBe(expected)
+  })
+})
+
+describe('Life 4 experiment 1: Life 3 reproduced', () => {
+  const result = life3ReproducedExperiment()
+
+  it('reproduces Life 3’s checksums on Life 3’s world', () => {
+    for (const { actual, expected } of result.checksums) expect(actual).toBe(expected)
+  })
+
+  it('changes nothing when practice is fixed at 100%', () => {
+    expect(result.unchanged).toEqual([true, true])
   })
 })

@@ -1,4 +1,4 @@
-import { LIFE0_WORLD, LIFE1_WORLD, LIFE2_WORLD, LIFE_DEFAULT_CONFIG } from './config'
+import { LIFE0_WORLD, LIFE1_WORLD, LIFE2_WORLD, LIFE3_WORLD, LIFE_DEFAULT_CONFIG } from './config'
 import { createLife, stepLife, stockAtTurn } from './engine'
 import { assertLifeInvariants } from './invariants'
 import { lifeTheory } from './theory'
@@ -84,7 +84,28 @@ export interface LifeRunResult {
   coldSleepHours: number
   /** The terms of every swap over the measured days, in order. */
   swapTerms: number[]
+  /** Each forager's rates at 100% practice: its born rates, which are Life 3's rates. By forager ID. */
+  bornForageRates: number[]
+  bornWoodRates: number[]
+  /** The wood each forager gathered over the measured days, by forager ID. */
+  gatheredWoodById: number[]
+  /** The highest own terms among living foragers over the lowest, at the end of each of `TERMS_SPREAD_DAYS`. */
+  termsSpread: Record<number, number | null>
+  /** The day of the run's first swap, as `tick / 24`, or null if none. */
+  firstSwapDay: number | null
+  /** The forager that gathered the most wood in each `LEAD_WINDOW_DAYS`-day window from day 41, ties to the lowest ID. */
+  leadGatherers: number[]
+  /** Each forager's hours gathering, and foraging and gathering, over days 21–210 and over days 211–400. */
+  firstHalf: { gather: number[]; work: number[] }
+  secondHalf: { gather: number[]; work: number[] }
 }
+
+/** The days at whose end the spread of own terms is measured. */
+export const TERMS_SPREAD_DAYS = [20, 100, 400]
+/** Lead gatherers are counted over windows of this many days, from day 41. */
+export const LEAD_WINDOW_DAYS = 40
+/** Persistence compares wood shares before and after this day. */
+const HALF_DAY = 210
 
 /** Alive at the end, intact, with no reserve declining. */
 export const isSustained = (result: LifeRunResult) =>
@@ -152,12 +173,37 @@ export function runLife(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS):
   let sleepHours = 0
   let coldSleepHours = 0
   const swapTerms: number[] = []
+  const gatheredWoodById = byId()
+  const termsSpread: Record<number, number | null> = {}
+  let firstSwapDay: number | null = null
+  const leadGatherers: number[] = []
+  let windowWood = byId()
+  const firstHalf = { gather: byId(), work: byId() }
+  const secondHalf = { gather: byId(), work: byId() }
   for (let hour = 0; hour < days * 24 && state.foragers.some((forager) => forager.alive); hour += 1) {
     const before = state
     state = stepLife(state)
     assertLifeInvariants(state)
+    if (firstSwapDay === null && state.lastSwaps.length) firstSwapDay = hour / 24
+    const day = (hour + 1) / 24
+    if (TERMS_SPREAD_DAYS.includes(day)) {
+      const terms = state.foragers.filter((f) => f.alive).map((f) => f.forageRate / f.woodRate)
+      termsSpread[day] = terms.length ? Math.max(...terms) / Math.min(...terms) : null
+    }
+    if (hour >= LEAD_WINDOW_DAYS * 24) {
+      for (const event of state.lastEvents) windowWood[event.foragerId]! += event.gatheredWood
+      if (Number.isInteger(day) && day % LEAD_WINDOW_DAYS === 0) {
+        const most = Math.max(...windowWood)
+        if (most > 0) leadGatherers.push(windowWood.indexOf(most))
+        windowWood = byId()
+      }
+    }
     if (hour >= WARMUP_DAYS * 24) {
+      const half = hour < HALF_DAY * 24 ? firstHalf : secondHalf
       for (const event of state.lastEvents) {
+        if (event.action === 'forage' || event.action === 'gather') half.work[event.foragerId]! += 1
+        if (event.action === 'gather') half.gather[event.foragerId]! += 1
+        gatheredWoodById[event.foragerId]! += event.gatheredWood
         if (event.action === 'forage') forageHoursById[event.foragerId]! += 1
         if (event.action === 'gather') gatherHoursById[event.foragerId]! += 1
         if (event.action === 'walk') walkHoursById[event.foragerId]! += 1
@@ -225,6 +271,16 @@ export function runLife(overrides: Partial<LifeConfig>, days = EXPERIMENT_DAYS):
     sleepHours,
     coldSleepHours,
     swapTerms,
+    bornForageRates: state.foragers.map((forager) =>
+      Math.floor((state.config.forageKcalPerHour * forager.foragingSkill) / 100),
+    ),
+    bornWoodRates: state.foragers.map((forager) => Math.floor((state.config.woodPerHour * forager.woodSkill) / 100)),
+    gatheredWoodById,
+    termsSpread,
+    firstSwapDay,
+    leadGatherers,
+    firstHalf,
+    secondHalf,
   }
   runCache.set(key, result)
   return result
@@ -765,26 +821,41 @@ function correlation(pairs: readonly [number, number][]) {
   return xx && yy ? xy / Math.sqrt(xx * yy) : null
 }
 
-/** Across a band, the correlation between own terms and wood share, over foragers that worked at all. */
+/**
+ * Across a band, the correlation between born own terms and wood share, over foragers that worked at all. Without
+ * practice, born own terms are a forager's own terms throughout.
+ */
 export function specializationCorrelation(run: LifeRunResult) {
-  const pairs = run.forageRates.flatMap((forageRate, id): [number, number][] => {
+  const pairs = run.bornForageRates.flatMap((forageRate, id): [number, number][] => {
     const share = woodShare(run, id)
-    return share === null ? [] : [[forageRate / run.woodRates[id]!, share]]
+    return share === null ? [] : [[forageRate / run.bornWoodRates[id]!, share]]
   })
   return correlation(pairs)
 }
 
 /** The share of the band's wood, over the measured days, gathered by the two foragers that gathered the most. */
 export function woodConcentration(run: LifeRunResult) {
-  const gathered = run.gatherHoursById.map((hours, id) => hours * run.woodRates[id]!).sort((a, b) => b - a)
+  const gathered = [...run.gatheredWoodById].sort((a, b) => b - a)
   const total = gathered.reduce((sum, wood) => sum + wood, 0)
   return total ? (gathered[0]! + (gathered[1] ?? 0)) / total : 0
 }
 
-/** The third of a band with the lowest foraging rates, ties to the lowest ID. */
+/**
+ * Across a band, the correlation between each forager's wood share over days 21–210 and over days 211–400, over
+ * foragers that worked in both; null if it cannot be measured.
+ */
+export function persistence(run: LifeRunResult) {
+  const share = (half: LifeRunResult['firstHalf'], id: number) => half.gather[id]! / half.work[id]!
+  const pairs = run.firstHalf.work.flatMap((work, id): [number, number][] =>
+    work && run.secondHalf.work[id] ? [[share(run.firstHalf, id), share(run.secondHalf, id)]] : [],
+  )
+  return correlation(pairs)
+}
+
+/** The third of a band with the lowest born foraging rates, ties to the lowest ID. */
 export function leastSkilledThird(run: LifeRunResult) {
-  const ids = run.forageRates.map((_, id) => id)
-  ids.sort((a, b) => run.forageRates[a]! - run.forageRates[b]! || a - b)
+  const ids = run.bornForageRates.map((_, id) => id)
+  ids.sort((a, b) => run.bornForageRates[a]! - run.bornForageRates[b]! || a - b)
   return ids.slice(0, Math.floor(ids.length / 3))
 }
 
@@ -815,6 +886,21 @@ export function specializationRow(seeds: readonly number[], overrides: Partial<L
     walkHoursPerDay: livingDays ? sum((run) => total(run.walkHoursById)) / livingDays : 0,
     swapsPerRun: mean(runs.map((run) => run.swaps)),
     quotesPerRun: mean(runs.map((run) => run.quotes)),
+    /** The mean spread of own terms at the end of each of `TERMS_SPREAD_DAYS`, over runs alive then. */
+    termsSpread: Object.fromEntries(
+      TERMS_SPREAD_DAYS.map((day) => {
+        const spreads = runs.flatMap((run) => (run.termsSpread[day] == null ? [] : [run.termsSpread[day]]))
+        return [day, spreads.length ? mean(spreads) : null]
+      }),
+    ) as Record<number, number | null>,
+    firstSwapDays: runs.map((run) => run.firstSwapDay),
+    /** The mean number of different lead gatherers over a run's windows. */
+    leadGatherers: mean(runs.map((run) => new Set(run.leadGatherers).size)),
+    /** The mean persistence, over runs where it could be measured, or null. */
+    persistence: (() => {
+      const values = runs.map(persistence).filter((value) => value !== null)
+      return values.length ? mean(values) : null
+    })(),
     /** The mean number alive across runs at the end of each day. */
     aliveByDay: Array.from({ length: Math.max(0, ...runs.map((run) => run.aliveByDay.length)) }, (_, day) =>
       mean(runs.map((run) => run.aliveByDay[day] ?? 0)),
@@ -822,7 +908,8 @@ export function specializationRow(seeds: readonly number[], overrides: Partial<L
   }
 }
 
-export const EQUAL_SKILLS: Partial<LifeConfig> = { skillMinPercent: 100, skillMaxPercent: 100 }
+/** Life 3's band with equal skills. Life 3's experiments run on `LIFE3_WORLD`. */
+export const EQUAL_SKILLS: Partial<LifeConfig> = { ...LIFE3_WORLD, skillMinPercent: 100, skillMaxPercent: 100 }
 
 /** Experiment 2: bands with equal skills, with and without swapping. */
 export function woodAndColdExperiment(seeds: readonly number[] = life2Seeds(8)) {
@@ -847,8 +934,8 @@ export function woodAndColdExperiment(seeds: readonly number[] = life2Seeds(8)) 
 
 /** Experiment 3: the canonical band with swapping off and on. */
 export const comparativeAdvantageExperiment = (seeds: readonly number[] = life2Seeds(32)) => ({
-  off: specializationRow(seeds, { swapping: false }),
-  on: specializationRow(seeds, {}),
+  off: specializationRow(seeds, { ...LIFE3_WORLD, swapping: false }),
+  on: specializationRow(seeds, LIFE3_WORLD),
 })
 
 export const SKILL_SPREADS: readonly [min: number, max: number][] = [
@@ -863,19 +950,21 @@ export const skillSpreadExperiment = (seeds: readonly number[] = life2Seeds(32),
   spreads.map(([skillMinPercent, skillMaxPercent]) => ({
     skillMinPercent,
     skillMaxPercent,
-    off: specializationRow(seeds, { skillMinPercent, skillMaxPercent, swapping: false }),
-    on: specializationRow(seeds, { skillMinPercent, skillMaxPercent }),
+    off: specializationRow(seeds, { ...LIFE3_WORLD, skillMinPercent, skillMaxPercent, swapping: false }),
+    on: specializationRow(seeds, { ...LIFE3_WORLD, skillMinPercent, skillMaxPercent }),
   }))
 
 /** Experiment 5: experiment 3 with quotes off, with steady harvests and with windfalls. */
 export function quotesExperiment(seeds: readonly number[] = life2Seeds(32), windfallKcal = 6_000) {
-  const windfall = { harvestKcal: windfallKcal }
+  const windfall = { ...LIFE3_WORLD, harvestKcal: windfallKcal }
   return {
     steady: {
-      off: specializationRow(seeds, { swapping: false }),
-      noQuotes: specializationRow(seeds, { quotes: false }),
+      off: specializationRow(seeds, { ...LIFE3_WORLD, swapping: false }),
+      noQuotes: specializationRow(seeds, { ...LIFE3_WORLD, quotes: false }),
       identical: seeds.map(
-        (seed) => hourlyChecksum({ seed, quotes: false }) === hourlyChecksum({ seed, swapping: false }),
+        (seed) =>
+          hourlyChecksum({ ...LIFE3_WORLD, seed, quotes: false }) ===
+          hourlyChecksum({ ...LIFE3_WORLD, seed, swapping: false }),
       ),
     },
     windfall: {
@@ -901,3 +990,85 @@ export function termsDispersion(runs: readonly LifeRunResult[]) {
     last: spread(runs.flatMap((run) => quarter(run, true))),
   }
 }
+
+// Life 4's experiments, on the canonical world: a band born equal, with practice.
+
+/** Seed, overrides on Life 3's world and checksum, recorded from Life 3's code with `hourlyChecksum`. */
+export const LIFE3_CHECKSUMS: readonly [seed: number, overrides: Partial<LifeConfig>, checksum: number][] = [
+  [20260813, {}, 0xa1f0e585],
+  [1, {}, 0x83206213],
+  [20260813, { swapping: false }, 0x3fba4492],
+]
+
+/**
+ * Experiment 1: on Life 3's world, with born skills from 50% to 150% and practice off, the step reproduces Life 3; and
+ * practice fixed at 100% changes nothing.
+ */
+export const life3ReproducedExperiment = (seeds: readonly number[] = life2Seeds(2)) => ({
+  checksums: LIFE3_CHECKSUMS.map(([seed, overrides, expected]) => ({
+    seed,
+    overrides,
+    expected,
+    actual: hourlyChecksum({ ...LIFE3_WORLD, ...overrides, seed }),
+  })),
+  unchanged: seeds.map(
+    (seed) =>
+      hourlyChecksum({ seed, practiceMinPercent: 100, practiceMaxPercent: 100 }) ===
+      hourlyChecksum({ seed, practice: false }),
+  ),
+})
+
+/** Experiment 2: equal bands with practice and without swaps, against the same bands without practice. */
+export const practiceAloneExperiment = (seeds: readonly number[] = life2Seeds(32)) => ({
+  withoutPractice: specializationRow(seeds, { practice: false, swapping: false }),
+  practice: specializationRow(seeds, { swapping: false }),
+})
+
+/** Experiment 3: equal bands with practice, with and without swaps and telling terms; and swaps without practice. */
+export const practiceAndExchangeExperiment = (seeds: readonly number[] = life2Seeds(32)) => ({
+  withoutPractice: specializationRow(seeds, { practice: false }),
+  noSwaps: specializationRow(seeds, { swapping: false }),
+  swaps: specializationRow(seeds, {}),
+  noQuotes: specializationRow(seeds, { quotes: false }),
+  noQuotesIdentical: seeds.map(
+    (seed) => hourlyChecksum({ seed, quotes: false }) === hourlyChecksum({ seed, swapping: false }),
+  ),
+})
+
+/** Memory in days, with the half-way hours that keep two hours a day at 100%. */
+export const PRACTICE_MEMORIES: readonly [days: number, halfHours: number][] = [
+  [10, 20],
+  [30, 60],
+  [90, 180],
+]
+
+/** Experiment 4: experiment 3's band with swaps, at each length of memory. */
+export const memoryExperiment = (seeds: readonly number[] = life2Seeds(32), memories = PRACTICE_MEMORIES) =>
+  memories.map(([practiceDays, practiceHalfHours]) => ({
+    practiceDays,
+    practiceHalfHours,
+    noSwaps: specializationRow(seeds, { practiceDays, practiceHalfHours, swapping: false }),
+    swaps: specializationRow(seeds, { practiceDays, practiceHalfHours }),
+  }))
+
+export const PRACTICE_RANGES: readonly [min: number, max: number][] = [
+  [80, 120],
+  [50, 150],
+  [25, 175],
+]
+
+/** Experiment 5: experiment 3's band with swaps, at each range of practice. */
+export const practiceRangeExperiment = (seeds: readonly number[] = life2Seeds(32), ranges = PRACTICE_RANGES) =>
+  ranges.map(([practiceMinPercent, practiceMaxPercent]) => ({
+    practiceMinPercent,
+    practiceMaxPercent,
+    swaps: specializationRow(seeds, { practiceMinPercent, practiceMaxPercent }),
+  }))
+
+/** Experiment 6: Life 3's band, born from 50% to 150%, with practice off and on, with and without swaps. */
+export const bornDifferencesExperiment = (seeds: readonly number[] = life2Seeds(32)) => ({
+  noSwaps: specializationRow(seeds, { ...LIFE3_WORLD, swapping: false }),
+  practiceNoSwaps: specializationRow(seeds, { ...LIFE3_WORLD, practice: true, swapping: false }),
+  swaps: specializationRow(seeds, LIFE3_WORLD),
+  practiceSwaps: specializationRow(seeds, { ...LIFE3_WORLD, practice: true }),
+})

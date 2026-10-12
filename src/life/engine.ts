@@ -1,11 +1,12 @@
 import { resolveLifeConfig } from './config'
 import { addLots, carriedKcal, spoil, takeOldest } from './food'
 import { decide, nextHungerMode, observe, observeGroves, walkTarget } from './forager'
+import { noTaskHours, practiceDay, ratesOf, startingLog } from './practice'
 import { emptyLedger, recipientsInOrder, recordGift, requestKcal } from './sharing'
 import { swap } from './trade'
 import { nextShortOfWood, sleepHour, woodMatters } from './wood'
 import {
-  drawRates,
+  drawSkills,
   forageSucceeds,
   generateLayout,
   harvestOf,
@@ -25,6 +26,7 @@ import type {
   LifeEvent,
   LifeState,
   Patch,
+  PracticeEvent,
   QuoteEvent,
   Strategy,
   SwapEvent,
@@ -70,13 +72,16 @@ function emptyDay(day: number, foragers: readonly Forager[], patches: readonly P
     swaps: 0,
     swappedWood: 0,
     swappedKcal: 0,
+    forageRates: foragers.map((forager) => forager.forageRate),
+    woodRates: foragers.map((forager) => forager.woodRate),
   }
 }
 
 export function createLife(overrides: Partial<LifeConfig> = {}): LifeState {
   const config = resolveLifeConfig(overrides)
   const { patches, groves, starts } = generateLayout(config)
-  const rates = drawRates(config)
+  const skills = drawSkills(config)
+  const practiceLog = startingLog(config)
   const foragers: Forager[] = starts.map((position, id) => ({
     id,
     position,
@@ -90,7 +95,11 @@ export function createLife(overrides: Partial<LifeConfig> = {}): LifeState {
     strategy: strategyOf(config, id),
     carried: [],
     ledger: emptyLedger(config.bandSize),
-    ...rates[id]!,
+    ...skills[id]!,
+    ...ratesOf(config, skills[id]!.foragingSkill, skills[id]!.woodSkill, practiceLog),
+    practiceLog,
+    hoursToday: noTaskHours(),
+    loggedHours: noTaskHours(),
     wood: 0,
     shortOfWood: woodMatters(config),
     targetGroveId: null,
@@ -123,6 +132,7 @@ export function createLife(overrides: Partial<LifeConfig> = {}): LifeState {
     lastGifts: [],
     lastSwaps: [],
     lastQuotes: [],
+    lastPractice: [],
     eventDays: [[]],
     days: [],
     today: emptyDay(0, foragers, patches),
@@ -249,6 +259,10 @@ function takeTurn(
       action === 'forage' || action === 'gather'
         ? { ...forager.hoursWorked, [action]: forager.hoursWorked[action] + 1 }
         : forager.hoursWorked,
+    hoursToday:
+      action === 'forage' || action === 'gather'
+        ? { ...forager.hoursToday, [action]: forager.hoursToday[action] + 1 }
+        : forager.hoursToday,
   }
   const traded = swap(config, acted, foragers, tick)
   const { giver, gifts } = give(config, traded.trader, foragers, tick)
@@ -293,9 +307,19 @@ function takeTurn(
   }
 }
 
-/** Runs one hour: regrowth, the hour's turn order, then each living forager's turn in that order, and the record. */
+/**
+ * Runs one hour: practice at the start of every day after the first, regrowth, the hour's turn order, then each living
+ * forager's turn in that order, and the record.
+ */
 export function stepLife(previous: LifeState): LifeState {
   const { config, tick } = previous
+  const lastPractice: PracticeEvent[] = []
+  const foragers = previous.foragers.map((forager) => {
+    if (tick === 0 || tick % 24 !== 0 || !forager.alive) return forager
+    const practised = practiceDay(config, forager, tick)
+    lastPractice.push(practised.event)
+    return practised.forager
+  })
   let regrown = 0
   const patches = previous.patches.map((patch) => {
     const stockKcal = Math.min(config.patchCapacityKcal, patch.stockKcal + config.patchRegrowthKcalPerHour)
@@ -309,12 +333,11 @@ export function stepLife(previous: LifeState): LifeState {
     return { ...grove, wood }
   })
 
-  const foragers = [...previous.foragers]
   const lastEvents: ActionEvent[] = []
   const lastGifts: GiftEvent[] = []
   const lastSwaps: SwapEvent[] = []
   const lastQuotes: QuoteEvent[] = []
-  const newEvents: LifeEvent[] = []
+  const newEvents: LifeEvent[] = [...lastPractice]
   const hours = { ...previous.today.hours }
   let gathered = 0
   let spent = 0
@@ -373,6 +396,8 @@ export function stepLife(previous: LifeState): LifeState {
     swaps: previous.today.swaps + lastSwaps.length,
     swappedWood: previous.today.swappedWood + swappedWood,
     swappedKcal: previous.today.swappedKcal + swappedKcal,
+    forageRates: lastPractice.length ? foragers.map((forager) => forager.forageRate) : previous.today.forageRates,
+    woodRates: lastPractice.length ? foragers.map((forager) => forager.woodRate) : previous.today.woodRates,
   }
 
   const eventDays = [...previous.eventDays]
@@ -412,6 +437,7 @@ export function stepLife(previous: LifeState): LifeState {
     lastGifts,
     lastSwaps,
     lastQuotes,
+    lastPractice,
     eventDays,
     days,
     today: nextToday,

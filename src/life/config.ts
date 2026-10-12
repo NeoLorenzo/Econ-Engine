@@ -1,9 +1,9 @@
 import type { LifeConfig } from './types'
 
 /**
- * The canonical Life 3 world: Life 2's land with cold nights and eight groves of wood, and a band of 8 keepers whose
- * skills at foraging and at gathering wood range from half to one and a half times the usual. Every harvest is steady,
- * and foragers may swap wood for food, telling each other the terms they would accept.
+ * The canonical Life 4 world: Life 3's land with cold nights and eight groves of wood, and a band of 8 keepers born with
+ * the same skills, who get better at what they do and worse at what they stop doing. Every harvest is steady, and
+ * foragers may swap wood for food, telling each other the terms they would accept.
  */
 export const LIFE_DEFAULT_CONFIG: LifeConfig = {
   seed: 20260813,
@@ -40,11 +40,24 @@ export const LIFE_DEFAULT_CONFIG: LifeConfig = {
   fireWoodPerHour: 1,
   coldSleepKcalPerHour: 150,
   woodStockNights: 2,
-  skillMinPercent: 50,
-  skillMaxPercent: 150,
+  skillMinPercent: 100,
+  skillMaxPercent: 100,
   swapping: true,
   quotes: true,
   termsMemoryHours: 24,
+  practice: true,
+  practiceDays: 30,
+  practiceHalfHours: 60,
+  practiceMinPercent: 50,
+  practiceMaxPercent: 150,
+  startPracticeHoursPerDay: 2,
+}
+
+/** The overrides that give back Life 3: born skills from half to one and a half times the usual, and no practice. */
+export const LIFE3_WORLD: Partial<LifeConfig> = {
+  skillMinPercent: 50,
+  skillMaxPercent: 150,
+  practice: false,
 }
 
 /**
@@ -52,6 +65,7 @@ export const LIFE_DEFAULT_CONFIG: LifeConfig = {
  * 6,000 kcal, warm nights, no groves, equal skills and no swapping.
  */
 export const LIFE2_WORLD: Partial<LifeConfig> = {
+  ...LIFE3_WORLD,
   bandSize: 12,
   harvestKcal: 6_000,
   sharers: 4,
@@ -88,7 +102,7 @@ export const LIFE0_WORLD: Partial<LifeConfig> = {
   perceptionRadiusTiles: 0,
 }
 
-const BOOLEAN_KEYS = new Set(['hasCamp', 'swapping', 'quotes'])
+const BOOLEAN_KEYS = new Set(['hasCamp', 'swapping', 'quotes', 'practice'])
 
 /** Returns every rule the configuration breaks, in the order the specification lists them. */
 export function lifeConfigErrors(config: LifeConfig): string[] {
@@ -138,11 +152,20 @@ export function lifeConfigErrors(config: LifeConfig): string[] {
   if (config.fireWoodPerHour < 1) errors.push('fireWoodPerHour must be at least 1')
   if (config.coldSleepKcalPerHour < config.sleepKcalPerHour)
     errors.push('coldSleepKcalPerHour must be at least sleepKcalPerHour')
-  const lowest = (base: number) => Math.floor((base * config.skillMinPercent) / 100)
-  const highest = (base: number) => Math.floor((base * config.skillMaxPercent) / 100)
-  if (config.skillMinPercent < 1 || config.skillMinPercent > config.skillMaxPercent)
-    errors.push('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
-  else if (lowest(config.forageKcalPerHour) < 1 || lowest(config.woodPerHour) < 1)
+  if (config.practiceDays < 1) errors.push('practiceDays must be at least 1')
+  if (config.practiceHalfHours < 1) errors.push('practiceHalfHours must be at least 1')
+  if (config.startPracticeHoursPerDay < 0 || config.startPracticeHoursPerDay > 24)
+    errors.push('startPracticeHoursPerDay must be between 0 and 24')
+  const practiceRangeOk = config.practiceMinPercent >= 1 && config.practiceMinPercent <= config.practiceMaxPercent
+  if (!practiceRangeOk) errors.push('Practice must satisfy 1 ≤ practiceMinPercent ≤ practiceMaxPercent')
+  // With practice on, the lowest and highest rates include the practice range; with it off, practice is 100%.
+  const lowPractice = config.practice ? config.practiceMinPercent : 100
+  const highPractice = config.practice ? config.practiceMaxPercent : 100
+  const lowest = (base: number) => Math.floor((base * config.skillMinPercent * lowPractice) / 10_000)
+  const highest = (base: number) => Math.floor((base * config.skillMaxPercent * highPractice) / 10_000)
+  const skillRangeOk = config.skillMinPercent >= 1 && config.skillMinPercent <= config.skillMaxPercent
+  if (!skillRangeOk) errors.push('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
+  else if (practiceRangeOk && (lowest(config.forageKcalPerHour) < 1 || lowest(config.woodPerHour) < 1))
     errors.push('The lowest foraging and wood rates must be at least 1')
   if (config.harvestKcal < 1) errors.push('harvestKcal must be at least 1')
   else if (Math.max(config.harvestKcal, highest(config.forageKcalPerHour)) > config.patchCapacityKcal)

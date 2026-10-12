@@ -43,23 +43,23 @@ export const forageSucceeds = (config: LifeConfig, tick: number, foragerId: numb
 export const deriveSkillSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ SKILL_STREAM_SALT) >>> 0))
 
 /**
- * Every forager's hourly rates, by ID. For each forager in turn the stream draws its foraging skill and then its wood
- * skill, uniformly from `skillMinPercent` to `skillMaxPercent`; a rate is the skill times the base rate, rounded down.
+ * Every forager's born skills, by ID. For each forager in turn the stream draws its foraging skill and then its wood
+ * skill, uniformly from `skillMinPercent` to `skillMaxPercent`.
  */
-export function drawRates(config: LifeConfig): { forageRate: number; woodRate: number }[] {
+export function drawSkills(config: LifeConfig): { foragingSkill: number; woodSkill: number }[] {
   const span = config.skillMaxPercent - config.skillMinPercent + 1
   let state = deriveSkillSeed(config.seed)
-  const rates = []
+  const skills = []
   for (let id = 0; id < config.bandSize; id += 1) {
     const forage = randomInt(state, span)
     const wood = randomInt(forage.state, span)
     state = wood.state
-    rates.push({
-      forageRate: Math.floor((config.forageKcalPerHour * (config.skillMinPercent + forage.value)) / 100),
-      woodRate: Math.floor((config.woodPerHour * (config.skillMinPercent + wood.value)) / 100),
+    skills.push({
+      foragingSkill: config.skillMinPercent + forage.value,
+      woodSkill: config.skillMinPercent + wood.value,
     })
   }
-  return rates
+  return skills
 }
 
 /** The camp tile in the middle of the grid, or null without a camp. */
