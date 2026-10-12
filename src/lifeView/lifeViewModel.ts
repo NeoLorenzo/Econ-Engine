@@ -12,7 +12,7 @@ import type {
   SwapEvent,
   Tile,
 } from '../life/types'
-import { woodTarget } from '../life/wood'
+import { nightHours, nightWood, woodMatters, woodTarget } from '../life/wood'
 import { campTile, sameTile, walkPath } from '../life/world'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { palette } from '../ui/theme'
@@ -313,6 +313,12 @@ export function stepFollowed(state: LifeState, current: number, direction: 1 | -
   return current
 }
 
+/** What a night's fire burns in wood and saves in food, or null where nights are not cold or there are no groves. */
+export function fireSaving(config: LifeConfig) {
+  if (!woodMatters(config)) return null
+  return { wood: nightWood(config), kcal: nightHours(config) * (config.coldSleepKcalPerHour - config.sleepKcalPerHour) }
+}
+
 export function describeActivity(pair: DisplayPair, foragerId: number) {
   const event = currentEvent(pair, foragerId)
   if (!pair.next.foragers[foragerId]!.alive && !event) return 'Dead of starvation'
@@ -322,7 +328,8 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   switch (event.action) {
     case 'sleep':
       if (event.energyAfterKcal === 0) return 'Starved in its sleep'
-      return event.sleptCold ? 'Sleeping cold, with no wood to burn' : 'Sleeping through the night'
+      if (event.sleptCold) return 'Sleeping cold, with no wood to burn'
+      return woodMatters(pair.next.config) ? 'Sleeping warm by its fire' : 'Sleeping through the night'
     case 'rest':
       if (event.reason === 'satiated') return 'Resting, well fed'
       if (event.reason === 'waiting to swap') return 'Resting, carrying food to swap for wood'
@@ -416,7 +423,7 @@ export const currentGifts = ({ previous, next }: DisplayPair): GiftEvent[] =>
 
 /** A point on a gift's arc, `t` of the way from giver to recipient, rising highest halfway. In tiles; `height` in world units. */
 export function giftArcPoint(from: { x: number; y: number }, to: { x: number; y: number }, t: number) {
-  return { x: lerp(from.x, to.x, t), y: lerp(from.y, to.y, t), height: 0.75 + 0.45 * Math.sin(Math.PI * t) }
+  return { x: lerp(from.x, to.x, t), y: lerp(from.y, to.y, t), height: 0.4 + 0.35 * Math.sin(Math.PI * t) }
 }
 
 /**

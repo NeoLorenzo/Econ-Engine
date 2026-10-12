@@ -2,6 +2,20 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE3-Foragers-033] - (2026-10-12)
+
+### Changed
+
+- **Foragers are drawn at half their old size,** about half as tall as a full-grown tree, so the band is in proportion to its land. Their hearths, the ring around the followed forager and the arcs of gifts and swaps shrink with them.
+- **The point of wood is on screen.** The followed forager's panel adds "A night's fire": the wood a night's fire burns and the food it saves against sleeping cold (12 units saving 1,080 kcal on the canonical settings), from `fireSaving` in the view model. Where nights are cold, a forager burning wood is described as "Sleeping warm by its fire" rather than "Sleeping through the night".
+- The README's Life 3 screenshot is retaken with the smaller foragers and the new panel line, with the history panel closed so the grove being cut stays in view. The Life 3 specification's observer section, the architecture and the validation docs describe the changes.
+
+### Validation
+
+- The simulation is unchanged; every Life test and checksum passes as before.
+- New view-model tests: a night's fire burns 12 units and saves 1,080 kcal on the canonical settings and is absent where nights are not cold; a forager burning wood sleeps warm by its fire.
+- Checked in the browser on desktop and at 375 px, with no console errors.
+
 ## [LIFE3-Thickets-032] - (2026-10-12)
 
 ### Changed

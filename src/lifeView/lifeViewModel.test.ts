@@ -13,6 +13,7 @@ import {
   currentSwaps,
   daylightAt,
   describeActivity,
+  fireSaving,
   displayedCarried,
   displayedStock,
   displayedWood,
@@ -175,6 +176,12 @@ describe('words', () => {
     // A Life 3 band starts with no wood, so its first night is cold.
     expect(describeActivity(pairAt(createLife(), 0.5), 7)).toBe('Sleeping cold, with no wood to burn')
     expect(foragerName(0)).toBe('Forager 1')
+  })
+
+  it('says what a night’s fire burns and saves, only where nights are cold and wood grows', () => {
+    // 12 hours of night at 1 unit an hour, each hour 150 − 60 kcal cheaper than sleeping cold.
+    expect(fireSaving(createLife().config)).toEqual({ wood: 12, kcal: 1_080 })
+    expect(fireSaving(createLife(LIFE2_WORLD).config)).toBeNull()
   })
 
   it('compares a patch with what the followed forager remembers of it', () => {
@@ -374,6 +381,7 @@ describe('specialization on screen', () => {
     const cold = { ...state, foragers: state.foragers.map((forager) => ({ ...forager, wood: 0 })) }
     expect(hearthAt(pairAt(cold, 0.5), 0)).toBe('cold')
     expect(describeActivity(pairAt(cold, 0.5), 0)).toBe('Sleeping cold, with no wood to burn')
+    expect(describeActivity(pair, lit)).toBe('Sleeping warm by its fire')
     const noon = { ...state, tick: 12 }
     expect(hearthAt(pairAt(noon, 0.5), 0)).toBeNull()
   })
