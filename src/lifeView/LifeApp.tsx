@@ -11,6 +11,7 @@ import {
   aliveCount,
   clockLabel,
   describeActivity,
+  fireSaving,
   displayedEnergy,
   displayHours,
   foragerColor,
@@ -238,6 +239,7 @@ export default function LifeApp() {
   const grove = selected?.kind === 'grove' ? groveInspection(state, selected.id, followed) : null
   const summary = foragerSummary(state, followed)
   const trade = tradeSummary(state, followed)
+  const fire = fireSaving(config)
   const gifting = config.sharers + config.reciprocators > 0
   const days = state.days.map((day) => ({
     day: day.day + 1,
@@ -372,6 +374,14 @@ export default function LifeApp() {
           <dd className="num">
             {formatUnits(trade.wood)} of wood{trade.wood < trade.woodTarget && ` (wants ${trade.woodTarget})`}
           </dd>
+          {fire && (
+            <>
+              <dt>A night’s fire</dt>
+              <dd className="num">
+                {formatUnits(fire.wood)} of wood saves {formatKcal(fire.kcal)}
+              </dd>
+            </>
+          )}
           <dt>Carries</dt>
           <dd className="num">
             {summary.carriedKcal ? formatKcal(summary.carriedKcal) : 'no food'}

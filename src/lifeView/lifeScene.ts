@@ -110,6 +110,8 @@ const CROWN_CONES: [number, number][] = [
 /** On a camp tile the fire takes a corner, so the thicket draws in towards the opposite one. */
 const CAMP_THICKET_SCALE = 0.7
 const CAMP_THICKET_SHIFT = 0.1
+/** A forager stands about half as tall as a full-grown tree, so the band reads at the scale of its land. */
+const FIGURE_SCALE = 0.5
 
 /** Builds the scene inside `mount`. The caller drives drawing; nothing renders until `draw` is called. */
 interface Figure {
@@ -241,7 +243,7 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     new THREE.MeshBasicMaterial({ color: hex(palette.accent), transparent: true, opacity: 0.95 }),
   )
   followRing.rotation.x = -Math.PI / 2
-  followRing.scale.setScalar(0.62)
+  followRing.scale.setScalar(0.62 * FIGURE_SCALE)
   scene.add(followRing)
 
   // The camp: a ring of stones around a fire that glows at night.
@@ -338,6 +340,7 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
     hearth.add(hearthFlame)
     hearth.position.set(0.3, 0, 0.12)
     group.add(hearth)
+    group.scale.setScalar(FIGURE_SCALE)
     band.add(group)
     return { group, body, material, bundle, logs, hearth, hearthFlame }
   }
@@ -629,7 +632,7 @@ export async function createLifeScene(mount: HTMLElement, onPick: (pick: LifePic
       const pose = foragerPose(pair, id, interpolate, offsets)
       const position = toWorld(pose.x + pose.offsetX, pose.y + pose.offsetY)
       // Each forager bobs out of step with the others.
-      const bob = pose.walking ? Math.abs(Math.sin(nowMs / 110 + id)) * 0.04 : 0
+      const bob = pose.walking ? Math.abs(Math.sin(nowMs / 110 + id)) * 0.04 * FIGURE_SCALE : 0
       figure.group.position.set(position.x, bob, position.z)
       if (pose.heading !== null) figure.group.rotation.y = pose.heading
       // Lying down tips the body over at the feet.

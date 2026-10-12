@@ -11,13 +11,15 @@ All notable changes to Econ-Engine are documented here. The changelog records wh
   - each grove is a stand of five conifers. As its wood is cut, trees are felled to stumps one at a time, and they grow back from the stump as the wood regrows. This replaces a single tree whose crown shrank.
 
   The berries and trees drawn are always proportional to what a site holds. A site's layout is fixed by its kind and ID. All leaves, berries, trunks and crowns are four instanced meshes, and clicking any bush or tree still opens its site in the inspector. On a camp tile the thicket draws in towards the corner away from the fire.
+- **Foragers are drawn at half their old size,** about half as tall as a full-grown tree, so the band is in proportion to its land. Their hearths, the ring around the followed forager and the arcs of gifts and swaps shrink with them.
+- **The point of wood is on screen.** The followed forager's panel adds "A night's fire": the wood a night's fire burns and the food it saves against sleeping cold (12 units saving 1,080 kcal on the canonical settings), from `fireSaving` in the view model. Where nights are cold, a forager burning wood is described as "Sleeping warm by its fire" rather than "Sleeping through the night".
 - `bushScale` and `crownScale` are replaced by `sitePlants`, `fillInTurn`, `berryFills` and `treeFills` in `lifeViewModel.ts`.
-- The README's Life 3 screenshot is retaken at midday with thickets and stands, and its text describes them. The Life 3 specification's observer section, the architecture and the validation docs describe them too.
+- The README's Life 3 screenshot is retaken at midday with thickets, stands and the smaller foragers, with the history panel closed, and its text describes them. The Life 3 specification's observer section, the architecture and the validation docs describe them too.
 
 ### Validation
 
 - The simulation is unchanged; every Life test and checksum passes as before.
-- New view-model tests: sites stand inside their tile with the same layout every run, differing by kind and ID; stocks are shared out part by part in proportion to capacity; berries are picked from the outer bushes first; trees are felled one at a time.
+- New view-model tests: sites stand inside their tile with the same layout every run, differing by kind and ID; stocks are shared out part by part in proportion to capacity; berries are picked from the outer bushes first; trees are felled one at a time; a night's fire burns 12 units and saves 1,080 kcal on the canonical settings and nothing where nights are not cold; a forager burning wood sleeps warm by its fire.
 - Checked in the browser: full and part-picked thickets, a single-grove run cut down to one standing tree among stumps, clicking a stand to open its grove, the camp tile, 375 px wide, and the console.
 
 ## [LIFE3-Specialization-031] - (2026-10-11)

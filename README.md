@@ -81,7 +81,7 @@ A second, separate simulation has started beside the MVP9 economy. It begins fro
 
 **[▶ Open Life 3](https://neolorenzo.github.io/Econ-Engine/life.html)**, also linked from the simulator's top bar. The simulation advances in whole hours; the view moves continuously between them, so foragers walk out from camp to thickets and stands of trees, walk home and sleep beside their hearths on screen. Food grows as berries on thickets of bushes, picked bare bush by bush, and wood as stands of trees, felled to stumps one by one; both grow back. Each forager is coloured by what it is relatively good at, from cyan for gathering wood to gold for foraging. A stack of logs shows the wood a forager holds, a lit hearth one that sleeps warm, and an arc with a log and a parcel crossing it a swap as it is made. Click a forager to follow it, and a thicket or stand to compare what it really holds with what that forager remembers.
 
-![Life 3 at midday: foragers around their camp among thickets of berry bushes, some picked bare, and stands of trees, one forager cutting wood, with a chart of each forager's share of work spent gathering against what wood costs it](docs/images/life3.jpg)
+![Life 3 at midday: foragers around their camp among thickets of berry bushes, some picked bare, and stands of trees, one forager cutting wood at a grove, and the followed forager's panel showing what wood costs it and what a night's fire saves](docs/images/life3.jpg)
 
 The results so far:
 
