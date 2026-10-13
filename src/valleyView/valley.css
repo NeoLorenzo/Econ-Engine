@@ -1,14 +1,4 @@
 /* The valley observer reuses the Life observer's cards; these are its own additions. */
-.valley-link {
-  color: var(--text-3);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.valley-link:hover {
-  color: var(--accent);
-}
 .valley-goto {
   justify-self: center;
 }

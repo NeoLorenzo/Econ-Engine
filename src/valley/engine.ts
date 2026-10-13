@@ -17,6 +17,17 @@ import {
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { drawSkills, generateLayout, layoutError, turnOrder } from './layout'
 import { noTaskSeconds, practiceDay, ratesOf, startingLog } from './practice'
+import {
+  choosePlace,
+  dissolveIfAlone,
+  idleGoal,
+  meet,
+  observeFlags,
+  observePlaces,
+  placeCentre,
+  placeCount,
+  startingGroups,
+} from './social'
 import { nextShortOfWood, swap, woodMatters } from './trade'
 import { coldMatters, hourlyShare, minuteCost, tendFire, workSeconds, type MinuteSeconds } from './work'
 import type {
@@ -28,6 +39,7 @@ import type {
   Forager,
   ForagerAction,
   Good,
+  GroupEvent,
   PracticeEvent,
   QuoteEvent,
   SwapEvent,
@@ -47,7 +59,15 @@ const sum = (values: Int32Array) => {
 
 const zeros = (n: number) => Array.from({ length: n }, () => 0)
 
-function emptyDay(day: number, state: Pick<ValleyState, 'foragers' | 'bushKcal' | 'treeWood'>): DaySummary {
+/** Groups standing, and living foragers without a group. */
+function groupCounts(state: Pick<ValleyState, 'foragers' | 'groups'>) {
+  return {
+    groupsStanding: state.groups.filter((group) => group.dissolvedMinute === null).length,
+    loners: state.foragers.filter((forager) => forager.alive && forager.groupId === null).length,
+  }
+}
+
+function emptyDay(day: number, state: Pick<ValleyState, 'foragers' | 'bushKcal' | 'treeWood' | 'groups'>): DaySummary {
   const { foragers } = state
   return {
     day,
@@ -75,6 +95,11 @@ function emptyDay(day: number, state: Pick<ValleyState, 'foragers' | 'bushKcal' 
     gatherSecondsById: zeros(foragers.length),
     walkSecondsById: zeros(foragers.length),
     gatheredWoodById: zeros(foragers.length),
+    ...groupCounts(state),
+    foundings: 0,
+    joinings: 0,
+    dissolutions: 0,
+    placesSeenById: foragers.map((forager) => forager.placesSeen),
   }
 }
 
@@ -87,6 +112,11 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const bushKcal = new Int32Array(layout.bushes.count).fill(config.initialBushKcal)
   const treeWood = new Int32Array(layout.trees.count).fill(config.initialTreeWood)
   const skills = drawSkills(config)
+  const places = placeCount(config)
+  const known = (stocks: Int32Array) =>
+    config.knowValley
+      ? { stock: Int32Array.from(stocks), seen: new Int32Array(stocks.length) }
+      : { stock: new Int32Array(stocks.length), seen: new Int32Array(stocks.length).fill(-1) }
   const foragers: Forager[] = layout.hearths.map((hearth, id) => {
     const practiceLog = startingLog(config)
     const born = skills[id]!
@@ -105,9 +135,16 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       tripWood: 0,
       targetBushId: null,
       targetTreeId: null,
-      // Every forager knows its valley: where every plant is and what each held at the start.
-      bushMemory: { stock: Int32Array.from(bushKcal), seen: new Int32Array(bushKcal.length) },
-      treeMemory: { stock: Int32Array.from(treeWood), seen: new Int32Array(treeWood.length) },
+      // Knowing the valley, as in Life 5, a forager has seen every plant and place at minute 0. Otherwise it has seen
+      // nothing yet, and sees what is around it in its first turn.
+      bushMemory: known(bushKcal),
+      treeMemory: known(treeWood),
+      groupId: null,
+      joinedMinute: null,
+      placeSeen: new Int32Array(places).fill(config.knowValley ? 0 : -1),
+      placesSeen: config.knowValley ? places : 0,
+      knownFlags: [],
+      exploreTarget: null,
       ...born,
       ...ratesOf(config, born.foragingSkill, born.woodSkill, practiceLog),
       practiceLog,
@@ -124,7 +161,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
     }
   })
-  const partial = { foragers, bushKcal, treeWood }
+  const groups = startingGroups(config, layout, foragers)
+  const partial = { foragers, bushKcal, treeWood, groups }
   return {
     config,
     layout,
@@ -132,6 +170,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     bushKcal,
     treeWood,
     foragers,
+    groups,
     totals: {
       initialKcal: sum(bushKcal) + foragers.reduce((total, forager) => total + forager.energyKcal, 0),
       regrownKcal: 0,
@@ -151,6 +190,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     lastQuotes: [],
     lastPractice: [],
     lastDeaths: [],
+    lastGroupEvents: [],
     eventDays: [[]],
     days: [],
     today: emptyDay(0, partial),
@@ -167,6 +207,8 @@ const cloneForager = (forager: Forager): Forager => ({
   loggedSeconds: { ...forager.loggedSeconds },
   secondsWorked: { ...forager.secondsWorked },
   swapTotals: { ...forager.swapTotals },
+  placeSeen: forager.placeSeen.slice(),
+  knownFlags: [...forager.knownFlags],
 })
 
 const cloneDay = (day: DaySummary): DaySummary => ({
@@ -179,6 +221,7 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   gatherSecondsById: [...day.gatherSecondsById],
   walkSecondsById: [...day.walkSecondsById],
   gatheredWoodById: [...day.gatheredWoodById],
+  placesSeenById: [...day.placesSeenById],
 })
 
 /** A copy that shares nothing mutable with `state`. The layout and finished days never change, so they are shared. */
@@ -188,6 +231,7 @@ export function cloneValley(state: ValleyState): ValleyState {
     bushKcal: state.bushKcal.slice(),
     treeWood: state.treeWood.slice(),
     foragers: state.foragers.map(cloneForager),
+    groups: state.groups.map((group) => ({ ...group })),
     totals: { ...state.totals },
     days: [...state.days],
     eventDays: state.eventDays.map((day, index) => (index === state.eventDays.length - 1 ? [...day] : day)),
@@ -199,6 +243,7 @@ interface TurnResult {
   event: ActionEvent
   swaps: SwapEvent[]
   quotes: QuoteEvent[]
+  met: GroupEvent | null
 }
 
 /**
@@ -249,6 +294,8 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     state.treeWood,
     minute,
   )
+  observePlaces(config, forager, minute)
+  observeFlags(config, forager, state.groups)
   forager.hungry = nextHungry(config, forager.energyKcal, forager.hungry)
   forager.shortOfWood = nextShortOfWood(config, forager.wood, forager.shortOfWood)
 
@@ -259,6 +306,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   let forTrade = false
   let targetId: number | null = null
   let plantId: number | null = null
+  let placeId: number | null = null
   let gatheredKcal = 0
   let gatheredWood = 0
   let burnedWood = 0
@@ -290,7 +338,14 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   } else {
     const filling = !forager.hungry && fillingLoad(config, forager)
     const work = chooseWork(config, forager, minute)
-    if (work === null || work === 'wait') {
+    const goal = work === null ? idleGoal(state, forager, minute) : null
+    if (goal) {
+      // Rules 4 and 5: seeking company or exploring.
+      forager.trip = null
+      reason = goal.reason
+      placeId = goal.placeId
+      seconds.stand = forager.x === goal.x && forager.y === goal.y ? 60 : walkTo(goal.x, goal.y)
+    } else if (work === null || work === 'wait') {
       forager.trip = null
       reason = work === null ? 'satiated' : 'waiting to swap'
       seconds.stand = 60
@@ -300,10 +355,21 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
       forTrade = work.forTrade
       const food = good === 'food'
       const plants = food ? layout.bushes : layout.trees
-      const chosen = choosePlant(config, layout, forager, good, minute)
+      // Rule 8: remembering no plant worth a minute's work, it searches ground it has never seen before it revisits.
+      let chosen = choosePlant(config, layout, forager, good, minute, false)
+      const search =
+        chosen === null && forager.placesSeen < placeCount(config)
+          ? choosePlace(config, forager, minute, 'search')
+          : null
+      if (chosen === null && search === null) chosen = choosePlant(config, layout, forager, good, minute)
       if (food) forager.targetBushId = chosen
       else forager.targetTreeId = chosen
-      if (chosen === null) {
+      if (search !== null) {
+        const centre = placeCentre(config, search)
+        reason = 'searching'
+        placeId = search
+        seconds.stand = walkTo(centre.x, centre.y)
+      } else if (chosen === null) {
         reason = idleReason(config, forager, plants, minute)
         seconds.stand = 60
       } else {
@@ -354,6 +420,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     }
   }
   if (atHearth(forager)) forager.tripWood = 0
+  const met = meet(state, forager, minute)
 
   const traded = swap(config, forager, state.foragers, minute)
   const eatenAgain = eatCarried(forager.carried, config.reserveMaxKcal - forager.energyKcal)
@@ -396,8 +463,10 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     tripWoodAfter: forager.tripWood,
     burnedWood,
     sleptCold,
+    groupId: forager.groupId,
+    placeId,
   }
-  return { event, swaps: traded.swaps, quotes: traded.quotes }
+  return { event, swaps: traded.swaps, quotes: traded.quotes, met }
 }
 
 /**
@@ -438,6 +507,7 @@ function advance(state: ValleyState, recordEvents = true) {
   const lastSwaps: SwapEvent[] = []
   const lastQuotes: QuoteEvent[] = []
   const lastDeaths: DeathEvent[] = []
+  const lastGroupEvents: GroupEvent[] = []
   // Experiments keep no event history, so they build none.
   const newEvents: ValleyEvent[] = recordEvents ? [...lastPractice] : []
   const today = state.today
@@ -450,6 +520,12 @@ function advance(state: ValleyState, recordEvents = true) {
     lastSwaps.push(...turn.swaps)
     lastQuotes.push(...turn.quotes)
     if (recordEvents) newEvents.push(event, ...turn.swaps, ...turn.quotes)
+    if (turn.met) {
+      lastGroupEvents.push(turn.met)
+      if (recordEvents) newEvents.push(turn.met)
+      if (turn.met.kind === 'found') today.foundings += 1
+      else today.joinings += 1
+    }
     const time = today.seconds
     time.walk += event.walkSeconds
     time.sleep += event.sleepSeconds
@@ -478,6 +554,12 @@ function advance(state: ValleyState, recordEvents = true) {
       if (recordEvents) newEvents.push(death)
       today.deaths += 1
       today.alive -= 1
+      const dissolved = forager.groupId === null ? null : dissolveIfAlone(state, forager.groupId, minute)
+      if (dissolved) {
+        lastGroupEvents.push(dissolved)
+        if (recordEvents) newEvents.push(dissolved)
+        today.dissolutions += 1
+      }
     }
   }
   for (const made of lastSwaps) {
@@ -501,6 +583,7 @@ function advance(state: ValleyState, recordEvents = true) {
   state.lastQuotes = lastQuotes
   state.lastPractice = lastPractice
   state.lastDeaths = lastDeaths
+  state.lastGroupEvents = lastGroupEvents
   for (const event of newEvents) state.eventDays[state.eventDays.length - 1]!.push(event)
 
   const next = minute + 1
@@ -509,6 +592,8 @@ function advance(state: ValleyState, recordEvents = true) {
     today.treeWood = sum(state.treeWood)
     today.endEnergyKcal = state.foragers.map((forager) => forager.energyKcal)
     today.carriedKcal = state.foragers.reduce((total, forager) => total + carriedKcal(forager.carried), 0)
+    Object.assign(today, groupCounts(state))
+    today.placesSeenById = state.foragers.map((forager) => forager.placesSeen)
     state.days.push(today)
     state.today = emptyDay(today.day + 1, state)
     state.eventDays.push([])

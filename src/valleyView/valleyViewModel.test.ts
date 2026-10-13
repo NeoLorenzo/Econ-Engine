@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { LIFE5_VALLEY } from '../valley/config'
 import { cloneValley, createValley, stepValley } from '../valley/engine'
+import { meet, placeCount } from '../valley/social'
 import type { ValleyState } from '../valley/types'
 import {
   CAMERA_LIMITS,
@@ -9,7 +11,11 @@ import {
   describeActivity,
   displayedLoad,
   fillInTurn,
+  flagInspection,
   foragerPose,
+  foragerSummary,
+  groupName,
+  knowledgeShades,
   plantInspection,
   type DisplayPair,
 } from './valleyViewModel'
@@ -72,11 +78,17 @@ describe('plants and the camera', () => {
     expect(fillInTurn(0, 400, 3)).toEqual([0, 0, 0])
   })
 
-  it('compares a plant’s true stock with what the followed forager remembers', () => {
+  it('compares a plant’s true stock with what the followed forager remembers, or says it has never seen it', () => {
+    const known = cloneValley(createValley(LIFE5_VALLEY))
+    known.bushKcal[7] = 120
+    expect(plantInspection(known, 'bush', 7, 0)).toMatchObject({
+      stock: 120,
+      remembered: 400,
+      difference: -280,
+      seen: 'at the start',
+    })
     const state = cloneValley(createValley())
-    state.bushKcal[7] = 120
-    const inspection = plantInspection(state, 'bush', 7, 0)
-    expect(inspection).toMatchObject({ stock: 120, remembered: 400, difference: -280, seen: 'at the start' })
+    expect(plantInspection(state, 'bush', 7, 0)).toMatchObject({ remembered: null, seen: 'never' })
   })
 
   it('keeps the camera between a person and the whole valley, tilting towards eye level close in', () => {
@@ -85,5 +97,60 @@ describe('plants and the camera', () => {
     expect(closeTilt(CAMERA_LIMITS.nearest)).toBeCloseTo(0.6)
     expect(closeTilt(60)).toBe(0)
     expect(closeTilt(15)).toBeGreaterThan(0)
+  })
+})
+
+describe('groups and what a forager knows', () => {
+  /** Foragers 0 and 1 meet at ten in the morning and found Group A. */
+  function founded() {
+    const state = cloneValley(createValley())
+    state.minute = 601
+    const [first, second] = state.foragers as [ValleyState['foragers'][0], ValleyState['foragers'][0]]
+    second.x = first.x + 500
+    second.y = first.y
+    meet(state, first, 600)
+    return state
+  }
+
+  it('names groups by letter in order of founding', () => {
+    expect(groupName(0)).toBe('Group A')
+    expect(groupName(25)).toBe('Group Z')
+    expect(groupName(26)).toBe('Group A2')
+  })
+
+  it('shows a forager’s group, its fellows and when it joined, and its group’s flag', () => {
+    const state = founded()
+    expect(foragerSummary(state, 0)).toMatchObject({ groupId: 0, fellows: ['Forager 2'], joinedMinutesAgo: 0 })
+    expect(foragerSummary(state, 2)).toMatchObject({ groupId: null, fellows: [], joinedMinutesAgo: null })
+    expect(flagInspection(state, 0)).toMatchObject({
+      name: 'Group A’s flag',
+      members: ['Forager 1', 'Forager 2'],
+      dissolved: false,
+    })
+  })
+
+  it('shades ground never seen darkest, ground not seen for a day a little, and the rest not at all', () => {
+    const state = founded()
+    const forager = state.foragers[0]!
+    state.minute = 2_001
+    forager.placeSeen.fill(-1)
+    forager.placeSeen[1] = 2_000 - 24 * 60
+    forager.placeSeen[2] = 1_990
+    const shades = knowledgeShades(state, 0)
+    expect(shades).toHaveLength(placeCount(state.config))
+    expect([shades[0], shades[1], shades[2]]).toEqual([150, 60, 0])
+  })
+
+  it('describes exploring and looking for company', () => {
+    const pair = pairBesideBush()
+    const event = pair.next.lastEvents.find((made) => made.foragerId === 0)!
+    for (const [reason, action, text] of [
+      ['exploring', 'walk', 'Exploring, to see what has changed'],
+      ['seeking company', 'walk', 'Looking for company'],
+      ['waiting for company', 'rest', 'Waiting for company at a flag'],
+    ] as const) {
+      Object.assign(event, { reason, action, workSeconds: 0, workedFor: null })
+      expect(describeActivity(pair, 0)).toBe(text)
+    }
   })
 })

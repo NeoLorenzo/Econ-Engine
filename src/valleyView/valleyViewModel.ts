@@ -3,9 +3,10 @@ import { mixSeed, randomDraw } from '../sim/rng'
 import { lastEventOf } from '../valley/engine'
 import { MINUTES_PER_DAY } from '../valley/forager'
 import { practicePercents } from '../valley/practice'
+import { livingMembers, placeCount, placesPerSide, placeWanted } from '../valley/social'
 import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
 import type { ActionEvent, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
-import { foragerColor, formatHours } from '../lifeView/lifeViewModel'
+import { foragerColor, foragerName, formatHours } from '../lifeView/lifeViewModel'
 
 export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from '../lifeView/lifeViewModel'
 export { foragerColor, formatHours }
@@ -216,6 +217,15 @@ export function fireSaving(config: ValleyConfig) {
 export const bushName = (state: ValleyState, id: number) => `a bush in thicket ${state.layout.bushes.site[id]! + 1}`
 export const treeName = (state: ValleyState, id: number) => `a tree in stand ${state.layout.trees.site[id]! + 1}`
 
+/** Groups are named by letter in order of founding: A to Z, then A2 to Z2, and so on. */
+export const groupName = (id: number) =>
+  `Group ${String.fromCharCode(65 + (id % 26))}${id >= 26 ? Math.floor(id / 26) + 1 : ''}`
+
+/** Flag colours, distinct from the cyan-to-gold scale that colours each forager by what it is good at. */
+export const GROUP_COLORS = ['#e4572e', '#9b5de5', '#f15bb5', '#3a86ff', '#f5f5f5', '#a3e635', '#8d5a3b', '#ff006e']
+
+export const groupColor = (id: number) => GROUP_COLORS[id % GROUP_COLORS.length]!
+
 export function describeActivity(pair: DisplayPair, foragerId: number) {
   const event = currentEvent(pair, foragerId)
   const state = pair.next
@@ -229,6 +239,12 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
     return woodMatters(state.config) ? 'Sleeping warm by its fire' : 'Sleeping through the night'
   }
   if (event.reason === 'satiated') return 'Resting, well fed'
+  if (event.reason === 'exploring')
+    return event.action === 'walk' ? 'Exploring, to see what has changed' : 'Looking around'
+  if (event.reason === 'seeking company') return event.action === 'walk' ? 'Looking for company' : 'Hoping for company'
+  if (event.reason === 'waiting for company') return 'Waiting for company at a flag'
+  if (event.reason === 'searching')
+    return event.workedFor === 'wood' ? 'Searching new ground for deadwood' : 'Searching new ground for berries'
   if (event.reason === 'waiting to swap') return 'Resting, carrying food to swap for wood'
   if (event.reason === 'too late to set out') return 'Too late in the day to set out'
   if (event.reason === 'waiting for regrowth')
@@ -255,9 +271,11 @@ export function formatMinutes(minutes: number) {
 }
 
 const seenLabel = (state: ValleyState, seen: number) => {
+  if (seen < 0) return 'never'
+  if (seen === 0 && state.config.knowValley) return 'at the start'
   // An observation made during minute `m` is "this minute" until minute `m + 1` begins.
   const ago = state.minute - 1 - seen
-  return seen === 0 ? 'at the start' : ago <= 0 ? 'this minute' : `${formatMinutes(ago)} ago`
+  return ago <= 0 ? 'this minute' : `${formatMinutes(ago)} ago`
 }
 
 /** What the inspector shows for a bush or tree: the truth beside what the followed forager believes. */
@@ -272,9 +290,24 @@ export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: n
         : `Tree in stand ${state.layout.trees.site[id]! + 1}`,
     stock,
     capacity: kind === 'bush' ? state.config.bushCapacityKcal : state.config.treeCapacityWood,
-    remembered: memory.stock[id]!,
+    /** Null if it has never seen the plant. */
+    remembered: memory.seen[id]! < 0 ? null : memory.stock[id]!,
     seen: seenLabel(state, memory.seen[id]!),
     difference: stock - memory.stock[id]!,
+  }
+}
+
+/** What the inspector shows for a group's flag: its group, when it was founded, and who belongs. */
+export function flagInspection(state: ValleyState, groupId: number) {
+  const group = state.groups[groupId]!
+  return {
+    name: `${groupName(groupId)}’s flag`,
+    color: groupColor(groupId),
+    founded: group.foundedMinute,
+    foundedAgo: Math.max(0, state.minute - 1 - group.foundedMinute),
+    dissolved: group.dissolvedMinute !== null,
+    members: livingMembers(state, group).map(foragerName),
+    joinedEver: group.members.length,
   }
 }
 
@@ -311,6 +344,17 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     heardTerms: terms,
     heardMinutesAgo: terms === null ? null : Math.max(0, state.minute - 1 - forager.heardTerms!.minute),
     ...forager.swapTotals,
+    groupId: forager.groupId,
+    /** Its fellow living members, by name. */
+    fellows:
+      forager.groupId === null
+        ? []
+        : livingMembers(state, state.groups[forager.groupId]!)
+            .filter((id) => id !== foragerId)
+            .map(foragerName),
+    joinedMinutesAgo: forager.joinedMinute === null ? null : Math.max(0, state.minute - 1 - forager.joinedMinute),
+    /** The share of the valley's places it has ever seen. */
+    seenShare: forager.placesSeen / placeCount(config),
   }
 }
 
@@ -350,7 +394,27 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
     coldHours: day.coldSleepMinutes / 60,
     reserve: day.endEnergyKcal[foragerId]!,
     stock: day.bushStockKcal / state.layout.bushes.count,
+    groups: day.groupsStanding,
+    loners: day.loners,
   }))
+
+/**
+ * How dark to draw each place on the ground for what a forager knows, row by row from the valley's first row: places it
+ * has never seen darkest, places not seen for `exploreAfterHours` a little dark, and the rest clear. Values are 0–255.
+ */
+export function knowledgeShades(state: ValleyState, foragerId: number) {
+  const forager = state.foragers[foragerId]!
+  const shades = new Uint8Array(placesPerSide(state.config) ** 2)
+  const minute = Math.max(0, state.minute - 1)
+  for (let place = 0; place < shades.length; place += 1)
+    shades[place] =
+      forager.placeSeen[place]! < 0 ? 150 : placeWanted(state.config, forager, place, minute, 'explore') ? 60 : 0
+  return shades
+}
+
+/** The groups whose flags stand, with where and in what colour. */
+export const standingFlags = (state: ValleyState) =>
+  state.groups.filter((group) => group.dissolvedMinute === null).map((group) => ({ id: group.id, flag: group.flag }))
 
 /** The swaps made in the minute being drawn. */
 export const currentSwaps = ({ previous, next }: DisplayPair): SwapEvent[] =>

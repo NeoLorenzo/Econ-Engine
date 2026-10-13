@@ -1,4 +1,14 @@
-import type { Group, InstancedMesh, LineLoop, Mesh, MeshStandardMaterial, PerspectiveCamera } from 'three'
+import type {
+  DataTexture,
+  Group,
+  InstancedMesh,
+  LineLoop,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  PerspectiveCamera,
+} from 'three'
+import { placesPerSide } from '../valley/social'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
 import { hex, palette } from '../ui/theme'
@@ -20,7 +30,9 @@ import {
   fillInTurn,
   foragerColor,
   foragerPose,
+  groupColor,
   hearthAt,
+  knowledgeShades,
   parcelScale,
   plantLook,
   sunAt,
@@ -43,6 +55,7 @@ const CROWN = 0x2a6236
 const DEADWOOD = 0x8a6a48
 const STONE = 0x6f6a60
 const FLAME = 0xffa040
+const POLE = 0x6b4f35
 const EMBER = 0x3a3330
 const BUNDLE = 0xb07a45
 const DEAD = 0x6b6b66
@@ -52,13 +65,15 @@ const ARC_POINTS = 24
 /** Grid lines every this many metres, so distances can be judged at any zoom. */
 const GRID_STEP_M = 50
 
-/** What a click picked out: a bush or tree to inspect, or a forager to follow. */
-export type ValleyPick = { kind: 'bush' | 'tree'; id: number } | { kind: 'forager'; id: number }
+/** What a click picked out: a bush, tree or flag to inspect, or a forager to follow. */
+export type ValleyPick = ValleySelection | { kind: 'forager'; id: number }
 export type ValleyPlant = { kind: 'bush' | 'tree'; id: number }
+/** A plant, or a group's flag by group ID. */
+export type ValleySelection = ValleyPlant | { kind: 'flag'; id: number }
 
 export interface DrawOptions {
   interpolate: boolean
-  selected: ValleyPlant | null
+  selected: ValleySelection | null
   followedId: number
   /** The camera keeps the followed forager in the middle of the view. */
   following: boolean
@@ -95,6 +110,9 @@ interface Figure {
   legs: [Group, Group]
   arms: [Group, Group]
   material: MeshStandardMaterial
+  /** A band across the chest in its group's colour. */
+  sash: Mesh
+  sashMaterial: MeshStandardMaterial
   bundle: Group
   parcel: Mesh
   heading: number
@@ -105,6 +123,14 @@ interface Hearth {
   flame: Mesh
   /** The wood its forager holds beyond what it carries on its back. */
   pile: Group
+  /** Where it is drawn, in valley centimetres: its forager's hearth moves when it joins a group. */
+  x: number
+  y: number
+}
+
+interface Flag {
+  group: Group
+  cloth: Mesh
 }
 
 interface SwapArc {
@@ -190,6 +216,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const bundleLogGeometry = new THREE.CylinderGeometry(0.045, 0.045, 0.75, 6)
   const bundleMaterial = new THREE.MeshStandardMaterial({ color: BUNDLE, roughness: 0.9, flatShading: true })
   const parcelGeometry = new THREE.DodecahedronGeometry(0.12, 0)
+  const poleGeometry = new THREE.CylinderGeometry(0.035, 0.045, 2.6, 6)
+  poleGeometry.translate(0, 1.3, 0)
+  const poleMaterial = new THREE.MeshStandardMaterial({ color: POLE, roughness: 0.9, flatShading: true })
+  const clothGeometry = new THREE.PlaneGeometry(0.9, 0.55, 6, 1)
+  clothGeometry.translate(0.45, 0, 0)
+  const sashGeometry = new THREE.TorusGeometry(0.17, 0.03, 4, 12)
 
   const matrix = new THREE.Matrix4()
   const scale = new THREE.Vector3()
@@ -205,10 +237,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let trunks: InstancedMesh | null = null
   let crowns: InstancedMesh | null = null
   let logs: InstancedMesh | null = null
-  let campGroup: Group | null = null
-  let campFlame: Mesh | null = null
-  let campGlow: InstanceType<Three['PointLight']> | null = null
   let hearths: Hearth[] = []
+  let flags: Flag[] = []
+  const flagGroup = new THREE.Group()
+  scene.add(flagGroup)
   let figures: Figure[] = []
   /** The fill last drawn for each bush and tree, so only plants that changed are redrawn. */
   let bushFill = new Float32Array(0)
@@ -233,6 +265,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   )
   selectRing.rotation.x = -Math.PI / 2
   scene.add(selectRing)
+
+  // What the followed forager knows: places it has never seen, or not seen lately, are darker on the ground.
+  let knowledge: Mesh | null = null
+  let knowledgeTexture: DataTexture | null = null
+  let knowledgeKey = ''
 
   // The followed forager's perception: a circle on the ground.
   const circle: number[] = []
@@ -269,6 +306,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   /** A person about 1.75 m tall: legs and arms that swing from hips and shoulders, and a torso that bends. */
   function makeFigure(id: number): Figure {
     const material = new THREE.MeshStandardMaterial({ color: hex(palette.household), roughness: 0.7 })
+    const sashMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
     const root = new THREE.Group()
     const body = new THREE.Group()
     const hips = new THREE.Group()
@@ -317,16 +355,56 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     bundle.position.set(0, 0.45, -0.24)
     const parcel = new THREE.Mesh(parcelGeometry, bundleMaterial)
     parcel.position.set(0.24, 0.05, 0.05)
-    for (const part of [chest, head, parcel, ...bundle.children]) part.userData.foragerId = id
-    torso.add(chest, head, bundle, parcel)
+    // A band across the chest, from shoulder to hip, in its group's colour.
+    const sash = new THREE.Mesh(sashGeometry, sashMaterial)
+    sash.position.set(0, 0.36, 0)
+    sash.rotation.set(0, Math.PI / 2, 0.75)
+    sash.scale.set(1, 1.35, 1.05)
+    for (const part of [chest, head, parcel, sash, ...bundle.children]) part.userData.foragerId = id
+    torso.add(chest, head, bundle, parcel, sash)
     hips.add(torso)
     body.add(hips)
     root.add(body)
     band.add(root)
-    return { root, body, hips, torso, legs, arms, material, bundle, parcel, heading: 0 }
+    return { root, body, hips, torso, legs, arms, material, sash, sashMaterial, bundle, parcel, heading: 0 }
   }
 
-  function makeHearth(x: number, z: number): Hearth {
+  /** A group's flag: a pole about 2.6 m tall with a cloth in the group's colour, on a few stones. */
+  function makeFlag(id: number, x: number, z: number): Flag {
+    const group = new THREE.Group()
+    const pole = new THREE.Mesh(poleGeometry, poleMaterial)
+    pole.castShadow = true
+    // Each cloth has its own geometry, since it waves.
+    const cloth = new THREE.Mesh(
+      clothGeometry.clone(),
+      new THREE.MeshStandardMaterial({ color: hex(groupColor(id)), roughness: 0.8, side: THREE.DoubleSide }),
+    )
+    cloth.position.y = 2.3
+    cloth.castShadow = true
+    group.add(pole, cloth)
+    for (let index = 0; index < 4; index += 1) {
+      const stone = new THREE.Mesh(stoneGeometry, stoneMaterial)
+      const angle = (index / 4) * Math.PI * 2 + 0.4
+      stone.position.set(0.16 * Math.cos(angle), 0.07, 0.16 * Math.sin(angle))
+      group.add(stone)
+    }
+    for (const part of group.children) part.userData.groupId = id
+    group.position.set(x, 0, z)
+    flagGroup.add(group)
+    return { group, cloth }
+  }
+
+  /** Sways a flag's cloth along its length, more towards the free end. */
+  function wave(cloth: Mesh, nowMs: number, id: number) {
+    const positions = cloth.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+    for (let index = 0; index < positions.count; index += 1) {
+      const along = positions.getX(index)
+      positions.setZ(index, 0.08 * along * Math.sin(nowMs / 260 + along * 5 + id))
+    }
+    positions.needsUpdate = true
+  }
+
+  function makeHearth(hearthX: number, hearthY: number): Hearth {
     const group = new THREE.Group()
     for (let index = 0; index < 6; index += 1) {
       const stone = new THREE.Mesh(stoneGeometry, emberMaterial)
@@ -355,24 +433,44 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
     pile.position.set(0.75, 0, -0.1)
     group.add(flame, pile)
-    group.position.set(x, 0, z)
     scene.add(group)
-    return { group, flame, pile }
+    const hearth = { group, flame, pile, x: hearthX, y: hearthY }
+    placeHearth(hearth, hearthX, hearthY)
+    return hearth
+  }
+
+  /** A hearth sits a little to the side of where its forager sleeps. */
+  function placeHearth(hearth: Hearth, x: number, y: number) {
+    const spot = at(x, y)
+    hearth.group.position.set(spot.x + 0.7, 0, spot.z + 0.4)
+    hearth.x = x
+    hearth.y = y
   }
 
   function clearWorld() {
     for (const figure of figures) {
       figure.material.dispose()
+      figure.sashMaterial.dispose()
       band.remove(figure.root)
     }
     figures = []
     for (const hearth of hearths) scene.remove(hearth.group)
     hearths = []
-    if (campGroup) scene.remove(campGroup)
-    campGlow?.dispose()
-    campGroup = null
-    campFlame = null
-    campGlow = null
+    for (const flag of flags) {
+      ;(flag.cloth.material as MeshStandardMaterial).dispose()
+      flag.cloth.geometry.dispose()
+      flagGroup.remove(flag.group)
+    }
+    flags = []
+    if (knowledge) {
+      knowledge.geometry.dispose()
+      ;(knowledge.material as MeshBasicMaterial).dispose()
+      knowledgeTexture?.dispose()
+      world.remove(knowledge)
+      knowledge = null
+      knowledgeTexture = null
+      knowledgeKey = ''
+    }
     for (const mesh of [leaves, berryMesh, trunks, crowns, logs]) {
       if (!mesh) continue
       mesh.dispose()
@@ -530,34 +628,28 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       world.add(mesh)
     }
 
-    // The camp: a ring of stones around a fire that glows at night, and each forager's own hearth around it.
-    campGroup = new THREE.Group()
-    for (let index = 0; index < 10; index += 1) {
-      const stone = new THREE.Mesh(stoneGeometry, stoneMaterial)
-      const angle = (index / 10) * Math.PI * 2
-      stone.position.set(0.8 * Math.cos(angle), 0.08, 0.8 * Math.sin(angle))
-      stone.scale.setScalar(1.3)
-      stone.castShadow = true
-      campGroup.add(stone)
-    }
-    campFlame = new THREE.Mesh(flameGeometry, flameMaterial)
-    campFlame.scale.setScalar(1.6)
-    campFlame.position.y = 0.4
-    campGlow = new THREE.PointLight(FLAME, 0, 40, 1.6)
-    campGlow.position.y = 1.5
-    campGroup.add(campFlame, campGlow)
-    const campAt = at(state.layout.camp.x, state.layout.camp.y)
-    campGroup.position.set(campAt.x, 0, campAt.z)
-    scene.add(campGroup)
-    // A hearth sits a little to the side of where its forager sleeps.
-    hearths = state.layout.hearths.map((hearth) => {
-      const spot = at(hearth.x, hearth.y)
-      return makeHearth(spot.x + 0.7, spot.z + 0.4)
-    })
+    // Each forager's own hearth, where it sleeps; there is no camp fire.
+    hearths = state.foragers.map((forager) => makeHearth(forager.hearth.x, forager.hearth.y))
     figures = state.foragers.map((forager) => makeFigure(forager.id))
 
+    // The ground the followed forager knows: one texel per place, laid over the grass.
+    const n = placesPerSide(state.config)
+    knowledgeTexture = new THREE.DataTexture(new Uint8Array(n * n * 4), n, n, THREE.RGBAFormat)
+    knowledgeTexture.magFilter = THREE.NearestFilter
+    knowledgeTexture.minFilter = THREE.NearestFilter
+    const placesSize = (n * state.config.placeCm) / 100
+    knowledge = new THREE.Mesh(
+      new THREE.PlaneGeometry(placesSize, placesSize),
+      new THREE.MeshBasicMaterial({ map: knowledgeTexture, transparent: true, depthWrite: false }),
+    )
+    knowledge.rotation.x = -Math.PI / 2
+    knowledge.position.set((placesSize - size) / 2, 0.01, (placesSize - size) / 2)
+    knowledge.renderOrder = 1
+    world.add(knowledge)
+
     camera.near = 0.1
-    controls.target = { x: campAt.x, z: campAt.z }
+    const start = at(state.foragers[0]!.x, state.foragers[0]!.y)
+    controls.target = { x: start.x, z: start.z }
     controls.distance = 60
     controls.yaw = Math.PI / 5
     controls.pitch = 0.9
@@ -712,10 +804,33 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
     if (logsChanged) logs!.instanceMatrix.needsUpdate = true
 
-    const flicker = 1 + 0.12 * Math.sin(nowMs / 90) + 0.08 * Math.sin(nowMs / 37)
-    if (campFlame && campGlow) {
-      campFlame.scale.set(1.6, 1.6 * flicker, 1.6)
-      campGlow.intensity = (1 - light) * 30 * flicker
+    // Flags stand while their groups do; a flag is made the first time its group is drawn.
+    for (const group of state.groups) {
+      if (!flags[group.id]) {
+        const spot = at(group.flag.x, group.flag.y)
+        flags[group.id] = makeFlag(group.id, spot.x, spot.z)
+      }
+      const flag = flags[group.id]!
+      flag.group.visible = group.dissolvedMinute === null
+      if (flag.group.visible) wave(flag.cloth, nowMs, group.id)
+    }
+
+    // Shades the ground for what the followed forager knows, redrawn only when the minute or forager changes.
+    const key = `${followedId}:${state.minute}`
+    if (knowledgeTexture && key !== knowledgeKey && followed) {
+      knowledgeKey = key
+      const n = placesPerSide(config)
+      const shades = knowledgeShades(state, followedId)
+      const data = knowledgeTexture.image.data as Uint8Array
+      for (let place = 0; place < shades.length; place += 1) {
+        // The plane's first texel row lies at the valley's far edge.
+        const texel = ((n - 1 - Math.floor(place / n)) * n + (place % n)) * 4
+        data[texel] = 4
+        data[texel + 1] = 8
+        data[texel + 2] = 12
+        data[texel + 3] = shades[place]!
+      }
+      knowledgeTexture.needsUpdate = true
     }
 
     const poses = figures.map((_, id) => foragerPose(pair, id, interpolate))
@@ -728,6 +843,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       figure.root.rotation.y = figure.heading
       poseFigure(figure, pose, id, nowMs)
       figure.material.color.set(!forager.alive ? DEAD : hex(foragerColor(config, forager)))
+      figure.sash.visible = forager.groupId !== null
+      if (forager.groupId !== null) figure.sashMaterial.color.set(hex(groupColor(forager.groupId)))
       const load = displayedLoad(pair, id, interpolate)
       const bundle = bundleScale(load.onBack, Math.max(config.woodLoad, 1))
       figure.bundle.visible = bundle > 0
@@ -737,6 +854,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       figure.parcel.scale.setScalar(Math.max(parcel, 0.01))
       const hearth = hearths[id]
       if (hearth) {
+        if (hearth.x !== forager.hearth.x || hearth.y !== forager.hearth.y)
+          placeHearth(hearth, forager.hearth.x, forager.hearth.y)
         const pile = bundleScale(load.atHearth, woodTarget(config))
         hearth.pile.visible = pile > 0
         hearth.pile.scale.setScalar(Math.max(pile, 0.01))
@@ -787,13 +906,19 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         : followed && event?.workedFor === 'food' && followed.targetBushId !== null
           ? { kind: 'bush' as const, id: followed.targetBushId }
           : null
-    const ringAt = (ring: Mesh, plant: { kind: 'bush' | 'tree'; id: number } | null) => {
-      ring.visible = plant !== null && (ring !== targetRing || followed!.alive)
-      if (!plant) return
-      const plants = plant.kind === 'bush' ? layout!.bushes : layout!.trees
-      const spot = at(plants.x[plant.id]!, plants.y[plant.id]!)
+    const ringAt = (ring: Mesh, chosen: ValleySelection | null) => {
+      ring.visible = chosen !== null && (ring !== targetRing || followed!.alive)
+      if (!chosen) return
+      let spot: { x: number; z: number }
+      if (chosen.kind === 'flag') {
+        const flag = state.groups[chosen.id]!.flag
+        spot = at(flag.x, flag.y)
+      } else {
+        const plants = chosen.kind === 'bush' ? layout!.bushes : layout!.trees
+        spot = at(plants.x[chosen.id]!, plants.y[chosen.id]!)
+      }
       ring.position.set(spot.x, ring === selectRing ? 0.04 : 0.035, spot.z)
-      ring.scale.setScalar(plant.kind === 'bush' ? 1.1 : 1.8)
+      ring.scale.setScalar(chosen.kind === 'bush' ? 1.1 : chosen.kind === 'flag' ? 0.7 : 1.8)
     }
     ringAt(targetRing, targetPlant)
     ringAt(selectRing, options.selected)
@@ -869,10 +994,17 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
     const plants = [leaves, berryMesh, trunks, crowns, logs].filter((mesh) => mesh !== null)
-    const hit = raycaster.intersectObjects([band, ...plants], true)[0]
+    const shown = (object: { visible: boolean; parent: unknown } | null): boolean =>
+      !object || (object.visible && shown(object.parent as typeof object))
+    const hit = raycaster.intersectObjects([band, flagGroup, ...plants], true).find((found) => shown(found.object))
     const foragerId = hit?.object.userData.foragerId as number | undefined
+    const groupId = hit?.object.userData.groupId as number | undefined
     callbacks.onPick(
-      foragerId !== undefined ? { kind: 'forager', id: foragerId } : plantOf(hit?.object, hit?.instanceId),
+      foragerId !== undefined
+        ? { kind: 'forager', id: foragerId }
+        : groupId !== undefined
+          ? { kind: 'flag', id: groupId }
+          : plantOf(hit?.object, hit?.instanceId),
     )
   }
   const onWheel = (event: WheelEvent) => {
@@ -958,6 +1090,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         bundleLogGeometry,
         bundleMaterial,
         parcelGeometry,
+        poleGeometry,
+        poleMaterial,
+        clothGeometry,
+        sashGeometry,
         circleGeometry,
         swapMaterial,
       ])

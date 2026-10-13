@@ -6,6 +6,59 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE6-Groups-036] - (2026-10-13)
+
+### Problem
+
+Life 5 put the band around one fire in the middle of the valley, with every hearth on a spiral around it. The owner found that it made no sense: nothing in the model explained why these foragers lived together. A camp had been given since Life 2, when a prototype showed that foragers wandering alone almost never met, so they could rarely give. The step's question became whether wanting company gathers a scattered band into one group or several, and whether separate groups weaken the exchange and division of work that Life 5 found around one fire.
+
+### Decisions
+
+- **The owner's rules, taken as given.** Foragers start scattered and know only what they have seen. Once their needs are met they explore rather than stand idle. A forager without a group wants company, below hunger and warmth and above resting. Two who meet without a group found one and plant a flag, which becomes their home and where they sleep. One that meets a member joins; members never change group. Members swap only with each other, groups do not interact, and each forager keeps its own hearth. A shared fire at the flag is Life 7.
+- **Meeting is talking distance.** 20 m, the distance Life 5 already used for swaps, so the step adds no parameter for it. A forager without a group meets the nearest forager within it at the end of its own turn, at any hour.
+- **The flag at the founders' midpoint, hearths on a spiral around it.** Life 5's spiral, 3 m apart in order of joining, leaving the flag's own point free for Life 7's fire.
+- **The last member dissolves the group.** A group of one is not a group, and under the rule that members never change group, a survivor kept as a member could never find company again.
+- **Places, not only plants.** Exploring needs a record of where one has been. The valley is cut into 400 places 30 m wide, each small enough to lie wholly in a 25 m view from its centre, so a place marked seen had every plant in it seen.
+- **Explore what has not been seen for a day.** A threshold keeps exploring from being endless pacing. The owner accepted a day, knowing its cost, over 72 hours, which halves the walking.
+- **Life 5 as a special case.** Four switches turn the changes off one by one; with all four off the valley runs exactly as Life 5. Each switch is also a counterfactual.
+- **Only the current life is visible.** At the owner's request, the Life 4 page and its view-only code are removed. The hourly core and its tests stay.
+
+### What the prototype found
+
+A throwaway prototype in the scratchpad, a copy of the valley core with the new rules, on 32 seeds over 400 days:
+
+- **Groups form within the first day, and the band usually splits.** Everyone was grouped within 1.3 days, and most bands split into two groups.
+- **Searching must come before revisiting.** The first version kept Life 5's rule that a forager remembering no bush with berries goes back to the bush it saw longest ago. A forager that knew a few thickets then circled them while they were bare. Without exploring, only 5.4 of 8 survived, which looked like a finding about knowledge. It was a rule that had made sense only when every forager knew the whole valley. With searching first, every band of 8 survived, exploring or not.
+- **Exploring costs food,** and **groups trade less.**
+
+### Findings
+
+From `experiments.ts` on 32 seeds over 400 days, measured over days 21 to 400, checking every invariant every minute.
+
+- **Groups form fast, and a band born scattered usually splits.** Every forager is in a group within 1.31 days, on average within 9.5 hours. A band of 8 forms one group in 6 runs, two in 19, three in 6 and four in 1. Once a forager has company it stops looking, and members never change group, so whether the band ends up as one group is decided in its first hours by who happens to meet whom first.
+- **Splitting weakens exchange and the division of work, the more so the more groups.** Members of scattered groups buy 12.4% of the wood they burn, and a group's leading gatherer brings in 1.27 times its fair share. A band that starts as one group around the meadow buys 18.5%, with a leading gatherer at 1.56 times. Across scattered runs, a band that formed one group bought 18.5% of its wood, two groups 12.7%, three 7.8% and four none. A split band is a set of smaller markets, and a market of two rarely holds a spare and a want at once. Strangers who may swap with anyone they meet buy 15.2%: groups lose more trade than scattered hearths do.
+- **Splitting keeps people warmer.** Members of scattered groups sleep cold 3.6% of night hours, against 7.6% in one group and 7.1% in Life 5. As in Life 4 and Life 5, buying wood rather than gathering it costs warmth.
+- **Exploring is costly and fast.** Every forager has seen the whole valley by the end of its second day. After that, exploring means walking the valley again every day: 2.58 hours of walking against 0.11 without exploring, paid for with 0.4 more hours of work (3.09 against 2.69). The time-use prediction with the walking measured gives 3.05 hours of work, 1.3% below what is measured. Exploring every 72 hours halves the walking.
+- **Exploring speeds up the first swap.** A band that starts as one group swaps first on day 87 on average, against day 140 in Life 5. The likely reason is that exploring scatters the foragers' routines, which Life 5 found kept one forager's spare wood from meeting another's need. This has not been tested directly.
+- **Exploring lowers what the valley carries.** A band of 16 falls to 2.4 survivors, all of its deaths before day 100, against 5.4 in Life 5, whose band of 16 is still whole at day 100. Groups dissolve 124 times in 32 runs, and survivors regroup, founding up to 8 groups in a run.
+- **Life 5 is reproduced exactly** with the four switches off, against fingerprints recorded from Life 5's code before the change.
+
+### Trade-offs
+
+- **Speed.** Exploring foragers keep moving, so what they see changes every minute, and a canonical run of 400 days takes about 6 seconds against about 2.5 for Life 5. Profiling found choosing a place to explore was most of the extra at first, scanning all 400 places every idle minute. Places now keep their corners and centres in typed arrays; the search runs in rings outwards no further than the forager can still walk before dusk; and the place seen longest ago is remembered, outside the simulation's state, so a forager knows without looking that nothing is due yet.
+- **Test time.** The tests take about five minutes, against three for Life 5. A band of 12 over 400 days on 8 seeds took four minutes under the full suite, inside a test with a one-minute limit; experiment 5 is now two files, and its runs happen before the tests, as the other experiments' do.
+- **A checker gap found by a run.** In a band of 16, a member whose group dissolved earlier in a minute met someone later in the same minute. The engine was right, but the checker compared the forager's group with the one it held the minute before. It now replays the minute's foundings, joinings and dissolutions in order.
+- **Meeting at any hour.** A forager asleep at its scattered hearth meets anyone passing within 20 m, as swaps happened between sleepers in Life 5. A forager that joins at night walks to its new hearth in the dark. It is rare and harmless, and keeps one rule for all hours.
+- **What the observer can show.** A hidden preview pane does not animate, so the browser checks stepped the page minute by minute with its own Step button.
+
+### Open questions
+
+- Does a shared fire at the flag (Life 7) give groups a reason to grow, or to stay small?
+- With one group decided by who meets whom in the first hours, would a band that starts closer together, or foragers that can see further, end up as one group?
+- Groups that never trade with each other lose a third of their exchange. Would trade between groups, once allowed, recover it, and would it look different from trade within them?
+- Should exploring wane once the valley is known, as real foragers revisit what matters rather than everything? It costs a band of 16 most of its members.
+- Would giving, absent since Life 2, follow group lines once it returns?
+
 ## [LIFE5-RealScale-035] - (2026-10-12)
 
 ### Problem

@@ -1,9 +1,10 @@
 import { specializationRow } from '../life/experiments'
 import type { LifeConfig } from '../life/types'
-import { LIFE3_BAND } from './config'
+import { LIFE3_BAND, LIFE5_VALLEY } from './config'
 import { createValley, runValley } from './engine'
 import { MINUTES_PER_DAY } from './forager'
 import { ValleyChecker } from './invariants'
+import { placeCount } from './social'
 import { valleyTheory } from './theory'
 import { spareWood } from './trade'
 import type { DaySummary, ValleyConfig } from './types'
@@ -59,6 +60,16 @@ export interface ValleyRunResult {
   bushStockByDay: number[]
   /** A fingerprint of every daily summary, so two runs can be compared day for day. */
   fingerprint: string
+  /** The first minute at whose end every living forager was in a group, if any. */
+  allGroupedMinute: number | null
+  groupsFounded: number
+  dissolutions: number
+  /** The living members of each group standing at the end. */
+  standingGroupSizes: number[]
+  /** For each group of two or more, its leading gatherer's share of the group's wood times the group's size. */
+  groupLeads: number[]
+  /** The day each forager had first seen every place, or null. */
+  allSeenDays: (number | null)[]
 }
 
 const runCache = new Map<string, ValleyRunResult>()
@@ -81,12 +92,19 @@ export function runValleyExperiment(overrides: Partial<ValleyConfig>, days = EXP
   const start = createValley(overrides)
   const checker = new ValleyChecker(start)
   let maxSpareWood = 0
+  let allGroupedMinute: number | null = null
   const end = runValley(start, days * MINUTES_PER_DAY, {
     recordEvents: false,
     stopWhenAllDead: true,
     onMinute(state) {
       checker.assert(state)
       for (const forager of state.foragers) maxSpareWood = Math.max(maxSpareWood, spareWood(state.config, forager))
+      if (
+        allGroupedMinute === null &&
+        state.config.groups &&
+        state.foragers.every((forager) => !forager.alive || forager.groupId !== null)
+      )
+        allGroupedMinute = state.minute - 1
     },
   })
   const n = end.foragers.length
@@ -125,6 +143,20 @@ export function runValleyExperiment(overrides: Partial<ValleyConfig>, days = EXP
   }
   const sumOf = (pick: (day: DaySummary) => number) => measured.reduce((total, day) => total + pick(day), 0)
   const firstSwap = end.totals.firstSwapMinute
+  // Without groups, the whole band counts as one group.
+  const memberships = end.config.groups ? end.groups.map((group) => group.members) : [end.foragers.map((f) => f.id)]
+  const groupLeads = memberships
+    .filter((members) => members.length >= 2)
+    .flatMap((members) => {
+      const wood = members.map((id) => gatheredWoodById[id]!)
+      const all = wood.reduce((a, b) => a + b, 0)
+      return all ? [(Math.max(...wood) / all) * members.length] : []
+    })
+  const places = placeCount(end.config)
+  const allSeenDays = end.foragers.map((forager) => {
+    const day = end.days.findIndex((summary) => summary.placesSeenById[forager.id] === places)
+    return day < 0 ? null : day
+  })
   const result: ValleyRunResult = {
     seed: end.config.seed,
     bandSize: n,
@@ -158,6 +190,15 @@ export function runValleyExperiment(overrides: Partial<ValleyConfig>, days = EXP
     woodRates: end.foragers.map((forager) => forager.woodRate),
     bushStockByDay: end.days.map((day) => day.bushStockKcal),
     fingerprint: fingerprintOf(end.days),
+    allGroupedMinute,
+    groupsFounded: end.groups.length,
+    dissolutions: end.groups.filter((group) => group.dissolvedMinute !== null).length,
+    standingGroupSizes: end.groups
+      .filter((group) => group.dissolvedMinute === null)
+      .map((group) => group.members.filter((id) => end.foragers[id]!.alive && end.foragers[id]!.groupId === group.id))
+      .map((living) => living.length),
+    groupLeads,
+    allSeenDays,
   }
   runCache.set(key, result)
   return result
@@ -242,16 +283,25 @@ export function summarizeRuns(runs: ValleyRunResult[]) {
     aliveByDay: Array.from({ length: Math.max(0, ...runs.map((run) => run.aliveByDay.length)) }, (_, day) =>
       mean(runs.map((run) => run.aliveByDay[day] ?? 0)),
     ),
+    groupLead: mean(runs.flatMap((run) => run.groupLeads)),
+    groupsFounded: mean(runs.map((run) => run.groupsFounded)),
+    dissolutions: sum((run) => run.dissolutions),
   }
 }
+
+/** Life 5's valley with `overrides`: the band around the camp that knows the valley, rests and swaps with anyone. */
+export const life5 = (overrides: Partial<ValleyConfig> = {}): Partial<ValleyConfig> => ({
+  ...LIFE5_VALLEY,
+  ...overrides,
+})
 
 /** Life 4's runs on the same seeds, from the hourly core, for comparison. */
 export const life4Row = (seeds: readonly number[], overrides: Partial<LifeConfig> = {}) =>
   specializationRow(seeds, overrides)
 
-/** Experiment 1: time at real scale, without swaps, beside Life 4. */
+/** Life 5's experiment 1: time at real scale, without swaps, beside Life 4. */
 export function timeAtRealScaleExperiment(seeds: readonly number[], days = EXPERIMENT_DAYS) {
-  const valley = valleyRow(seeds, { swapping: false }, days)
+  const valley = valleyRow(seeds, life5({ swapping: false }), days)
   const theory = valleyTheory(createValley().config)
   // The prediction, with the measured walking and gathering and the band's mean foraging rate at the end.
   const rates = valley.runs.flatMap((run) => run.forageRates)
@@ -263,15 +313,15 @@ export function timeAtRealScaleExperiment(seeds: readonly number[], days = EXPER
   }
 }
 
-/** Experiment 2: with no loads, no surplus and so no exchange, in a band born equal and in Life 3's band. */
+/** Life 5's experiment 2: with no loads, no surplus and so no exchange, in a band born equal and in Life 3's band. */
 export const noSurplusExperiment = (seeds: readonly number[], days = EXPERIMENT_DAYS) => ({
-  equal: valleyRow(seeds, { woodLoad: 0 }, days),
-  born: valleyRow(seeds, { ...LIFE3_BAND, woodLoad: 0 }, days),
+  equal: valleyRow(seeds, life5({ woodLoad: 0 }), days),
+  born: valleyRow(seeds, life5({ ...LIFE3_BAND, woodLoad: 0 }), days),
 })
 
 export const LOADS = [0, 20, 24, 26, 28, 30, 36, 40]
 
-/** Experiment 3: the two bands at each load, with swapping on: the band born equal and Life 3's band born unequal. */
+/** Life 5's experiment 3: the two bands at each load, with swapping on: born equal, and Life 3's band born unequal. */
 export const loadsExperiment = (
   seeds: readonly number[],
   loads: readonly number[] = LOADS,
@@ -280,20 +330,20 @@ export const loadsExperiment = (
 ) =>
   loads.map((woodLoad) => ({
     woodLoad,
-    equal: bands.includes('equal') ? valleyRow(seeds, { woodLoad }, days) : null,
-    born: bands.includes('born') ? valleyRow(seeds, { ...LIFE3_BAND, woodLoad }, days) : null,
+    equal: bands.includes('equal') ? valleyRow(seeds, life5({ woodLoad }), days) : null,
+    born: bands.includes('born') ? valleyRow(seeds, life5({ ...LIFE3_BAND, woodLoad }), days) : null,
   }))
 
-/** Experiment 4: Life 4's practice and exchange in the valley, with its counterfactuals, beside Life 4. */
+/** Life 5's experiment 4: Life 4's practice and exchange in the valley, with its counterfactuals, beside Life 4. */
 export function practiceAndExchangeExperiment(seeds: readonly number[]) {
-  const noSwaps = valleyRow(seeds, { swapping: false })
-  const noQuotes = valleyRow(seeds, { quotes: false })
+  const noSwaps = valleyRow(seeds, life5({ swapping: false }))
+  const noQuotes = valleyRow(seeds, life5({ quotes: false }))
   return {
-    swaps: valleyRow(seeds, {}),
+    swaps: valleyRow(seeds, life5()),
     noSwaps,
     noQuotes,
     noQuotesIdentical: noQuotes.runs.map((run, index) => run.fingerprint === noSwaps.runs[index]!.fingerprint),
-    noPractice: valleyRow(seeds, { practice: false }),
+    noPractice: valleyRow(seeds, life5({ practice: false })),
     life4: { swaps: life4Row(seeds), noSwaps: life4Row(seeds, { swapping: false }) },
   }
 }
@@ -301,7 +351,7 @@ export function practiceAndExchangeExperiment(seeds: readonly number[]) {
 export const BAND_SIZES = [8, 12, 16, 24, 32]
 export const LIFE4_BAND_SIZES = [8, 12, 16]
 
-/** Experiment 5: how many the valley feeds, beside Life 4's land. */
+/** Life 5's experiment 5: how many the valley feeds, beside Life 4's land. */
 export function capacityExperiment(
   seeds: readonly number[],
   sizes: readonly number[] = BAND_SIZES,
@@ -309,9 +359,77 @@ export function capacityExperiment(
 ) {
   const theory = valleyTheory(createValley().config)
   return {
-    valley: sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, { bandSize }) })),
+    valley: sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, life5({ bandSize })) })),
     life4: life4Sizes.map((bandSize) => ({ bandSize, row: life4Row(seeds, { bandSize }) })),
     /** K for a forager at 100% that gathers a night's wood a day and walks a tenth of an hour. */
     capacity: theory.carryingCapacity(theory.dailyNeedKcal(1_200, theory.gatherHoursPerDay(18), 0.1)),
   }
 }
+
+// Life 6's experiments, in the canonical valley: scattered foragers who know only what they have seen, explore, and
+// form groups when they meet.
+
+/** Life 6's experiment 1: groups from a scattered start. */
+export function groupsFromScatteredExperiment(seeds: readonly number[], days = EXPERIMENT_DAYS) {
+  const row = valleyRow(seeds, {}, days)
+  const groupCounts = row.runs.map((run) => run.standingGroupSizes.length)
+  return {
+    row,
+    allGroupedDays: row.runs.map((run) =>
+      run.allGroupedMinute === null ? null : (run.allGroupedMinute + 1) / MINUTES_PER_DAY,
+    ),
+    /** How many runs ended with 1, 2, 3, … groups. */
+    groupCounts: Object.fromEntries(
+      [...new Set(groupCounts)]
+        .sort((a, b) => a - b)
+        .map((count) => [count, groupCounts.filter((c) => c === count).length]),
+    ) as Record<number, number>,
+    mostGroups: valleyTheory(createValley().config).mostGroups(createValley().config.bandSize),
+  }
+}
+
+/** Life 6's experiment 2: knowing and exploring, with exploring off and with places worth exploring after 72 hours. */
+export function knowingExperiment(seeds: readonly number[], days = EXPERIMENT_DAYS) {
+  const explore = valleyRow(seeds, {}, days)
+  const theory = valleyTheory(createValley().config)
+  const rates = explore.runs.flatMap((run) => run.forageRates)
+  const predictedForageHours = theory.forageHoursPerDay(mean(rates), explore.gatherHoursPerDay, explore.walkHoursPerDay)
+  return {
+    explore,
+    noExplore: valleyRow(seeds, { explore: false }, days),
+    slowExplore: valleyRow(seeds, { exploreAfterHours: 72 }, days),
+    predictedWorkHours: predictedForageHours + explore.gatherHoursPerDay,
+    sweepHours: theory.sweepHours,
+    sweepCostKcal: theory.sweepCostKcal,
+  }
+}
+
+export const EXCHANGE_ROWS = ['groups', 'together', 'strangers', 'life5'] as const
+
+/**
+ * Life 6's experiment 3: groups and exchange, against one group from the start, strangers who may swap with anyone,
+ * and Life 5. Only the rows asked for are run.
+ */
+export function groupsAndExchangeExperiment(
+  seeds: readonly number[],
+  rows: readonly (typeof EXCHANGE_ROWS)[number][] = EXCHANGE_ROWS,
+  days = EXPERIMENT_DAYS,
+) {
+  const overrides = { groups: {}, together: { scattered: false }, strangers: { groups: false }, life5: life5() }
+  return Object.fromEntries(rows.map((row) => [row, valleyRow(seeds, overrides[row], days)])) as Partial<
+    Record<(typeof EXCHANGE_ROWS)[number], ReturnType<typeof valleyRow>>
+  >
+}
+
+export const LIFE6_BAND_SIZES = [8, 12, 16]
+
+/** Life 6's experiment 5: how many the valley feeds with groups and exploring, beside Life 5 unless told not to. */
+export const groupsCapacityExperiment = (
+  seeds: readonly number[],
+  sizes: readonly number[] = LIFE6_BAND_SIZES,
+  days = EXPERIMENT_DAYS,
+  beside = true,
+) => ({
+  groups: sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, { bandSize }, days) })),
+  life5: beside ? sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, life5({ bandSize }), days) })) : [],
+})

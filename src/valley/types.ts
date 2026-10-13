@@ -3,7 +3,7 @@ import type { FoodLot } from '../life/types'
 export type { FoodLot }
 
 /**
- * Life 5's configuration. Lengths are whole centimetres, food and energy whole kilocalories, and wood whole kilograms,
+ * Life 5's configuration, with Life 6's groups, scattered starts and exploring. Lengths are whole centimetres, food and energy whole kilocalories, and wood whole kilograms,
  * so every balance is exact. Rates and costs stay per hour; a forager pays or takes them second by second.
  */
 export interface ValleyConfig {
@@ -82,6 +82,20 @@ export interface ValleyConfig {
   practiceMinPercent: number
   practiceMaxPercent: number
   startPracticeHoursPerDay: number
+  /** Foragers without a group seek company, form groups when they meet, and swap only within their group. */
+  groups: boolean
+  /** Foragers start at scattered points, each its own hearth, rather than on a spiral around the camp. */
+  scattered: boolean
+  /** Foragers whose needs are met explore places they have not seen for `exploreAfterHours`. */
+  explore: boolean
+  /** Foragers start having seen every plant and place, as in Life 5. */
+  knowValley: boolean
+  /** Scattered starts lie at least this far apart. */
+  startSpacingCm: number
+  /** The valley is divided into square places this wide, which a forager remembers having seen. */
+  placeCm: number
+  /** A place not seen for this many hours is worth exploring again. */
+  exploreAfterHours: number
 }
 
 export interface Point {
@@ -113,13 +127,23 @@ export interface ValleyLayout {
   stands: Point[]
   bushes: Plants
   trees: Plants
-  /** Indexed by forager ID. */
+  /** Each forager's starting hearth, by forager ID. A forager's hearth moves when it joins a group. */
   hearths: Point[]
   bushIndex: PlantIndex
   treeIndex: PlantIndex
 }
 
 export type Good = 'food' | 'wood'
+
+/** A group: its flag, when it was founded and dissolved, and its members in order of joining. */
+export interface Group {
+  id: number
+  flag: Point
+  foundedMinute: number
+  dissolvedMinute: number | null
+  /** Every forager that ever joined, in order of joining; slot `i` of the spiral around the flag went to `members[i]`. */
+  members: number[]
+}
 
 export interface HeardTerms {
   kcalPerWood: number
@@ -196,6 +220,17 @@ export interface Forager {
   fireHour: number
   warm: boolean
   swapTotals: SwapTotals
+  /** Its group, or null if it has none, and the minute it joined or founded it. */
+  groupId: number | null
+  joinedMinute: number | null
+  /** For each place, the last minute it lay wholly in view, or −1 if never. */
+  placeSeen: Int32Array
+  /** How many places it has ever seen. */
+  placesSeen: number
+  /** The groups whose flags it has seen and not since found gone. */
+  knownFlags: number[]
+  /** The place it is walking to explore or search, if any. */
+  exploreTarget: number | null
 }
 
 export type ForagerAction = 'sleep' | 'rest' | 'walk' | 'forage' | 'gather'
@@ -212,6 +247,10 @@ export type ActionReason =
   | 'gathering'
   | 'seeking food'
   | 'seeking wood'
+  | 'seeking company'
+  | 'waiting for company'
+  | 'exploring'
+  | 'searching'
 
 /** One forager's minute. Its seconds add up to 60. */
 export interface ActionEvent {
@@ -246,6 +285,10 @@ export interface ActionEvent {
   burnedWood: number
   /** Asleep in a cold hour this minute. */
   sleptCold: boolean
+  /** Its group at the end of its turn. */
+  groupId: number | null
+  /** The place it walked towards to explore, search or seek company, if any. */
+  placeId: number | null
 }
 
 export interface DeathEvent {
@@ -293,7 +336,38 @@ export interface PracticeEvent {
   woodRate: number
 }
 
-export type ValleyEvent = ActionEvent | DeathEvent | SwapEvent | QuoteEvent | PracticeEvent
+/** Two foragers without a group met and founded one, the forager whose turn it was first. */
+export interface FoundEvent {
+  kind: 'found'
+  minute: number
+  groupId: number
+  flag: Point
+  founderIds: [number, number]
+  hearths: [Point, Point]
+}
+
+/** A forager without a group met a member and joined its group. */
+export interface JoinEvent {
+  kind: 'join'
+  minute: number
+  groupId: number
+  foragerId: number
+  /** The member it met. */
+  metId: number
+  hearth: Point
+}
+
+/** A group left with one living member dissolved after a death. */
+export interface DissolveEvent {
+  kind: 'dissolve'
+  minute: number
+  groupId: number
+  survivorId: number | null
+}
+
+export type GroupEvent = FoundEvent | JoinEvent | DissolveEvent
+
+export type ValleyEvent = ActionEvent | DeathEvent | SwapEvent | QuoteEvent | PracticeEvent | GroupEvent
 
 /** Seconds spent on each kind of time, summed over the band. */
 export interface ActionSeconds {
@@ -334,6 +408,14 @@ export interface DaySummary {
   gatherSecondsById: number[]
   walkSecondsById: number[]
   gatheredWoodById: number[]
+  /** Groups standing and foragers alive without a group at the end of the day. */
+  groupsStanding: number
+  loners: number
+  foundings: number
+  joinings: number
+  dissolutions: number
+  /** Every forager's count of places ever seen, at the end of the day. */
+  placesSeenById: number[]
 }
 
 export interface ValleyTotals {
@@ -362,6 +444,8 @@ export interface ValleyState {
   bushKcal: Int32Array
   treeWood: Int32Array
   foragers: Forager[]
+  /** Every group ever founded, by ID. */
+  groups: Group[]
   totals: ValleyTotals
   /** The actions of the last minute run, in turn order. */
   lastEvents: ActionEvent[]
@@ -370,6 +454,8 @@ export interface ValleyState {
   lastPractice: PracticeEvent[]
   /** The deaths of the last minute run. */
   lastDeaths: DeathEvent[]
+  /** The foundings, joinings and dissolutions of the last minute run. */
+  lastGroupEvents: GroupEvent[]
   /** Recent events, one array per day, oldest first, at most `EVENT_HISTORY_DAYS` days. */
   eventDays: ValleyEvent[][]
   days: DaySummary[]

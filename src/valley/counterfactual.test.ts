@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { valleyRow, valleySeeds } from './experiments'
+import { life5, valleyRow, valleySeeds } from './experiments'
 
 const seeds = valleySeeds(8)
 // Both expectations hold at every horizon, so 100 days suffice.
 const DAYS = 100
 
 describe('Life 5 experiment 4: the counterfactuals', () => {
-  const noQuotes = valleyRow(seeds, { quotes: false }, DAYS)
-  const noSwaps = valleyRow(seeds, { swapping: false }, DAYS)
-  const noPractice = valleyRow(seeds, { practice: false }, DAYS)
+  const noQuotes = valleyRow(seeds, life5({ quotes: false }), DAYS)
+  const noSwaps = valleyRow(seeds, life5({ swapping: false }), DAYS)
+  const noPractice = valleyRow(seeds, life5({ practice: false }), DAYS)
 
   it('swaps nothing without telling terms, day for day the same as without swapping', () => {
     expect(noQuotes.swapsPerRun).toBe(0)

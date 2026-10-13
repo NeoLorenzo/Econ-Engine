@@ -7,7 +7,7 @@ import { VALLEY_DEFAULT_CONFIG, valleyConfigErrors } from '../valley/config'
 import { createValley, runValley, stepValley } from '../valley/engine'
 import { layoutError } from '../valley/layout'
 import type { ValleyConfig } from '../valley/types'
-import { createValleyScene, type ValleyPick, type ValleyPlant, type ValleyScene } from './valleyScene'
+import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
 import {
   advanceClock,
   aliveCount,
@@ -18,11 +18,15 @@ import {
   displayedEnergy,
   displayMinutes,
   fireSaving,
+  flagInspection,
   foragerColor,
   foragerName,
   foragerSummary,
   formatKcal,
+  formatHours,
   formatMinutes,
+  groupColor,
+  groupName,
   ownTermsByDay,
   plantInspection,
   specializationPoints,
@@ -43,8 +47,9 @@ type NumericSetup = Pick<
   | 'practiceHalfHours'
   | 'practiceMinPercent'
   | 'practiceMaxPercent'
+  | 'exploreAfterHours'
 >
-type SwitchKey = 'swapping' | 'quotes' | 'practice'
+type SwitchKey = 'groups' | 'scattered' | 'explore' | 'knowValley' | 'swapping' | 'quotes' | 'practice'
 type Setup = NumericSetup & Pick<ValleyConfig, SwitchKey>
 
 const SETUP_FIELDS: { key: keyof NumericSetup; label: string }[] = [
@@ -57,9 +62,14 @@ const SETUP_FIELDS: { key: keyof NumericSetup; label: string }[] = [
   { key: 'practiceHalfHours', label: 'Half way, h' },
   { key: 'practiceMinPercent', label: 'Practice from, %' },
   { key: 'practiceMaxPercent', label: 'Practice to, %' },
+  { key: 'exploreAfterHours', label: 'Explore after, h' },
 ]
 
 const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
+  { key: 'groups', label: 'Groups' },
+  { key: 'scattered', label: 'Start scattered' },
+  { key: 'explore', label: 'Explore' },
+  { key: 'knowValley', label: 'Know the valley' },
   { key: 'practice', label: 'Practice' },
   { key: 'swapping', label: 'Swapping' },
   { key: 'quotes', label: 'Telling terms' },
@@ -99,16 +109,14 @@ export default function ValleyApp() {
   const pairRef = useRef<DisplayPair>(initialPair)
   const [running, setRunning] = useState(true)
   const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX)
-  const [selected, setSelected] = useState<ValleyPlant | null>(null)
+  const [selected, setSelected] = useState<ValleySelection | null>(null)
   const [followedId, setFollowedId] = useState(0)
   const [following, setFollowing] = useState(true)
   const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP)
   const [draft, setDraft] = useState<Record<keyof NumericSetup, string>>(() => stringify(DEFAULT_SETUP))
-  const [switches, setSwitches] = useState<Pick<Setup, SwitchKey>>({
-    practice: DEFAULT_SETUP.practice,
-    swapping: DEFAULT_SETUP.swapping,
-    quotes: DEFAULT_SETUP.quotes,
-  })
+  const [switches, setSwitches] = useState<Pick<Setup, SwitchKey>>(
+    () => Object.fromEntries(SETUP_SWITCHES.map(({ key }) => [key, DEFAULT_SETUP[key]])) as Pick<Setup, SwitchKey>,
+  )
   const [setupError, setSetupError] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0, true))
   const [sceneError, setSceneError] = useState(false)
@@ -257,7 +265,9 @@ export default function ValleyApp() {
   const { config } = state
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
-  const plant = selected ? plantInspection(state, selected.kind, selected.id, followed) : null
+  const plant =
+    selected && selected.kind !== 'flag' ? plantInspection(state, selected.kind, selected.id, followed) : null
+  const flag = selected?.kind === 'flag' ? flagInspection(state, selected.id) : null
   const summary = foragerSummary(state, followed)
   const fire = fireSaving(config)
   const days = daySeries(state, followed)
@@ -274,10 +284,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 5 · real scale</span>
-        <a className="valley-link" href="./life4.html" title="The hourly Life 4, on its tiles">
-          Life 4
-        </a>
+        <span className="life-title">Life 6 · groups</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -383,6 +390,30 @@ export default function ValleyApp() {
           </div>
         </div>
         <dl className="life-food">
+          {config.groups && (
+            <>
+              <dt>Group</dt>
+              <dd>
+                {summary.groupId === null ? (
+                  'none yet, looking for company'
+                ) : (
+                  <>
+                    <span
+                      className="life-strategy-dot"
+                      aria-hidden="true"
+                      style={{ background: groupColor(summary.groupId) }}
+                    />
+                    {groupName(summary.groupId)}
+                    {summary.joinedMinutesAgo !== null &&
+                      `, joined ${summary.joinedMinutesAgo ? `${formatMinutes(summary.joinedMinutesAgo)} ago` : 'this minute'}`}
+                    {summary.fellows.length > 0 && ` with ${summary.fellows.join(', ')}`}
+                  </>
+                )}
+              </dd>
+            </>
+          )}
+          <dt>Has seen</dt>
+          <dd className="num">{Math.round(summary.seenShare * 100)}% of the valley</dd>
           <dt>Skills</dt>
           <dd className="num">
             {formatKcal(summary.forageRate)}/h{formatChange(summary.forageRateChange)} · {summary.woodRate} kg/h
@@ -459,15 +490,49 @@ export default function ValleyApp() {
             </dd>
             <dt>{name} remembers</dt>
             <dd className="num">
-              {selected!.kind === 'bush' ? formatKcal(plant.remembered) : formatKg(plant.remembered)}
+              {plant.remembered === null
+                ? 'nothing'
+                : selected!.kind === 'bush'
+                  ? formatKcal(plant.remembered)
+                  : formatKg(plant.remembered)}
             </dd>
             <dt>Last seen</dt>
             <dd>{plant.seen}</dd>
           </dl>
           <p className="life-note">
-            {plant.difference === 0
-              ? 'Its memory is up to date.'
-              : `It knows only what it last saw, so it ${plant.difference > 0 ? 'underestimates' : 'overestimates'} this ${selected!.kind} by ${selected!.kind === 'bush' ? formatKcal(Math.abs(plant.difference)) : formatKg(Math.abs(plant.difference))}.`}
+            {plant.remembered === null
+              ? `${name} has never seen this ${selected!.kind}, so it does not know it is here.`
+              : plant.difference === 0
+                ? 'Its memory is up to date.'
+                : `It knows only what it last saw, so it ${plant.difference > 0 ? 'underestimates' : 'overestimates'} this ${selected!.kind} by ${selected!.kind === 'bush' ? formatKcal(Math.abs(plant.difference)) : formatKg(Math.abs(plant.difference))}.`}
+          </p>
+        </section>
+      )}
+
+      {flag && (
+        <section className="life-card life-inspector" aria-label={flag.name}>
+          <header>
+            <h2>
+              <span className="life-strategy-dot" aria-hidden="true" style={{ background: flag.color }} />
+              {flag.name}
+            </h2>
+            <button type="button" className="icon-button" aria-label="Close" onClick={() => setSelected(null)}>
+              <Icon name="close" />
+            </button>
+          </header>
+          <dl>
+            <dt>Founded</dt>
+            <dd className="num">
+              {flag.foundedAgo ? `${formatMinutes(flag.foundedAgo)} ago` : 'this minute'}, on day{' '}
+              {Math.floor(flag.founded / 1_440) + 1}
+            </dd>
+            <dt>Members</dt>
+            <dd>{flag.members.length ? flag.members.join(', ') : 'none alive'}</dd>
+          </dl>
+          <p className="life-note">
+            {flag.dissolved
+              ? 'The group dissolved when only one of its members was left alive, and its flag came down.'
+              : `Its members sleep at their hearths around this flag and swap only with each other. ${flag.joinedEver} have joined it.`}
           </p>
         </section>
       )}
@@ -500,6 +565,18 @@ export default function ValleyApp() {
                   { key: 'alive', name: 'Alive', color: palette.household },
                 ]}
               />
+              {config.groups && (
+                <TimeChart
+                  data={days}
+                  height={90}
+                  format={(value) => String(Math.round(value))}
+                  domain={[0, 'auto']}
+                  series={[
+                    { key: 'groups', name: 'Groups', color: palette.accent },
+                    { key: 'loners', name: 'Without a group', color: palette.firmA, dashed: true },
+                  ]}
+                />
+              )}
               <TimeChart
                 data={days}
                 height={110}
@@ -542,8 +619,17 @@ export default function ValleyApp() {
             </p>
           )}
           <p className="life-note">
-            Running seed {setup.seed}: {setup.bandSize} foragers in a valley {config.valleySizeCm / 100} m across, born
-            with skills{' '}
+            Running seed {setup.seed}: {setup.bandSize} foragers in a valley {config.valleySizeCm / 100} m across,{' '}
+            {setup.scattered ? 'who start scattered' : 'who start around the meadow in the middle'},{' '}
+            {setup.knowValley ? 'knowing the whole valley' : 'knowing only what they have seen'}, and{' '}
+            {setup.explore
+              ? `explore places they have not seen for ${formatHours(setup.exploreAfterHours)} when their needs are met`
+              : 'rest when their needs are met'}
+            .{' '}
+            {setup.groups
+              ? 'Those without a group look for company: two who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their flag and swap only with each other.'
+              : 'There are no groups: anyone may swap with anyone they meet.'}{' '}
+            They are born with skills{' '}
             {setup.skillMinPercent === setup.skillMaxPercent
               ? `of ${setup.skillMinPercent}%`
               : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
@@ -553,12 +639,14 @@ export default function ValleyApp() {
             . They pick berries bush by bush, gather deadwood under the trees and bring it home in loads of{' '}
             {formatKg(setup.woodLoad)}, and{' '}
             {setup.swapping
-              ? `swap wood for food when they meet${setup.quotes ? ', telling each other their terms' : ', without telling terms'}`
+              ? `swap wood for food${setup.quotes ? ', telling each other their terms' : ', without telling terms'}`
               : 'never swap'}
             . Each is coloured by what wood costs it, from{' '}
             <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
-            <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>. Drag to pan, scroll or
-            pinch to zoom, right-drag or Q and E to turn; click a person to follow them.
+            <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a band in its
+            group’s colour. Ground the followed person has never seen is darkest, and ground it has not seen lately a
+            little dark. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to follow
+            them, and a bush, tree or flag to inspect it.
           </p>
         </details>
       </section>

@@ -1,8 +1,9 @@
 import type { ValleyConfig } from './types'
 
 /**
- * The canonical Life 5 valley: 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees, which together grow
- * exactly what Life 4's land grew, and Life 4's band of 8 born alike, who bring firewood home in loads of 30 kg.
+ * The canonical Life 6 valley: Life 5's valley, 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees,
+ * which together grow exactly what Life 4's land grew, and Life 4's band of 8 born alike, who bring firewood home in
+ * loads of 30 kg. They start scattered, know only what they have seen, explore, and form groups when they meet.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
@@ -58,12 +59,27 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   practiceMinPercent: 50,
   practiceMaxPercent: 150,
   startPracticeHoursPerDay: 2,
+  groups: true,
+  scattered: true,
+  explore: true,
+  knowValley: false,
+  startSpacingCm: 5_000,
+  placeCm: 3_000,
+  exploreAfterHours: 24,
+}
+
+/** Life 5's valley: the band starts around the camp knowing the whole valley, rests when idle and swaps with anyone. */
+export const LIFE5_VALLEY: Partial<ValleyConfig> = {
+  groups: false,
+  scattered: false,
+  explore: false,
+  knowValley: true,
 }
 
 /** Life 3's band in the valley: born skills from half to one and a half times the usual, and no practice. */
 export const LIFE3_BAND: Partial<ValleyConfig> = { skillMinPercent: 50, skillMaxPercent: 150, practice: false }
 
-const BOOLEAN_KEYS = new Set(['swapping', 'quotes', 'practice'])
+const BOOLEAN_KEYS = new Set(['swapping', 'quotes', 'practice', 'groups', 'scattered', 'explore', 'knowValley'])
 
 /** The points of the square spiral around the camp: the 8 of the first ring, then the 16 of the second, and so on. */
 export function spiralOffsets(count: number) {
@@ -110,6 +126,9 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'woodStockNights',
     'practiceDays',
     'practiceHalfHours',
+    'startSpacingCm',
+    'placeCm',
+    'exploreAfterHours',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
@@ -164,11 +183,17 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     if (Math.ceil(highest(config.woodPerHour) / 60) > config.treeCapacityWood)
       errors.push('A tree must hold a minute of gathering at the fastest rate')
   }
-  // The band's hearths must lie in the camp's clearing, clear of every plant.
-  const [outerX, outerY] = spiralOffsets(config.bandSize).at(-1)!
-  const outer = Math.max(Math.abs(outerX), Math.abs(outerY)) * config.hearthSpacingCm
-  const clear = config.campClearingCm - Math.max(config.thicketRadiusCm, config.standRadiusCm)
-  if (2 * outer * outer > clear * clear) errors.push('The band’s hearths must fit inside the camp’s clearing')
+  // A band that starts around the camp must have its hearths in the camp's clearing, clear of every plant.
+  if (!config.scattered) {
+    const [outerX, outerY] = spiralOffsets(config.bandSize).at(-1)!
+    const outer = Math.max(Math.abs(outerX), Math.abs(outerY)) * config.hearthSpacingCm
+    const clear = config.campClearingCm - Math.max(config.thicketRadiusCm, config.standRadiusCm)
+    if (2 * outer * outer > clear * clear) errors.push('The band’s hearths must fit inside the camp’s clearing')
+    if (config.groups && config.bandSize < 2) errors.push('A band that starts as one group needs at least two foragers')
+  }
+  // Standing at a place's centre must show all of it, or exploring could never see it.
+  if (config.placeCm ** 2 > 2 * config.perceptionRadiusCm ** 2)
+    errors.push('A place must fit in a forager’s view: placeCm² ≤ 2 · perceptionRadiusCm²')
   if (2 * config.siteMarginCm >= config.valleySizeCm) errors.push('siteMarginCm must leave room for sites')
   return errors
 }
