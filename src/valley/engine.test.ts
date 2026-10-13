@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { takeOldest } from '../life/food'
+import { LIFE5_VALLEY } from './config'
 import { cloneValley, createValley, eatCarried, lastEventOf, runValley, stepValley } from './engine'
 import { choosePlant } from './forager'
 import { distance } from './geometry'
@@ -7,9 +8,9 @@ import { ValleyChecker } from './invariants'
 import { swap } from './trade'
 import type { Forager, ValleyState } from './types'
 
-/** A copy of the canonical valley at minute `minute`, with forager 0 changed by `change`. */
+/** A copy of Life 5's valley at minute `minute`, with forager 0 changed by `change`. */
 function valleyAt(minute: number, change: (forager: Forager, state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley())
+  const state = cloneValley(createValley(LIFE5_VALLEY))
   state.minute = minute
   change(state.foragers[0]!, state)
   return state

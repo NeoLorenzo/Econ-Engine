@@ -4,8 +4,8 @@
 
 The repository holds two simulation cores:
 
-- **The valley core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is the Life core at real scale, from Life 5, built bottom-up, one step at a time, following the ladder in [docs/MERGE.md](docs/MERGE.md#the-ladder).
-- **The hourly Life core** (`src/life/`, observer in `src/lifeView/` and `life4.html`) holds Life 0 to Life 4. It is frozen as a reference, like MVP9; change it only if explicitly asked, keeping its trajectories bit for bit.
+- **The valley core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is the Life core at real scale, from Life 5, built bottom-up, one step at a time, following the ladder in [docs/MERGE.md](docs/MERGE.md#the-ladder). Only the current Life step has a page.
+- **The hourly Life core** (`src/life/`) holds Life 0 to Life 4. It is frozen as a reference, like MVP9, and runs only in tests and in the valley's comparison experiments; its page was removed in Life 6, and only the parts of `src/lifeView/` the valley's observer uses remain. Change it only if explicitly asked, keeping its trajectories bit for bit.
 - **The MVP9 core** (`src/sim/`, observer in `src/App.tsx` and `src/ui/`) is frozen as a reference. Do not change it unless explicitly asked; any change must keep its canonical trajectory bit-for-bit.
 
 Before starting Life work, read:

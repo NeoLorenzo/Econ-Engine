@@ -114,7 +114,8 @@ export function mustGoHome(config: ValleyConfig, forager: Forager, minute: numbe
 /**
  * The plant a forager working for `good` heads for or works this minute: its target, unless it has just seen it
  * holding less than a minute's work or cannot reach it in time; otherwise the nearest plant remembered as holding a
- * minute's work; otherwise the one seen longest ago. Only plants it can reach in time are considered.
+ * minute's work; otherwise, with `fallback`, the one seen longest ago. Only plants it has seen and can reach in time
+ * are considered.
  */
 export function choosePlant(
   config: ValleyConfig,
@@ -122,6 +123,7 @@ export function choosePlant(
   forager: Forager,
   good: Good,
   minute: number,
+  fallback = true,
 ): number | null {
   const plants = good === 'food' ? layout.bushes : layout.trees
   const index = good === 'food' ? layout.bushIndex : layout.treeIndex
@@ -139,13 +141,13 @@ export function choosePlant(
     forager.y,
     (id) => memory.stock[id]! >= threshold && reachable(id),
   )
-  if (nearest !== null) return nearest
+  if (nearest !== null || !fallback) return nearest
   let chosen: number | null = null
   let chosenSeen = Infinity
   let chosenSq = Infinity
   for (let id = 0; id < plants.count; id += 1) {
     const seen = memory.seen[id]!
-    if (seen === minute || seen > chosenSeen) continue
+    if (seen < 0 || seen === minute || seen > chosenSeen) continue
     const sq = distanceSq(plants.x[id]!, plants.y[id]!, forager.x, forager.y)
     if (seen === chosenSeen && sq >= chosenSq) continue
     if (!reachable(id)) continue

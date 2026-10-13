@@ -2,6 +2,40 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE6-Groups-036] - (2026-10-13)
+
+### Added
+
+- **Life 6, groups.** The valley core in `src/valley/` implements the [Life 6 specification](docs/LIFE6_SPEC.md):
+  - there is no camp: foragers start scattered across the valley, at least 50 m apart, each at its own hearth, and know only what they have seen;
+  - the valley is divided into 400 places 30 m wide; a forager remembers when each lay wholly in its view, and whose needs are met explores the nearest place it has not seen for a day;
+  - a forager that remembers no bush or tree worth a minute's work searches ground it has never seen before going back to plants it found bare;
+  - a forager without a group seeks company, below hunger and warmth and above exploring and resting: it walks towards anyone it sees, or to a flag it knows and waits there, or explores;
+  - two foragers without a group who come within talking distance found a group and plant its flag at their midpoint; one that meets a member joins its group; members never leave or change group, and their hearths move onto a spiral 3 m apart around the flag;
+  - members swap and tell terms only with each other; a forager without a group neither swaps nor hears terms;
+  - a group left with one living member dissolves, its flag comes down, and the survivor keeps its hearth and seeks company again.
+
+  Four switches, `groups`, `scattered`, `explore` and `knowValley`, turn each change off. With all four set as `LIFE5_VALLEY` gives, the valley runs exactly as Life 5, which a test checks against fingerprints recorded from Life 5's code. Life 5's experiments and tests run with those settings.
+- **Invariants.** The checker also checks places marked seen against what lay in view, walks to places worth exploring or searching, memories of plants never seen, how every founding and joining met the nearest forager within talking distance, flags at the founders' midpoint, groups that stand with two or more living members, hearths on their slots around the flag, no change of group without meeting or dissolving, no forager without a group left beside another, and swaps, quotes and terms only within a group.
+- **Theory.** The most groups a band can hold, and what a daily sweep of the valley costs in walking.
+- **Experiments.** Groups from a scattered start; knowing and exploring, with exploring off and every 72 hours; groups and exchange, against one group from the start, strangers who may swap with anyone, and Life 5; Life 5 as a special case; and how many the valley feeds with groups and exploring.
+- **The observer for groups.** `life.html` shows Life 6: a flag in its group's colour at each group's base, raised when the group is founded and taken down when it dissolves; each forager's hearth where it sleeps, moving to the flag when it joins; a band across each member's chest in its group's colour; ground the followed forager has never seen drawn darkest, and ground it has not seen for a day a little dark; the followed forager's group, fellows and share of the valley seen in the HUD; a flag inspector; a chart of groups and foragers without one; and switches for the four changes and the hours before a place is worth exploring again.
+
+### Changed
+
+- The camp's fire is gone; the clearing in the middle of the valley stays as an open meadow, so plants stand where Life 5 put them on the same seed.
+- **Only the current life is visible.** `life4.html`, its build entry, the link to it, and `src/lifeView`'s page and scene are removed. The hourly core in `src/life/` and its tests stay, and Life 5's experiments still run Life 4 beside the valley. The MVP9 top bar's link reads "Life 6".
+- The merge document's ladder inserts step 6, "Groups", and step 7, "A shared fire"; tools and shelter become step 8 and later steps move down by two. `AGENTS.md` no longer mentions the Life 4 page.
+
+### Validation
+
+- **Groups:** on 32 seeds every forager is in a group within 1.31 days; the band forms one group in 6 runs, two in 19, three in 6 and four in 1, and none dissolves.
+- **Exploring:** foragers walk 2.58 hours a day and work 3.09, against 0.11 and 2.69 without exploring; bands of 8 and 12 are intact at day 400.
+- **Exchange:** members of scattered groups buy 12.4% of the wood they burn and their leading gatherer brings in 1.27 times a fair share, against 18.5% and 1.56 in a band that starts as one group; the more groups a band forms, the less it buys.
+- **Capacity:** a band of 16 falls to 2.4 survivors, against 5.4 in Life 5, with groups dissolving and survivors regrouping.
+- **Life 5 reproduced:** with Life 6's switches off, six runs match Life 5's recorded fingerprints day for day.
+- Nothing under `src/sim/` or `src/life/` changed, so MVP9 and Life 0 to Life 4 keep their trajectories. `npm run agent:check` passes; the tests take about five minutes. In the browser, a band founding Group A and sleeping round its flag, a member's band, the shaded ground, the flag inspector, the HUD, the charts, the whole-valley view and the 375px layout were checked by stepping the page, with no console errors after Vite's first load.
+
 ## [LIFE5-RealScale-035] - (2026-10-12)
 
 ### Added

@@ -6,8 +6,8 @@ export default defineConfig({
   base: './',
   build: {
     rollupOptions: {
-      // The MVP9 observer, the Life 5 valley and the hourly Life 4 are separate pages, relative to the project root.
-      input: { main: 'index.html', life: 'life.html', life4: 'life4.html' },
+      // The MVP9 observer and the Life 6 valley are separate pages, relative to the project root.
+      input: { main: 'index.html', life: 'life.html' },
     },
   },
   test: {

@@ -55,12 +55,37 @@ describe('valley configuration', () => {
     )
   })
 
-  it('refuses a band whose hearths would not fit in the camp’s clearing', () => {
-    expect(errorsWith({ bandSize: 200 })).toContain('The band’s hearths must fit inside the camp’s clearing')
+  it('refuses a band around the camp whose hearths would not fit in the camp’s clearing', () => {
+    expect(errorsWith({ scattered: false, bandSize: 200 })).toContain(
+      'The band’s hearths must fit inside the camp’s clearing',
+    )
+    expect(errorsWith({ bandSize: 200 })).not.toContain('The band’s hearths must fit inside the camp’s clearing')
   })
 
-  it('refuses a layout that cannot be drawn', () => {
+  it('refuses a band of one that starts as one group', () => {
+    expect(errorsWith({ scattered: false, bandSize: 1 })).toContain(
+      'A band that starts as one group needs at least two foragers',
+    )
+    expect(errorsWith({ bandSize: 1 })).toEqual([])
+  })
+
+  it('refuses Life 6’s switches that are not booleans, and sizes that are not positive', () => {
+    expect(errorsWith({ groups: 'yes' as unknown as boolean })).toContain('groups must be true or false')
+    expect(errorsWith({ knowValley: 0 as unknown as boolean })).toContain('knowValley must be true or false')
+    expect(errorsWith({ startSpacingCm: 0 })).toContain('startSpacingCm must be positive')
+    expect(errorsWith({ exploreAfterHours: 0 })).toContain('exploreAfterHours must be positive')
+  })
+
+  it('refuses places too large to see whole from their centre', () => {
+    expect(errorsWith({ placeCm: 3_536 })).toContain(
+      'A place must fit in a forager’s view: placeCm² ≤ 2 · perceptionRadiusCm²',
+    )
+    expect(errorsWith({ placeCm: 3_535 })).toEqual([])
+  })
+
+  it('refuses a layout that cannot be drawn, or starts that cannot be placed', () => {
     expect(() => createValley({ valleySizeCm: 20_000, thicketCount: 40 })).toThrow('cannot all be placed')
+    expect(() => createValley({ bandSize: 200 })).toThrow('The foragers’ starts cannot all be placed')
   })
 
   it('lays hearths on a square spiral, ring by ring', () => {

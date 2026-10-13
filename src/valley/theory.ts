@@ -1,3 +1,4 @@
+import { placeCount } from './social'
 import { nightHours, nightWood, woodTarget } from './trade'
 import type { ValleyConfig } from './types'
 
@@ -27,6 +28,8 @@ export function valleyTheory(config: ValleyConfig) {
   const maxSpareAfterTrip = Math.max(0, nightWood(config) - 1 + config.woodLoad - woodTarget(config))
   /** Loads no larger than this can never leave a forager with spare wood, so nothing is ever swapped or quoted. */
   const largestLoadWithoutSurplus = woodTarget(config) - nightWood(config) + 1
+  /** Hours to walk from place centre to place centre across the whole valley once, about `placeCm` per place. */
+  const sweepHours = (placeCount(config) * config.placeCm) / config.walkCmPerSecond / 3_600
   return {
     nightHours: night,
     daylightHours: daylight,
@@ -46,5 +49,10 @@ export function valleyTheory(config: ValleyConfig) {
      * out to: with a load of at most `largestLoadWithoutSurplus`, no surplus, no quote and no swap is possible.
      */
     noSurplus: (fastestWoodRate: number) => fastestWoodRate <= 60 && config.woodLoad <= largestLoadWithoutSurplus,
+    /** Every standing group has at least two living members, so at most this many stand among `living` foragers. */
+    mostGroups: (living: number) => Math.floor(living / 2),
+    sweepHours,
+    /** What walking instead of resting costs over a sweep of the valley. */
+    sweepCostKcal: sweepHours * travelDelta,
   }
 }

@@ -6,12 +6,15 @@ import type { PlantIndex, Plants, Point, ValleyConfig, ValleyLayout } from './ty
 const LAYOUT_STREAM_SALT = 0x5641_4c4c
 const SKILL_STREAM_SALT = 0x534b_494c
 const TURN_ORDER_STREAM_SALT = 0x5455_524e
+const START_STREAM_SALT = 0x5354_5254
 
 /** A site or plant that has not found a place after this many draws makes the layout impossible. */
 export const PLACEMENT_DRAWS = 10_000
 
 export const deriveLayoutSeed = (seed: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ LAYOUT_STREAM_SALT) >>> 0))
+
+export const deriveStartSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ START_STREAM_SALT) >>> 0))
 
 export const deriveSkillSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ SKILL_STREAM_SALT) >>> 0))
 
@@ -70,6 +73,25 @@ class Draws {
   }
 }
 
+/**
+ * Scattered starts, from a stream of their own so the plants stand where Life 5 put them: points drawn uniformly over
+ * the valley in forager ID order, each at least `startSpacingCm` from the earlier ones.
+ */
+export function drawStarts(config: ValleyConfig): Point[] {
+  const draws = new Draws(deriveStartSeed(config.seed))
+  const starts: Point[] = []
+  let failed = 0
+  while (starts.length < config.bandSize) {
+    const x = draws.int(config.valleySizeCm + 1)
+    const y = draws.int(config.valleySizeCm + 1)
+    if (starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
+      starts.push({ x, y })
+      failed = 0
+    } else if ((failed += 1) >= PLACEMENT_DRAWS) throw new LayoutError('The foragers’ starts cannot all be placed')
+  }
+  return starts
+}
+
 /** Plants drawn uniformly in the square around `centre`, kept within `radius` and `spacing` from the site's others. */
 function scatter(draws: Draws, count: number, centre: Point, radius: number, spacing: number, what: string) {
   const placed: Point[] = []
@@ -113,7 +135,8 @@ export function buildIndex(plants: Plants, cellCm: number, valleySizeCm: number)
 
 /**
  * The layout of the [specification](../../docs/LIFE5_SPEC.md#layout): site centres, then each thicket's bushes and
- * each stand's trees, then hearths on a spiral around the camp. Throws if a site or plant cannot be placed.
+ * each stand's trees, then the starting hearths: scattered (Life 6) or on a spiral around the camp (Life 5). Throws if a
+ * site, plant or start cannot be placed.
  */
 export function generateLayout(config: ValleyConfig): ValleyLayout {
   const draws = new Draws(deriveLayoutSeed(config.seed))
@@ -150,10 +173,12 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   )
   const bushes = plantsOf(bushSites)
   const trees = plantsOf(treeSites)
-  const hearths = spiralOffsets(config.bandSize).map(([x, y]) => ({
-    x: camp.x + x * config.hearthSpacingCm,
-    y: camp.y + y * config.hearthSpacingCm,
-  }))
+  const hearths = config.scattered
+    ? drawStarts(config)
+    : spiralOffsets(config.bandSize).map(([x, y]) => ({
+        x: camp.x + x * config.hearthSpacingCm,
+        y: camp.y + y * config.hearthSpacingCm,
+      }))
   return {
     camp,
     thickets,
