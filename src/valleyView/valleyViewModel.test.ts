@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE5_VALLEY } from '../valley/config'
+import { LIFE5_VALLEY, LIFE6_VALLEY } from '../valley/config'
 import { cloneValley, createValley, stepValley } from '../valley/engine'
 import { meet, placeCount } from '../valley/social'
 import type { ValleyState } from '../valley/types'
@@ -11,12 +11,14 @@ import {
   describeActivity,
   displayedLoad,
   fillInTurn,
-  flagInspection,
   foragerPose,
   foragerSummary,
+  groupFrame,
+  groupInspection,
   groupName,
   knowledgeShades,
   plantInspection,
+  siteRings,
   type DisplayPair,
 } from './valleyViewModel'
 
@@ -102,8 +104,8 @@ describe('plants and the camera', () => {
 
 describe('groups and what a forager knows', () => {
   /** Foragers 0 and 1 meet at ten in the morning and found Group A. */
-  function founded() {
-    const state = cloneValley(createValley())
+  function founded(overrides = {}) {
+    const state = cloneValley(createValley(overrides))
     state.minute = 601
     const [first, second] = state.foragers as [ValleyState['foragers'][0], ValleyState['foragers'][0]]
     second.x = first.x + 500
@@ -118,19 +120,46 @@ describe('groups and what a forager knows', () => {
     expect(groupName(26)).toBe('Group A2')
   })
 
-  it('shows a forager’s group, its fellows and when it joined, and its group’s flag', () => {
+  it('shows a forager’s group, its fellows and when it joined, and its group with what each member is doing', () => {
     const state = founded()
     expect(foragerSummary(state, 0)).toMatchObject({ groupId: 0, fellows: ['Forager 2'], joinedMinutesAgo: 0 })
     expect(foragerSummary(state, 2)).toMatchObject({ groupId: null, fellows: [], joinedMinutesAgo: null })
-    expect(flagInspection(state, 0)).toMatchObject({
-      name: 'Group A’s flag',
-      members: ['Forager 1', 'Forager 2'],
-      dissolved: false,
-    })
+    state.foragers[1]!.tripWood = 12
+    state.foragers[1]!.wood = 20
+    const pair = { previous: state, next: stepValley(state), alpha: 0.5 }
+    const group = groupInspection(pair, 0)
+    expect(group).toMatchObject({ name: 'Group A', dissolved: false, joinedEver: 2, swapsLastDay: 0 })
+    expect(group.members.map((member) => member.name)).toEqual(['Forager 1', 'Forager 2'])
+    expect(group.members[1]!.loadKg).toBe(12)
+    expect(group.members[0]!.activity).toBe(describeActivity(pair, 0))
+    const frame = groupFrame(pair.next, 0)
+    const flag = pair.next.groups[0]!.flag
+    for (const id of [0, 1]) {
+      const member = pair.next.foragers[id]!
+      expect(Math.hypot(member.x - frame.x, member.y - frame.y)).toBeLessThanOrEqual(frame.radiusCm)
+    }
+    expect(Math.hypot(flag.x - frame.x, flag.y - frame.y)).toBeLessThanOrEqual(frame.radiusCm)
   })
 
-  it('shades ground never seen darkest, ground not seen for a day a little, and the rest not at all', () => {
+  it('shows what a forager carries and how fast it walks, and the sites it knows', () => {
     const state = founded()
+    const forager = state.foragers[0]!
+    forager.tripWood = 30
+    forager.wood = 30
+    expect(foragerSummary(state, 0)).toMatchObject({ loadKg: 30, speedKmh: 2.988, sitesKnown: 0 })
+    forager.siteKnown[3] = 1
+    forager.siteKnown[35] = 1
+    forager.siteChecked[3] = 590
+    expect(foragerSummary(state, 0)).toMatchObject({ sitesKnown: 2, sitesCheckedLately: 1, sitesTotal: 40 })
+    expect(siteRings(state, 0).map((ring) => [ring.site, ring.fresh])).toEqual([
+      [3, true],
+      [35, false],
+    ])
+    expect(siteRings(founded(LIFE6_VALLEY), 0)).toEqual([])
+  })
+
+  it('shades ground never seen darkest, and in Life 6 ground not seen for a day a little, and the rest not at all', () => {
+    const state = founded(LIFE6_VALLEY)
     const forager = state.foragers[0]!
     state.minute = 2_001
     forager.placeSeen.fill(-1)
@@ -139,17 +168,39 @@ describe('groups and what a forager knows', () => {
     const shades = knowledgeShades(state, 0)
     expect(shades).toHaveLength(placeCount(state.config))
     expect([shades[0], shades[1], shades[2]]).toEqual([150, 60, 0])
+    // Seen ground stays seen when foragers check sites instead.
+    const checking = founded()
+    checking.minute = 2_001
+    checking.foragers[0]!.placeSeen.fill(-1)
+    checking.foragers[0]!.placeSeen[1] = 2_000 - 24 * 60
+    const known = knowledgeShades(checking, 0)
+    expect([known[0], known[1]]).toEqual([150, 0])
   })
 
   it('describes exploring and looking for company', () => {
     const pair = pairBesideBush()
     const event = pair.next.lastEvents.find((made) => made.foragerId === 0)!
     for (const [reason, action, text] of [
-      ['exploring', 'walk', 'Exploring, to see what has changed'],
+      ['exploring', 'walk', 'Exploring ground it has never seen'],
       ['seeking company', 'walk', 'Looking for company'],
       ['waiting for company', 'rest', 'Waiting for company at a flag'],
     ] as const) {
       Object.assign(event, { reason, action, workSeconds: 0, workedFor: null })
+      expect(describeActivity(pair, 0)).toBe(text)
+    }
+  })
+
+  it('describes checking, searching a site and taking a load home', () => {
+    const pair = pairBesideBush()
+    const event = pair.next.lastEvents.find((made) => made.foragerId === 0)!
+    for (const [change, text] of [
+      [{ reason: 'checking', action: 'walk', siteId: 3 }, 'Walking to thicket 4 to see what it holds'],
+      [{ reason: 'checking', action: 'rest', siteId: 33 }, 'Looking over stand 2'],
+      [{ reason: 'searching', action: 'walk', siteId: 34, workedFor: 'wood' }, 'Searching stand 3 for deadwood'],
+      [{ reason: 'searching', action: 'walk', siteId: null, workedFor: 'food' }, 'Searching new ground for berries'],
+      [{ reason: 'taking a load home', action: 'walk', loadWood: 30 }, 'Taking 30 kg of firewood home'],
+    ] as const) {
+      Object.assign(event, { workSeconds: 0, workedFor: null, ...change })
       expect(describeActivity(pair, 0)).toBe(text)
     }
   })

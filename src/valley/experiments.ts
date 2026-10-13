@@ -1,13 +1,13 @@
 import { specializationRow } from '../life/experiments'
 import type { LifeConfig } from '../life/types'
-import { LIFE3_BAND, LIFE5_VALLEY } from './config'
+import { LIFE3_BAND, LIFE5_VALLEY, LIFE6_VALLEY } from './config'
 import { createValley, runValley } from './engine'
 import { MINUTES_PER_DAY } from './forager'
 import { ValleyChecker } from './invariants'
 import { placeCount } from './social'
 import { valleyTheory } from './theory'
 import { spareWood } from './trade'
-import type { DaySummary, ValleyConfig } from './types'
+import type { ActionReason, DaySummary, ValleyConfig } from './types'
 
 export const EXPERIMENT_DAYS = 400
 /** Days 1–20 are a warm-up; measures use days 21 to 400. */
@@ -70,6 +70,9 @@ export interface ValleyRunResult {
   groupLeads: number[]
   /** The day each forager had first seen every place, or null. */
   allSeenDays: (number | null)[]
+  /** Over the measured days, the band's seconds walked for each reason, and walked with a load. */
+  walkSecondsByReason: Partial<Record<ActionReason, number>>
+  loadedWalkSeconds: number
 }
 
 const runCache = new Map<string, ValleyRunResult>()
@@ -93,11 +96,17 @@ export function runValleyExperiment(overrides: Partial<ValleyConfig>, days = EXP
   const checker = new ValleyChecker(start)
   let maxSpareWood = 0
   let allGroupedMinute: number | null = null
+  const walkSecondsByReason: Partial<Record<ActionReason, number>> = {}
+  const measuredFrom = WARMUP_DAYS * MINUTES_PER_DAY
   const end = runValley(start, days * MINUTES_PER_DAY, {
     recordEvents: false,
     stopWhenAllDead: true,
     onMinute(state) {
       checker.assert(state)
+      if (state.minute > measuredFrom)
+        for (const event of state.lastEvents)
+          if (event.walkSeconds)
+            walkSecondsByReason[event.reason] = (walkSecondsByReason[event.reason] ?? 0) + event.walkSeconds
       for (const forager of state.foragers) maxSpareWood = Math.max(maxSpareWood, spareWood(state.config, forager))
       if (
         allGroupedMinute === null &&
@@ -199,6 +208,8 @@ export function runValleyExperiment(overrides: Partial<ValleyConfig>, days = EXP
       .map((living) => living.length),
     groupLeads,
     allSeenDays,
+    walkSecondsByReason,
+    loadedWalkSeconds: sumOf((day) => day.loadedWalkSecondsById.reduce((a, b) => a + b, 0)),
   }
   runCache.set(key, result)
   return result
@@ -286,6 +297,15 @@ export function summarizeRuns(runs: ValleyRunResult[]) {
     groupLead: mean(runs.flatMap((run) => run.groupLeads)),
     groupsFounded: mean(runs.map((run) => run.groupsFounded)),
     dissolutions: sum((run) => run.dissolutions),
+    /** Groups standing at the end, on average. */
+    meanGroups: mean(runs.map((run) => run.standingGroupSizes.length)),
+    loadedWalkHoursPerDay: hoursPerDay(sum((run) => run.loadedWalkSeconds)),
+    walkHoursByReason: Object.fromEntries(
+      [...new Set(runs.flatMap((run) => Object.keys(run.walkSecondsByReason)))].map((reason) => [
+        reason,
+        hoursPerDay(sum((run) => run.walkSecondsByReason[reason as ActionReason] ?? 0)),
+      ]),
+    ) as Partial<Record<ActionReason, number>>,
   }
 }
 
@@ -366,38 +386,47 @@ export function capacityExperiment(
   }
 }
 
-// Life 6's experiments, in the canonical valley: scattered foragers who know only what they have seen, explore, and
-// form groups when they meet.
+// Life 6's experiments, in Life 6's valley: scattered foragers who know only what they have seen, explore, and form
+// groups when they meet.
+
+/** Life 6's valley with `overrides`: short sight, sweeping places, and loads carried at no cost. */
+export const life6 = (overrides: Partial<ValleyConfig> = {}): Partial<ValleyConfig> => ({
+  ...LIFE6_VALLEY,
+  ...overrides,
+})
+
+/** How many runs ended with 1, 2, 3, … groups standing. */
+export function groupCountsOf(runs: readonly ValleyRunResult[]) {
+  const counts = runs.map((run) => run.standingGroupSizes.length)
+  return Object.fromEntries(
+    [...new Set(counts)].sort((a, b) => a - b).map((count) => [count, counts.filter((c) => c === count).length]),
+  ) as Record<number, number>
+}
+
+const allGroupedDaysOf = (runs: readonly ValleyRunResult[]) =>
+  runs.map((run) => (run.allGroupedMinute === null ? null : (run.allGroupedMinute + 1) / MINUTES_PER_DAY))
 
 /** Life 6's experiment 1: groups from a scattered start. */
 export function groupsFromScatteredExperiment(seeds: readonly number[], days = EXPERIMENT_DAYS) {
-  const row = valleyRow(seeds, {}, days)
-  const groupCounts = row.runs.map((run) => run.standingGroupSizes.length)
+  const row = valleyRow(seeds, life6(), days)
   return {
     row,
-    allGroupedDays: row.runs.map((run) =>
-      run.allGroupedMinute === null ? null : (run.allGroupedMinute + 1) / MINUTES_PER_DAY,
-    ),
-    /** How many runs ended with 1, 2, 3, … groups. */
-    groupCounts: Object.fromEntries(
-      [...new Set(groupCounts)]
-        .sort((a, b) => a - b)
-        .map((count) => [count, groupCounts.filter((c) => c === count).length]),
-    ) as Record<number, number>,
+    allGroupedDays: allGroupedDaysOf(row.runs),
+    groupCounts: groupCountsOf(row.runs),
     mostGroups: valleyTheory(createValley().config).mostGroups(createValley().config.bandSize),
   }
 }
 
 /** Life 6's experiment 2: knowing and exploring, with exploring off and with places worth exploring after 72 hours. */
 export function knowingExperiment(seeds: readonly number[], days = EXPERIMENT_DAYS) {
-  const explore = valleyRow(seeds, {}, days)
-  const theory = valleyTheory(createValley().config)
+  const explore = valleyRow(seeds, life6(), days)
+  const theory = valleyTheory(createValley(life6()).config)
   const rates = explore.runs.flatMap((run) => run.forageRates)
   const predictedForageHours = theory.forageHoursPerDay(mean(rates), explore.gatherHoursPerDay, explore.walkHoursPerDay)
   return {
     explore,
-    noExplore: valleyRow(seeds, { explore: false }, days),
-    slowExplore: valleyRow(seeds, { exploreAfterHours: 72 }, days),
+    noExplore: valleyRow(seeds, life6({ explore: false }), days),
+    slowExplore: valleyRow(seeds, life6({ exploreAfterHours: 72 }), days),
     predictedWorkHours: predictedForageHours + explore.gatherHoursPerDay,
     sweepHours: theory.sweepHours,
     sweepCostKcal: theory.sweepCostKcal,
@@ -415,7 +444,12 @@ export function groupsAndExchangeExperiment(
   rows: readonly (typeof EXCHANGE_ROWS)[number][] = EXCHANGE_ROWS,
   days = EXPERIMENT_DAYS,
 ) {
-  const overrides = { groups: {}, together: { scattered: false }, strangers: { groups: false }, life5: life5() }
+  const overrides = {
+    groups: life6(),
+    together: life6({ scattered: false }),
+    strangers: life6({ groups: false }),
+    life5: life5(),
+  }
   return Object.fromEntries(rows.map((row) => [row, valleyRow(seeds, overrides[row], days)])) as Partial<
     Record<(typeof EXCHANGE_ROWS)[number], ReturnType<typeof valleyRow>>
   >
@@ -430,6 +464,99 @@ export const groupsCapacityExperiment = (
   days = EXPERIMENT_DAYS,
   beside = true,
 ) => ({
-  groups: sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, { bandSize }, days) })),
+  groups: sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, life6({ bandSize }), days) })),
   life5: beside ? sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, life5({ bandSize }), days) })) : [],
+})
+
+// Life 7's experiments, in the canonical valley: foragers who see across the valley, check the sites they know, walk
+// more slowly under a load, and take a full load home.
+
+export const SIGHTS_CM = [2_500, 10_000, 25_000]
+
+/** Life 7's experiment 1: seeing far, at the canonical sight and shorter ones, beside Life 6. */
+export function seeingFarExperiment(
+  seeds: readonly number[],
+  days = EXPERIMENT_DAYS,
+  sights: readonly number[] = SIGHTS_CM,
+) {
+  const canonical = valleyRow(seeds, {}, days)
+  const config = createValley().config
+  return {
+    canonical,
+    allGroupedDays: allGroupedDaysOf(canonical.runs),
+    groupCounts: groupCountsOf(canonical.runs),
+    sights: sights.map((sightRadiusCm) => {
+      const row = valleyRow(seeds, { sightRadiusCm }, days)
+      return { sightRadiusCm, row, groupCounts: groupCountsOf(row.runs) }
+    }),
+    life6: valleyRow(seeds, life6(), days),
+    mostGroups: valleyTheory(config).mostGroups(config.bandSize),
+  }
+}
+
+/** Life 7's experiment 2: walking and checking, with exploring off, sites checked every 72 hours, and Life 6. */
+export function walkingExperiment(seeds: readonly number[], days = EXPERIMENT_DAYS, beside = true) {
+  const canonical = valleyRow(seeds, {}, days)
+  const theory = valleyTheory(createValley().config)
+  const rates = canonical.runs.flatMap((run) => run.forageRates)
+  const predictedForageHours = theory.forageHoursPerDay(
+    mean(rates),
+    canonical.gatherHoursPerDay,
+    canonical.walkHoursPerDay,
+  )
+  return {
+    canonical,
+    noExplore: valleyRow(seeds, { explore: false }, days),
+    slowChecks: beside ? valleyRow(seeds, { exploreAfterHours: 72 }, days) : null,
+    life6: beside ? valleyRow(seeds, life6(), days) : null,
+    predictedWorkHours: predictedForageHours + canonical.gatherHoursPerDay,
+    shortestCheckTourHours: theory.shortestCheckTourHours,
+  }
+}
+
+export const CARRYING_ROWS = {
+  canonical: {},
+  noCarry: { carryCost: false },
+  noHome: { loadHome: false },
+  neither: { carryCost: false, loadHome: false },
+  load20: { woodLoad: 20 },
+  load20NoHome: { woodLoad: 20, loadHome: false },
+  load40: { woodLoad: 40 },
+  load40NoHome: { woodLoad: 40, loadHome: false },
+} as const satisfies Record<string, Partial<ValleyConfig>>
+
+/** Life 7's experiment 3: carrying, with the carrying cost and taking loads home each off, and other loads. */
+export function carryingExperiment(
+  seeds: readonly number[],
+  rows: readonly (keyof typeof CARRYING_ROWS)[] = Object.keys(CARRYING_ROWS) as (keyof typeof CARRYING_ROWS)[],
+  days = EXPERIMENT_DAYS,
+) {
+  const theory = valleyTheory(createValley().config)
+  return {
+    rows: Object.fromEntries(rows.map((row) => [row, valleyRow(seeds, CARRYING_ROWS[row], days)])) as Partial<
+      Record<keyof typeof CARRYING_ROWS, ReturnType<typeof valleyRow>>
+    >,
+    speedWithLoad: theory.speedForLoad(createValley().config.woodLoad),
+    /** What carrying a full load 150 m home costs beyond walking it unloaded. */
+    loadHomeCostKcal: theory.carryCostKcal(15_000, createValley().config.woodLoad),
+  }
+}
+
+/** Life 7's experiment 4: groups and exchange, against the band as one group from the start. */
+export const sightExchangeExperiment = (seeds: readonly number[], days = EXPERIMENT_DAYS) => ({
+  groups: valleyRow(seeds, {}, days),
+  together: valleyRow(seeds, { scattered: false }, days),
+})
+
+export const LIFE7_BAND_SIZES = [8, 12, 16]
+
+/** Life 7's experiment 6: how many the valley feeds, beside Life 6 unless told not to. */
+export const sightCapacityExperiment = (
+  seeds: readonly number[],
+  sizes: readonly number[] = LIFE7_BAND_SIZES,
+  days = EXPERIMENT_DAYS,
+  beside = true,
+) => ({
+  canonical: sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, { bandSize }, days) })),
+  life6: beside ? sizes.map((bandSize) => ({ bandSize, row: valleyRow(seeds, life6({ bandSize }), days) })) : [],
 })

@@ -3,16 +3,20 @@ import { resolveValleyConfig } from './config'
 import {
   MINUTES_PER_DAY,
   atHearth,
+  carryingFullLoad,
   choosePlant,
   chooseWork,
   fillingLoad,
   idleReason,
   isDaylight,
+  loadKg,
+  loadOf,
   minuteOfWork,
   mustGoHome,
   nextHungry,
   observe,
   plantsInView,
+  speedForLoad,
 } from './forager'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { drawSkills, generateLayout, layoutError, turnOrder } from './layout'
@@ -28,6 +32,7 @@ import {
   placeCount,
   startingGroups,
 } from './social'
+import { chooseSite, observeSites, siteCentre, siteCount, sitesCheckedSince, sitesKnown } from './sites'
 import { nextShortOfWood, swap, woodMatters } from './trade'
 import { coldMatters, hourlyShare, minuteCost, tendFire, workSeconds, type MinuteSeconds } from './work'
 import type {
@@ -100,6 +105,9 @@ function emptyDay(day: number, state: Pick<ValleyState, 'foragers' | 'bushKcal' 
     joinings: 0,
     dissolutions: 0,
     placesSeenById: foragers.map((forager) => forager.placesSeen),
+    loadedWalkSecondsById: zeros(foragers.length),
+    sitesKnownById: foragers.map(sitesKnown),
+    sitesCheckedById: zeros(foragers.length),
   }
 }
 
@@ -145,6 +153,9 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       placesSeen: config.knowValley ? places : 0,
       knownFlags: [],
       exploreTarget: null,
+      // Knowing the valley, it has also spotted and checked every site at minute 0.
+      siteKnown: new Uint8Array(siteCount(config)).fill(config.knowValley ? 1 : 0),
+      siteChecked: new Int32Array(siteCount(config)).fill(config.knowValley ? 0 : -1),
       ...born,
       ...ratesOf(config, born.foragingSkill, born.woodSkill, practiceLog),
       practiceLog,
@@ -209,6 +220,8 @@ const cloneForager = (forager: Forager): Forager => ({
   swapTotals: { ...forager.swapTotals },
   placeSeen: forager.placeSeen.slice(),
   knownFlags: [...forager.knownFlags],
+  siteKnown: forager.siteKnown.slice(),
+  siteChecked: forager.siteChecked.slice(),
 })
 
 const cloneDay = (day: DaySummary): DaySummary => ({
@@ -222,6 +235,9 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   walkSecondsById: [...day.walkSecondsById],
   gatheredWoodById: [...day.gatheredWoodById],
   placesSeenById: [...day.placesSeenById],
+  loadedWalkSecondsById: [...day.loadedWalkSecondsById],
+  sitesKnownById: [...day.sitesKnownById],
+  sitesCheckedById: [...day.sitesCheckedById],
 })
 
 /** A copy that shares nothing mutable with `state`. The layout and finished days never change, so they are shared. */
@@ -295,9 +311,13 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     minute,
   )
   observePlaces(config, forager, minute)
-  observeFlags(config, forager, state.groups)
+  observeFlags(config, forager, state.groups, minute)
+  observeSites(config, layout, forager, minute)
   forager.hungry = nextHungry(config, forager.energyKcal, forager.hungry)
   forager.shortOfWood = nextShortOfWood(config, forager.wood, forager.shortOfWood)
+  // What it carries as it sets out decides how fast it walks this minute.
+  const load = loadOf(forager)
+  const speed = speedForLoad(config, loadKg(config, load.wood, load.berriesKcal))
 
   const from = { x: forager.x, y: forager.y }
   const seconds: MinuteSeconds = { walk: 0, work: 0, stand: 0, sleep: 0 }
@@ -307,16 +327,17 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   let targetId: number | null = null
   let plantId: number | null = null
   let placeId: number | null = null
+  let siteId: number | null = null
   let gatheredKcal = 0
   let gatheredWood = 0
   let burnedWood = 0
   let sleeping = false
   let sleptCold = false
-  const stride = 60 * config.walkCmPerSecond
+  const stride = 60 * speed
 
-  /** Walks towards a point for up to the whole minute; returns the seconds left after arriving. */
+  /** Walks towards a point for up to the whole minute, at its speed; returns the seconds left after arriving. */
   const walkTo = (x: number, y: number) => {
-    const needed = walkSeconds(distance(forager.x, forager.y, x, y), config.walkCmPerSecond)
+    const needed = walkSeconds(distance(forager.x, forager.y, x, y), speed)
     const next = stepTowards(forager, { x, y }, stride)
     forager.x = next.x
     forager.y = next.y
@@ -335,15 +356,21 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     burnedWood = tendFire(config, forager, minute)
     sleptCold = !forager.warm && coldMatters(config)
     seconds.sleep = 60
+  } else if (config.loadHome && !forager.hungry && carryingFullLoad(config, forager)) {
+    // Rule 4: not hungry, it takes a full load home and sets it down before anything else.
+    forager.trip = null
+    reason = 'taking a load home'
+    seconds.stand = walkTo(forager.hearth.x, forager.hearth.y)
   } else {
     const filling = !forager.hungry && fillingLoad(config, forager)
     const work = chooseWork(config, forager, minute)
     const goal = work === null ? idleGoal(state, forager, minute) : null
     if (goal) {
-      // Rules 4 and 5: seeking company or exploring.
+      // Rules 5 and 6: seeking company, exploring or checking.
       forager.trip = null
       reason = goal.reason
       placeId = goal.placeId
+      siteId = goal.siteId
       seconds.stand = forager.x === goal.x && forager.y === goal.y ? 60 : walkTo(goal.x, goal.y)
     } else if (work === null || work === 'wait') {
       forager.trip = null
@@ -355,16 +382,25 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
       forTrade = work.forTrade
       const food = good === 'food'
       const plants = food ? layout.bushes : layout.trees
-      // Rule 8: remembering no plant worth a minute's work, it searches ground it has never seen before it revisits.
+      // Rule 9: remembering no plant worth a minute's work, it searches a site of the good it has never checked, then
+      // ground it has never seen, before it revisits.
       let chosen = choosePlant(config, layout, forager, good, minute, false)
+      const siteSearch =
+        chosen === null && config.checkSites ? chooseSite(config, layout, forager, minute, 'search', good) : null
       const search =
-        chosen === null && forager.placesSeen < placeCount(config)
+        chosen === null && siteSearch === null && forager.placesSeen < placeCount(config)
           ? choosePlace(config, forager, minute, 'search')
           : null
-      if (chosen === null && search === null) chosen = choosePlant(config, layout, forager, good, minute)
+      if (chosen === null && search === null && siteSearch === null)
+        chosen = choosePlant(config, layout, forager, good, minute)
       if (food) forager.targetBushId = chosen
       else forager.targetTreeId = chosen
-      if (search !== null) {
+      if (siteSearch !== null) {
+        const centre = siteCentre(config, layout, siteSearch)
+        reason = 'searching'
+        siteId = siteSearch
+        seconds.stand = walkTo(centre.x, centre.y)
+      } else if (search !== null) {
         const centre = placeCentre(config, search)
         reason = 'searching'
         placeId = search
@@ -465,6 +501,10 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     sleptCold,
     groupId: forager.groupId,
     placeId,
+    siteId,
+    loadWood: load.wood,
+    loadBerriesKcal: load.berriesKcal,
+    speedCmPerSecond: speed,
   }
   return { event, swaps: traded.swaps, quotes: traded.quotes, met }
 }
@@ -535,6 +575,7 @@ function advance(state: ValleyState, recordEvents = true) {
     if (event.workedFor === 'food') today.forageSecondsById[id]! += event.workSeconds
     else today.gatherSecondsById[id]! += event.workSeconds
     today.walkSecondsById[id]! += event.walkSeconds
+    if (loadKg(config, event.loadWood, event.loadBerriesKcal) > 0) today.loadedWalkSecondsById[id]! += event.walkSeconds
     today.gatheredWoodById[id]! += event.gatheredWood
     today.gatheredKcal += event.gatheredKcal
     today.gatheredWood += event.gatheredWood
@@ -594,6 +635,8 @@ function advance(state: ValleyState, recordEvents = true) {
     today.carriedKcal = state.foragers.reduce((total, forager) => total + carriedKcal(forager.carried), 0)
     Object.assign(today, groupCounts(state))
     today.placesSeenById = state.foragers.map((forager) => forager.placesSeen)
+    today.sitesKnownById = state.foragers.map(sitesKnown)
+    today.sitesCheckedById = state.foragers.map((forager) => sitesCheckedSince(forager, today.day * MINUTES_PER_DAY))
     state.days.push(today)
     state.today = emptyDay(today.day + 1, state)
     state.eventDays.push([])

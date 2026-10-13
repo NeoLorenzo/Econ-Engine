@@ -2,6 +2,48 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE7-SightAndLoads-037] - (2026-10-13)
+
+### Added
+
+- **Life 7, sight and loads.** The valley core implements the [Life 7 specification](docs/LIFE7_SPEC.md):
+  - **long sight:** by day a forager sees thickets, stands of trees, other foragers and flags 1 km away, across the whole valley; at night it sees only the 25 m of close sight, which also stays the distance at which it reads what a bush or tree holds;
+  - **memory of the land:** each forager remembers the thickets and stands it has spotted and the last minute it checked each one, standing close enough to see every plant in it; ground once seen stays seen;
+  - **exploring by sites:** a forager whose needs are met walks to the nearest ground it has never seen, then to the nearest thicket or stand it has not checked for a day; it never sweeps seen ground again;
+  - **searching by sites:** a forager that remembers no plant worth a minute's work walks to the nearest thicket or stand of that kind it has never checked, then to unseen ground, before revisiting;
+  - **carrying:** a forager's load is the wood of its trip and its berries at 500 kcal a kilogram; it walks at `walkCmPerSecond · 60 / (60 + load)`, 3.0 km/h with 30 kg, and each second of walking costs what it did, so each metre costs more;
+  - **taking a load home:** a forager that is not hungry and carries a full load walks home before doing anything else.
+
+  Three switches, `checkSites`, `carryCost` and `loadHome`, and `sightRadiusCm` turn the changes off. `LIFE6_VALLEY` sets them to give Life 6 exactly, which a test checks against fingerprints recorded from Life 6's code; `LIFE5_VALLEY` includes it, and Life 5's and Life 6's experiments and tests run with their own settings.
+- **Invariants.** The checker also checks every walk against the speed its load allowed, sites spotted only within sight and checked only from close enough, places seen within long sight and kept seen, walks to check or search a site worth it, and that no forager with a full load idles, explores, checks or seeks company when not hungry.
+- **Theory.** Speed and the cost of carrying a load, and the shortest tour through every site.
+- **Experiments.** Seeing far, at 1 km, 250, 100 and 25 m, beside Life 6; walking and checking, with exploring off and checks every 72 hours; carrying, with its cost and taking loads home each off, and loads of 20 and 40 kg; groups and exchange against one group from the start; Life 6 as a special case; and how many the valley feeds. Per-run measures add walking by reason and walking with a load.
+- **The observer.** `life.html` shows Life 7:
+  - each standing group's base has a disc of ground in its colour round its hearths and a badge with its letter above the flag, the same size on screen at every zoom;
+  - the HUD has a chip for each standing group; a chip, flag, badge or disc selects the group, rings its living members at their feet, and opens a group card with when it was founded, what its members hold, its swaps over the last day and each member's activity and load, with members to click and follow and a button to frame the group;
+  - the HUD shows the followed forager's load and walking speed and the thickets and stands it knows; a ring marks each one, bright if it checked it in the last day; activities for checking, searching a site and taking a load home;
+  - the setup adds sight in metres and the three switches.
+
+### Changed
+
+- **The sash.** The band across a member's chest was a ring turned front to back through the body, which looked like a necktie from the front and a hook through the chest from the side. It now wraps the torso from one shoulder to the other hip, drawn smooth.
+- Ground the followed forager has seen no longer shades as stale when foragers check sites, since seen ground stays seen.
+- The merge document's ladder inserts step 7, "Sight and loads"; the shared fire becomes step 8 and later steps move down by one. The MVP9 top bar's link reads "Life 7".
+
+### Fixed
+
+- **Two checker gaps, found by runs.** A swap or quote between two members early in a minute was reported as crossing groups when a death later in the minute dissolved their group; two foragers now share a group if they did at the start of the minute or at its end. A forager's hearth while it acts is now worked out from the minute's foundings in turn order, since one met by a founder at an earlier turn has its hearth moved before it acts. Neither changes any trajectory.
+
+### Validation
+
+- **Seeing far:** on 32 seeds every forager is in a group within 0.31 days; the band forms two groups in 9 runs, three in 22 and four in 1, never one, against one group in 6 runs of Life 6.
+- **Walking:** foragers walk 1.11 hours a day, 0.96 of it checking, and work 2.85, against 2.57 and 3.09 in Life 6; walking with a load falls from 0.87 hours a day to 0.04.
+- **Carrying:** without its cost foragers walk 1.09 hours a day; with 20 kg loads every run swaps with taking loads home, and 5 of 32 without.
+- **Exchange:** members buy 9.4% of the wood they burn, against 12.4% in Life 6 and 18.9% in a band that starts as one group.
+- **Capacity:** bands of 8 and 12 are intact at day 400; a band of 16 keeps 5.8 survivors, against 2.4 in Life 6.
+- **Life 6 reproduced:** with `LIFE6_VALLEY`, six runs match Life 6's recorded fingerprints day for day, and Life 5's six still match.
+- Nothing under `src/sim/` or `src/life/` changed. `npm run agent:check` passes. In the browser, groups forming at first light, the group chips and card, framing a group, member rings, the base's disc and badge, the sash from three sides, the load and speed in the HUD, the rings of known sites, the whole-valley view and the 375px layout were checked by stepping the page, with no console errors.
+
 ## [LIFE6-Groups-036] - (2026-10-13)
 
 ### Added

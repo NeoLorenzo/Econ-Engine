@@ -6,6 +6,62 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE7-SightAndLoads-037] - (2026-10-13)
+
+### Problem
+
+Watching Life 6, the owner found the foragers' exploring robotic. They walked the valley one 30 m square at a time in a fixed order, swept the whole valley again every day though the land never changes, and saw only 25 m, far less than a person sees across open ground. They also walked off to explore with 30 kg of firewood on their backs at full speed and no extra cost. The owner asked for long sight, memory of what the land holds, less mechanical exploring, and loads that slow a walker and cost more per step, all in one step. They also asked for a way to see where each group's base is, to select a whole group, and a fix for the group band on each forager, which looked wrong. The step's question became whether foragers who see as far as people do, and check what they know instead of sweeping it, walk less, and whether seeing everyone from the first morning gathers the band into one group or splits it into more.
+
+### Decisions
+
+- **Two kinds of sight.** Long sight for where things are, close sight, Life 5's 25 m, for what a plant holds. A person picks out a thicket or another person hundreds of metres away, but needs to be close to judge ripe berries or deadwood.
+- **Plain long sight, 1 km by day.** The owner chose no blocking by stands. In a flat, open valley 600 m across nothing is out of sight by day, so 1 km, more than the diagonal, is the honest value. At night sight shrinks to close sight.
+- **Remember sites, not squares.** Thickets and stands are what a forager looks for. Places stay only to say what ground has been seen, and seen ground stays seen. Checking a site means standing within 13 m of a thicket's centre or 10 m of a stand's, where every plant in it lies in close sight. The owner plans a more realistic memory later; this one forgets nothing and expects nothing.
+- **Explore unseen ground, then check stale sites; search unchecked sites first.** Idle foragers go from thicket to thicket, the irregular path the land sets, rather than square to square.
+- **No randomness in the choice.** A seeded preference for nearer sites was tried in the prototype to stop group members walking in step. It was not needed and cost walking (see below), so the rule stays nearest first (design rule 20).
+- **Carrying slows the walk, and costs per metre.** `v = walkCmPerSecond · 60 / (60 + load)`, with a body of 60 kg. Each second of walking costs what it did, so a metre costs `(60 + load) / 60` times as much. At that speed Pandolf's load-carriage equation gives a cost per second within 9% of unloaded walking for loads up to 30 kg, so one parameter sets both speed and cost. A small study of women with 10 kg head loads measured about 1.1 m/s, against 1.07 here.
+- **A full load goes home first.** A rule rather than a calculation, as the core's decisions are priority rules: not hungry, a forager carrying a full load walks home before anything else. Central-place foraging predicts it.
+- **One step, by the owner's choice.** Sight and carrying are two mechanisms; the owner chose to take them together. Each has its own switch and counterfactual.
+- **The observer.** A sash that wraps from shoulder to hip; a disc of the group's colour round each base and a lettered badge that keeps its size at every zoom; group chips, a group card and rings round a selected group's members.
+
+### What the prototype found
+
+A throwaway prototype in the scratchpad, a copy of the valley core with the new rules, on 32 seeds over 400 days, with Life 6's settings reproducing Life 6's published numbers:
+
+- **Seeing far splits the band.** Never one group in 32 runs, against 6 in Life 6. Sight of 100 m already gives the same split.
+- **Checking saves more than half the walking:** 1.11 hours a day against 2.57.
+- **Carrying costs almost nothing here:** 1.09 hours of walking a day without the cost, against 1.11 with it.
+- **Taking loads home lets 20 kg loads start exchange,** in every run against 5 of 32 without.
+- **A random preference for nearer sites was not needed.** Members of a group walked to the same site together in under 1% of checking minutes with or without it, because they leave home at different times. It added 0.6 hours of walking a day.
+
+### Findings
+
+From `experiments.ts` on 32 seeds over 400 days, measured over days 21 to 400, checking every invariant every minute. The implementation reproduced the prototype's numbers exactly.
+
+- **Seeing far splits the band into more groups, not fewer.** Every forager is in a group within 0.31 days, on average 7.3 hours after midnight, about an hour and a quarter after the first dawn. The band forms two groups in 9 runs, three in 22 and four in 1, and never one; Life 6's band forms one group in 6 runs. With sight of 250, 100 and 25 m it forms one group in 0, 1 and 3 runs. Seeing everyone at first light, every forager sets off towards its nearest neighbour at once, and pairs form all over the valley before anyone can gather them. Short sight left foragers to bump into each other one at a time, so an early group could absorb the rest.
+- **More groups, less trade.** Members buy 9.4% of the wood they burn, and a group's leading gatherer brings in 1.15 times its fair share, against 12.4% and 1.27 in Life 6. A band that starts as one group buys 18.9%, with a leader at 1.64 times, as in Life 6. Members sleep cold 2.5% of night hours, against 3.6% in Life 6, as before because they buy less of their wood.
+- **Checking saves more than half the walking.** Foragers walk 1.11 hours a day, 0.96 of it checking, and work 2.85 (2.19 picking, 0.66 gathering), against 2.57 and 3.09 in Life 6. The time-use prediction with the walking measured gives 2.82 hours of work, 1% below what is measured. Without exploring they walk 0.08 hours and work 2.68; checking only every 72 hours, 0.49 and 2.75. The shortest tour through every site is about 0.54 hours of walking; a day's checks take 0.96, because nearest-first tours are longer than the shortest, and they start and end at home.
+- **Walking with a load almost disappears.** Life 6's foragers walk 0.87 hours a day with a load, mostly exploring with a finished load on their backs. Life 7's walk 0.04, on the short way home from a stand. Without the rule to take loads home, 0.65.
+- **Carrying costs little in this valley.** Without the carrying cost foragers walk 1.09 hours a day, and every other measure is within the noise between seeds. A 30 kg load carried 150 m home costs about 5 kcal more than walking it unloaded, about 2 kcal a day for a forager that brings home a load every two and a half days. It would matter over longer distances.
+- **Taking loads home decides whether small loads start exchange.** With 20 kg loads every run swaps and members buy 11.2% of their wood; without the rule, 5 runs of 32 swap and 0.1% is bought. With 40 kg loads, 27 runs and 5.2% against 9 and 1.2%. With 30 kg loads the rule matters less: 9.4% against 8.2%. Life 5 found loads of 20 kg never started exchange in a band around one fire. Why a forager that takes its load straight home trades so much more was not tested. One likely reason is that it comes home in daylight, when members who are short of wood are there, rather than at dusk.
+- **The valley feeds more.** Bands of 8 and 12 are intact at day 400. A band of 16 keeps 5.8 survivors, all its deaths before day 100, against 2.4 in Life 6 and 5.4 in Life 5; groups dissolve 107 times in 32 runs and up to 8 are founded in a run.
+- **Life 6 is reproduced exactly** with the changes off, against fingerprints recorded from Life 6's code before the change.
+
+### Trade-offs
+
+- **Two checker gaps, found by runs.** In a band of 16, two members told each other terms early in a minute; one starved later in it, and the group dissolved, so the checker, reading groups at the end of the minute, reported a quote across groups. And in the 32-seed runs, a forager taking a load home was met by a forager without a group that founded a group at an earlier turn of the minute, which moved its hearth before it acted; the checker judged its walk against its old hearth. The engine was right both times. The checker now accepts two foragers who shared a group at the start or at the end of the minute, and works out each forager's hearth at its turn from the minute's foundings. The first gap was in Life 6's checker too, unexposed by its runs.
+- **Speed.** With sight across the valley, every place is seen in the first daylight minute, after which marking places is skipped. Checking keeps foragers moving, so a canonical run of 400 days takes about 4.2 seconds, or 6.9 with the checker, against 3.7 and 6.4 for Life 6.
+- **Test time.** Life 7's experiments add eight test files beside Life 6's, which keep running with Life 6's settings. The suite takes about eight minutes. MVP9's longest tests have a 30-second limit and timed out once when the machine was also running the 32-seed experiments; on an otherwise idle machine the suite passes.
+- **What the observer can show.** A hidden preview pane animates only intermittently, so the browser checks stepped the page with its own Step button.
+
+### Open questions
+
+- Why does taking a load straight home make small loads start exchange? A test would record where and when spare wood and need meet.
+- With everyone visible from the first morning, the band splits by who is nearest whom at dawn. Would a reason to join a larger group, such as a shared fire (Life 8), gather them later?
+- Checking every site every day is still most of the walking. Would a memory that expects regrowth, or members telling each other what they saw, cut it, and does the owner's planned memory step need either?
+- Loads cost little at 600 m. Would a larger valley, or longer trips, make load size a real choice?
+- Should stands block the view when the land is no longer open?
+
 ## [LIFE6-Groups-036] - (2026-10-13)
 
 ### Problem

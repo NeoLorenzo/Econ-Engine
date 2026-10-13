@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LIFE6_VALLEY } from './config'
 import { cloneValley, createValley, lastEventOf, runValley, stepValley } from './engine'
 import { ValleyChecker } from './invariants'
 import {
@@ -18,9 +19,11 @@ import type { Forager, ValleyState } from './types'
 
 const TEN_AM = 600
 
-/** A copy of the canonical valley at minute `minute`, with every forager changed by `change`. */
+// These are Life 6's rules, so they run in Life 6's valley; Life 7's sight and sites are tested in `sites.test.ts`.
+
+/** A copy of Life 6's valley at minute `minute`, with every forager changed by `change`. */
 function valleyAt(minute: number, change: (state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley())
+  const state = cloneValley(createValley(LIFE6_VALLEY))
   state.minute = minute
   change(state)
   return state
@@ -32,7 +35,7 @@ const put = (forager: Forager, x: number, y: number) => {
 }
 
 describe('places', () => {
-  const { config } = createValley()
+  const { config } = createValley(LIFE6_VALLEY)
 
   it('divides the valley into 400 places of 30 m', () => {
     expect(placesPerSide(config)).toBe(20)
@@ -45,7 +48,7 @@ describe('places', () => {
     expect(placeInView(config, 21, 4_500, 4_500)).toBe(true)
     // 21.2 m to the far corners from the centre; 6 m off centre, the far corners lie beyond 25 m.
     expect(placeInView(config, 21, 5_100, 4_500)).toBe(false)
-    const forager = createValley().foragers[0]!
+    const forager = createValley(LIFE6_VALLEY).foragers[0]!
     put(forager, 4_500, 4_500)
     observePlaces(config, forager, 7)
     expect(forager.placeSeen[21]).toBe(7)
@@ -178,19 +181,19 @@ describe('meeting', () => {
     expect(survivor.groupId).toBeNull()
     expect(survivor.hearth).toBe(hearth)
     expect(survivor.knownFlags).toEqual([0])
-    observeFlags(state.config, survivor, state.groups)
+    observeFlags(state.config, survivor, state.groups, TEN_AM)
     expect(survivor.knownFlags).toEqual([])
   })
 })
 
 describe('groups in a run', () => {
-  /** Runs the canonical valley with the checker to `minutes`, then on until `ready`, damages that minute and checks. */
+  /** Runs Life 6's valley with the checker to `minutes`, then on until `ready`, damages that minute and checks. */
   const breaking = (
     minutes: number,
     damage: (state: ValleyState) => void,
     ready: (state: ValleyState) => boolean = () => true,
   ) => {
-    const base = createValley()
+    const base = createValley(LIFE6_VALLEY)
     const check = new ValleyChecker(base)
     let after = stepValley(runValley(base, minutes, { onMinute: (state) => check.assert(state) }))
     while (!ready(after)) {
@@ -203,7 +206,7 @@ describe('groups in a run', () => {
   const grouped = (state: ValleyState) => state.groups.length > 0
 
   it('lets a band without groups form them, keeping every invariant', () => {
-    const start = createValley()
+    const start = createValley(LIFE6_VALLEY)
     const checker = new ValleyChecker(start)
     const end = runValley(start, 1_440, { onMinute: (state) => checker.assert(state) })
     expect(end.groups.length).toBeGreaterThan(0)

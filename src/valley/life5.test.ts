@@ -4,18 +4,21 @@ import { createValley, runValley } from './engine'
 import { life5 } from './experiments'
 import type { DaySummary } from './types'
 
-// Life 6's experiment 4: with groups, scattering and exploring off and the valley known, the valley runs exactly as
-// Life 5. The fingerprints were recorded from Life 5's code before Life 6 changed it, over 30 days on three seeds, for
-// the band born equal and for Life 3's band, whose swaps start within days.
+// Life 6's experiment 4: with groups, scattering and exploring off and the valley known, and Life 7's sight and loads
+// off, the valley runs exactly as Life 5. The fingerprints were recorded from Life 5's code before Life 6 changed it,
+// over 30 days on three seeds, for the band born equal and for Life 3's band, whose swaps start within days.
 
-/** The fields Life 6 added to a day's summary. */
-const LIFE6_DAY_FIELDS = new Set([
+/** The fields Life 6 and Life 7 added to a day's summary. */
+const LATER_DAY_FIELDS = new Set([
   'groupsStanding',
   'loners',
   'foundings',
   'joinings',
   'dissolutions',
   'placesSeenById',
+  'loadedWalkSecondsById',
+  'sitesKnownById',
+  'sitesCheckedById',
 ])
 
 function fingerprintOf(value: unknown) {
@@ -26,7 +29,7 @@ function fingerprintOf(value: unknown) {
 }
 
 const life5Days = (days: DaySummary[]) =>
-  days.map((day) => Object.fromEntries(Object.entries(day).filter(([key]) => !LIFE6_DAY_FIELDS.has(key))))
+  days.map((day) => Object.fromEntries(Object.entries(day).filter(([key]) => !LATER_DAY_FIELDS.has(key))))
 
 const RECORDED = [
   { band: 'equal', seed: 20260813, days: '10c34f03:20961', totals: '321b4f84:237' },

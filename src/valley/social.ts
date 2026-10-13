@@ -1,6 +1,7 @@
 import { spiralOffsets } from './config'
-import { daylightSecondsLeft } from './forager'
-import { distance, distanceSq, walkSeconds } from './geometry'
+import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
+import { distanceSq } from './geometry'
+import { chooseSite, siteCentre, sightOf } from './sites'
 import type {
   ActionReason,
   DissolveEvent,
@@ -14,6 +15,7 @@ import type {
 } from './types'
 
 // Life 6: places a forager has seen, exploring and searching, flags, and meeting, founding, joining and dissolving.
+// Life 7 sees places, flags and others with long sight by day, and explores towards sites as well as places.
 
 /** Places along each side of the valley; the last row and column are cut at the valley's edge. */
 export const placesPerSide = (config: ValleyConfig) => Math.ceil(config.valleySizeCm / config.placeCm)
@@ -77,18 +79,17 @@ export function placeCentre(config: ValleyConfig, place: number): Point {
   return { x: grid.cx[place]!, y: grid.cy[place]! }
 }
 
-/** Whether all four corners of a place lie within the perception radius of a point. */
-export function placeInView(config: ValleyConfig, place: number, x: number, y: number) {
+/** Whether all four corners of a place lie within `r` of a point, by default the perception radius. */
+export function placeInView(config: ValleyConfig, place: number, x: number, y: number, r = config.perceptionRadiusCm) {
   const grid = gridOf(config)
   const dx = Math.max(Math.abs(grid.x0[place]! - x), Math.abs(grid.x1[place]! - x))
   const dy = Math.max(Math.abs(grid.y0[place]! - y), Math.abs(grid.y1[place]! - y))
-  return dx * dx + dy * dy <= config.perceptionRadiusCm ** 2
+  return dx * dx + dy * dy <= r * r
 }
 
-/** Calls `visit` with every place that could lie wholly within the perception radius of a point. */
-function forEachPlaceNear(config: ValleyConfig, x: number, y: number, visit: (place: number) => void) {
+/** Calls `visit` with every place that could lie wholly within `r` of a point. */
+function forEachPlaceNear(config: ValleyConfig, x: number, y: number, r: number, visit: (place: number) => void) {
   const n = placesPerSide(config)
-  const r = config.perceptionRadiusCm
   const column0 = Math.max(0, Math.floor((x - r) / config.placeCm))
   const column1 = Math.min(n - 1, Math.floor((x + r) / config.placeCm))
   const row0 = Math.max(0, Math.floor((y - r) / config.placeCm))
@@ -97,18 +98,24 @@ function forEachPlaceNear(config: ValleyConfig, x: number, y: number, visit: (pl
     for (let column = column0; column <= column1; column += 1) visit(row * n + column)
 }
 
-/** Marks every place wholly in view as seen this minute. */
+/**
+ * Marks every place wholly within sight as seen this minute. With `checkSites`, ground once seen stays seen: only
+ * places never seen are marked, and none once every place has been.
+ */
 export function observePlaces(config: ValleyConfig, forager: Forager, minute: number) {
-  forEachPlaceNear(config, forager.x, forager.y, (place) => {
-    if (!placeInView(config, place, forager.x, forager.y)) return
+  if (config.checkSites && forager.placesSeen === placeCount(config)) return
+  const r = sightOf(config, minute)
+  forEachPlaceNear(config, forager.x, forager.y, r, (place) => {
+    if (config.checkSites && forager.placeSeen[place]! >= 0) return
+    if (!placeInView(config, place, forager.x, forager.y, r)) return
     if (forager.placeSeen[place]! < 0) forager.placesSeen += 1
     forager.placeSeen[place] = minute
   })
 }
 
-/** Learns every standing flag in view, and forgets every known flag whose spot is in view and holds none. */
-export function observeFlags(config: ValleyConfig, forager: Forager, groups: readonly Group[]) {
-  const r2 = config.perceptionRadiusCm ** 2
+/** Learns every standing flag within sight, and forgets every known flag whose spot is within sight and holds none. */
+export function observeFlags(config: ValleyConfig, forager: Forager, groups: readonly Group[], minute: number) {
+  const r2 = sightOf(config, minute) ** 2
   for (const group of groups) {
     if (distanceSq(forager.x, forager.y, group.flag.x, group.flag.y) > r2) continue
     const known = forager.knownFlags.includes(group.id)
@@ -117,20 +124,16 @@ export function observeFlags(config: ValleyConfig, forager: Forager, groups: rea
   }
 }
 
-/** Whether a point can be walked to and home from before dusk, from the start of minute `minute`. */
-export function reachableAndBack(config: ValleyConfig, forager: Forager, x: number, y: number, minute: number) {
-  const there = walkSeconds(distance(forager.x, forager.y, x, y), config.walkCmPerSecond)
-  const home = walkSeconds(distance(x, y, forager.hearth.x, forager.hearth.y), config.walkCmPerSecond)
-  return there + home <= daylightSecondsLeft(config, minute)
-}
-
-/** Exploring goes to places not seen for `exploreAfterHours` or never; searching only to places never seen. */
+/**
+ * Exploring goes to places not seen for `exploreAfterHours` or never, and with `checkSites` only to places never seen;
+ * searching only to places never seen.
+ */
 export type PlaceSearch = 'explore' | 'search'
 
 export function placeWanted(config: ValleyConfig, forager: Forager, place: number, minute: number, why: PlaceSearch) {
   const seen = forager.placeSeen[place]!
   if (seen < 0) return true
-  return why === 'explore' && minute - seen >= 60 * config.exploreAfterHours
+  return why === 'explore' && !config.checkSites && minute - seen >= 60 * config.exploreAfterHours
 }
 
 /**
@@ -142,7 +145,7 @@ const oldestPlaces = new WeakMap<Int32Array, { place: number; seen: number }>()
 /** Whether no place can be wanted this minute, without looking at every place. */
 function nothingWanted(config: ValleyConfig, forager: Forager, minute: number, why: PlaceSearch) {
   if (forager.placesSeen < placeCount(config)) return false
-  if (why === 'search') return true
+  if (why === 'search' || config.checkSites) return true
   const memory = forager.placeSeen
   let oldest = oldestPlaces.get(memory)
   if (!oldest || memory[oldest.place] !== oldest.seen) {
@@ -162,7 +165,9 @@ function nothingWanted(config: ValleyConfig, forager: Forager, minute: number, w
 export function choosePlace(config: ValleyConfig, forager: Forager, minute: number, why: PlaceSearch): number | null {
   const grid = gridOf(config)
   const wanted = (place: number) => placeWanted(config, forager, place, minute, why)
-  const reachable = (place: number) => reachableAndBack(config, forager, grid.cx[place]!, grid.cy[place]!, minute)
+  const speed = walkSpeed(config, forager)
+  const reachable = (place: number) =>
+    reachableAndBack(config, forager, grid.cx[place]!, grid.cy[place]!, minute, speed)
   const target = forager.exploreTarget
   if (target !== null && wanted(target) && reachable(target)) return target
   if (nothingWanted(config, forager, minute, why)) {
@@ -175,7 +180,7 @@ export function choosePlace(config: ValleyConfig, forager: Forager, minute: numb
   let best: number | null = null
   let bestSq = Infinity
   // Nothing further than it can walk in the daylight left can be reached and left in time.
-  const range = daylightSecondsLeft(config, minute) * config.walkCmPerSecond
+  const range = daylightSecondsLeft(config, minute) * speed
   for (let ring = 0; ring < n; ring += 1) {
     // Every place in ring `ring` has its centre at least `(ring − 1) · placeCm` away.
     const floor = Math.max(0, (ring - 1) * config.placeCm)
@@ -312,18 +317,19 @@ export interface Goal {
   y: number
   reason: ActionReason
   placeId: number | null
+  siteId: number | null
 }
 
 /**
- * Rules 4 and 5 for a forager whose needs are met: without a group, it walks towards the nearest forager it sees, or
+ * Rules 5 and 6 for a forager whose needs are met: without a group, it walks towards the nearest forager it sees, or
  * to the nearest flag it knows and can reach and return from before dusk, or explores; with exploring on, it explores.
  * Null when there is nothing to do but rest.
  */
 export function idleGoal(state: ValleyState, forager: Forager, minute: number): Goal | null {
   const { config } = state
   if (config.groups && forager.groupId === null) {
-    const seen = nearestOther(forager, state.foragers, config.perceptionRadiusCm)
-    if (seen) return { x: seen.x, y: seen.y, reason: 'seeking company', placeId: null }
+    const seen = nearestOther(forager, state.foragers, sightOf(config, minute))
+    if (seen) return { x: seen.x, y: seen.y, reason: 'seeking company', placeId: null, siteId: null }
     let flag: Point | null = null
     let flagSq = Infinity
     for (const id of forager.knownFlags) {
@@ -334,11 +340,30 @@ export function idleGoal(state: ValleyState, forager: Forager, minute: number): 
         flagSq = sq
       }
     }
-    if (flag) return { ...flag, reason: flagSq === 0 ? 'waiting for company' : 'seeking company', placeId: null }
-    const place = choosePlace(config, forager, minute, 'explore')
-    return place === null ? null : { ...placeCentre(config, place), reason: 'seeking company', placeId: place }
+    if (flag)
+      return {
+        ...flag,
+        reason: flagSq === 0 ? 'waiting for company' : 'seeking company',
+        placeId: null,
+        siteId: null,
+      }
+    return exploreGoal(state, forager, minute, 'seeking company')
   }
   if (!config.explore) return null
+  return exploreGoal(state, forager, minute, null)
+}
+
+/**
+ * Rule 6's choice: the nearest place worth exploring; then, with `checkSites`, the nearest site not checked for
+ * `exploreAfterHours`. A forager seeking company records that as its reason instead.
+ */
+function exploreGoal(state: ValleyState, forager: Forager, minute: number, seeking: ActionReason | null): Goal | null {
+  const { config, layout } = state
   const place = choosePlace(config, forager, minute, 'explore')
-  return place === null ? null : { ...placeCentre(config, place), reason: 'exploring', placeId: place }
+  if (place !== null)
+    return { ...placeCentre(config, place), reason: seeking ?? 'exploring', placeId: place, siteId: null }
+  if (!config.checkSites) return null
+  const site = chooseSite(config, layout, forager, minute, 'check', null)
+  if (site === null) return null
+  return { ...siteCentre(config, layout, site), reason: seeking ?? 'checking', placeId: null, siteId: site }
 }

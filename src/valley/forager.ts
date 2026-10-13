@@ -23,6 +23,33 @@ export const minuteOfWork = (rate: number) => Math.ceil(rate / 60)
 
 export const atHearth = (forager: Forager) => forager.x === forager.hearth.x && forager.y === forager.hearth.y
 
+/** What a forager carries: the wood of its trip, of which it can hold no more than it has, and its berries. */
+export const loadOf = (forager: Forager) => ({
+  wood: Math.min(forager.tripWood, forager.wood),
+  berriesKcal: carriedKcal(forager.carried),
+})
+
+/** A load in whole kilograms: its wood, and its berries at `berryKcalPerKg`, rounded down. */
+export const loadKg = (config: ValleyConfig, wood: number, berriesKcal: number) =>
+  wood + Math.floor(berriesKcal / config.berryKcalPerKg)
+
+/**
+ * Walking speed under a load of `kg`, in centimetres a second: `floor(walkCmPerSecond · bodyKg / (bodyKg + kg))`,
+ * never below 1; or `walkCmPerSecond` without the carrying cost. Each second still costs `travelKcalPerHour`, so each
+ * metre costs `(bodyKg + kg) / bodyKg` times as much.
+ */
+export const speedForLoad = (config: ValleyConfig, kg: number) =>
+  config.carryCost
+    ? Math.max(1, Math.floor((config.walkCmPerSecond * config.bodyKg) / (config.bodyKg + kg)))
+    : config.walkCmPerSecond
+
+/** A forager's walking speed for what it carries now. */
+export function walkSpeed(config: ValleyConfig, forager: Forager) {
+  if (!config.carryCost) return config.walkCmPerSecond
+  const load = loadOf(forager)
+  return speedForLoad(config, loadKg(config, load.wood, load.berriesKcal))
+}
+
 /** Hunger with hysteresis, as in Life 0. */
 export function nextHungry(config: ValleyConfig, energyKcal: number, hungry: boolean) {
   if (energyKcal < config.hungryBelowKcal) return true
@@ -95,11 +122,36 @@ export function chooseWork(config: ValleyConfig, forager: Forager, minute: numbe
 export const fillingLoad = (config: ValleyConfig, forager: Forager) =>
   forager.tripWood > 0 && forager.tripWood < config.woodLoad
 
-/** Whether a plant can be reached, worked for a minute, and left for the hearth before dusk. */
-export function reachableInTime(config: ValleyConfig, forager: Forager, px: number, py: number, daylightLeft: number) {
-  const there = walkSeconds(distance(forager.x, forager.y, px, py), config.walkCmPerSecond)
-  const home = walkSeconds(distance(px, py, forager.hearth.x, forager.hearth.y), config.walkCmPerSecond)
+/** Rule 4: it has gathered a full load since it left its hearth. */
+export const carryingFullLoad = (config: ValleyConfig, forager: Forager) =>
+  config.woodLoad > 0 && forager.tripWood >= config.woodLoad
+
+/** Whether a plant can be reached, worked for a minute, and left for the hearth before dusk, at speed `speed`. */
+export function reachableInTime(
+  config: ValleyConfig,
+  forager: Forager,
+  px: number,
+  py: number,
+  daylightLeft: number,
+  speed = walkSpeed(config, forager),
+) {
+  const there = walkSeconds(distance(forager.x, forager.y, px, py), speed)
+  const home = walkSeconds(distance(px, py, forager.hearth.x, forager.hearth.y), speed)
   return there + 60 + home <= daylightLeft
+}
+
+/** Whether a point can be walked to and home from before dusk, from the start of minute `minute`, at speed `speed`. */
+export function reachableAndBack(
+  config: ValleyConfig,
+  forager: Forager,
+  x: number,
+  y: number,
+  minute: number,
+  speed = walkSpeed(config, forager),
+) {
+  const there = walkSeconds(distance(forager.x, forager.y, x, y), speed)
+  const home = walkSeconds(distance(x, y, forager.hearth.x, forager.hearth.y), speed)
+  return there + home <= daylightSecondsLeft(config, minute)
 }
 
 /** Away from its hearth, and it is night or walking home takes every daylight second left. */
@@ -107,7 +159,10 @@ export function mustGoHome(config: ValleyConfig, forager: Forager, minute: numbe
   if (atHearth(forager)) return false
   const left = daylightSecondsLeft(config, minute)
   if (!left) return true
-  const home = walkSeconds(distance(forager.x, forager.y, forager.hearth.x, forager.hearth.y), config.walkCmPerSecond)
+  const home = walkSeconds(
+    distance(forager.x, forager.y, forager.hearth.x, forager.hearth.y),
+    walkSpeed(config, forager),
+  )
   return home >= left
 }
 
@@ -130,7 +185,8 @@ export function choosePlant(
   const memory = good === 'food' ? forager.bushMemory : forager.treeMemory
   const threshold = minuteOfWork(good === 'food' ? forager.forageRate : forager.woodRate)
   const left = daylightSecondsLeft(config, minute)
-  const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left)
+  const speed = walkSpeed(config, forager)
+  const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)
   const target = good === 'food' ? forager.targetBushId : forager.targetTreeId
   if (target !== null && reachable(target) && (memory.seen[target] !== minute || memory.stock[target]! >= threshold))
     return target
@@ -162,7 +218,8 @@ export function choosePlant(
 export function idleReason(config: ValleyConfig, forager: Forager, plants: Plants, minute: number): ActionReason {
   if (!plants.count) return 'waiting for regrowth'
   const left = daylightSecondsLeft(config, minute)
+  const speed = walkSpeed(config, forager)
   for (let id = 0; id < plants.count; id += 1)
-    if (reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left)) return 'waiting for regrowth'
+    if (reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)) return 'waiting for regrowth'
   return 'too late to set out'
 }

@@ -1,4 +1,6 @@
+import { speedForLoad } from './forager'
 import { placeCount } from './social'
+import { siteCount } from './sites'
 import { nightHours, nightWood, woodTarget } from './trade'
 import type { ValleyConfig } from './types'
 
@@ -30,6 +32,18 @@ export function valleyTheory(config: ValleyConfig) {
   const largestLoadWithoutSurplus = woodTarget(config) - nightWood(config) + 1
   /** Hours to walk from place centre to place centre across the whole valley once, about `placeCm` per place. */
   const sweepHours = (placeCount(config) * config.placeCm) / config.walkCmPerSecond / 3_600
+  /** Seconds to walk `cm` centimetres under a load of `kg`. */
+  const loadedWalkSeconds = (cm: number, kg: number) => Math.ceil(cm / speedForLoad(config, kg))
+  /** What walking `cm` centimetres under a load of `kg` costs beyond walking it unloaded, in kilocalories. */
+  const carryCostKcal = (cm: number, kg: number) =>
+    ((loadedWalkSeconds(cm, kg) - Math.ceil(cm / config.walkCmPerSecond)) * config.travelKcalPerHour) / 3_600
+  /**
+   * The shortest tour through every site, about `0.7124 · √(n · A)` for `n` points spread over an area `A`
+   * (Beardwood, Halton and Hammersley, 1959), with site centres in the square inside the margins; in hours of walking.
+   */
+  const siteSpan = config.valleySizeCm - 2 * config.siteMarginCm
+  const shortestCheckTourHours =
+    (0.7124 * Math.sqrt(siteCount(config) * siteSpan * siteSpan)) / config.walkCmPerSecond / 3_600
   return {
     nightHours: night,
     daylightHours: daylight,
@@ -54,5 +68,9 @@ export function valleyTheory(config: ValleyConfig) {
     sweepHours,
     /** What walking instead of resting costs over a sweep of the valley. */
     sweepCostKcal: sweepHours * travelDelta,
+    speedForLoad: (kg: number) => speedForLoad(config, kg),
+    loadedWalkSeconds,
+    carryCostKcal,
+    shortestCheckTourHours,
   }
 }

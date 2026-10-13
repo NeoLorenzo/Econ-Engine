@@ -103,3 +103,28 @@ describe('valley configuration', () => {
     expect(points[8]).toEqual([-2, -2])
   })
 })
+
+describe('Life 7 configuration', () => {
+  it('refuses switches that are not booleans, and a body, berries or sight that are not positive', () => {
+    expect(errorsWith({ checkSites: 1 as unknown as boolean })).toContain('checkSites must be true or false')
+    expect(errorsWith({ carryCost: 'yes' as unknown as boolean })).toContain('carryCost must be true or false')
+    expect(errorsWith({ loadHome: 0 as unknown as boolean })).toContain('loadHome must be true or false')
+    expect(errorsWith({ bodyKg: 0 })).toContain('bodyKg must be positive')
+    expect(errorsWith({ berryKcalPerKg: 0 })).toContain('berryKcalPerKg must be positive')
+    expect(errorsWith({ sightRadiusCm: 0 })).toContain('sightRadiusCm must be positive')
+  })
+
+  it('refuses long sight shorter than close sight', () => {
+    expect(errorsWith({ sightRadiusCm: 2_499 })).toContain(
+      'Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm',
+    )
+    expect(errorsWith({ sightRadiusCm: 2_500 })).toEqual([])
+  })
+
+  it('refuses sites too wide to check, but only when checking them', () => {
+    const message =
+      'A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm and standRadiusCm'
+    expect(errorsWith({ standRadiusCm: 2_500 })).toContain(message)
+    expect(errorsWith({ standRadiusCm: 2_500, checkSites: false })).not.toContain(message)
+  })
+})
