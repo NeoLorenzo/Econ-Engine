@@ -1,11 +1,13 @@
 import { carriedKcal } from '../life/food'
 import { mixSeed, randomDraw } from '../sim/rng'
+import { spiralOffsets } from '../valley/config'
 import { lastEventOf } from '../valley/engine'
-import { MINUTES_PER_DAY } from '../valley/forager'
+import { MINUTES_PER_DAY, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { practicePercents } from '../valley/practice'
+import { siteCentre, siteCount, siteRadius, sitesKnown } from '../valley/sites'
 import { livingMembers, placeCount, placesPerSide, placeWanted } from '../valley/social'
 import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
-import type { ActionEvent, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
+import type { ActionEvent, Group, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
 import { foragerColor, foragerName, formatHours } from '../lifeView/lifeViewModel'
 
 export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from '../lifeView/lifeViewModel'
@@ -216,6 +218,9 @@ export function fireSaving(config: ValleyConfig) {
 /** People count bushes, trees and foragers from 1. */
 export const bushName = (state: ValleyState, id: number) => `a bush in thicket ${state.layout.bushes.site[id]! + 1}`
 export const treeName = (state: ValleyState, id: number) => `a tree in stand ${state.layout.trees.site[id]! + 1}`
+/** A site by name, as bushes and trees name theirs: thickets and stands each counted from 1. */
+export const siteName = (config: ValleyConfig, site: number) =>
+  site < config.thicketCount ? `thicket ${site + 1}` : `stand ${site - config.thicketCount + 1}`
 
 /** Groups are named by letter in order of founding: A to Z, then A2 to Z2, and so on. */
 export const groupName = (id: number) =>
@@ -233,18 +238,27 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   if (!event) return 'Waiting to start'
   const toSwap = event.forTrade ? ' to swap' : ''
   if (event.reason === 'going home') return 'Walking home to its hearth'
+  if (event.reason === 'taking a load home') return `Taking ${event.loadWood} kg of firewood home`
   if (event.action === 'sleep') {
     if (event.energyAfterKcal === 0) return 'Starved in its sleep'
     if (event.sleptCold) return 'Sleeping cold, with no wood to burn'
     return woodMatters(state.config) ? 'Sleeping warm by its fire' : 'Sleeping through the night'
   }
   if (event.reason === 'satiated') return 'Resting, well fed'
-  if (event.reason === 'exploring')
-    return event.action === 'walk' ? 'Exploring, to see what has changed' : 'Looking around'
+  if (event.reason === 'exploring') {
+    if (event.action !== 'walk') return 'Looking around'
+    return state.config.checkSites ? 'Exploring ground it has never seen' : 'Exploring, to see what has changed'
+  }
+  if (event.reason === 'checking' && event.siteId !== null) {
+    const site = siteName(state.config, event.siteId)
+    return event.action === 'walk' ? `Walking to ${site} to see what it holds` : `Looking over ${site}`
+  }
   if (event.reason === 'seeking company') return event.action === 'walk' ? 'Looking for company' : 'Hoping for company'
   if (event.reason === 'waiting for company') return 'Waiting for company at a flag'
-  if (event.reason === 'searching')
-    return event.workedFor === 'wood' ? 'Searching new ground for deadwood' : 'Searching new ground for berries'
+  if (event.reason === 'searching') {
+    const where = event.siteId === null ? 'new ground' : siteName(state.config, event.siteId)
+    return event.workedFor === 'wood' ? `Searching ${where} for deadwood` : `Searching ${where} for berries`
+  }
   if (event.reason === 'waiting to swap') return 'Resting, carrying food to swap for wood'
   if (event.reason === 'too late to set out') return 'Too late in the day to set out'
   if (event.reason === 'waiting for regrowth')
@@ -297,18 +311,86 @@ export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: n
   }
 }
 
-/** What the inspector shows for a group's flag: its group, when it was founded, and who belongs. */
-export function flagInspection(state: ValleyState, groupId: number) {
+/**
+ * What the group card shows: when the group was founded, each living member with what it is doing and carrying, the
+ * wood and food its members hold, and the swaps among them over the last day.
+ */
+export function groupInspection(pair: DisplayPair, groupId: number) {
+  const state = pair.next
   const group = state.groups[groupId]!
+  const living = livingMembers(state, group)
+  const members = living.map((id) => {
+    const load = loadOf(state.foragers[id]!)
+    return {
+      id,
+      name: foragerName(id),
+      color: foragerColor(state.config, state.foragers[id]!),
+      activity: describeActivity(pair, id),
+      loadKg: loadKg(state.config, load.wood, load.berriesKcal),
+    }
+  })
+  const since = state.minute - MINUTES_PER_DAY
+  const inGroup = new Set(living)
+  let swaps = 0
+  for (const day of state.eventDays.slice(-2))
+    for (const made of day)
+      if (made.kind === 'swap' && made.minute >= since && inGroup.has(made.sellerId) && inGroup.has(made.buyerId))
+        swaps += 1
   return {
-    name: `${groupName(groupId)}’s flag`,
+    name: groupName(groupId),
     color: groupColor(groupId),
     founded: group.foundedMinute,
     foundedAgo: Math.max(0, state.minute - 1 - group.foundedMinute),
     dissolved: group.dissolvedMinute !== null,
-    members: livingMembers(state, group).map(foragerName),
+    members,
     joinedEver: group.members.length,
+    wood: sum(living.map((id) => state.foragers[id]!.wood)),
+    foodKcal: sum(living.map((id) => carriedKcal(state.foragers[id]!.carried))),
+    swapsLastDay: swaps,
   }
+}
+
+/** How far the coloured ground round a group's base reaches: past the farthest hearth on its spiral, in centimetres. */
+export function baseRadiusCm(config: ValleyConfig, group: Group) {
+  const [dx, dy] = spiralOffsets(Math.max(1, group.members.length)).at(-1)!
+  return Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * config.hearthSpacingCm * Math.SQRT2) + 250
+}
+
+/** The middle of a group's flag and living members, and how far from it the farthest lies, to frame the group. */
+export function groupFrame(state: ValleyState, groupId: number) {
+  const group = state.groups[groupId]!
+  const points = [group.flag, ...livingMembers(state, group).map((id) => state.foragers[id]!)]
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+  const x = (Math.min(...xs) + Math.max(...xs)) / 2
+  const y = (Math.min(...ys) + Math.max(...ys)) / 2
+  const farthest = Math.max(...points.map((point) => Math.hypot(point.x - x, point.y - y)))
+  return { x, y, radiusCm: Math.max(baseRadiusCm(state.config, group), farthest) }
+}
+
+export interface SiteRing {
+  site: number
+  x: number
+  y: number
+  radiusCm: number
+  /** Checked within `exploreAfterHours`. */
+  fresh: boolean
+}
+
+/** The thickets and stands the followed forager knows, and whether it checked each lately; none without checking. */
+export function siteRings(state: ValleyState, foragerId: number): SiteRing[] {
+  const { config, layout } = state
+  if (!config.checkSites) return []
+  const forager = state.foragers[foragerId]!
+  const minute = Math.max(0, state.minute - 1)
+  const rings: SiteRing[] = []
+  for (let site = 0; site < siteCount(config); site += 1) {
+    if (!forager.siteKnown[site]) continue
+    const checked = forager.siteChecked[site]!
+    const fresh = checked >= 0 && minute - checked < 60 * config.exploreAfterHours
+    rings.push({ site, ...siteCentre(config, layout, site), radiusCm: siteRadius(config, site), fresh })
+  }
+  return rings
 }
 
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0)
@@ -321,6 +403,8 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
   const percent = practicePercents(config, forager.practiceLog)
   const yesterday = state.days.at(-1)
   const oldest = forager.carried[0]
+  const load = loadOf(forager)
+  const kg = loadKg(config, load.wood, load.berriesKcal)
   return {
     forageRate: forager.forageRate,
     woodRate: forager.woodRate,
@@ -355,6 +439,15 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     joinedMinutesAgo: forager.joinedMinute === null ? null : Math.max(0, state.minute - 1 - forager.joinedMinute),
     /** The share of the valley's places it has ever seen. */
     seenShare: forager.placesSeen / placeCount(config),
+    /** What it carries, in kilograms, and how fast that lets it walk, in km/h. */
+    loadKg: kg,
+    speedKmh: (speedForLoad(config, kg) * 36) / 1_000,
+    sitesKnown: sitesKnown(forager),
+    sitesTotal: siteCount(config),
+    /** Sites it has checked within `exploreAfterHours`. */
+    sitesCheckedLately: forager.siteChecked.filter(
+      (checked) => checked >= 0 && Math.max(0, state.minute - 1) - checked < 60 * config.exploreAfterHours,
+    ).length,
   }
 }
 
@@ -400,7 +493,8 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
 
 /**
  * How dark to draw each place on the ground for what a forager knows, row by row from the valley's first row: places it
- * has never seen darkest, places not seen for `exploreAfterHours` a little dark, and the rest clear. Values are 0–255.
+ * has never seen darkest, places not seen for `exploreAfterHours` a little dark (only without `checkSites`, since
+ * otherwise seen ground stays seen), and the rest clear. Values are 0–255.
  */
 export function knowledgeShades(state: ValleyState, foragerId: number) {
   const forager = state.foragers[foragerId]!

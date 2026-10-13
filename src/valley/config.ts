@@ -1,9 +1,10 @@
 import type { ValleyConfig } from './types'
 
 /**
- * The canonical Life 6 valley: Life 5's valley, 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees,
+ * The canonical Life 7 valley: Life 5's valley, 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees,
  * which together grow exactly what Life 4's land grew, and Life 4's band of 8 born alike, who bring firewood home in
- * loads of 30 kg. They start scattered, know only what they have seen, explore, and form groups when they meet.
+ * loads of 30 kg. They start scattered and form groups when they meet, as in Life 6. By day they see across the
+ * valley, check the thickets and stands they know when idle, walk more slowly under a load, and take a full load home.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
@@ -66,10 +67,25 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   startSpacingCm: 5_000,
   placeCm: 3_000,
   exploreAfterHours: 24,
+  sightRadiusCm: 100_000,
+  checkSites: true,
+  carryCost: true,
+  bodyKg: 60,
+  berryKcalPerKg: 500,
+  loadHome: true,
+}
+
+/** Life 6's valley: foragers see 25 m, sweep places, and carry loads at no cost. */
+export const LIFE6_VALLEY: Partial<ValleyConfig> = {
+  sightRadiusCm: 2_500,
+  checkSites: false,
+  carryCost: false,
+  loadHome: false,
 }
 
 /** Life 5's valley: the band starts around the camp knowing the whole valley, rests when idle and swaps with anyone. */
 export const LIFE5_VALLEY: Partial<ValleyConfig> = {
+  ...LIFE6_VALLEY,
   groups: false,
   scattered: false,
   explore: false,
@@ -79,7 +95,18 @@ export const LIFE5_VALLEY: Partial<ValleyConfig> = {
 /** Life 3's band in the valley: born skills from half to one and a half times the usual, and no practice. */
 export const LIFE3_BAND: Partial<ValleyConfig> = { skillMinPercent: 50, skillMaxPercent: 150, practice: false }
 
-const BOOLEAN_KEYS = new Set(['swapping', 'quotes', 'practice', 'groups', 'scattered', 'explore', 'knowValley'])
+const BOOLEAN_KEYS = new Set([
+  'swapping',
+  'quotes',
+  'practice',
+  'groups',
+  'scattered',
+  'explore',
+  'knowValley',
+  'checkSites',
+  'carryCost',
+  'loadHome',
+])
 
 /** The points of the square spiral around the camp: the 8 of the first ring, then the 16 of the second, and so on. */
 export function spiralOffsets(count: number) {
@@ -129,6 +156,9 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'startSpacingCm',
     'placeCm',
     'exploreAfterHours',
+    'sightRadiusCm',
+    'bodyKg',
+    'berryKcalPerKg',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
@@ -194,6 +224,11 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   // Standing at a place's centre must show all of it, or exploring could never see it.
   if (config.placeCm ** 2 > 2 * config.perceptionRadiusCm ** 2)
     errors.push('A place must fit in a forager’s view: placeCm² ≤ 2 · perceptionRadiusCm²')
+  if (config.sightRadiusCm < config.perceptionRadiusCm)
+    errors.push('Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm')
+  // A site is checked from within perceptionRadiusCm − its radius of its centre, which must leave room to stand.
+  if (config.checkSites && config.perceptionRadiusCm <= Math.max(config.thicketRadiusCm, config.standRadiusCm))
+    errors.push('A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm and standRadiusCm')
   if (2 * config.siteMarginCm >= config.valleySizeCm) errors.push('siteMarginCm must leave room for sites')
   return errors
 }

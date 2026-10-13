@@ -18,7 +18,6 @@ import {
   displayedEnergy,
   displayMinutes,
   fireSaving,
-  flagInspection,
   foragerColor,
   foragerName,
   foragerSummary,
@@ -26,6 +25,7 @@ import {
   formatHours,
   formatMinutes,
   groupColor,
+  groupInspection,
   groupName,
   ownTermsByDay,
   plantInspection,
@@ -48,11 +48,23 @@ type NumericSetup = Pick<
   | 'practiceMinPercent'
   | 'practiceMaxPercent'
   | 'exploreAfterHours'
+  | 'sightRadiusCm'
 >
-type SwitchKey = 'groups' | 'scattered' | 'explore' | 'knowValley' | 'swapping' | 'quotes' | 'practice'
+type SwitchKey =
+  | 'groups'
+  | 'scattered'
+  | 'explore'
+  | 'knowValley'
+  | 'checkSites'
+  | 'carryCost'
+  | 'loadHome'
+  | 'swapping'
+  | 'quotes'
+  | 'practice'
 type Setup = NumericSetup & Pick<ValleyConfig, SwitchKey>
 
-const SETUP_FIELDS: { key: keyof NumericSetup; label: string }[] = [
+/** A field is typed in its own unit: `unit` of the configuration's units make one of it. */
+const SETUP_FIELDS: { key: keyof NumericSetup; label: string; unit?: number }[] = [
   { key: 'seed', label: 'Seed' },
   { key: 'bandSize', label: 'Foragers' },
   { key: 'woodLoad', label: 'Load, kg' },
@@ -62,7 +74,8 @@ const SETUP_FIELDS: { key: keyof NumericSetup; label: string }[] = [
   { key: 'practiceHalfHours', label: 'Half way, h' },
   { key: 'practiceMinPercent', label: 'Practice from, %' },
   { key: 'practiceMaxPercent', label: 'Practice to, %' },
-  { key: 'exploreAfterHours', label: 'Explore after, h' },
+  { key: 'exploreAfterHours', label: 'Check after, h' },
+  { key: 'sightRadiusCm', label: 'Sight, m', unit: 100 },
 ]
 
 const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
@@ -70,6 +83,9 @@ const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
   { key: 'scattered', label: 'Start scattered' },
   { key: 'explore', label: 'Explore' },
   { key: 'knowValley', label: 'Know the valley' },
+  { key: 'checkSites', label: 'Check thickets and stands' },
+  { key: 'carryCost', label: 'Loads slow walking' },
+  { key: 'loadHome', label: 'Take loads home' },
   { key: 'practice', label: 'Practice' },
   { key: 'swapping', label: 'Swapping' },
   { key: 'quotes', label: 'Telling terms' },
@@ -219,6 +235,14 @@ export default function ValleyApp() {
     setSnapshot(snap(pairRef.current, id, true))
   }, [])
 
+  /** Selects a group and moves the camera to take in its base and members, which stops following a forager. */
+  const showGroup = useCallback((id: number) => {
+    setSelected({ kind: 'group', id })
+    followingRef.current = false
+    setFollowing(false)
+    sceneRef.current?.showGroup(id)
+  }, [])
+
   /** Finishes the minute in progress, then shows the next one from its start. */
   const stepMinute = useCallback(() => {
     const { next } = pairRef.current
@@ -241,7 +265,9 @@ export default function ValleyApp() {
   const applySetup = (event: FormEvent) => {
     event.preventDefault()
     const parsed = {
-      ...(Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, Number(draft[key])])) as NumericSetup),
+      ...(Object.fromEntries(
+        SETUP_FIELDS.map(({ key, unit = 1 }) => [key, Number(draft[key]) * unit]),
+      ) as NumericSetup),
       ...switches,
     }
     const config = { ...VALLEY_DEFAULT_CONFIG, ...parsed }
@@ -266,8 +292,9 @@ export default function ValleyApp() {
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
   const plant =
-    selected && selected.kind !== 'flag' ? plantInspection(state, selected.kind, selected.id, followed) : null
-  const flag = selected?.kind === 'flag' ? flagInspection(state, selected.id) : null
+    selected && selected.kind !== 'group' ? plantInspection(state, selected.kind, selected.id, followed) : null
+  const group = selected?.kind === 'group' && state.groups[selected.id] ? groupInspection(pair, selected.id) : null
+  const standing = state.groups.filter((made) => made.dissolvedMinute === null)
   const summary = foragerSummary(state, followed)
   const fire = fireSaving(config)
   const days = daySeries(state, followed)
@@ -284,7 +311,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 6 · groups</span>
+        <span className="life-title">Life 7 · sight and loads</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -362,6 +389,24 @@ export default function ValleyApp() {
             Go to {name}
           </button>
         )}
+        {config.groups && standing.length > 0 && (
+          <div className="valley-groups" role="group" aria-label="Groups">
+            {standing.map((made) => (
+              <button
+                key={made.id}
+                type="button"
+                className={`valley-group-chip${selected?.kind === 'group' && selected.id === made.id ? ' is-selected' : ''}`}
+                style={{ borderColor: groupColor(made.id) }}
+                aria-label={`Show ${groupName(made.id)}`}
+                aria-pressed={selected?.kind === 'group' && selected.id === made.id}
+                onClick={() => showGroup(made.id)}
+              >
+                <span className="life-strategy-dot" aria-hidden="true" style={{ background: groupColor(made.id) }} />
+                {groupName(made.id).replace('Group ', '')}
+              </button>
+            ))}
+          </div>
+        )}
         <p className={`life-activity${forager.alive ? '' : ' is-dead'}`} aria-live="polite">
           {describeActivity(pair, followed)}
         </p>
@@ -413,7 +458,22 @@ export default function ValleyApp() {
             </>
           )}
           <dt>Has seen</dt>
-          <dd className="num">{Math.round(summary.seenShare * 100)}% of the valley</dd>
+          <dd className="num">
+            {summary.seenShare === 1 ? 'the whole valley' : `${Math.round(summary.seenShare * 100)}% of the valley`}
+          </dd>
+          {config.checkSites && (
+            <>
+              <dt>Knows</dt>
+              <dd className="num">
+                {summary.sitesKnown} of {summary.sitesTotal} thickets and stands, {summary.sitesCheckedLately} checked
+                in the last {config.exploreAfterHours} h
+              </dd>
+            </>
+          )}
+          <dt>Load</dt>
+          <dd className="num">
+            {summary.loadKg ? formatKg(summary.loadKg) : 'none'} · walks at {summary.speedKmh.toFixed(1)} km/h
+          </dd>
           <dt>Skills</dt>
           <dd className="num">
             {formatKcal(summary.forageRate)}/h{formatChange(summary.forageRateChange)} · {summary.woodRate} kg/h
@@ -509,12 +569,12 @@ export default function ValleyApp() {
         </section>
       )}
 
-      {flag && (
-        <section className="life-card life-inspector" aria-label={flag.name}>
+      {group && selected?.kind === 'group' && (
+        <section className="life-card life-inspector" aria-label={group.name}>
           <header>
             <h2>
-              <span className="life-strategy-dot" aria-hidden="true" style={{ background: flag.color }} />
-              {flag.name}
+              <span className="life-strategy-dot" aria-hidden="true" style={{ background: group.color }} />
+              {group.name}
             </h2>
             <button type="button" className="icon-button" aria-label="Close" onClick={() => setSelected(null)}>
               <Icon name="close" />
@@ -523,16 +583,45 @@ export default function ValleyApp() {
           <dl>
             <dt>Founded</dt>
             <dd className="num">
-              {flag.foundedAgo ? `${formatMinutes(flag.foundedAgo)} ago` : 'this minute'}, on day{' '}
-              {Math.floor(flag.founded / 1_440) + 1}
+              {group.foundedAgo ? `${formatMinutes(group.foundedAgo)} ago` : 'this minute'}, on day{' '}
+              {Math.floor(group.founded / 1_440) + 1}
             </dd>
-            <dt>Members</dt>
-            <dd>{flag.members.length ? flag.members.join(', ') : 'none alive'}</dd>
+            {!group.dissolved && (
+              <>
+                <dt>Holds</dt>
+                <dd className="num">
+                  {formatKg(group.wood)} of wood, {formatKcal(group.foodKcal)} of food
+                </dd>
+                <dt>Swaps</dt>
+                <dd className="num">{group.swapsLastDay} among its members in the last day</dd>
+              </>
+            )}
           </dl>
+          {group.members.length > 0 && (
+            <ul className="valley-members" aria-label="Members">
+              {group.members.map((member) => (
+                <li key={member.id}>
+                  <button type="button" onClick={() => follow(member.id)} aria-label={`Follow ${member.name}`}>
+                    <span className="valley-member-name">
+                      <span className="life-strategy-dot" aria-hidden="true" style={{ background: member.color }} />
+                      {member.name}
+                      {member.loadKg > 0 && <span className="num"> · {formatKg(member.loadKg)}</span>}
+                    </span>
+                    <span className="valley-member-activity">{member.activity}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!group.dissolved && (
+            <button type="button" onClick={() => showGroup(selected.id)}>
+              Show group
+            </button>
+          )}
           <p className="life-note">
-            {flag.dissolved
+            {group.dissolved
               ? 'The group dissolved when only one of its members was left alive, and its flag came down.'
-              : `Its members sleep at their hearths around this flag and swap only with each other. ${flag.joinedEver} have joined it.`}
+              : `Its members sleep at their hearths around its flag and swap only with each other. ${group.joinedEver} have joined it. Click a member to follow it.`}
           </p>
         </section>
       )}
@@ -621,11 +710,15 @@ export default function ValleyApp() {
           <p className="life-note">
             Running seed {setup.seed}: {setup.bandSize} foragers in a valley {config.valleySizeCm / 100} m across,{' '}
             {setup.scattered ? 'who start scattered' : 'who start around the meadow in the middle'},{' '}
-            {setup.knowValley ? 'knowing the whole valley' : 'knowing only what they have seen'}, and{' '}
-            {setup.explore
-              ? `explore places they have not seen for ${formatHours(setup.exploreAfterHours)} when their needs are met`
-              : 'rest when their needs are met'}
-            .{' '}
+            {setup.knowValley ? 'knowing the whole valley' : 'knowing only what they have seen'}. By day they see{' '}
+            {setup.sightRadiusCm / 100} m, and berries and deadwood up close. When their needs are met they{' '}
+            {!setup.explore
+              ? 'rest'
+              : setup.checkSites
+                ? `explore ground they have never seen, then check the thickets and stands they have not checked for ${formatHours(setup.exploreAfterHours)}`
+                : `explore places they have not seen for ${formatHours(setup.exploreAfterHours)}`}
+            . {setup.carryCost ? 'A load slows them down, so every metre costs more' : 'Loads cost nothing to carry'}
+            {setup.loadHome ? ', and they take a full load home before anything else. ' : '. '}
             {setup.groups
               ? 'Those without a group look for company: two who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their flag and swap only with each other.'
               : 'There are no groups: anyone may swap with anyone they meet.'}{' '}
@@ -643,10 +736,11 @@ export default function ValleyApp() {
               : 'never swap'}
             . Each is coloured by what wood costs it, from{' '}
             <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
-            <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a band in its
-            group’s colour. Ground the followed person has never seen is darkest, and ground it has not seen lately a
-            little dark. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to follow
-            them, and a bush, tree or flag to inspect it.
+            <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
+            group’s colour; each group’s base has a flag, coloured ground and a lettered badge. Ground the followed
+            person has never seen is darkest, and a ring marks each thicket and stand it knows, bright if it checked it
+            lately. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to follow them,
+            a bush or tree to inspect it, and a flag, badge or group to see the group.
           </p>
         </details>
       </section>
@@ -655,7 +749,7 @@ export default function ValleyApp() {
 }
 
 function stringify(setup: Setup) {
-  return Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, String(setup[key])])) as Record<
+  return Object.fromEntries(SETUP_FIELDS.map(({ key, unit = 1 }) => [key, String(setup[key] / unit)])) as Record<
     keyof NumericSetup,
     string
   >

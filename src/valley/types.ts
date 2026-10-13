@@ -3,8 +3,9 @@ import type { FoodLot } from '../life/types'
 export type { FoodLot }
 
 /**
- * Life 5's configuration, with Life 6's groups, scattered starts and exploring. Lengths are whole centimetres, food and energy whole kilocalories, and wood whole kilograms,
- * so every balance is exact. Rates and costs stay per hour; a forager pays or takes them second by second.
+ * Life 5's configuration, with Life 6's groups, scattered starts and exploring, and Life 7's sight and loads. Lengths
+ * are whole centimetres, food and energy whole kilocalories, and wood whole kilograms, so every balance is exact.
+ * Rates and costs stay per hour; a forager pays or takes them second by second.
  */
 export interface ValleyConfig {
   seed: number
@@ -94,8 +95,23 @@ export interface ValleyConfig {
   startSpacingCm: number
   /** The valley is divided into square places this wide, which a forager remembers having seen. */
   placeCm: number
-  /** A place not seen for this many hours is worth exploring again. */
+  /**
+   * A place not seen for this many hours is worth exploring again; with `checkSites`, a site not checked for this long
+   * is worth checking again.
+   */
   exploreAfterHours: number
+  /** By day a forager sees thickets, stands, other foragers and flags this far; at night only `perceptionRadiusCm`. */
+  sightRadiusCm: number
+  /** Foragers remember thickets and stands, check them when idle, search them first, and never re-explore ground. */
+  checkSites: boolean
+  /** A load slows a forager's walk, so each metre walked costs more. */
+  carryCost: boolean
+  /** A forager's body, against which its load slows it. */
+  bodyKg: number
+  /** Carried berries weigh a kilogram for every this many kilocalories. */
+  berryKcalPerKg: number
+  /** A forager that is not hungry takes a full load home before anything else. */
+  loadHome: boolean
 }
 
 export interface Point {
@@ -223,7 +239,7 @@ export interface Forager {
   /** Its group, or null if it has none, and the minute it joined or founded it. */
   groupId: number | null
   joinedMinute: number | null
-  /** For each place, the last minute it lay wholly in view, or −1 if never. */
+  /** For each place, the last minute it lay wholly in view (with `checkSites`, the first), or −1 if never. */
   placeSeen: Int32Array
   /** How many places it has ever seen. */
   placesSeen: number
@@ -231,6 +247,10 @@ export interface Forager {
   knownFlags: number[]
   /** The place it is walking to explore or search, if any. */
   exploreTarget: number | null
+  /** For each site, thickets then stands, 1 if it has spotted it. */
+  siteKnown: Uint8Array
+  /** For each site, the last minute it stood close enough to see every plant in it, or −1 if never. */
+  siteChecked: Int32Array
 }
 
 export type ForagerAction = 'sleep' | 'rest' | 'walk' | 'forage' | 'gather'
@@ -251,6 +271,8 @@ export type ActionReason =
   | 'waiting for company'
   | 'exploring'
   | 'searching'
+  | 'checking'
+  | 'taking a load home'
 
 /** One forager's minute. Its seconds add up to 60. */
 export interface ActionEvent {
@@ -289,6 +311,13 @@ export interface ActionEvent {
   groupId: number | null
   /** The place it walked towards to explore, search or seek company, if any. */
   placeId: number | null
+  /** The site it walked towards to check or search, if any. */
+  siteId: number | null
+  /** What it carried at the start of its action: the wood of its trip, and its berries in kilocalories. */
+  loadWood: number
+  loadBerriesKcal: number
+  /** Its walking speed for that load, in centimetres a second. */
+  speedCmPerSecond: number
 }
 
 export interface DeathEvent {
@@ -416,6 +445,10 @@ export interface DaySummary {
   dissolutions: number
   /** Every forager's count of places ever seen, at the end of the day. */
   placesSeenById: number[]
+  /** Every forager's seconds walked with a load during the day, its sites known, and the sites it checked that day. */
+  loadedWalkSecondsById: number[]
+  sitesKnownById: number[]
+  sitesCheckedById: number[]
 }
 
 export interface ValleyTotals {
