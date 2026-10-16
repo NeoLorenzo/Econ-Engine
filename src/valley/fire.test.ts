@@ -80,7 +80,7 @@ describe('warmth', () => {
     expect(after.lastEvents.every((event) => event.sleptCold)).toBe(true)
   })
 
-  it('leaves a forager without a group to tend its own fire, as in Life 7', () => {
+  it('leaves a forager without a group to tend its own fire', () => {
     const state = cloneValley(createValley())
     state.minute = EIGHT_PM
     state.foragers[0]!.wood = 5

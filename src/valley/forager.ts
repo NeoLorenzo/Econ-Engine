@@ -1,4 +1,4 @@
-import { carriedKcal } from '../life/food'
+import { carriedKcal } from './food'
 import { distance, distanceSq, walkSeconds } from './geometry'
 import { forEachPlantWithin, nearestPlant } from './layout'
 import { SECONDS_PER_HOUR } from './practice'
@@ -35,22 +35,19 @@ export const loadKg = (config: ValleyConfig, wood: number, berriesKcal: number) 
 
 /**
  * Walking speed under a load of `kg`, in centimetres a second: `floor(walkCmPerSecond · bodyKg / (bodyKg + kg))`,
- * never below 1; or `walkCmPerSecond` without the carrying cost. Each second still costs `travelKcalPerHour`, so each
- * metre costs `(bodyKg + kg) / bodyKg` times as much.
+ * never below 1. Each second still costs `travelKcalPerHour`, so each metre costs `(bodyKg + kg) / bodyKg` times as
+ * much.
  */
 export const speedForLoad = (config: ValleyConfig, kg: number) =>
-  config.carryCost
-    ? Math.max(1, Math.floor((config.walkCmPerSecond * config.bodyKg) / (config.bodyKg + kg)))
-    : config.walkCmPerSecond
+  Math.max(1, Math.floor((config.walkCmPerSecond * config.bodyKg) / (config.bodyKg + kg)))
 
 /** A forager's walking speed for what it carries now. */
 export function walkSpeed(config: ValleyConfig, forager: Forager) {
-  if (!config.carryCost) return config.walkCmPerSecond
   const load = loadOf(forager)
   return speedForLoad(config, loadKg(config, load.wood, load.berriesKcal))
 }
 
-/** Hunger with hysteresis, as in Life 0. */
+/** Hunger with hysteresis: hungry below `hungryBelowKcal`, until satiated at `satiatedAtKcal`. */
 export function nextHungry(config: ValleyConfig, energyKcal: number, hungry: boolean) {
   if (energyKcal < config.hungryBelowKcal) return true
   if (energyKcal >= config.satiatedAtKcal) return false
@@ -90,7 +87,7 @@ export function observe(memory: PlantMemory, view: Int32Array, stocks: Int32Arra
 export type Work = { good: Good; forTrade: boolean; trip: Forager['trip'] } | 'wait' | null
 
 /**
- * Life 3's choice of work, with loads: a forager neither hungry nor short of wood that is filling a load keeps working
+ * The choice of work, with loads: a forager neither hungry nor short of wood that is filling a load keeps working
  * for wood. `hungry` and `shortOfWood` must already be updated.
  */
 export function chooseWork(config: ValleyConfig, forager: Forager, minute: number): Work {

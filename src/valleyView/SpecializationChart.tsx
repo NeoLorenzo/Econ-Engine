@@ -1,4 +1,4 @@
-import { ownTermsRange, type TermsConfig } from './lifeViewModel'
+import { ownTermsRange, type TermsConfig } from './display'
 
 export interface SpecializationPoint {
   id: number
@@ -26,7 +26,7 @@ export function SpecializationChart({
   points: SpecializationPoint[]
   config: TermsConfig
   followed: number
-  /** What a unit of wood is called: a unit in Life 4, a kilogram in the valley. */
+  /** What a unit of wood is called. */
   woodUnit?: string
 }) {
   const range = ownTermsRange(config)

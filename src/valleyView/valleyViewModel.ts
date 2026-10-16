@@ -1,4 +1,4 @@
-import { carriedKcal } from '../life/food'
+import { carriedKcal } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { spiralOffsets } from '../valley/config'
 import { lastEventOf } from '../valley/engine'
@@ -6,12 +6,12 @@ import { campfireBurn } from '../valley/fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { practicePercents } from '../valley/practice'
 import { siteCentre, siteCount, siteRadius, sitesKnown } from '../valley/sites'
-import { livingMembers, placeCount, placesPerSide, placeWanted } from '../valley/social'
+import { livingMembers, placeCount, placesPerSide } from '../valley/social'
 import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
 import type { ActionEvent, Group, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
-import { foragerColor, foragerName, formatHours } from '../lifeView/lifeViewModel'
+import { foragerColor, foragerName, formatHours } from './display'
 
-export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from '../lifeView/lifeViewModel'
+export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from './display'
 export { foragerColor, formatHours }
 
 /**
@@ -250,7 +250,7 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   if (event.reason === 'satiated') return 'Resting, well fed'
   if (event.reason === 'exploring') {
     if (event.action !== 'walk') return 'Looking around'
-    return state.config.checkSites ? 'Exploring ground it has never seen' : 'Exploring, to see what has changed'
+    return 'Exploring ground it has never seen'
   }
   if (event.reason === 'checking' && event.siteId !== null) {
     const site = siteName(state.config, event.siteId)
@@ -289,7 +289,6 @@ export function formatMinutes(minutes: number) {
 
 const seenLabel = (state: ValleyState, seen: number) => {
   if (seen < 0) return 'never'
-  if (seen === 0 && state.config.knowValley) return 'at the start'
   // An observation made during minute `m` is "this minute" until minute `m + 1` begins.
   const ago = state.minute - 1 - seen
   return ago <= 0 ? 'this minute' : `${formatMinutes(ago)} ago`
@@ -474,10 +473,9 @@ export interface SiteRing {
   fresh: boolean
 }
 
-/** The thickets and stands the followed forager knows, and whether it checked each lately; none without checking. */
+/** The thickets and stands the followed forager knows, and whether it checked each lately. */
 export function siteRings(state: ValleyState, foragerId: number): SiteRing[] {
   const { config, layout } = state
-  if (!config.checkSites) return []
   const forager = state.foragers[foragerId]!
   const minute = Math.max(0, state.minute - 1)
   const rings: SiteRing[] = []
@@ -593,16 +591,12 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
 
 /**
  * How dark to draw each place on the ground for what a forager knows, row by row from the valley's first row: places it
- * has never seen darkest, places not seen for `exploreAfterHours` a little dark (only without `checkSites`, since
- * otherwise seen ground stays seen), and the rest clear. Values are 0–255.
+ * has never seen dark, and the rest clear, since seen ground stays seen. Values are 0–255.
  */
 export function knowledgeShades(state: ValleyState, foragerId: number) {
   const forager = state.foragers[foragerId]!
   const shades = new Uint8Array(placesPerSide(state.config) ** 2)
-  const minute = Math.max(0, state.minute - 1)
-  for (let place = 0; place < shades.length; place += 1)
-    shades[place] =
-      forager.placeSeen[place]! < 0 ? 150 : placeWanted(state.config, forager, place, minute, 'explore') ? 60 : 0
+  for (let place = 0; place < shades.length; place += 1) shades[place] = forager.placeSeen[place]! < 0 ? 150 : 0
   return shades
 }
 

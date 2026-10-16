@@ -6,7 +6,7 @@ const sum = (values: readonly number[]) => values.reduce((total, value) => total
 
 /**
  * A practice percentage from the seconds spent at a task over the last `practiceDays` days: the minimum with none,
- * rising towards the maximum, half way at `practiceHalfHours`, rounded down. At whole hours it equals Life 4's.
+ * rising towards the maximum, half way at `practiceHalfHours`, rounded down.
  */
 export const practicePercent = (config: ValleyConfig, seconds: number) =>
   config.practiceMinPercent +
@@ -16,11 +16,10 @@ export const practicePercent = (config: ValleyConfig, seconds: number) =>
   )
 
 export function practicePercents(config: ValleyConfig, log: PracticeLog) {
-  if (!config.practice) return { forage: 100, gather: 100 }
   return { forage: practicePercent(config, sum(log.forage)), gather: practicePercent(config, sum(log.gather)) }
 }
 
-/** Hourly rates: the base rate times born skill times practice, rounded down, as in Life 4. */
+/** Hourly rates: the base rate times born skill times practice, rounded down. */
 export function ratesOf(config: ValleyConfig, foragingSkill: number, woodSkill: number, log: PracticeLog) {
   const percent = practicePercents(config, log)
   return {

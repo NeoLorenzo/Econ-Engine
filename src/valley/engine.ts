@@ -1,4 +1,4 @@
-import { carriedKcal, spoil } from '../life/food'
+import { carriedKcal, spoil } from './food'
 import { resolveValleyConfig } from './config'
 import {
   MINUTES_PER_DAY,
@@ -128,10 +128,10 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const treeWood = new Int32Array(layout.trees.count).fill(config.initialTreeWood)
   const skills = drawSkills(config)
   const places = placeCount(config)
-  const known = (stocks: Int32Array) =>
-    config.knowValley
-      ? { stock: Int32Array.from(stocks), seen: new Int32Array(stocks.length) }
-      : { stock: new Int32Array(stocks.length), seen: new Int32Array(stocks.length).fill(-1) }
+  const unknown = (stocks: Int32Array) => ({
+    stock: new Int32Array(stocks.length),
+    seen: new Int32Array(stocks.length).fill(-1),
+  })
   const foragers: Forager[] = layout.hearths.map((hearth, id) => {
     const practiceLog = startingLog(config)
     const born = skills[id]!
@@ -150,19 +150,17 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       tripWood: 0,
       targetBushId: null,
       targetTreeId: null,
-      // Knowing the valley, as in Life 5, a forager has seen every plant and place at minute 0. Otherwise it has seen
-      // nothing yet, and sees what is around it in its first turn.
-      bushMemory: known(bushKcal),
-      treeMemory: known(treeWood),
+      // A forager has seen nothing yet, and sees what is around it in its first turn.
+      bushMemory: unknown(bushKcal),
+      treeMemory: unknown(treeWood),
       groupId: null,
       joinedMinute: null,
-      placeSeen: new Int32Array(places).fill(config.knowValley ? 0 : -1),
-      placesSeen: config.knowValley ? places : 0,
+      placeSeen: new Int32Array(places).fill(-1),
+      placesSeen: 0,
       knownFlags: [],
       exploreTarget: null,
-      // Knowing the valley, it has also spotted and checked every site at minute 0.
-      siteKnown: new Uint8Array(siteCount(config)).fill(config.knowValley ? 1 : 0),
-      siteChecked: new Int32Array(siteCount(config)).fill(config.knowValley ? 0 : -1),
+      siteKnown: new Uint8Array(siteCount(config)),
+      siteChecked: new Int32Array(siteCount(config)).fill(-1),
       ...born,
       ...ratesOf(config, born.foragingSkill, born.woodSkill, practiceLog),
       practiceLog,
@@ -375,7 +373,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     } else burnedWood = tendFire(config, forager, minute)
     sleptCold = !forager.warm && coldMatters(config)
     seconds.sleep = 60
-  } else if (config.loadHome && !forager.hungry && carryingFullLoad(config, forager)) {
+  } else if (!forager.hungry && carryingFullLoad(config, forager)) {
     // Rule 4: not hungry, it takes a full load home and sets it down before anything else.
     forager.trip = null
     reason = 'taking a load home'
@@ -404,11 +402,10 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
       // Rule 9: remembering no plant worth a minute's work, it searches a site of the good it has never checked, then
       // ground it has never seen, before it revisits.
       let chosen = choosePlant(config, layout, forager, good, minute, false)
-      const siteSearch =
-        chosen === null && config.checkSites ? chooseSite(config, layout, forager, minute, 'search', good) : null
+      const siteSearch = chosen === null ? chooseSite(config, layout, forager, minute, 'search', good) : null
       const search =
         chosen === null && siteSearch === null && forager.placesSeen < placeCount(config)
-          ? choosePlace(config, forager, minute, 'search')
+          ? choosePlace(config, forager, minute)
           : null
       if (chosen === null && search === null && siteSearch === null)
         chosen = choosePlant(config, layout, forager, good, minute)

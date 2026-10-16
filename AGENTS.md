@@ -4,15 +4,14 @@
 
 The repository holds two simulation cores:
 
-- **The valley core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is the Life core at real scale, from Life 5, built bottom-up, one step at a time, following the ladder in [docs/MERGE.md](docs/MERGE.md#the-ladder). Only the current Life step has a page.
-- **The hourly Life core** (`src/life/`) holds Life 0 to Life 4. It is frozen as a reference, like MVP9, and runs only in tests and in the valley's comparison experiments; its page was removed in Life 6, and only the parts of `src/lifeView/` the valley's observer uses remain. Change it only if explicitly asked, keeping its trajectories bit for bit.
+- **The Life core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is built bottom-up, one step at a time, following the ladder in [docs/MERGE.md](docs/MERGE.md#the-ladder). Only the current Life step exists: its specification describes the whole simulation, and only its experiments run. Earlier steps live in git history, the changelog and the lab notes.
 - **The MVP9 core** (`src/sim/`, observer in `src/App.tsx` and `src/ui/`) is frozen as a reference. Do not change it unless explicitly asked; any change must keep its canonical trajectory bit-for-bit.
 
 Before starting Life work, read:
 
 - [docs/MERGE.md](docs/MERGE.md) for the direction, the ladder and the next step's open questions;
 - [SIMULATION_DESIGN_RULES.md](SIMULATION_DESIGN_RULES.md), which is authoritative;
-- the latest `docs/LIFE<n>_SPEC.md`;
+- the current `docs/LIFE<n>_SPEC.md`;
 - the Life sections of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/VALIDATION.md](docs/VALIDATION.md);
 - the newest entries in [LAB_NOTES.md](LAB_NOTES.md).
 
@@ -20,7 +19,7 @@ Before starting Life work, read:
 
 The owner directs the project but does not write code. Explain choices in plain language with a recommendation, and ask only for decisions that are genuinely theirs.
 
-1. **Spec first.** Write `docs/LIFE<n>_SPEC.md`, headed `[LIFE<n>-<Name>-<NNN>]` and modelled on [LIFE0_SPEC.md](docs/LIFE0_SPEC.md). It covers:
+1. **Spec first.** Write `docs/LIFE<n>_SPEC.md`, headed `[LIFE<n>-<Name>-<NNN>]` and modelled on the current spec. It describes the whole simulation, not only what changes, and replaces the current spec. It covers:
    - a question that could come out either way;
    - design decisions with their reasons;
    - the order of phases in a tick, defaults and configuration validation;
@@ -35,6 +34,8 @@ The owner directs the project but does not write code. Explain choices in plain 
    - Every random draw comes from a named, derived stream.
    - Each experiment is also a test.
    - The observer only interpolates between real states.
+   - Remove the previous step's experiments and tests, and any switch whose only purpose was to recreate an earlier step; keep a switch only when the new step's own experiments use it.
+   - Before changing the engine, check `fingerprints.test.ts` passes; afterwards, record new fingerprints for the new step. A refactor or speed-up must leave them unchanged.
 5. **Check it in the browser.**
    - `.claude/launch.json` starts the dev server on port 5180.
    - A hidden preview pane does not animate, so use the Step button and screenshots.

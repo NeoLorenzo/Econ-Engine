@@ -1,9 +1,9 @@
-import { addLots, carriedKcal, takeOldest } from '../life/food'
+import { addLots, carriedKcal, takeOldest } from './food'
 import { distanceSq } from './geometry'
 import type { Forager, QuoteEvent, SwapEvent, ValleyConfig } from './types'
 
-// Wood need and Life 3's rules of exchange, with talking distance in place of a shared tile and, with groups, only
-// between members of the same group.
+// Wood need and the rules of exchange: two foragers within talking distance, members of the same group, swap wood for
+// food when both gain, and tell each other the terms when they cannot complete the swap.
 
 export const nightHours = (config: ValleyConfig) => 24 - (config.duskHour - config.dawnHour)
 
@@ -51,7 +51,7 @@ export const buyingPays = (forager: Forager, kcalPerWood: number) => forager.for
 /** The terms a forager remembers, if swapping is on and it heard them within `termsMemoryHours`. */
 export function knownTerms(config: ValleyConfig, forager: Forager, minute: number) {
   const heard = forager.heardTerms
-  if (!config.swapping || !heard || minute - heard.minute > 60 * config.termsMemoryHours) return null
+  if (!heard || minute - heard.minute > 60 * config.termsMemoryHours) return null
   return heard.kcalPerWood
 }
 
@@ -59,11 +59,10 @@ export function knownTerms(config: ValleyConfig, forager: Forager, minute: numbe
 export const withinTalk = (config: ValleyConfig, a: Forager, b: Forager) =>
   distanceSq(a.x, a.y, b.x, b.y) <= config.talkRadiusCm ** 2
 
-/** Whether two foragers may swap and tell terms: with groups, only members of the same group. */
-export const mayTrade = (config: ValleyConfig, a: Forager, b: Forager) =>
-  !config.groups || (a.groupId !== null && a.groupId === b.groupId)
+/** Whether two foragers may swap and tell terms: only members of the same group. */
+export const mayTrade = (a: Forager, b: Forager) => a.groupId !== null && a.groupId === b.groupId
 
-/** Life 3's partners, among the living foragers within talking distance that it may trade with. */
+/** A trader's partners, among the living foragers within talking distance that it may trade with. */
 export function tradePartners(config: ValleyConfig, trader: Forager, foragers: readonly Forager[]) {
   const selling = spareWood(config, trader) > 0
   const buying = wantedWood(config, trader) > 0
@@ -72,7 +71,7 @@ export function tradePartners(config: ValleyConfig, trader: Forager, foragers: r
     (other) =>
       other.alive &&
       other.id !== trader.id &&
-      mayTrade(config, other, trader) &&
+      mayTrade(other, trader) &&
       withinTalk(config, other, trader) &&
       (selling
         ? wantedWood(config, other) > 0 && compareOwnTerms(other, trader) > 0
@@ -91,14 +90,14 @@ export const swapWood = (config: ValleyConfig, seller: Forager, buyer: Forager, 
   )
 
 /**
- * The trader swaps with its partners in turn, as in Life 3. `foragers` are this minute's working copies and are
+ * The trader swaps with its partners in turn. `foragers` are this minute's working copies and are
  * changed in place. Everyone living within talking distance of the trader that may trade with it hears the terms of a
  * swap.
  */
 export function swap(config: ValleyConfig, trader: Forager, foragers: Forager[], minute: number) {
   const swaps: SwapEvent[] = []
   const quotes: QuoteEvent[] = []
-  if (!config.swapping || !woodMatters(config)) return { swaps, quotes }
+  if (!woodMatters(config)) return { swaps, quotes }
   const { selling, partners } = tradePartners(config, trader, foragers)
   const hear = (forager: Forager, kcalPerWood: number) => {
     forager.heardTerms = { kcalPerWood, minute }
@@ -110,11 +109,9 @@ export function swap(config: ValleyConfig, trader: Forager, foragers: Forager[],
     if (!bothGain(seller, buyer, kcalPerWood)) continue
     const wood = swapWood(config, seller, buyer, kcalPerWood)
     if (wood < 1) {
-      if (config.quotes) {
-        quotes.push({ kind: 'quote', minute, sellerId: seller.id, buyerId: buyer.id, kcalPerWood })
-        hear(trader, kcalPerWood)
-        hear(partner, kcalPerWood)
-      }
+      quotes.push({ kind: 'quote', minute, sellerId: seller.id, buyerId: buyer.id, kcalPerWood })
+      hear(trader, kcalPerWood)
+      hear(partner, kcalPerWood)
       continue
     }
     const kcal = wood * kcalPerWood
@@ -149,7 +146,7 @@ export function swap(config: ValleyConfig, trader: Forager, foragers: Forager[],
     }
     hear(trader, kcalPerWood)
     for (const other of foragers)
-      if (other.alive && mayTrade(config, other, trader) && withinTalk(config, other, trader)) hear(other, kcalPerWood)
+      if (other.alive && mayTrade(other, trader) && withinTalk(config, other, trader)) hear(other, kcalPerWood)
     swaps.push(made)
     const done = selling
       ? !spareWood(config, trader) || !roomKcal(config, trader)

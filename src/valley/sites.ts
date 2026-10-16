@@ -2,7 +2,7 @@ import { isDaylight, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
 import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
 
-// Life 7: thickets and stands as sites, which a forager spots from afar, checks up close, and walks to when it checks
+// Thickets and stands as sites, which a forager spots from afar, checks up close, and walks to when it checks
 // what it knows or searches for food or wood.
 
 /** Sites are numbered thickets first, in layout order, then stands. */
@@ -26,7 +26,6 @@ export const sightOf = (config: ValleyConfig, minute: number) =>
 
 /** Spots every site whose centre is within sight, and checks every site it stands close enough to see all of. */
 export function observeSites(config: ValleyConfig, layout: ValleyLayout, forager: Forager, minute: number) {
-  if (!config.checkSites) return
   const sight = sightOf(config, minute)
   for (let site = 0; site < siteCount(config); site += 1) {
     const centre = siteCentre(config, layout, site)

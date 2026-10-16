@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
-import { SpecializationChart } from '../lifeView/SpecializationChart'
+import { SpecializationChart } from './SpecializationChart'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
@@ -54,18 +54,7 @@ type NumericSetup = Pick<
   | 'sightRadiusCm'
   | 'campfireWoodPerHour'
 >
-type SwitchKey =
-  | 'groups'
-  | 'scattered'
-  | 'explore'
-  | 'knowValley'
-  | 'checkSites'
-  | 'carryCost'
-  | 'loadHome'
-  | 'sharedFire'
-  | 'swapping'
-  | 'quotes'
-  | 'practice'
+type SwitchKey = 'scattered' | 'sharedFire' | 'campfirePerMember' | 'feedSpare'
 type Setup = NumericSetup & Pick<ValleyConfig, SwitchKey>
 
 /** A field is typed in its own unit: `unit` of the configuration's units make one of it. */
@@ -85,17 +74,10 @@ const SETUP_FIELDS: { key: keyof NumericSetup; label: string; unit?: number }[] 
 ]
 
 const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
-  { key: 'groups', label: 'Groups' },
   { key: 'scattered', label: 'Start scattered' },
-  { key: 'explore', label: 'Explore' },
-  { key: 'knowValley', label: 'Know the valley' },
-  { key: 'checkSites', label: 'Check thickets and stands' },
-  { key: 'carryCost', label: 'Loads slow walking' },
-  { key: 'loadHome', label: 'Take loads home' },
   { key: 'sharedFire', label: 'One fire for each group' },
-  { key: 'practice', label: 'Practice' },
-  { key: 'swapping', label: 'Swapping' },
-  { key: 'quotes', label: 'Telling terms' },
+  { key: 'campfirePerMember', label: 'Fire burns for each member' },
+  { key: 'feedSpare', label: 'Spare wood goes in the fire' },
 ]
 
 const DEFAULT_SETUP = Object.fromEntries(
@@ -441,7 +423,7 @@ export default function ValleyApp() {
             Go to {name}
           </button>
         )}
-        {config.groups && standing.length > 0 && (
+        {standing.length > 0 && (
           <div className="valley-groups" role="group" aria-label="Groups">
             {standing.map((made) => (
               <button
@@ -487,41 +469,33 @@ export default function ValleyApp() {
           </div>
         </div>
         <dl className="life-food">
-          {config.groups && (
-            <>
-              <dt>Group</dt>
-              <dd>
-                {summary.groupId === null ? (
-                  'none yet, looking for company'
-                ) : (
-                  <>
-                    <span
-                      className="life-strategy-dot"
-                      aria-hidden="true"
-                      style={{ background: groupColor(summary.groupId) }}
-                    />
-                    {groupName(summary.groupId)}
-                    {summary.joinedMinutesAgo !== null &&
-                      `, joined ${summary.joinedMinutesAgo ? `${formatMinutes(summary.joinedMinutesAgo)} ago` : 'this minute'}`}
-                    {summary.fellows.length > 0 && ` with ${summary.fellows.join(', ')}`}
-                  </>
-                )}
-              </dd>
-            </>
-          )}
+          <dt>Group</dt>
+          <dd>
+            {summary.groupId === null ? (
+              'none yet, looking for company'
+            ) : (
+              <>
+                <span
+                  className="life-strategy-dot"
+                  aria-hidden="true"
+                  style={{ background: groupColor(summary.groupId) }}
+                />
+                {groupName(summary.groupId)}
+                {summary.joinedMinutesAgo !== null &&
+                  `, joined ${summary.joinedMinutesAgo ? `${formatMinutes(summary.joinedMinutesAgo)} ago` : 'this minute'}`}
+                {summary.fellows.length > 0 && ` with ${summary.fellows.join(', ')}`}
+              </>
+            )}
+          </dd>
           <dt>Has seen</dt>
           <dd className="num">
             {summary.seenShare === 1 ? 'the whole valley' : `${Math.round(summary.seenShare * 100)}% of the valley`}
           </dd>
-          {config.checkSites && (
-            <>
-              <dt>Knows</dt>
-              <dd className="num">
-                {summary.sitesKnown} of {summary.sitesTotal} thickets and stands, {summary.sitesCheckedLately} checked
-                in the last {config.exploreAfterHours} h
-              </dd>
-            </>
-          )}
+          <dt>Knows</dt>
+          <dd className="num">
+            {summary.sitesKnown} of {summary.sitesTotal} thickets and stands, {summary.sitesCheckedLately} checked in
+            the last {config.exploreAfterHours} h
+          </dd>
           <dt>Load</dt>
           <dd className="num">
             {summary.loadKg ? formatKg(summary.loadKg) : 'none'} · walks at {summary.speedKmh.toFixed(1)} km/h
@@ -531,18 +505,14 @@ export default function ValleyApp() {
             {formatKcal(summary.forageRate)}/h{formatChange(summary.forageRateChange)} · {summary.woodRate} kg/h
             {formatChange(summary.woodRateChange)}
           </dd>
-          {config.practice && (
-            <>
-              <dt>Picking practice</dt>
-              <dd className="num">
-                {summary.foragePercent}% from {summary.forageHours} h in {config.practiceDays} days
-              </dd>
-              <dt>Wood practice</dt>
-              <dd className="num">
-                {summary.woodPercent}% from {summary.gatherHours} h in {config.practiceDays} days
-              </dd>
-            </>
-          )}
+          <dt>Picking practice</dt>
+          <dd className="num">
+            {summary.foragePercent}% from {summary.forageHours} h in {config.practiceDays} days
+          </dd>
+          <dt>Wood practice</dt>
+          <dd className="num">
+            {summary.woodPercent}% from {summary.gatherHours} h in {config.practiceDays} days
+          </dd>
           <dt>Wood costs it</dt>
           <dd className="num">{Math.round(summary.ownTerms)} kcal a kg</dd>
           <dt>Holds</dt>
@@ -790,18 +760,16 @@ export default function ValleyApp() {
                   { key: 'alive', name: 'Alive', color: palette.household },
                 ]}
               />
-              {config.groups && (
-                <TimeChart
-                  data={days}
-                  height={90}
-                  format={(value) => String(Math.round(value))}
-                  domain={[0, 'auto']}
-                  series={[
-                    { key: 'groups', name: 'Groups', color: palette.accent },
-                    { key: 'loners', name: 'Without a group', color: palette.firmA, dashed: true },
-                  ]}
-                />
-              )}
+              <TimeChart
+                data={days}
+                height={90}
+                format={(value) => String(Math.round(value))}
+                domain={[0, 'auto']}
+                series={[
+                  { key: 'groups', name: 'Groups', color: palette.accent },
+                  { key: 'loners', name: 'Without a group', color: palette.firmA, dashed: true },
+                ]}
+              />
               <TimeChart
                 data={days}
                 height={110}
@@ -845,32 +813,23 @@ export default function ValleyApp() {
           )}
           <p className="life-note">
             Running seed {setup.seed}: {setup.bandSize} foragers in a valley {config.valleySizeCm / 100} m across,{' '}
-            {setup.scattered ? 'who start scattered' : 'who start around the meadow in the middle'},{' '}
-            {setup.knowValley ? 'knowing the whole valley' : 'knowing only what they have seen'}. By day they see{' '}
-            {setup.sightRadiusCm / 100} m, and berries and deadwood up close. When their needs are met they{' '}
-            {!setup.explore
-              ? 'rest'
-              : setup.checkSites
-                ? `explore ground they have never seen, then check the thickets and stands they have not checked for ${formatHours(setup.exploreAfterHours)}`
-                : `explore places they have not seen for ${formatHours(setup.exploreAfterHours)}`}
-            . {setup.carryCost ? 'A load slows them down, so every metre costs more' : 'Loads cost nothing to carry'}
-            {setup.loadHome ? ', and they take a full load home before anything else. ' : '. '}
-            {setup.groups
-              ? `Those without a group look for company: two who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their flag and swap only with each other.${setup.sharedFire ? ` Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member; members put in their spare wood, and wood from their stock when it runs low.` : ' Each keeps its own fire.'}`
-              : 'There are no groups: anyone may swap with anyone they meet.'}{' '}
+            {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
+            knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, and berries and deadwood up
+            close. When their needs are met they explore ground they have never seen, then check the thickets and stands
+            they have not checked for {formatHours(setup.exploreAfterHours)}. A load slows them down, so every metre
+            costs more, and they take a full load home before anything else. Those without a group look for company: two
+            who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their
+            flag and swap wood for food only with each other, telling each other their terms.{' '}
+            {setup.sharedFire
+              ? `Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night${setup.campfirePerMember ? ' for each member' : ''} and warming every member; members put in ${setup.feedSpare ? 'their spare wood, and ' : ''}wood from their stock when it runs low.`
+              : 'Each keeps its own fire.'}{' '}
             They are born with skills{' '}
             {setup.skillMinPercent === setup.skillMaxPercent
               ? `of ${setup.skillMinPercent}%`
               : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
-            {setup.practice
-              ? `, which grow with practice over ${setup.practiceDays} days from ${setup.practiceMinPercent}% towards ${setup.practiceMaxPercent}%`
-              : ', fixed for life'}
-            . They pick berries bush by bush, gather deadwood under the trees and bring it home in loads of{' '}
-            {formatKg(setup.woodLoad)}, and{' '}
-            {setup.swapping
-              ? `swap wood for food${setup.quotes ? ', telling each other their terms' : ', without telling terms'}`
-              : 'never swap'}
-            . Each is coloured by what wood costs it, from{' '}
+            , which grow with practice over {setup.practiceDays} days from {setup.practiceMinPercent}% towards{' '}
+            {setup.practiceMaxPercent}%. They pick berries bush by bush and gather deadwood under the trees, bringing it
+            home in loads of {formatKg(setup.woodLoad)}. Each is coloured by what wood costs it, from{' '}
             <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
             group’s colour; each group’s base has a fire, a flag, coloured ground and a lettered badge. Ground the

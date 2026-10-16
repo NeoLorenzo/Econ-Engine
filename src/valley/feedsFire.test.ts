@@ -3,7 +3,7 @@ import { fireCapacityExperiment, valleySeeds } from './experiments'
 
 const seeds = valleySeeds(8)
 
-describe('Life 8 experiment 6: how many the valley feeds with shared fires', () => {
+describe('Life 8 experiment 5: how many the valley feeds with shared fires', () => {
   const [twelve] = fireCapacityExperiment(seeds, [12], undefined, false).canonical
 
   it('keeps a band of 12 intact at day 400 on every seed', () => {

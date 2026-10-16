@@ -12,7 +12,7 @@ export function valleyTheory(config: ValleyConfig) {
   const daylight = 24 - night
   const restDelta = config.forageCostKcalPerHour - config.restKcalPerHour
   const travelDelta = config.travelKcalPerHour - config.restKcalPerHour
-  /** Sleeping warm every night hour and resting every daylight hour, Life 0's `F`. */
+  /** Sleeping warm every night hour and resting every daylight hour. */
   const fixedDailyCostKcal = night * config.sleepKcalPerHour + daylight * config.restKcalPerHour
   /**
    * Hours of foraging a day at hourly rate `g`, given `gatherHours` of gathering and `walkHours` of walking: each hour

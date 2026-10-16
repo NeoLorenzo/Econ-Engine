@@ -3,7 +3,7 @@
   justify-self: center;
 }
 
-/* Life 7: a chip for each standing group, and the group card's members. */
+/* A chip for each standing group, and the group card's members. */
 .valley-groups {
   display: flex;
   flex-wrap: wrap;

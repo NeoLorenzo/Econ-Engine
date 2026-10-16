@@ -12,7 +12,7 @@ describe('valley configuration', () => {
 
   it('refuses values that are not integers, and switches that are not booleans', () => {
     expect(errorsWith({ reachCm: 1.5 })).toContain('reachCm must be an integer')
-    expect(errorsWith({ swapping: 1 as unknown as boolean })).toContain('swapping must be true or false')
+    expect(errorsWith({ scattered: 1 as unknown as boolean })).toContain('scattered must be true or false')
   })
 
   it('refuses sizes, counts and speeds that are not positive, and amounts that are negative', () => {
@@ -69,9 +69,7 @@ describe('valley configuration', () => {
     expect(errorsWith({ bandSize: 1 })).toEqual([])
   })
 
-  it('refuses Life 6’s switches that are not booleans, and sizes that are not positive', () => {
-    expect(errorsWith({ groups: 'yes' as unknown as boolean })).toContain('groups must be true or false')
-    expect(errorsWith({ knowValley: 0 as unknown as boolean })).toContain('knowValley must be true or false')
+  it('refuses spacing and checking times that are not positive', () => {
     expect(errorsWith({ startSpacingCm: 0 })).toContain('startSpacingCm must be positive')
     expect(errorsWith({ exploreAfterHours: 0 })).toContain('exploreAfterHours must be positive')
   })
@@ -104,11 +102,8 @@ describe('valley configuration', () => {
   })
 })
 
-describe('Life 7 configuration', () => {
-  it('refuses switches that are not booleans, and a body, berries or sight that are not positive', () => {
-    expect(errorsWith({ checkSites: 1 as unknown as boolean })).toContain('checkSites must be true or false')
-    expect(errorsWith({ carryCost: 'yes' as unknown as boolean })).toContain('carryCost must be true or false')
-    expect(errorsWith({ loadHome: 0 as unknown as boolean })).toContain('loadHome must be true or false')
+describe('sight and loads', () => {
+  it('refuses a body, berries or sight that are not positive', () => {
     expect(errorsWith({ bodyKg: 0 })).toContain('bodyKg must be positive')
     expect(errorsWith({ berryKcalPerKg: 0 })).toContain('berryKcalPerKg must be positive')
     expect(errorsWith({ sightRadiusCm: 0 })).toContain('sightRadiusCm must be positive')
@@ -121,15 +116,14 @@ describe('Life 7 configuration', () => {
     expect(errorsWith({ sightRadiusCm: 2_500 })).toEqual([])
   })
 
-  it('refuses sites too wide to check, but only when checking them', () => {
+  it('refuses sites too wide to check', () => {
     const message =
       'A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm and standRadiusCm'
     expect(errorsWith({ standRadiusCm: 2_500 })).toContain(message)
-    expect(errorsWith({ standRadiusCm: 2_500, checkSites: false })).not.toContain(message)
   })
 })
 
-describe('Life 8 configuration', () => {
+describe('the shared fire', () => {
   it('refuses switches that are not booleans, and a fire that burns nothing', () => {
     expect(errorsWith({ sharedFire: 1 as unknown as boolean })).toContain('sharedFire must be true or false')
     expect(errorsWith({ campfirePerMember: 'no' as unknown as boolean })).toContain(

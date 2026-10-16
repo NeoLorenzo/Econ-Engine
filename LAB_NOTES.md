@@ -6,6 +6,30 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE8-OnlyLife8-039] - (2026-10-16)
+
+### Problem
+
+CI took about 27 minutes a run, 26 of them in tests. Profiling showed why: nearly all the time went to experiments, each a set of real simulations of up to 400 days checked every minute. A quarter was the hourly core of Life 0 to Life 4, frozen as a reference, and most of the rest the valley's Life 5, Life 6 and Life 7 experiments, re-run on every pull request though nothing in them could change. The owner decided the project should hold only the current Life step: the simulation is not interested in old experiments and what they showed, only in the current ones. The MVP9 economy stays.
+
+### Decisions
+
+- **Remove Life 0 to Life 7 entirely,** code, experiments, tests, presets and specifications, keeping them in git history, the changelog and the lab notes.
+- **Remove every switch that existed only to recreate an earlier step,** at the owner's choice of removing all of it rather than only the tests. Each removed switch was on in Life 8, so its behaviour becomes how the valley works and its off-branch is deleted.
+- **Keep the switches Life 8's own experiments use,** including `sharedFire`: with it off, every forager keeps its own fire, the comparison every Life 8 experiment makes. That configuration is exactly what Life 7 was, so every comparison in the Life 8 specification still holds, now named "own fires".
+- **Prove nothing changed.** Before touching the engine, fingerprints of 24 runs (the canonical valley and seven other configurations, on three seeds over 30 days) were recorded from Life 8's code. After the change they match, with the checker on. They are kept as a test, so the next clean-up or speed-up is held to the same standard.
+- **One specification.** With Life 7's specification gone, Life 8's would have described only changes to something no longer in the repository, so it was rewritten to describe the whole simulation. From now on a new step's specification replaces the current one.
+
+### Findings
+
+- The suite takes 222 seconds locally, against 565, on a 32-thread machine. Most of what remains is Life 8's five experiments, above all the band of 12 over 400 days, and the MVP9 tests.
+- Profiling a 100-day run found the checker doubles its cost, 2.1 seconds against 1.1, and the engine spends much of its time on things that could be cheaper without changing any result: every forager measures its distance to all 40 sites every minute even after it knows them all, the checker builds the same lookups three times a minute, and small lists are rebuilt thousands of times a second. These were not changed here.
+
+### Open questions
+
+- Should the engine and checker be made faster? The fingerprint test now makes that safe.
+- How long does CI take now on GitHub's 4-core runner, and is splitting the tests across parallel jobs still worth it?
+
 ## [LIFE8-SharedFire-038] - (2026-10-16)
 
 ### Problem

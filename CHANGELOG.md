@@ -2,6 +2,29 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE8-OnlyLife8-039] - (2026-10-16)
+
+### Removed
+
+- **Life 0 to Life 7.** The repository now holds only the current Life step. The hourly core (`src/life/`) and its observer code (`src/lifeView/`) are deleted, with every Life 0 to Life 4 experiment and test. The valley's Life 5, Life 6 and Life 7 experiments and tests are deleted, with their presets (`LIFE5_VALLEY`, `LIFE6_VALLEY`, `LIFE7_VALLEY`, `LIFE3_BAND`) and the specifications `docs/LIFE0_SPEC.md` to `docs/LIFE7_SPEC.md`. All remain in git history; this changelog and the lab notes keep their records.
+- **Switches that only recreated earlier steps:** `groups`, `explore`, `knowValley`, `checkSites`, `carryCost`, `loadHome`, `swapping`, `quotes` and `practice`. Each behaviour is now simply how the valley works. Four switches remain, each one of Life 8's counterfactuals: `scattered`, `sharedFire`, `campfirePerMember` and `feedSpare`.
+- The observer's setup offers only those four switches, and drops the descriptions of what the removed ones did.
+
+### Changed
+
+- **The Life 8 specification stands alone.** It now describes the whole simulation: the valley, the forager, the minute, the rules, the defaults, the invariants, the theory and the experiments. Where it compared with Life 7, it compares with every forager keeping its own fire (`sharedFire` off), which is the same configuration. Experiment 5, Life 7 as a special case, is gone; how many the valley feeds becomes experiment 5.
+- What the valley borrowed from the hourly core moved into it: carried food (`src/valley/food.ts`), the display helpers and colour scale (`src/valleyView/display.ts`), the specialization chart and the stylesheet.
+- `AGENTS.md`, the README, the merge document's ladder, and the architecture and validation guides describe only Life 8, and a new step now replaces the current spec and removes the previous step's experiments.
+
+### Added
+
+- **`fingerprints.test.ts`.** Life 8 runs exactly as recorded: 30 days on three seeds for the canonical valley and each configuration the experiments use match fingerprints of their daily summaries and totals, recorded from Life 8's code before this change, with every invariant checked every minute. A refactor or speed-up that changes any trajectory fails it.
+
+### Validation
+
+- Every Life 8 configuration runs exactly as before the change: the fingerprints of 24 runs, eight configurations on three seeds, match.
+- `npm run agent:check` passes. The test suite takes 222 seconds locally, against 565 before, and about a third as much computer time.
+
 ## [LIFE8-SharedFire-038] - (2026-10-16)
 
 ### Added
