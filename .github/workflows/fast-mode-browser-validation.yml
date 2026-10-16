@@ -9,8 +9,20 @@ on:
 permissions:
   contents: read
 
+# The tests and the browser check run side by side. `browser-check`, the status main requires, passes only when both do.
 jobs:
-  browser-check:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:run
+
+  browser:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +32,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - run: npm run test:run
+      - run: npm run typecheck
       - run: npm run build
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -35,3 +47,11 @@ jobs:
           exit 1
       - name: Validate canonical fast mode
         run: node scripts/validate-fast-mode.mjs
+
+  # A skipped job counts as passing for a required check, so this one always runs and fails unless both succeeded.
+  browser-check:
+    needs: [tests, browser]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.tests.result }}" = success && test "${{ needs.browser.result }}" = success

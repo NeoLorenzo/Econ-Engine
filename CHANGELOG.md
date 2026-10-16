@@ -2,6 +2,24 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [CI-ParallelChecks-041] - (2026-10-17)
+
+### Changed
+
+- **The pull-request check runs in parallel.** The tests run in one job, and lint, the typecheck, the build and the browser check in another; `browser-check`, the status `main` requires, now passes only when both jobs succeed. The typecheck was not run in CI before.
+- **The fast-mode browser check pauses five times** and judges the median pause, rather than one pause on a noisy shared runner. Each time it also checks that the day shown does not move after Pause.
+- **The valley engine and checker:** a forager standing still reuses its last view of the plants around it, and the checker keeps each minute's turn order in a reused array rather than a new map.
+
+### Fixed
+
+- **The MVP9 page's day could jump after Pause.** While running, the page shows a new day only every 100 ms, and pausing published the last days computed one render after the Paused label, so the day shown moved forward once after pausing. Pausing now publishes them in the same update. The MVP9 simulation is unchanged.
+
+### Validation
+
+- All 24 Life 8 fingerprints match.
+- The browser check passed five runs in a row locally, each of five pauses, with median pauses of 103 to 190 ms.
+- `npm run agent:check` passes; the tests take 80 seconds locally.
+
 ## [TESTS-FasterSuite-040] - (2026-10-16)
 
 ### Changed

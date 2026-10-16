@@ -61,6 +61,25 @@ export function nextHungry(config: ValleyConfig, energyKcal: number, hungry: boo
 const viewCache = new WeakMap<PlantIndex, Map<number, Int32Array>>()
 const VIEW_CACHE_LIMIT = 50_000
 
+/** The last view each forager's memory looked up, and where from, so a forager standing still skips the lookup. */
+const lastViews = new WeakMap<PlantMemory, { x: number; y: number; view: Int32Array }>()
+
+/** The plants of one kind in view of a forager, from its memory of them: the last lookup's when it has not moved. */
+export function plantsInViewOf(
+  config: ValleyConfig,
+  memory: PlantMemory,
+  index: PlantIndex,
+  plants: Plants,
+  x: number,
+  y: number,
+) {
+  const last = lastViews.get(memory)
+  if (last && last.x === x && last.y === y) return last.view
+  const view = plantsInView(config, index, plants, x, y)
+  lastViews.set(memory, { x, y, view })
+  return view
+}
+
 export function plantsInView(config: ValleyConfig, index: PlantIndex, plants: Plants, x: number, y: number) {
   let cache = viewCache.get(index)
   if (!cache) viewCache.set(index, (cache = new Map()))

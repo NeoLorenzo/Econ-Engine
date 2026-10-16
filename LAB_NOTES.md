@@ -6,6 +6,28 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [CI-ParallelChecks-041] - (2026-10-17)
+
+### Problem
+
+After update 040, CI ran its tests in 5.6 minutes, then a browser check failed: one pause took 1,572 ms against a 1,500 ms limit, where earlier runs had measured between 695 and 1,223. The owner asked for the check to pause several times and judge the middle or the average, and for CI to be shorter still.
+
+### Findings
+
+- **Pausing several times found a real fault.** On the second or third pause in a run, the day shown moved forward once after the Paused label appeared, in every run tried. While running, the MVP9 page publishes a new day every 100 ms; pausing rendered the label first and published the days already computed one render later. A single pause, as the old check made, caught it only by chance. Pausing now stops the runner in the same handler, so the label and the final day render together.
+- **CI's test step is bound by total computing time,** not by one file: GitHub's runner has 4 cores, each two to three times slower than the development machine, and Life 8's experiments are about 60% of the work.
+- **One job did everything in sequence:** lint, the tests, the build, installing Chromium and the browser check, about a minute after the tests. It never ran the typecheck.
+- Reusing a standing forager's view and a reused turn array cut a band of 12's checked run by about 9%.
+
+### Decisions
+
+- Run the tests and the browser check in parallel jobs, with the required `browser-check` passing only when both do. A skipped job counts as passing for a required check, so the gate always runs and checks both results.
+- Judge the median of five pauses, which keeps the 1,500 ms bound meaningful on a shared runner.
+
+### Open questions
+
+- The remaining levers trade coverage or need the owner's choice: running the experiments without the per-minute checker, which the fingerprint and unit tests would still cover; fewer seeds; or splitting the tests across parallel jobs.
+
 ## [TESTS-FasterSuite-040] - (2026-10-16)
 
 ### Problem

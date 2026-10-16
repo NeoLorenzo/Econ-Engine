@@ -63,7 +63,12 @@ export default function App() {
   }, [runner, running, speed])
   useEffect(() => () => runner.destroy(), [runner])
 
-  const toggleRunning = useCallback(() => setRunning((value) => !value), [])
+  // Pausing stops the runner here, so the last day it computed is published in the same update as the Paused label
+  // and the day shown never moves after it.
+  const toggleRunning = useCallback(() => {
+    if (running) runner.stop()
+    setRunning(!running)
+  }, [runner, running])
   const restart = () => {
     setRunning(false)
     runner.reset(createSimulation(appliedConfig))

@@ -56,7 +56,8 @@ export class ValleyChecker {
   private litNow: boolean[]
   /** The groups a band starts with, which stand from before minute 0. */
   private startingGroups: number
-  private turnIndex = new Map<number, number>()
+  /** Each forager's turn in the minute being checked, by ID, or −1 if it took none. */
+  private turnAt = new Int32Array(0)
 
   constructor(state: ValleyState) {
     this.bushes = state.bushKcal.slice()
@@ -86,7 +87,9 @@ export class ValleyChecker {
     const violations: string[] = []
     const fail = (message: string) => violations.push(`Minute ${minute}: ${message}`)
     // Each forager's turn in the minute, by ID, which several checks need.
-    this.turnIndex = new Map(state.lastEvents.map((event, index) => [event.foragerId, index]))
+    if (this.turnAt.length !== state.foragers.length) this.turnAt = new Int32Array(state.foragers.length)
+    this.turnAt.fill(-1)
+    for (const [index, event] of state.lastEvents.entries()) this.turnAt[event.foragerId] = index
 
     if (minute > 0 && minute % 60 === 0) {
       const hour = (minute / 60) % 24
@@ -444,11 +447,11 @@ export class ValleyChecker {
    */
   private hearthsAtTurns(state: ValleyState): Point[] {
     const hearths = [...this.hearthBefore]
-    const turnIndex = this.turnIndex
+    const turnAt = this.turnAt
     for (const made of state.lastGroupEvents) {
       if (made.kind !== 'found') continue
       const [actor, met] = made.founderIds
-      if (turnIndex.get(actor)! < (turnIndex.get(met) ?? -1)) hearths[met] = made.hearths[1]
+      if (turnAt[actor]! < turnAt[met]!) hearths[met] = made.hearths[1]
     }
     return hearths
   }
@@ -504,11 +507,11 @@ export class ValleyChecker {
     const { config } = state
     // Where each forager stood at each turn of the minute, or null if it was dead: after its own turn once it has had
     // one, and where it started the minute before.
-    const turnIndex = this.turnIndex
+    const turnAt = this.turnAt
     const died = new Set(state.lastDeaths.map((death) => death.foragerId))
     const standing = (id: number, atTurn: number) => {
-      const index = turnIndex.get(id)
-      if (index === undefined) return null
+      const index = turnAt[id]!
+      if (index < 0) return null
       const event = state.lastEvents[index]!
       if (index < atTurn) return died.has(id) ? null : event.position
       return event.from
@@ -540,7 +543,7 @@ export class ValleyChecker {
       }
       const id = made.kind === 'found' ? made.founderIds[0] : made.foragerId
       const met = made.kind === 'found' ? made.founderIds[1] : made.metId
-      const index = turnIndex.get(id)!
+      const index = turnAt[id]!
       const at = state.lastEvents[index]!.position
       if (nearestAt(id, index, at) !== met)
         fail(`forager ${id} did not meet the nearest forager within talking distance`)
@@ -623,10 +626,10 @@ export class ValleyChecker {
         if (!stood && burned.has(group.id)) fail(`group ${group.id}'s fire burned while the group did not stand`)
       }
     // Gifts, in turn order, and then the dissolutions that followed deaths.
-    const turnIndex = this.turnIndex
+    const turnAt = this.turnAt
     const given = [...this.givenBefore]
     for (const feed of state.lastFeeds) {
-      const event = state.lastEvents[turnIndex.get(feed.foragerId) ?? -1]
+      const event = state.lastEvents[turnAt[feed.foragerId]!]
       const group = state.groups[feed.groupId]!
       const slot = group.members.indexOf(feed.foragerId)
       if (!event || event.groupId !== feed.groupId || slot < 0)

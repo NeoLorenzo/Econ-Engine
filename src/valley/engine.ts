@@ -15,7 +15,7 @@ import {
   mustGoHome,
   nextHungry,
   observe,
-  plantsInView,
+  plantsInViewOf,
   speedForLoad,
 } from './forager'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
@@ -311,13 +311,13 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   forager.carried = eaten.rest
   observe(
     forager.bushMemory,
-    plantsInView(config, layout.bushIndex, layout.bushes, forager.x, forager.y),
+    plantsInViewOf(config, forager.bushMemory, layout.bushIndex, layout.bushes, forager.x, forager.y),
     state.bushKcal,
     minute,
   )
   observe(
     forager.treeMemory,
-    plantsInView(config, layout.treeIndex, layout.trees, forager.x, forager.y),
+    plantsInViewOf(config, forager.treeMemory, layout.treeIndex, layout.trees, forager.x, forager.y),
     state.treeWood,
     minute,
   )
