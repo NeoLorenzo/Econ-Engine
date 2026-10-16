@@ -30,12 +30,10 @@ describe('MVP4 006.2 structurally shared simulation steps', () => {
     expect(next.households[0].coordinate).toBe(previous.households[0].coordinate)
   })
 
-  it('runs 10,000 days with bounded histories and exact terminal invariants', () => {
-    const state = runDays(
-      createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 2_026_0813 }),
-      10_000,
-    )
-    expect(state.day).toBe(10_000)
+  // 2,000 days is five times the 400-day history bound, so the bounds are exercised as fully as over 10,000.
+  it('runs 2,000 days with bounded histories and exact terminal invariants', () => {
+    const state = runDays(createSimulation({ startingPriceCents: 200, initialStepCents: 100, seed: 2_026_0813 }), 2_000)
+    expect(state.day).toBe(2_000)
     expect(state.metrics).toHaveLength(MAX_HISTORY)
     expect(state.events.length).toBeLessThanOrEqual(MAX_EVENTS)
     expect(state.households.reduce((sum, { cashCents }) => sum + cashCents, 0)).toBe(500_000)

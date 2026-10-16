@@ -75,6 +75,21 @@ const BOOLEAN_KEYS = new Set(['scattered', 'sharedFire', 'campfirePerMember', 'f
 
 /** The points of the square spiral around the camp: the 8 of the first ring, then the 16 of the second, and so on. */
 export function spiralOffsets(count: number) {
+  return spiralPrefix(count).slice(0, count)
+}
+
+/** The spiral's points computed so far; every longer spiral starts with every shorter one. */
+let spiral: [number, number][] = []
+
+/** Point `index` of the spiral, from 0. */
+export const spiralOffset = (index: number) => spiralPrefix(index + 1)[index]!
+
+function spiralPrefix(count: number) {
+  if (spiral.length < count) spiral = computeSpiral(Math.max(count, 2 * spiral.length, 64))
+  return spiral
+}
+
+function computeSpiral(count: number) {
   const points: [number, number][] = []
   for (let ring = 1; points.length < count; ring += 1) {
     for (let x = -ring; x <= ring; x += 1) points.push([x, -ring])

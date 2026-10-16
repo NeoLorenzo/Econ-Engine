@@ -1,4 +1,4 @@
-import { spiralOffsets } from './config'
+import { spiralOffset } from './config'
 import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
 import { chooseSite, siteCentre, sightOf } from './sites'
@@ -194,7 +194,7 @@ export function nearestOther(forager: Forager, foragers: readonly Forager[], rad
 
 /** Slot `slot` of the square spiral around a flag, `hearthSpacingCm` apart, moved to the valley's edge if needed. */
 export function hearthAround(config: ValleyConfig, flag: Point, slot: number): Point {
-  const [dx, dy] = spiralOffsets(slot + 1).at(-1)!
+  const [dx, dy] = spiralOffset(slot)
   const clamp = (value: number) => Math.max(0, Math.min(config.valleySizeCm, value))
   return { x: clamp(flag.x + dx * config.hearthSpacingCm), y: clamp(flag.y + dy * config.hearthSpacingCm) }
 }

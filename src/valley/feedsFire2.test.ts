@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { fireCapacityExperiment, valleySeeds } from './experiments'
 
-const seeds = valleySeeds(8)
+// Experiment 5's eight seeds of 400 days are the longest runs in the suite, so they are split across two files that
+// run in parallel: this one has the last four.
+const seeds = valleySeeds(8).slice(4)
 
-describe('Life 8 experiment 5: how many the valley feeds with shared fires', () => {
+describe('Life 8 experiment 5: how many the valley feeds with shared fires, last four seeds', () => {
   const [twelve] = fireCapacityExperiment(seeds, [12], undefined, false).canonical
 
   it('keeps a band of 12 intact at day 400 on every seed', () => {

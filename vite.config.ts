@@ -16,5 +16,8 @@ export default defineConfig({
     // The valley experiments run in parallel and load every core, so a test that takes a second alone can take several
     // in the full suite. The default of 5 seconds failed tests that were only slowed down.
     testTimeout: 60_000,
+    // The tests are simulations bound by computation, and the process that farms them out is nearly idle, so every core
+    // runs a worker rather than the default of one fewer, a third more on a 4-core CI runner.
+    maxWorkers: '100%',
   },
 })

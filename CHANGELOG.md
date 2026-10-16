@@ -2,6 +2,21 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [TESTS-FasterSuite-040] - (2026-10-16)
+
+### Changed
+
+- **Life 8's experiment tests share their runs.** Each test file runs in its own process, so a simulation two files need is run twice. Experiments 1 and 4 now share a file (`feedingAndGroups.test.ts`), as do 2 and 3 (`fireSizeAndSpare.test.ts`): 6 runs of 8 seeds instead of 9.
+- **The longest runs are split.** Experiment 5's eight 400-day runs of a band of 12, which alone set how long the suite took, are split across `feedsFire1.test.ts` and `feedsFire2.test.ts`.
+- **Every core runs tests.** The test runner uses a worker on every core rather than the default of one fewer, a third more on a 4-core CI runner.
+- **Two MVP9 tests run 2,000 days instead of 10,000.** They check that money stays conserved and that stored history stays within its bounds of 400 days and 1,600 events; 2,000 days exercises the bounds five times over. The MVP9 code is unchanged.
+- **The valley engine and checker do less needless work,** with every trajectory unchanged: each site's centre and check radius are kept in typed arrays rather than looked up and recomputed for every forager every minute; the spiral of hearth slots is computed once rather than rebuilt for each member each minute; and the checker builds each minute's lookup of turns once rather than three times.
+
+### Validation
+
+- The fingerprints of all 24 Life 8 runs match, so no trajectory changed.
+- `npm run agent:check` passes. The tests take 87 seconds locally, against 222 after update 039 and 565 before it; the suite uses about 410 seconds of computer time, against 7,800 before update 039.
+
 ## [LIFE8-OnlyLife8-039] - (2026-10-16)
 
 ### Removed

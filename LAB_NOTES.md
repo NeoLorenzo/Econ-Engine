@@ -6,6 +6,37 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [TESTS-FasterSuite-040] - (2026-10-16)
+
+### Problem
+
+Even with only Life 8 left, the owner found CI far too slow. The tests used about 970 seconds of computer time, and one file, the band of 12 over 400 days, took 238 seconds by itself, so the suite could not finish sooner however many cores ran it.
+
+### What was measured
+
+- **Repeated runs.** Each test file runs in its own process, so simulations shared between files ran again in each. The canonical valley's 100-day runs ran in four files and the band that starts as one group in two.
+- **The longest path.** The suite's wall time was the band of 12 file, not the total.
+- **Idle cores.** Vitest runs one worker fewer than the machine has cores, which leaves a quarter of a 4-core CI runner unused.
+- **The engine and checker.** Profiling a 100-day run with the checker on found every forager measuring its distance to all 40 sites every minute through lookups and recomputed radii, the spiral of hearth slots rebuilt for every member every minute, and the checker building the same lookup of turns three times a minute. Fixing these cut a run by about 8%; what remains is spread thinly, mostly the memory each forager keeps of what it sees, which the model needs.
+- **MVP9.** Two tests ran 10,000 days each, 39 seconds apiece, to check conservation and bounded history, whose bounds are reached by day 400.
+
+### Decisions
+
+- Group experiments that share runs into one file, and split the longest experiment's seeds across two.
+- Run a worker on every core.
+- Shorten the two MVP9 tests to 2,000 days, five times the history bound, leaving the MVP9 code unchanged.
+- Keep the checker on every minute in every experiment, as the design rules and the specification require; it is half of each run's cost, but it has found real gaps before.
+- Every change was checked against the fingerprint test: all 24 Life 8 runs are unchanged.
+
+### Findings
+
+- The tests take 87 seconds locally, against 222, and about 410 seconds of computer time, against 970.
+
+### Open questions
+
+- How long does CI take now on GitHub's runner?
+- The Pages deploy re-runs the whole suite on every push to `main`, after the pull request has already run it. Should it only build and deploy?
+
 ## [LIFE8-OnlyLife8-039] - (2026-10-16)
 
 ### Problem

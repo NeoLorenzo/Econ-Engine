@@ -3,7 +3,7 @@ import { MINUTES_PER_DAY, isDaylight, loadKg, minuteOfWork, plantsInView, speedF
 import { distance, distanceSq } from './geometry'
 import { ratesOf } from './practice'
 import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
-import { checkRadius, siteCentre, siteCount, siteGood, siteWanted, sightOf } from './sites'
+import { siteCentre, siteGeometry, siteGood, siteWanted, sightOf } from './sites'
 import { bothGain } from './trade'
 import { coldMatters, hourlyShare } from './work'
 import type { ActionReason, Point, ValleyState } from './types'
@@ -56,6 +56,7 @@ export class ValleyChecker {
   private litNow: boolean[]
   /** The groups a band starts with, which stand from before minute 0. */
   private startingGroups: number
+  private turnIndex = new Map<number, number>()
 
   constructor(state: ValleyState) {
     this.bushes = state.bushKcal.slice()
@@ -84,6 +85,8 @@ export class ValleyChecker {
     const minute = state.minute - 1
     const violations: string[] = []
     const fail = (message: string) => violations.push(`Minute ${minute}: ${message}`)
+    // Each forager's turn in the minute, by ID, which several checks need.
+    this.turnIndex = new Map(state.lastEvents.map((event, index) => [event.foragerId, index]))
 
     if (minute > 0 && minute % 60 === 0) {
       const hour = (minute / 60) % 24
@@ -441,7 +444,7 @@ export class ValleyChecker {
    */
   private hearthsAtTurns(state: ValleyState): Point[] {
     const hearths = [...this.hearthBefore]
-    const turnIndex = new Map(state.lastEvents.map((event, index) => [event.foragerId, index]))
+    const turnIndex = this.turnIndex
     for (const made of state.lastGroupEvents) {
       if (made.kind !== 'found') continue
       const [actor, met] = made.founderIds
@@ -465,17 +468,18 @@ export class ValleyChecker {
     const { config, layout } = state
     const forager = state.foragers[event.foragerId]!
     const { from } = event
-    const sight = sightOf(config, minute)
+    const sightSq = sightOf(config, minute) ** 2
     const before = this.siteKnownBefore[forager.id]!
-    for (let site = 0; site < siteCount(config); site += 1) {
-      const centre = siteCentre(config, layout, site)
-      const sq = distanceSq(from.x, from.y, centre.x, centre.y)
-      const inSight = sq <= sight * sight
+    const { x, y, checkSq } = siteGeometry(config, layout)
+    for (let site = 0; site < x.length; site += 1) {
+      const dx = from.x - x[site]!
+      const dy = from.y - y[site]!
+      const sq = dx * dx + dy * dy
+      const inSight = sq <= sightSq
       if (inSight && !forager.siteKnown[site]) fail(`forager ${forager.id} did not spot site ${site} in sight`)
       if (!inSight && forager.siteKnown[site] && !before[site])
         fail(`forager ${forager.id} spotted site ${site} out of sight`)
-      const close = checkRadius(config, site)
-      if ((forager.siteChecked[site] === minute) !== sq <= close * close)
+      if ((forager.siteChecked[site] === minute) !== sq <= checkSq[site]!)
         fail(`forager ${forager.id}'s check of site ${site} does not match where it stood`)
     }
     if (event.siteId === null) return
@@ -500,7 +504,7 @@ export class ValleyChecker {
     const { config } = state
     // Where each forager stood at each turn of the minute, or null if it was dead: after its own turn once it has had
     // one, and where it started the minute before.
-    const turnIndex = new Map(state.lastEvents.map((event, index) => [event.foragerId, index]))
+    const turnIndex = this.turnIndex
     const died = new Set(state.lastDeaths.map((death) => death.foragerId))
     const standing = (id: number, atTurn: number) => {
       const index = turnIndex.get(id)
@@ -619,7 +623,7 @@ export class ValleyChecker {
         if (!stood && burned.has(group.id)) fail(`group ${group.id}'s fire burned while the group did not stand`)
       }
     // Gifts, in turn order, and then the dissolutions that followed deaths.
-    const turnIndex = new Map(state.lastEvents.map((event, index) => [event.foragerId, index]))
+    const turnIndex = this.turnIndex
     const given = [...this.givenBefore]
     for (const feed of state.lastFeeds) {
       const event = state.lastEvents[turnIndex.get(feed.foragerId) ?? -1]
