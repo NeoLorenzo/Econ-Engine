@@ -6,6 +6,59 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE8-SharedFire-038] - (2026-10-16)
+
+### Problem
+
+Since Life 3 every forager has burned its own wood at its own hearth, so wood has been a private good: a forager was warm if and only if it held the wood. Life 6 gave groups a flag and laid every member's hearth on a spiral a few metres round it, leaving the flag's own point free for a shared fire. The ladder's step 8 asks who feeds a fire that warms everyone at it. The owner also asked to see how much each member contributes, in wood or even food, and found selecting a group nearly useless: the members it ringed could not be found on the map.
+
+### Decisions
+
+- **The owner's rules, taken as given.** One fire at each group's flag replaces its members' own fires. A member adds wood if it has spare wood or the fire is low. A fire that dies has to be relit, at no cost. Members still never change group.
+- **A fire is a fire.** It burns a kilogram an hour, the same as one hearth fire, however many sleep around it. This is the step's economy of scale, so the experiments vary it: 2 kg an hour, and a kilogram for each member, which saves nothing. The owner chose the fixed fire.
+- **Burning before anyone acts.** Each night hour starts with every fire burning its hour or going out, so every member asleep in that hour knows whether it is warm. Relighting at no cost means a fire is lit at the first night hour it holds an hour's wood.
+- **Spare and low.** Spare wood is wood above the two nights' target a forager already kept; a fire is low when it holds less than the rest of the night needs, and by day less than a night. A member feeds after swapping, at its hearth, awake or asleep.
+- **Members keep Life 7's wood need.** A member still gathers below a night's wood until it holds two nights' worth. That stock is now its reserve for the fire, and it only ever falls when the member feeds a low fire or sells.
+- **A forager without a group keeps its own fire,** or it would sleep cold until it met someone. A group's survivor takes back what its fire held.
+- **Food.** Nothing in the valley gives food away, so the contributions table shows food paid and received for wood in swaps rather than inventing a gift.
+- **Pins over members.** Rings at members' feet are too small to see from afar. Pins are buttons over the canvas, placed by projecting each member, so they keep their size at every zoom and can be clicked. The page measures the part of the view its cards leave clear; the camera frames the group in it, and pins for members out of sight wait at its edge, pointing their way.
+
+### What the prototype found
+
+A throwaway prototype, a copy of the valley core with the new rules, on 32 seeds over 400 days:
+
+- **Everyone feeds the fire, in proportion to what they gather.** A member's wood goes nowhere but into the fire or a swap, so what it gives is what it gathers.
+- **One fire per group needs a third of the wood,** 4.0 kg a forager-day against 11.7 in Life 7.
+- **Exchange disappears, and not because wood is plentiful.** With a fire that burns a kilogram for each member, as much wood as Life 7, members still bought only 0.1% of their wood. With members giving only to a low fire, they kept their spare wood and bought 16.1% (pooled over all wood burned, as the experiments measure it, 15.4%).
+- **Fires are lit 97% of night hours,** dark only in the first nights before anyone has gathered.
+
+### Findings
+
+From `experiments.ts` on 32 seeds over 400 days, measured over days 21 to 400, checking every invariant every minute. The implementation reproduced the prototype's numbers.
+
+- **Who feeds the fire.** In every standing group of two or more, on every seed, every member gives; none gives less than a quarter of an even share. A group's leading giver gives 1.10 times an even share in scattered groups and 1.38 in a band that starts as one group. Giving correlates with gathering at 1.00 across members; 39% of the wood given is spare, the rest taken from stocks for a low fire.
+- **How big a fire.** Members burn 4.0 kg of wood a forager-day and gather for 0.28 hours, against 11.7 kg and 0.66 hours in Life 7; with a fire of 2 kg an hour, 8.2 kg and 0.51 hours; with a kilogram an hour for each member, 11.8 kg and 0.68 hours. Members work 2.39 hours a day, against 2.85 in Life 7.
+- **Spare wood and exchange.** 3 runs of 32 swap, and members buy under 0.1% of the wood they burn, against every run and 9.4% in Life 7; with a fire a member, 28 runs and 0.1%. With members giving only to a low fire, every run swaps and members buy 15.4%, and sleep cold 4.7% of night hours against 2.7%.
+- **Groups.** A band that starts as one group burns 1.5 kg a forager-day and gathers for 0.12 hours, against 11.0 kg and 0.63 in Life 7, and sleeps cold 1.7% of night hours against 8.4%. Fires are lit 97% of night hours in scattered groups and 98% in one group.
+- **Life 7 is reproduced exactly** with the shared fire off, against fingerprints recorded from Life 7's code before the change.
+- **Capacity.** Bands of 8 and 12 are intact at day 400. A band of 16 keeps 6.0 survivors, all its deaths before day 100, against 5.8 in Life 7.
+
+The answer to the step's question is that everyone feeds the fire, and roughly equally, because the rules leave no one able not to. A member's stock goes nowhere but into the fire or a swap, whoever is at home when the fire runs low pays from their stock, runs short, gathers a load, and comes home with spare wood that goes straight into the fire. The cost rotates with who happens to be home. The shared fire does what sharing a fire is for, a third of the wood for the same warmth, but feeding it spare wood ends the trade in wood that every step since Life 3 has found: no one holds wood to sell.
+
+### Trade-offs
+
+- **A path that resolved to nowhere.** The 32-seed report scripts wrote to a Git Bash path, which Node on Windows does not resolve, and nine of ten configurations ran for nothing before the mistake showed. The reports were rerun with a Windows path.
+- **What the hidden preview pane can show.** It draws a frame only when a screenshot is taken, and runs no animation frames otherwise, so framing a group was first scheduled for the next frame and never happened in the checks. Framing now runs in a layout effect once the group card is on the page, which also measures the clear view correctly.
+- **The clear part of a 1,024-pixel window is narrow.** Between the HUD and the group card about 240 pixels are left, and a group spread across the valley does not fit even at the camera's farthest distance. Members out of sight are then shown by pins at the edge, which point their way.
+- **Test time.** Life 8's experiments add five test files beside Life 7's, which keep running with Life 7's settings.
+
+### Open questions
+
+- Nobody can choose not to feed the fire. Would members who decide whether to feed, remembering who fed it, free-ride, and would anyone refuse warmth to those who did not give?
+- Trade ends because spare wood goes into the fire. Does exchange return once there is something else to want, such as tools (Life 9)?
+- One fire saves wood but not enough food to feed a band of 16. What would a larger valley, or longer trips for wood, make of the saving?
+- Would a fire's warmth draw people from other groups, if members could change group?
+
 ## [LIFE7-SightAndLoads-037] - (2026-10-13)
 
 ### Problem

@@ -55,3 +55,168 @@
 .life-inspector {
   overflow: auto;
 }
+
+/* Life 8: pins over a selected group's members, which keep their size at every zoom and wait at the edge of the view
+   for members off screen; and the group card's table of what each member gives. */
+.valley-pins {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.valley-pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  pointer-events: none;
+}
+/* A teardrop in the group's colour, its point on the member, with the member's number upright on it. */
+.valley-pin-label {
+  position: absolute;
+  left: -14px;
+  top: -38px;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  isolation: isolate;
+  color: #10141a;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.valley-pin-label::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 2px solid rgba(10, 14, 20, 0.85);
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--pin-color, #fff);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+.valley-pin.is-highlighted .valley-pin-label::before {
+  outline: 3px solid #fff;
+  outline-offset: 1px;
+}
+/* At the edge of the view a pin is a disc with an arrow pointing towards its member. */
+.valley-pin.is-edge .valley-pin-label {
+  top: -14px;
+}
+.valley-pin.is-edge .valley-pin-label::before {
+  border-radius: 50%;
+  transform: none;
+}
+.valley-pin-arrow {
+  display: none;
+}
+.valley-pin.is-edge .valley-pin-arrow {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  display: block;
+  width: 44px;
+  height: 44px;
+  pointer-events: none;
+}
+.valley-pin.is-edge .valley-pin-arrow::before {
+  content: '';
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  border: 7px solid transparent;
+  border-left: 10px solid var(--pin-color, #fff);
+  transform: translateY(-50%);
+}
+.valley-pin-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--group-color, var(--surface-3));
+  color: #10141a;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+}
+.valley-contributions h3 {
+  margin: 4px 0;
+  font-size: var(--fs-sm);
+}
+.valley-contributions table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+}
+.valley-contributions th,
+.valley-contributions td {
+  padding: 4px 4px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  text-align: left;
+  vertical-align: top;
+}
+.valley-contributions thead th {
+  color: var(--text-2);
+  font-weight: 600;
+  border-top: 0;
+}
+.valley-contributions tr.is-gone {
+  color: var(--text-2);
+}
+.valley-contribution-name {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-weight: 700;
+  text-align: left;
+}
+.valley-share {
+  display: block;
+  height: 4px;
+  margin: 3px 0;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.valley-share > span {
+  display: block;
+  height: 100%;
+}
+.valley-contribution-sub {
+  display: block;
+  color: var(--text-2);
+  font-weight: 400;
+}
+/* The group card is wider than the other inspectors, for its table, and scrolls within the screen. */
+.valley-group-card {
+  width: 360px;
+  max-height: calc(100vh - 160px);
+  overflow-x: hidden;
+}
+.valley-contributions table {
+  table-layout: fixed;
+}
+.valley-contributions th:first-child {
+  width: 36%;
+}
+@media (max-width: 720px) {
+  .valley-group-card {
+    width: auto;
+    max-height: 50vh;
+  }
+}
+.valley-pin[hidden] {
+  display: none;
+}

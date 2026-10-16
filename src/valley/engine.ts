@@ -19,6 +19,7 @@ import {
   speedForLoad,
 } from './forager'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
+import { burnFires, feedFire, sleepsByGroupFire } from './fire'
 import { drawSkills, generateLayout, layoutError, turnOrder } from './layout'
 import { noTaskSeconds, practiceDay, ratesOf, startingLog } from './practice'
 import {
@@ -40,6 +41,8 @@ import type {
   ActionReason,
   DaySummary,
   DeathEvent,
+  FeedEvent,
+  FireEvent,
   FoodLot,
   Forager,
   ForagerAction,
@@ -108,6 +111,10 @@ function emptyDay(day: number, state: Pick<ValleyState, 'foragers' | 'bushKcal' 
     loadedWalkSecondsById: zeros(foragers.length),
     sitesKnownById: foragers.map(sitesKnown),
     sitesCheckedById: zeros(foragers.length),
+    fireGivenById: zeros(foragers.length),
+    campfireBurnedWood: 0,
+    fireLitHours: 0,
+    fireDarkHours: 0,
   }
 }
 
@@ -169,6 +176,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       costRemainder: 0,
       fireHour: -1,
       warm: false,
+      fireGiven: 0,
+      warmByFireMinutes: 0,
       swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
     }
   })
@@ -202,6 +211,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     lastPractice: [],
     lastDeaths: [],
     lastGroupEvents: [],
+    lastFires: [],
+    lastFeeds: [],
     eventDays: [[]],
     days: [],
     today: emptyDay(0, partial),
@@ -238,6 +249,7 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   loadedWalkSecondsById: [...day.loadedWalkSecondsById],
   sitesKnownById: [...day.sitesKnownById],
   sitesCheckedById: [...day.sitesCheckedById],
+  fireGivenById: [...day.fireGivenById],
 })
 
 /** A copy that shares nothing mutable with `state`. The layout and finished days never change, so they are shared. */
@@ -260,6 +272,7 @@ interface TurnResult {
   swaps: SwapEvent[]
   quotes: QuoteEvent[]
   met: GroupEvent | null
+  fed: FeedEvent | null
 }
 
 /**
@@ -333,6 +346,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   let burnedWood = 0
   let sleeping = false
   let sleptCold = false
+  let fireGroupId: number | null = null
   const stride = 60 * speed
 
   /** Walks towards a point for up to the whole minute, at its speed; returns the seconds left after arriving. */
@@ -353,7 +367,12 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     forager.trip = null
     reason = 'night'
     sleeping = true
-    burnedWood = tendFire(config, forager, minute)
+    if (sleepsByGroupFire(config, forager)) {
+      // A member sleeps by its group's fire, warm if it is lit this hour, and burns no wood of its own.
+      fireGroupId = forager.groupId
+      forager.warm = state.groups[fireGroupId!]!.fireLit
+      if (forager.warm) forager.warmByFireMinutes += 1
+    } else burnedWood = tendFire(config, forager, minute)
     sleptCold = !forager.warm && coldMatters(config)
     seconds.sleep = 60
   } else if (config.loadHome && !forager.hungry && carryingFullLoad(config, forager)) {
@@ -459,6 +478,11 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   const met = meet(state, forager, minute)
 
   const traded = swap(config, forager, state.foragers, minute)
+  // Having swapped, a member at its hearth feeds its group's fire.
+  const fed =
+    sleepsByGroupFire(config, forager) && atHearth(forager)
+      ? feedFire(state, state.groups[forager.groupId!]!, forager, minute)
+      : null
   const eatenAgain = eatCarried(forager.carried, config.reserveMaxKcal - forager.energyKcal)
   forager.energyKcal += eatenAgain.takenKcal
   forager.carried = eatenAgain.rest
@@ -505,8 +529,9 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     loadWood: load.wood,
     loadBerriesKcal: load.berriesKcal,
     speedCmPerSecond: speed,
+    fireGroupId,
   }
-  return { event, swaps: traded.swaps, quotes: traded.quotes, met }
+  return { event, swaps: traded.swaps, quotes: traded.quotes, met, fed }
 }
 
 /**
@@ -543,14 +568,24 @@ function advance(state: ValleyState, recordEvents = true) {
     }
   }
 
+  // The fires burn, or go out, at the start of every hour, before anyone acts.
+  const lastFires: FireEvent[] = config.sharedFire && minute % 60 === 0 ? burnFires(state, minute) : []
+  const lastFeeds: FeedEvent[] = []
   const lastEvents: ActionEvent[] = []
   const lastSwaps: SwapEvent[] = []
   const lastQuotes: QuoteEvent[] = []
   const lastDeaths: DeathEvent[] = []
   const lastGroupEvents: GroupEvent[] = []
   // Experiments keep no event history, so they build none.
-  const newEvents: ValleyEvent[] = recordEvents ? [...lastPractice] : []
+  const newEvents: ValleyEvent[] = recordEvents ? [...lastPractice, ...lastFires] : []
   const today = state.today
+  for (const fire of lastFires) {
+    today.burnedWood += fire.burned
+    today.campfireBurnedWood += fire.burned
+    if (fire.lit) today.fireLitHours += 1
+    else today.fireDarkHours += 1
+    state.totals.burnedWood += fire.burned
+  }
   for (const id of turnOrder(config.seed, minute, state.foragers.length)) {
     const forager = state.foragers[id]!
     if (!forager.alive) continue
@@ -560,6 +595,11 @@ function advance(state: ValleyState, recordEvents = true) {
     lastSwaps.push(...turn.swaps)
     lastQuotes.push(...turn.quotes)
     if (recordEvents) newEvents.push(event, ...turn.swaps, ...turn.quotes)
+    if (turn.fed) {
+      lastFeeds.push(turn.fed)
+      if (recordEvents) newEvents.push(turn.fed)
+      today.fireGivenById[id]! += turn.fed.wood
+    }
     if (turn.met) {
       lastGroupEvents.push(turn.met)
       if (recordEvents) newEvents.push(turn.met)
@@ -625,6 +665,8 @@ function advance(state: ValleyState, recordEvents = true) {
   state.lastPractice = lastPractice
   state.lastDeaths = lastDeaths
   state.lastGroupEvents = lastGroupEvents
+  state.lastFires = lastFires
+  state.lastFeeds = lastFeeds
   for (const event of newEvents) state.eventDays[state.eventDays.length - 1]!.push(event)
 
   const next = minute + 1

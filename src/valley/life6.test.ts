@@ -4,12 +4,20 @@ import { createValley, runValley } from './engine'
 import { life6 } from './experiments'
 import type { DaySummary } from './types'
 
-// Life 7's experiment 5: with long sight, checking sites, the carrying cost and taking loads home off, the valley runs
-// exactly as Life 6. The fingerprints were recorded from Life 6's code before Life 7 changed it, over 30 days on three
+// Life 7's experiment 5: with long sight, checking sites, the carrying cost and taking loads home off, and Life 8's
+// shared fire, the valley runs exactly as Life 6. The fingerprints were recorded from Life 6's code before Life 7 changed it, over 30 days on three
 // seeds, for the band born equal and for Life 3's band.
 
-/** The fields Life 7 added to a day's summary. */
-const LIFE7_DAY_FIELDS = new Set(['loadedWalkSecondsById', 'sitesKnownById', 'sitesCheckedById'])
+/** The fields Life 7 and Life 8 added to a day's summary. */
+const LIFE7_DAY_FIELDS = new Set([
+  'loadedWalkSecondsById',
+  'sitesKnownById',
+  'sitesCheckedById',
+  'fireGivenById',
+  'campfireBurnedWood',
+  'fireLitHours',
+  'fireDarkHours',
+])
 
 function fingerprintOf(value: unknown) {
   let hash = 0x811c9dc5

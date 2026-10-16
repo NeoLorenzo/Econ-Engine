@@ -6,6 +6,12 @@ import type { ValleyState } from '../valley/types'
 import {
   CAMERA_LIMITS,
   advanceClock,
+  campfireAt,
+  clearView,
+  contributionNote,
+  groupContributions,
+  hearthAt,
+  pinPlacement,
   clampDistance,
   closeTilt,
   describeActivity,
@@ -203,5 +209,80 @@ describe('groups and what a forager knows', () => {
       Object.assign(event, { workSeconds: 0, workedFor: null, ...change })
       expect(describeActivity(pair, 0)).toBe(text)
     }
+  })
+})
+
+describe('a group’s fire and what each member gives', () => {
+  /** The band as one group around the camp at minute `minute`, with `fireWood` in its fire and member 0 holding 30. */
+  function together(minute: number, fireWood: number) {
+    const state = cloneValley(createValley({ scattered: false }))
+    state.minute = minute
+    state.groups[0]!.fireWood = fireWood
+    state.groups[0]!.given = state.groups[0]!.given.map((given, slot) => (slot === 1 ? fireWood : given))
+    state.foragers[1]!.fireGiven = fireWood
+    state.foragers[0]!.wood = 30
+    return { previous: state, next: stepValley(state), alpha: 0.5 }
+  }
+
+  it('draws the fire burning at night, banked by day while it holds wood, and out otherwise', () => {
+    expect(campfireAt(together(20 * 60, 12), 0)).toMatchObject({ look: 'burning' })
+    expect(campfireAt(together(600, 12), 0)).toMatchObject({ look: 'banked' })
+    const out = together(600, 0)
+    out.next.groups[0]!.fireWood = 0
+    expect(campfireAt(out, 0)).toMatchObject({ look: 'out' })
+    expect(campfireAt(together(20 * 60 + 1, 0), 0)?.look).toBe('out')
+  })
+
+  it('lights no member’s own hearth while it sleeps by its group’s fire', () => {
+    const pair = together(20 * 60, 12)
+    expect(hearthAt(pair, 3)).toBeNull()
+    expect(describeActivity(pair, 3)).toBe('Sleeping warm by its group’s fire')
+    expect(describeActivity(together(20 * 60 + 1, 0), 3)).toBe('Sleeping cold: its group’s fire is out')
+  })
+
+  it('lists what each member has given the fire, its share, and says who gave most', () => {
+    const pair = together(20 * 60 + 1, 3)
+    const rows = groupContributions(pair.next, 0)
+    expect(rows).toHaveLength(8)
+    expect(rows[0]).toMatchObject({ name: 'Forager 1', given: 6, givenToday: 6, member: true })
+    expect(rows[1]).toMatchObject({ given: 3 })
+    expect(rows[0]!.share).toBeCloseTo(2 / 3, 10)
+    expect(contributionNote(rows)).toBe(
+      'Forager 1 has given the most, 67% of its wood (5.3 times an even share). Forager 3, Forager 4, Forager 5, Forager 6, Forager 7, Forager 8 have given nothing.',
+    )
+    expect(groupInspection(pair, 0).fire).toMatchObject({ wood: 9, lit: false, burnPerHour: 1 })
+  })
+})
+
+describe('pins over a selected group', () => {
+  const view = { width: 1000, height: 800 }
+  const clear = { left: 300, top: 24, right: 700, bottom: 776 }
+
+  it('leaves the clear part of the view between tall cards at the sides, and short or wide ones above and below', () => {
+    const cards = [
+      { left: 16, top: 60, right: 356, bottom: 760 },
+      { left: 648, top: 72, right: 1008, bottom: 680 },
+      { left: 608, top: 693, right: 1008, bottom: 752 },
+    ]
+    expect(clearView(1024, 768, cards)).toEqual({ left: 380, top: 24, right: 624, bottom: 669 })
+    // A phone: one card across the top, one across the bottom.
+    // A phone: one card across the top and one across the bottom leave too little between them, so the middle third
+    // of the view's height is kept.
+    const phone = [
+      { left: 16, top: 68, right: 359, bottom: 474 },
+      { left: 16, top: 520, right: 359, bottom: 796 },
+    ]
+    expect(clearView(375, 812, phone)).toEqual({ left: 24, top: 812 / 3 + 24, right: 351, bottom: (2 * 812) / 3 - 24 })
+  })
+
+  it('puts a pin where its member is while it is in the clear part, and holds it at the edge towards it otherwise', () => {
+    expect(pinPlacement(500, 400, false, clear, view)).toEqual({ x: 500, y: 400, edge: false, angle: 0 })
+    const right = pinPlacement(900, 400, false, clear, view)
+    expect(right).toMatchObject({ x: 700, y: 400, edge: true, angle: 0 })
+    const below = pinPlacement(500, 1_200, false, clear, view)
+    expect(below).toMatchObject({ x: 500, y: 776, edge: true })
+    expect(below.angle).toBeCloseTo(Math.PI / 2, 10)
+    // Behind the camera, a point projected to the right lies to the left.
+    expect(pinPlacement(900, 400, true, clear, view)).toMatchObject({ x: 300, edge: true })
   })
 })

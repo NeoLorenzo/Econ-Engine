@@ -222,9 +222,9 @@ export default function App() {
             <a
               className="tabs-link"
               href="life.html"
-              title="Life 7: the bottom-up core, where foragers who see across a small valley form groups and carry their loads home"
+              title="Life 8: the bottom-up core, where foragers in a small valley form groups that share one fire"
             >
-              Life 7
+              Life 8
             </a>
           </nav>
           <div className="controls" role="group" aria-label="Simulation controls">

@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { SpecializationChart } from '../lifeView/SpecializationChart'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
 import { VALLEY_DEFAULT_CONFIG, valleyConfigErrors } from '../valley/config'
 import { createValley, runValley, stepValley } from '../valley/engine'
+import { isDaylight } from '../valley/forager'
 import { layoutError } from '../valley/layout'
 import type { ValleyConfig } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
 import {
   advanceClock,
   aliveCount,
+  clearView,
   clockLabel,
   daySeries,
   DEFAULT_SPEED_INDEX,
@@ -33,6 +35,7 @@ import {
   stepFollowed,
   TERMS_COLORS,
   VALLEY_SPEEDS,
+  type ClearView,
   type DisplayPair,
 } from './valleyViewModel'
 
@@ -49,6 +52,7 @@ type NumericSetup = Pick<
   | 'practiceMaxPercent'
   | 'exploreAfterHours'
   | 'sightRadiusCm'
+  | 'campfireWoodPerHour'
 >
 type SwitchKey =
   | 'groups'
@@ -58,6 +62,7 @@ type SwitchKey =
   | 'checkSites'
   | 'carryCost'
   | 'loadHome'
+  | 'sharedFire'
   | 'swapping'
   | 'quotes'
   | 'practice'
@@ -76,6 +81,7 @@ const SETUP_FIELDS: { key: keyof NumericSetup; label: string; unit?: number }[] 
   { key: 'practiceMaxPercent', label: 'Practice to, %' },
   { key: 'exploreAfterHours', label: 'Check after, h' },
   { key: 'sightRadiusCm', label: 'Sight, m', unit: 100 },
+  { key: 'campfireWoodPerHour', label: 'Group fire, kg/h' },
 ]
 
 const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
@@ -86,6 +92,7 @@ const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
   { key: 'checkSites', label: 'Check thickets and stands' },
   { key: 'carryCost', label: 'Loads slow walking' },
   { key: 'loadHome', label: 'Take loads home' },
+  { key: 'sharedFire', label: 'One fire for each group' },
   { key: 'practice', label: 'Practice' },
   { key: 'swapping', label: 'Swapping' },
   { key: 'quotes', label: 'Telling terms' },
@@ -118,6 +125,26 @@ const formatChange = (change: number) =>
 
 const formatKg = (kg: number) => `${kg.toLocaleString('en-US')} kg`
 
+/** The part of the valley's view the cards over it leave clear, measured from the page. */
+function measureClear(mount: HTMLElement | null): ClearView | null {
+  if (!mount) return null
+  const view = mount.getBoundingClientRect()
+  const cards = [...document.querySelectorAll('.life-card')].map((card) => {
+    const rect = card.getBoundingClientRect()
+    return {
+      left: rect.left - view.left,
+      top: rect.top - view.top,
+      right: rect.right - view.left,
+      bottom: rect.bottom - view.top,
+    }
+  })
+  return clearView(view.width, view.height, cards)
+}
+
+/** A fire's state in a few words: lit, banked by day, or out, with the wood it holds. */
+const fireLabel = (fire: { lit: boolean; wood: number; nights: number }, daylight: boolean) =>
+  `${fire.lit ? 'burning' : daylight && fire.wood > 0 ? 'banked for the night' : 'out'}, ${formatKg(fire.wood)} of wood${fire.wood ? ` (${fire.nights.toFixed(1)} nights)` : ''}`
+
 export default function ValleyApp() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<ValleyScene | null>(null)
@@ -126,6 +153,7 @@ export default function ValleyApp() {
   const [running, setRunning] = useState(true)
   const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX)
   const [selected, setSelected] = useState<ValleySelection | null>(null)
+  const [highlightedId, setHighlightedId] = useState<number | null>(null)
   const [followedId, setFollowedId] = useState(0)
   const [following, setFollowing] = useState(true)
   const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP)
@@ -141,6 +169,10 @@ export default function ValleyApp() {
   const runningRef = useRef(running)
   const speedRef = useRef(VALLEY_SPEEDS[speedIndex]!)
   const selectedRef = useRef(selected)
+  const highlightedRef = useRef(highlightedId)
+  const clearRef = useRef<ClearView | null>(null)
+  /** A group to frame once its card is on the page, so the camera can fit it into the part of the view left clear. */
+  const frameRef = useRef<number | null>(null)
   const followedRef = useRef(followedId)
   const followingRef = useRef(following)
   // The animation loop reads the latest controls through refs, so changing them never restarts it.
@@ -148,9 +180,10 @@ export default function ValleyApp() {
     runningRef.current = running
     speedRef.current = VALLEY_SPEEDS[speedIndex]!
     selectedRef.current = selected
+    highlightedRef.current = highlightedId
     followedRef.current = followedId
     followingRef.current = following
-  }, [running, speedIndex, selected, followedId, following])
+  }, [running, speedIndex, selected, highlightedId, followedId, following])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -165,6 +198,12 @@ export default function ValleyApp() {
         followingRef.current = true
         setFollowedId(pick.id)
         setFollowing(true)
+      } else if (pick?.kind === 'group') {
+        // Picking a group's flag, base or badge frames the group, as its chip does.
+        setSelected(pick)
+        followingRef.current = false
+        setFollowing(false)
+        frameRef.current = pick.id
       } else setSelected(pick)
     }
     const onPan = () => {
@@ -194,6 +233,8 @@ export default function ValleyApp() {
           scene.draw(pairRef.current, {
             interpolate: speed.interpolate,
             selected: selectedRef.current,
+            highlightedId: highlightedRef.current,
+            clear: clearRef.current,
             followedId: followedRef.current,
             following: followingRef.current,
             nowMs: now,
@@ -201,6 +242,7 @@ export default function ValleyApp() {
           })
           if (now - lastHud >= HUD_INTERVAL_MS) {
             lastHud = now
+            clearRef.current = measureClear(mount)
             setSnapshot(snap(pairRef.current, followedRef.current, speed.interpolate))
           }
           frame = requestAnimationFrame(loop)
@@ -240,8 +282,18 @@ export default function ValleyApp() {
     setSelected({ kind: 'group', id })
     followingRef.current = false
     setFollowing(false)
-    sceneRef.current?.showGroup(id)
+    frameRef.current = id
   }, [])
+
+  // The group card opens with the selection, so the camera frames the group only once the card is laid out.
+  useLayoutEffect(() => {
+    const id = frameRef.current
+    if (id === null) return
+    frameRef.current = null
+    const clear = measureClear(mountRef.current)
+    clearRef.current = clear
+    sceneRef.current?.showGroup(id, clear)
+  })
 
   /** Finishes the minute in progress, then shows the next one from its start. */
   const stepMinute = useCallback(() => {
@@ -311,7 +363,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 7 · sight and loads</span>
+        <span className="life-title">Life 8 · a shared fire</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -505,13 +557,22 @@ export default function ValleyApp() {
               </dd>
             </>
           )}
-          {fire && (
+          {summary.groupFire ? (
             <>
-              <dt>A night’s fire</dt>
-              <dd className="num">
-                {formatKg(fire.wood)} of wood saves {formatKcal(fire.kcal)}
-              </dd>
+              <dt>Group’s fire</dt>
+              <dd className="num">{fireLabel(summary.groupFire, isDaylight(config, Math.floor(minutes)))}</dd>
+              <dt>Gave the fire</dt>
+              <dd className="num">{formatKg(summary.fireGiven)} of wood</dd>
             </>
+          ) : (
+            fire && (
+              <>
+                <dt>A night’s fire</dt>
+                <dd className="num">
+                  {formatKg(fire.wood)} of wood saves {formatKcal(fire.kcal)}
+                </dd>
+              </>
+            )
           )}
           <dt>Carries</dt>
           <dd className="num">
@@ -570,7 +631,7 @@ export default function ValleyApp() {
       )}
 
       {group && selected?.kind === 'group' && (
-        <section className="life-card life-inspector" aria-label={group.name}>
+        <section className="life-card life-inspector valley-group-card" aria-label={group.name}>
           <header>
             <h2>
               <span className="life-strategy-dot" aria-hidden="true" style={{ background: group.color }} />
@@ -594,16 +655,35 @@ export default function ValleyApp() {
                 </dd>
                 <dt>Swaps</dt>
                 <dd className="num">{group.swapsLastDay} among its members in the last day</dd>
+                {group.fire && (
+                  <>
+                    <dt>Its fire</dt>
+                    <dd className="num">
+                      {fireLabel(group.fire, isDaylight(config, Math.floor(minutes)))}; out {group.darkHours} of{' '}
+                      {group.litHours + group.darkHours} night hours since it was founded
+                    </dd>
+                  </>
+                )}
               </>
             )}
           </dl>
           {group.members.length > 0 && (
-            <ul className="valley-members" aria-label="Members">
+            <ul className="valley-members" aria-label="Members" style={{ ['--group-color' as string]: group.color }}>
               {group.members.map((member) => (
                 <li key={member.id}>
-                  <button type="button" onClick={() => follow(member.id)} aria-label={`Follow ${member.name}`}>
+                  <button
+                    type="button"
+                    onClick={() => follow(member.id)}
+                    onPointerEnter={() => setHighlightedId(member.id)}
+                    onPointerLeave={() => setHighlightedId(null)}
+                    onFocus={() => setHighlightedId(member.id)}
+                    onBlur={() => setHighlightedId(null)}
+                    aria-label={`Follow ${member.name}`}
+                  >
                     <span className="valley-member-name">
-                      <span className="life-strategy-dot" aria-hidden="true" style={{ background: member.color }} />
+                      <span className="valley-pin-badge" aria-hidden="true">
+                        {member.id + 1}
+                      </span>
                       {member.name}
                       {member.loadKg > 0 && <span className="num"> · {formatKg(member.loadKg)}</span>}
                     </span>
@@ -618,10 +698,66 @@ export default function ValleyApp() {
               Show group
             </button>
           )}
+          {group.contributions.length > 0 && (
+            <section className="valley-contributions" aria-label="What each member gives">
+              <h3>What each member gives</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Member</th>
+                    <th scope="col">Into the fire</th>
+                    <th scope="col">Gathered, warm</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.contributions.map((row) => (
+                    <tr key={row.id} className={row.member ? undefined : 'is-gone'}>
+                      <th scope="row">
+                        <button
+                          type="button"
+                          className="valley-contribution-name"
+                          disabled={!row.alive}
+                          onClick={() => follow(row.id)}
+                          onPointerEnter={() => setHighlightedId(row.id)}
+                          onPointerLeave={() => setHighlightedId(null)}
+                        >
+                          {row.name}
+                        </button>
+                        {!row.alive ? ' · dead' : !row.member ? ' · left' : ''}
+                        <span className="valley-contribution-sub num">
+                          {row.woodBought || row.woodSold
+                            ? `bought ${formatKg(row.woodBought)} for ${formatKcal(row.kcalPaid)} · sold ${formatKg(row.woodSold)} for ${formatKcal(row.kcalReceived)}`
+                            : 'no swaps'}
+                        </span>
+                      </th>
+                      <td>
+                        <span className="num">
+                          {formatKg(row.given)} · {Math.round(row.share * 100)}%
+                        </span>
+                        <span className="valley-share" aria-hidden="true">
+                          <span style={{ width: `${row.share * 100}%`, background: group.color }} />
+                        </span>
+                        <span className="valley-contribution-sub num">{formatKg(row.givenToday)} today</span>
+                      </td>
+                      <td className="num">
+                        {formatKg(row.gathered)}
+                        <span className="valley-contribution-sub">{formatHours(Math.round(row.warmHours))} warm</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {group.contributionNote && <p className="life-note">{group.contributionNote}</p>}
+              <p className="life-note">
+                Nobody gives food away, so food enters only as payment for wood in swaps. Warm is the time each has
+                slept by a group’s fire while it burned.
+              </p>
+            </section>
+          )}
           <p className="life-note">
             {group.dissolved
               ? 'The group dissolved when only one of its members was left alive, and its flag came down.'
-              : `Its members sleep at their hearths around its flag and swap only with each other. ${group.joinedEver} have joined it. Click a member to follow it.`}
+              : `Its members sleep at their hearths around its flag${group.fire ? ', all warmed by its one fire,' : ''} and swap only with each other. ${group.joinedEver} have joined it. A numbered pin marks each member; click one to follow it.`}
           </p>
         </section>
       )}
@@ -720,7 +856,7 @@ export default function ValleyApp() {
             . {setup.carryCost ? 'A load slows them down, so every metre costs more' : 'Loads cost nothing to carry'}
             {setup.loadHome ? ', and they take a full load home before anything else. ' : '. '}
             {setup.groups
-              ? 'Those without a group look for company: two who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their flag and swap only with each other.'
+              ? `Those without a group look for company: two who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their flag and swap only with each other.${setup.sharedFire ? ` Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member; members put in their spare wood, and wood from their stock when it runs low.` : ' Each keeps its own fire.'}`
               : 'There are no groups: anyone may swap with anyone they meet.'}{' '}
             They are born with skills{' '}
             {setup.skillMinPercent === setup.skillMaxPercent
@@ -737,10 +873,10 @@ export default function ValleyApp() {
             . Each is coloured by what wood costs it, from{' '}
             <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
-            group’s colour; each group’s base has a flag, coloured ground and a lettered badge. Ground the followed
-            person has never seen is darkest, and a ring marks each thicket and stand it knows, bright if it checked it
-            lately. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to follow them,
-            a bush or tree to inspect it, and a flag, badge or group to see the group.
+            group’s colour; each group’s base has a fire, a flag, coloured ground and a lettered badge. Ground the
+            followed person has never seen is darkest, and a ring marks each thicket and stand it knows, bright if it
+            checked it lately. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to
+            follow them, a bush or tree to inspect it, and a flag, badge or group to see the group.
           </p>
         </details>
       </section>

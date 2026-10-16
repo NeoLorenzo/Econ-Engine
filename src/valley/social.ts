@@ -229,6 +229,21 @@ export function hearthAround(config: ValleyConfig, flag: Point, slot: number): P
   return { x: clamp(flag.x + dx * config.hearthSpacingCm), y: clamp(flag.y + dy * config.hearthSpacingCm) }
 }
 
+/** A group just founded at `flag`, with no members yet and an empty, unlit fire. */
+export const newGroup = (id: number, flag: Point, minute: number): Group => ({
+  id,
+  flag: { ...flag },
+  foundedMinute: minute,
+  dissolvedMinute: null,
+  members: [],
+  fireWood: 0,
+  fireLit: false,
+  given: [],
+  fireBurned: 0,
+  litHours: 0,
+  darkHours: 0,
+})
+
 /** The groups a band starts with: none when scattered, otherwise the whole band as one group around the camp. */
 export function startingGroups(config: ValleyConfig, layout: ValleyLayout, foragers: Forager[]): Group[] {
   if (!config.groups || config.scattered) return []
@@ -238,7 +253,11 @@ export function startingGroups(config: ValleyConfig, layout: ValleyLayout, forag
     forager.knownFlags = [0]
   }
   return [
-    { id: 0, flag: { ...layout.camp }, foundedMinute: 0, dissolvedMinute: null, members: foragers.map((f) => f.id) },
+    {
+      ...newGroup(0, layout.camp, 0),
+      members: foragers.map((f) => f.id),
+      given: foragers.map(() => 0),
+    },
   ]
 }
 
@@ -247,6 +266,7 @@ const join = (config: ValleyConfig, group: Group, forager: Forager, minute: numb
   forager.joinedMinute = minute
   forager.hearth = hearthAround(config, group.flag, group.members.length)
   group.members = [...group.members, forager.id]
+  group.given = [...group.given, 0]
   if (!forager.knownFlags.includes(group.id)) forager.knownFlags = [...forager.knownFlags, group.id]
 }
 
@@ -271,13 +291,8 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Grou
       hearth: forager.hearth,
     }
   }
-  const group: Group = {
-    id: state.groups.length,
-    flag: { x: Math.floor((forager.x + other.x) / 2), y: Math.floor((forager.y + other.y) / 2) },
-    foundedMinute: minute,
-    dissolvedMinute: null,
-    members: [],
-  }
+  const flag = { x: Math.floor((forager.x + other.x) / 2), y: Math.floor((forager.y + other.y) / 2) }
+  const group = newGroup(state.groups.length, flag, minute)
   state.groups.push(group)
   join(config, group, forager, minute)
   join(config, group, other, minute)
@@ -298,18 +313,28 @@ export const livingMembers = (state: Pick<ValleyState, 'foragers'>, group: Group
     return member.alive && member.groupId === group.id
   })
 
-/** Dissolves a group left with one living member or none: its flag comes down and the survivor is without a group. */
+/**
+ * Dissolves a group left with one living member or none: its flag comes down and the survivor is without a group. The
+ * survivor takes back the wood in the group's fire; with no survivor, it stays in the cold fire.
+ */
 export function dissolveIfAlone(state: ValleyState, groupId: number, minute: number): DissolveEvent | null {
   const group = state.groups[groupId]!
   if (group.dissolvedMinute !== null) return null
   const living = livingMembers(state, group)
   if (living.length > 1) return null
   group.dissolvedMinute = minute
+  group.fireLit = false
   for (const id of living) {
     state.foragers[id]!.groupId = null
     state.foragers[id]!.joinedMinute = null
   }
-  return { kind: 'dissolve', minute, groupId, survivorId: living[0] ?? null }
+  const survivor = living.length ? state.foragers[living[0]!]! : null
+  const fireWood = survivor ? group.fireWood : 0
+  if (survivor) {
+    survivor.wood += fireWood
+    group.fireWood = 0
+  }
+  return { kind: 'dissolve', minute, groupId, survivorId: survivor?.id ?? null, fireWood }
 }
 
 export interface Goal {

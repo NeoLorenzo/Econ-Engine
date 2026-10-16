@@ -5,10 +5,10 @@ import { life5 } from './experiments'
 import type { DaySummary } from './types'
 
 // Life 6's experiment 4: with groups, scattering and exploring off and the valley known, and Life 7's sight and loads
-// off, the valley runs exactly as Life 5. The fingerprints were recorded from Life 5's code before Life 6 changed it,
+// off, and Life 8's shared fire, the valley runs exactly as Life 5. The fingerprints were recorded from Life 5's code before Life 6 changed it,
 // over 30 days on three seeds, for the band born equal and for Life 3's band, whose swaps start within days.
 
-/** The fields Life 6 and Life 7 added to a day's summary. */
+/** The fields Life 6, Life 7 and Life 8 added to a day's summary. */
 const LATER_DAY_FIELDS = new Set([
   'groupsStanding',
   'loners',
@@ -19,6 +19,10 @@ const LATER_DAY_FIELDS = new Set([
   'loadedWalkSecondsById',
   'sitesKnownById',
   'sitesCheckedById',
+  'fireGivenById',
+  'campfireBurnedWood',
+  'fireLitHours',
+  'fireDarkHours',
 ])
 
 function fingerprintOf(value: unknown) {

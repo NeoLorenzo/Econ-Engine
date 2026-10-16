@@ -72,5 +72,11 @@ export function valleyTheory(config: ValleyConfig) {
     loadedWalkSeconds,
     carryCostKcal,
     shortestCheckTourHours,
+    /** The wood a group's fire burns in a night, whatever the group's size. */
+    campfireNightWood: night * config.campfireWoodPerHour,
+    /** The wood each member of a group of `n` needs a night with one shared fire. */
+    campfireWoodPerMember: (n: number) => (night * config.campfireWoodPerHour) / n,
+    /** Hours of gathering a day for a member of a group of `n` at rate `w`, its share of the fire's night. */
+    campfireGatherHoursPerDay: (n: number, w: number) => (night * config.campfireWoodPerHour) / n / w,
   }
 }

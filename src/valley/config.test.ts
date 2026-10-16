@@ -128,3 +128,15 @@ describe('Life 7 configuration', () => {
     expect(errorsWith({ standRadiusCm: 2_500, checkSites: false })).not.toContain(message)
   })
 })
+
+describe('Life 8 configuration', () => {
+  it('refuses switches that are not booleans, and a fire that burns nothing', () => {
+    expect(errorsWith({ sharedFire: 1 as unknown as boolean })).toContain('sharedFire must be true or false')
+    expect(errorsWith({ campfirePerMember: 'no' as unknown as boolean })).toContain(
+      'campfirePerMember must be true or false',
+    )
+    expect(errorsWith({ feedSpare: 0 as unknown as boolean })).toContain('feedSpare must be true or false')
+    expect(errorsWith({ campfireWoodPerHour: 0 })).toContain('campfireWoodPerHour must be positive')
+    expect(errorsWith({ campfireWoodPerHour: 1.5 })).toContain('campfireWoodPerHour must be an integer')
+  })
+})

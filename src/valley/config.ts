@@ -1,10 +1,11 @@
 import type { ValleyConfig } from './types'
 
 /**
- * The canonical Life 7 valley: Life 5's valley, 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees,
+ * The canonical Life 8 valley: Life 5's valley, 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees,
  * which together grow exactly what Life 4's land grew, and Life 4's band of 8 born alike, who bring firewood home in
  * loads of 30 kg. They start scattered and form groups when they meet, as in Life 6. By day they see across the
- * valley, check the thickets and stands they know when idle, walk more slowly under a load, and take a full load home.
+ * valley, check the thickets and stands they know when idle, walk more slowly under a load, and take a full load home,
+ * as in Life 7. Each group keeps one fire at its flag, which warms every member and which members feed.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
@@ -73,10 +74,20 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   bodyKg: 60,
   berryKcalPerKg: 500,
   loadHome: true,
+  sharedFire: true,
+  campfireWoodPerHour: 1,
+  campfirePerMember: false,
+  feedSpare: true,
+}
+
+/** Life 7's valley: every forager burns its own wood at its own hearth. */
+export const LIFE7_VALLEY: Partial<ValleyConfig> = {
+  sharedFire: false,
 }
 
 /** Life 6's valley: foragers see 25 m, sweep places, and carry loads at no cost. */
 export const LIFE6_VALLEY: Partial<ValleyConfig> = {
+  ...LIFE7_VALLEY,
   sightRadiusCm: 2_500,
   checkSites: false,
   carryCost: false,
@@ -106,6 +117,9 @@ const BOOLEAN_KEYS = new Set([
   'checkSites',
   'carryCost',
   'loadHome',
+  'sharedFire',
+  'campfirePerMember',
+  'feedSpare',
 ])
 
 /** The points of the square spiral around the camp: the 8 of the first ring, then the 16 of the second, and so on. */
@@ -159,6 +173,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'sightRadiusCm',
     'bodyKg',
     'berryKcalPerKg',
+    'campfireWoodPerHour',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
