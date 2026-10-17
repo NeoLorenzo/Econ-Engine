@@ -6,6 +6,30 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [CI-DeployAfterValidation-043] - (2026-10-17)
+
+### Problem
+
+Update 040 asked whether the Pages deploy should keep re-running the whole suite on every push to `main`. After update 042 the validation workflow ran every test, split three ways, in about 1.5 minutes on each push to `main`, while the deploy ran them again on one 4-core machine, about 4 minutes, so the site went live about 5.5 minutes after a merge.
+
+### Options considered
+
+- **Deploy after lint, typecheck and build, trusting the pull request's checks.** Fastest, but the commit on `main` after a squash merge, or a direct push, would reach the site untested.
+- **Deploy when the validation workflow passes on the same commit.** The tests still guard the site and run once.
+- **Keep the tests in the deploy, split three ways.** About as fast, but the tests still run twice per push and two workflows must be kept in step.
+
+The owner chose the second.
+
+### Decisions
+
+- Trigger the deploy with `workflow_run` on the validation workflow's completion, only for runs on a push to `main` that passed, and check out that run's commit rather than whatever `main` points to by then.
+- Build again in the deploy rather than pass the validation workflow's build across: a rebuild takes well under a minute, and passing files between workflows needs extra permissions and steps.
+- Skip a commit that is no longer `main`'s newest. With a push trigger, runs queued in push order; with `workflow_run`, a slow or re-run validation of an older commit could otherwise finish after a newer one and publish the older site.
+
+### Open questions
+
+- The new trigger takes effect only from the workflow file on `main`, so it is first exercised by this change's own merge.
+
 ## [CI-ShardedTests-042] - (2026-10-17)
 
 ### Problem

@@ -69,7 +69,7 @@ Read the current [MVP 8 specification](docs/MVP8_SPEC.md), [architecture notes](
 
 ## Deployment
 
-Pushes to `main` validate and deploy the static Vite bundle to [GitHub Pages](https://neolorenzo.github.io/Econ-Engine/).
+Pushes to `main` are validated, and once validation passes the static Vite bundle is deployed to [GitHub Pages](https://neolorenzo.github.io/Econ-Engine/).
 
 ## Current limits
 

@@ -2,6 +2,20 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [CI-DeployAfterValidation-043] - (2026-10-17)
+
+### Changed
+
+- **The site deploys once validation passes.** The Pages deploy no longer runs lint, the typecheck and the whole test suite itself. It starts when "Validate fast-mode browser responsiveness" finishes on a push to `main`, deploys only if that run passed, and then only builds the same commit and publishes it. The tests run once per push, split across three machines, rather than twice.
+- **An older commit cannot replace a newer site.** The deploy skips a commit that is no longer the newest on `main`, such as a validation of an older commit that is re-run or finishes late.
+- A manual run of the deploy still builds and publishes the commit it is run on.
+- The README and validation guide describe the new order.
+
+### Validation
+
+- `npm run agent:check` passes.
+- The new trigger can only be seen working on GitHub after this change is on `main`: its own merge should deploy about a minute after the validation run finishes.
+
 ## [CI-ShardedTests-042] - (2026-10-17)
 
 ### Changed
