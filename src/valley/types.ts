@@ -1,11 +1,12 @@
-import type { FoodLot } from '../life/types'
-
-export type { FoodLot }
+/** Carried food in a lot picked in one minute: its kilocalories and the minute it was picked. */
+export interface FoodLot {
+  kcal: number
+  harvestTick: number
+}
 
 /**
- * Life 5's configuration, with Life 6's groups, scattered starts and exploring, and Life 7's sight and loads. Lengths
- * are whole centimetres, food and energy whole kilocalories, and wood whole kilograms, so every balance is exact.
- * Rates and costs stay per hour; a forager pays or takes them second by second.
+ * The valley's configuration. Lengths are whole centimetres, food and energy whole kilocalories, and wood whole
+ * kilograms, so every balance is exact. Rates and costs stay per hour; a forager pays or takes them second by second.
  */
 export interface ValleyConfig {
   seed: number
@@ -71,47 +72,36 @@ export interface ValleyConfig {
   /** Born skills are drawn independently from this range, in percent. */
   skillMinPercent: number
   skillMaxPercent: number
-  /** Foragers may swap wood for food. */
-  swapping: boolean
-  /** Two foragers that could both gain from a swap tell each other the terms, even if they cannot complete it. */
-  quotes: boolean
+  /** How long a forager remembers the terms it last heard. */
   termsMemoryHours: number
-  /** Skill grows with practice and fades without it. */
-  practice: boolean
+  /** Skill grows with practice over this many days and fades without it. */
   practiceDays: number
   practiceHalfHours: number
   practiceMinPercent: number
   practiceMaxPercent: number
   startPracticeHoursPerDay: number
-  /** Foragers without a group seek company, form groups when they meet, and swap only within their group. */
-  groups: boolean
-  /** Foragers start at scattered points, each its own hearth, rather than on a spiral around the camp. */
+  /** Foragers start at scattered points, each its own hearth, rather than as one group around the camp. */
   scattered: boolean
-  /** Foragers whose needs are met explore places they have not seen for `exploreAfterHours`. */
-  explore: boolean
-  /** Foragers start having seen every plant and place, as in Life 5. */
-  knowValley: boolean
   /** Scattered starts lie at least this far apart. */
   startSpacingCm: number
   /** The valley is divided into square places this wide, which a forager remembers having seen. */
   placeCm: number
-  /**
-   * A place not seen for this many hours is worth exploring again; with `checkSites`, a site not checked for this long
-   * is worth checking again.
-   */
+  /** A thicket or stand not checked for this many hours is worth checking again. */
   exploreAfterHours: number
   /** By day a forager sees thickets, stands, other foragers and flags this far; at night only `perceptionRadiusCm`. */
   sightRadiusCm: number
-  /** Foragers remember thickets and stands, check them when idle, search them first, and never re-explore ground. */
-  checkSites: boolean
-  /** A load slows a forager's walk, so each metre walked costs more. */
-  carryCost: boolean
   /** A forager's body, against which its load slows it. */
   bodyKg: number
   /** Carried berries weigh a kilogram for every this many kilocalories. */
   berryKcalPerKg: number
-  /** A forager that is not hungry takes a full load home before anything else. */
-  loadHome: boolean
+  /** Each group keeps one fire at its flag, which warms its members and replaces their own fires. */
+  sharedFire: boolean
+  /** Wood a group's fire burns in a night hour. */
+  campfireWoodPerHour: number
+  /** A group's fire burns `campfireWoodPerHour` for each living member, rather than once. */
+  campfirePerMember: boolean
+  /** A member at its hearth puts its spare wood into the fire, as well as wood from its stock when the fire is low. */
+  feedSpare: boolean
 }
 
 export interface Point {
@@ -159,6 +149,15 @@ export interface Group {
   dissolvedMinute: number | null
   /** Every forager that ever joined, in order of joining; slot `i` of the spiral around the flag went to `members[i]`. */
   members: number[]
+  /** With `sharedFire`: the wood in its fire, and whether the fire is lit this hour. */
+  fireWood: number
+  fireLit: boolean
+  /** The wood each member has put into the fire, in the order of `members`. */
+  given: number[]
+  /** Wood its fire has burned, and the night hours it was lit and out, since it was founded. */
+  fireBurned: number
+  litHours: number
+  darkHours: number
 }
 
 export interface HeardTerms {
@@ -235,11 +234,14 @@ export interface Forager {
   /** The hour of its last fire decision, and whether that hour is warm. */
   fireHour: number
   warm: boolean
+  /** The wood it has put into any group's fire, and the minutes it has slept warm by one. */
+  fireGiven: number
+  warmByFireMinutes: number
   swapTotals: SwapTotals
   /** Its group, or null if it has none, and the minute it joined or founded it. */
   groupId: number | null
   joinedMinute: number | null
-  /** For each place, the last minute it lay wholly in view (with `checkSites`, the first), or −1 if never. */
+  /** For each place, the first minute it lay wholly in view, or −1 if never. */
   placeSeen: Int32Array
   /** How many places it has ever seen. */
   placesSeen: number
@@ -318,6 +320,8 @@ export interface ActionEvent {
   loadBerriesKcal: number
   /** Its walking speed for that load, in centimetres a second. */
   speedCmPerSecond: number
+  /** The group whose fire it slept by, if it slept as a member; null if it tended its own fire or did not sleep. */
+  fireGroupId: number | null
 }
 
 export interface DeathEvent {
@@ -392,11 +396,42 @@ export interface DissolveEvent {
   minute: number
   groupId: number
   survivorId: number | null
+  /** The wood its survivor took back from the fire. */
+  fireWood: number
 }
 
 export type GroupEvent = FoundEvent | JoinEvent | DissolveEvent
 
-export type ValleyEvent = ActionEvent | DeathEvent | SwapEvent | QuoteEvent | PracticeEvent | GroupEvent
+/** A group's fire at the start of a night hour: it burned its hour's wood and is lit, or held too little and is out. */
+export interface FireEvent {
+  kind: 'fire'
+  minute: number
+  groupId: number
+  burned: number
+  lit: boolean
+  fireWoodAfter: number
+}
+
+/** A member at its hearth put wood into its group's fire. */
+export interface FeedEvent {
+  kind: 'feed'
+  minute: number
+  groupId: number
+  foragerId: number
+  wood: number
+  /** Of that wood, what was spare: above its target of `woodStockNights` nights. The rest came from its stock. */
+  spareWood: number
+  /** Whether the fire held less than it would burn in the rest of the night, or by day in a whole night. */
+  low: boolean
+  woodBefore: number
+  /** What the fire burns in a night hour, which sets what the rest of the night needs. */
+  burnPerHour: number
+  fireWoodBefore: number
+  fireWoodAfter: number
+}
+
+export type ValleyEvent =
+  ActionEvent | DeathEvent | SwapEvent | QuoteEvent | PracticeEvent | GroupEvent | FireEvent | FeedEvent
 
 /** Seconds spent on each kind of time, summed over the band. */
 export interface ActionSeconds {
@@ -449,6 +484,11 @@ export interface DaySummary {
   loadedWalkSecondsById: number[]
   sitesKnownById: number[]
   sitesCheckedById: number[]
+  /** Every forager's wood put into fires during the day; wood burned in groups' fires; night hours fires were lit and out. */
+  fireGivenById: number[]
+  campfireBurnedWood: number
+  fireLitHours: number
+  fireDarkHours: number
 }
 
 export interface ValleyTotals {
@@ -489,6 +529,9 @@ export interface ValleyState {
   lastDeaths: DeathEvent[]
   /** The foundings, joinings and dissolutions of the last minute run. */
   lastGroupEvents: GroupEvent[]
+  /** The fires burned or out at the start of the last minute, and the wood put into them during it. */
+  lastFires: FireEvent[]
+  lastFeeds: FeedEvent[]
   /** Recent events, one array per day, oldest first, at most `EVENT_HISTORY_DAYS` days. */
   eventDays: ValleyEvent[][]
   days: DaySummary[]

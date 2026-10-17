@@ -22,6 +22,7 @@ import {
   arcPoint,
   baseRadiusCm,
   bundleScale,
+  campfireAt,
   clampDistance,
   clampTarget,
   currentEvent,
@@ -39,6 +40,8 @@ import {
   hearthAt,
   knowledgeShades,
   parcelScale,
+  pinPlacement,
+  type ClearView,
   plantLook,
   siteRings,
   sunAt,
@@ -63,6 +66,7 @@ const STONE = 0x6f6a60
 const FLAME = 0xffa040
 const POLE = 0x6b4f35
 const EMBER = 0x3a3330
+const ASH = 0x9a9590
 const BUNDLE = 0xb07a45
 const DEAD = 0x6b6b66
 const SKIN = 0xc79a74
@@ -75,6 +79,10 @@ const GRID_STEP_M = 50
 const BADGE_SCALE = 0.05
 /** The sash's tilt from level, towards one shoulder, in radians. */
 const SASH_TILT = 0.85
+/** How see-through foragers outside a selected group are drawn. */
+const FADED_OPACITY = 0.25
+/** Where a flag's pole stands beside its group's fire, in metres from the flag's point. */
+const POLE_OFFSET = { x: -1.1, z: -0.7 }
 
 /** What a click picked out: a bush or tree to inspect, a group by its flag, base or badge, or a forager to follow. */
 export type ValleyPick = ValleySelection | { kind: 'forager'; id: number }
@@ -85,6 +93,10 @@ export type ValleySelection = ValleyPlant | { kind: 'group'; id: number }
 export interface DrawOptions {
   interpolate: boolean
   selected: ValleySelection | null
+  /** A member of the selected group to pick out, as the viewer points at it in the group card. */
+  highlightedId: number | null
+  /** The part of the view the cards leave clear, where pins for members out of sight are held. */
+  clear: ClearView | null
   followedId: number
   /** The camera keeps the followed forager in the middle of the view. */
   following: boolean
@@ -96,8 +108,8 @@ export interface ValleyScene {
   /** Rebuilds the valley, its plants and its band for a new run. */
   setWorld(state: ValleyState): void
   draw(pair: DisplayPair, options: DrawOptions): void
-  /** Moves the camera to take in a group's base and every living member, as last drawn. */
-  showGroup(groupId: number): void
+  /** Moves the camera to take in a group's base and every living member, as last drawn, in the clear part of the view. */
+  showGroup(groupId: number, clear?: ClearView | null): void
   dispose(): void
 }
 
@@ -123,6 +135,10 @@ interface Figure {
   legs: [Group, Group]
   arms: [Group, Group]
   material: MeshStandardMaterial
+  /** Its own skin, so it can fade with the rest of it. */
+  skin: MeshStandardMaterial
+  /** Drawn see-through, outside a selected group. */
+  faded: boolean
   /** A band across the chest in its group's colour. */
   sash: Mesh
   sashMaterial: MeshStandardMaterial
@@ -148,6 +164,11 @@ interface Flag {
   disc: Mesh
   /** The group's letter above its flag, the same size on screen at every zoom. */
   badge: Sprite
+  /** The group's fire at its flag: a flame, the wood it holds, and ashes when it is out. */
+  fire: Group
+  fireFlame: Mesh
+  firePile: Group
+  fireAsh: Mesh
 }
 
 interface SwapArc {
@@ -221,6 +242,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     emissiveIntensity: 1.6,
     roughness: 0.6,
   })
+  const ashMaterial = new THREE.MeshStandardMaterial({ color: ASH, roughness: 1 })
   const ringGeometry = new THREE.RingGeometry(0.9, 1, 48)
   const legGeometry = new THREE.CapsuleGeometry(0.075, 0.72, 4, 8)
   legGeometry.translate(0, -0.43, 0)
@@ -338,6 +360,49 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   /** The state last drawn, which `showGroup` frames. */
   let drawn: ValleyState | null = null
 
+  // Lines on the ground from a selected group's flag to each member away from home, in the group's colour.
+  const memberLines: InstanceType<Three['Line']>[] = []
+  function memberLineAt(index: number) {
+    while (memberLines.length <= index) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3))
+      const line = new THREE.Line(
+        geometry,
+        new THREE.LineBasicMaterial({ transparent: true, opacity: 0.85, depthWrite: false }),
+      )
+      line.renderOrder = 3
+      scene.add(line)
+      memberLines.push(line)
+    }
+    return memberLines[index]!
+  }
+
+  // Pins over a selected group's members: buttons laid over the view, the same size at every zoom, held at the edge of
+  // the view and pointing towards a member that is off screen.
+  const pinLayer = document.createElement('div')
+  pinLayer.className = 'valley-pins'
+  mount.appendChild(pinLayer)
+  const pins: { button: HTMLButtonElement; label: HTMLSpanElement; arrow: HTMLSpanElement; id: number }[] = []
+  function pinAt(index: number) {
+    while (pins.length <= index) {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'valley-pin'
+      const label = document.createElement('span')
+      label.className = 'valley-pin-label'
+      const arrow = document.createElement('span')
+      arrow.className = 'valley-pin-arrow'
+      arrow.setAttribute('aria-hidden', 'true')
+      button.append(arrow, label)
+      const pin = { button, label, arrow, id: -1 }
+      button.addEventListener('click', () => callbacks.onPick({ kind: 'forager', id: pin.id }))
+      pinLayer.appendChild(button)
+      pins.push(pin)
+    }
+    return pins[index]!
+  }
+  const projected = new THREE.Vector3()
+
   const swapMaterial = new THREE.LineBasicMaterial({ color: hex(palette.accent), transparent: true, opacity: 0.9 })
   const swapArcs: SwapArc[] = []
   const arcGroup = new THREE.Group()
@@ -359,6 +424,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   /** A person about 1.75 m tall: legs and arms that swing from hips and shoulders, and a torso that bends. */
   function makeFigure(id: number): Figure {
     const material = new THREE.MeshStandardMaterial({ color: hex(palette.household), roughness: 0.7 })
+    const skin = skinMaterial.clone()
     const sashMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 })
     const root = new THREE.Group()
     const body = new THREE.Group()
@@ -378,7 +444,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const torso = new THREE.Group()
     const chest = new THREE.Mesh(torsoGeometry, material)
     chest.castShadow = true
-    const head = new THREE.Mesh(headGeometry, skinMaterial)
+    const head = new THREE.Mesh(headGeometry, skin)
     head.position.y = 0.83
     head.castShadow = true
     const arm = (side: number) => {
@@ -418,7 +484,22 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     body.add(hips)
     root.add(body)
     band.add(root)
-    return { root, body, hips, torso, legs, arms, material, sash, sashMaterial, bundle, parcel, heading: 0 }
+    return {
+      root,
+      body,
+      hips,
+      torso,
+      legs,
+      arms,
+      material,
+      skin,
+      faded: false,
+      sash,
+      sashMaterial,
+      bundle,
+      parcel,
+      heading: 0,
+    }
   }
 
   /** A round badge in a group's colour with its letter, dark or light to stand out on the colour. */
@@ -446,8 +527,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   /**
-   * A group's base: a flag on a pole about 2.6 m tall with a cloth in the group's colour, on a few stones; a disc of
-   * that colour on the ground around its hearths; and a badge with its letter above the flag.
+   * A group's base: its fire at the flag's point, in a ring of stones, with the wood it holds stacked beside it; a flag
+   * on a pole about 2.6 m tall beside the fire, with a cloth in the group's colour, on a few stones; a disc of that
+   * colour on the ground around its hearths; and a badge with its letter above the flag.
    */
   function makeFlag(id: number, x: number, z: number): Flag {
     const group = new THREE.Group()
@@ -461,29 +543,62 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       new THREE.SpriteMaterial({ map: badgeTexture(id), sizeAttenuation: false, depthTest: false, depthWrite: false }),
     )
     badge.scale.setScalar(BADGE_SCALE)
-    badge.position.y = 3.4
+    badge.position.set(POLE_OFFSET.x, 3.4, POLE_OFFSET.z)
     badge.renderOrder = 10
     group.add(disc, badge)
+    const fire = new THREE.Group()
+    for (let index = 0; index < 8; index += 1) {
+      const stone = new THREE.Mesh(stoneGeometry, emberMaterial)
+      const angle = (index / 8) * Math.PI * 2
+      stone.position.set(0.55 * Math.cos(angle), 0.07, 0.55 * Math.sin(angle))
+      stone.scale.setScalar(1.3)
+      stone.castShadow = true
+      fire.add(stone)
+    }
+    const fireFlame = new THREE.Mesh(flameGeometry, flameMaterial)
+    fireFlame.position.y = 0.3
+    const fireAsh = new THREE.Mesh(discGeometry, ashMaterial)
+    fireAsh.scale.setScalar(0.4)
+    fireAsh.position.y = 0.02
+    const firePile = new THREE.Group()
+    for (const [x0, y0] of [
+      [-0.12, 0.05],
+      [0, 0.05],
+      [0.12, 0.05],
+      [-0.06, 0.13],
+      [0.06, 0.13],
+      [0, 0.21],
+    ] as const) {
+      const log = new THREE.Mesh(bundleLogGeometry, deadwoodMaterial)
+      log.rotation.x = Math.PI / 2
+      log.position.set(x0, y0, 0)
+      log.castShadow = true
+      firePile.add(log)
+    }
+    firePile.position.set(1, 0, 0.3)
+    fire.add(fireFlame, fireAsh, firePile)
+    group.add(fire)
     const pole = new THREE.Mesh(poleGeometry, poleMaterial)
+    pole.position.set(POLE_OFFSET.x, 0, POLE_OFFSET.z)
     pole.castShadow = true
     // Each cloth has its own geometry, since it waves.
     const cloth = new THREE.Mesh(
       clothGeometry.clone(),
       new THREE.MeshStandardMaterial({ color: hex(groupColor(id)), roughness: 0.8, side: THREE.DoubleSide }),
     )
-    cloth.position.y = 2.3
+    cloth.position.set(POLE_OFFSET.x, 2.3, POLE_OFFSET.z)
     cloth.castShadow = true
     group.add(pole, cloth)
     for (let index = 0; index < 4; index += 1) {
       const stone = new THREE.Mesh(stoneGeometry, stoneMaterial)
       const angle = (index / 4) * Math.PI * 2 + 0.4
-      stone.position.set(0.16 * Math.cos(angle), 0.07, 0.16 * Math.sin(angle))
+      stone.position.set(POLE_OFFSET.x + 0.16 * Math.cos(angle), 0.07, POLE_OFFSET.z + 0.16 * Math.sin(angle))
       group.add(stone)
     }
-    for (const part of group.children) part.userData.groupId = id
+    group.traverse((part) => (part.userData.groupId = id))
     group.position.set(x, 0, z)
     flagGroup.add(group)
-    return { group, cloth, disc, badge }
+    return { group, cloth, disc, badge, fire, fireFlame, firePile, fireAsh }
   }
 
   /** Sways a flag's cloth along its length, more towards the free end. */
@@ -542,6 +657,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function clearWorld() {
     for (const figure of figures) {
       figure.material.dispose()
+      figure.skin.dispose()
       figure.sashMaterial.dispose()
       band.remove(figure.root)
     }
@@ -762,13 +878,23 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     applyCamera()
   }
 
-  function showGroup(groupId: number) {
+  function showGroup(groupId: number, clear: ClearView | null = null) {
     if (!drawn?.groups[groupId] || !config) return
     const frame = groupFrame(drawn, groupId)
+    const width = Math.max(1, canvas.clientWidth)
+    const height = Math.max(1, canvas.clientHeight)
+    const area = clear ?? { left: 0, top: 0, right: width, bottom: height }
+    // The camera's field of view is 40° high, so a span fills the view's height from about 1.4 times its width away;
+    // the group must fit the clear part of the view, which may be narrower or shorter.
+    const shrink = Math.min((area.right - area.left) / width, (area.bottom - area.top) / height, 1)
+    controls.distance = clampDistance(Math.max(30, ((frame.radiusCm / 100) * 3) / Math.max(0.2, shrink)))
     controls.target = at(frame.x, frame.y)
-    // The camera's field of view is 40°, so a span is in view from about 1.4 times its width away.
-    controls.distance = clampDistance(Math.max(30, (frame.radiusCm / 100) * 3))
     applyCamera()
+    // Then move the camera so the group sits in the middle of the clear part rather than of the whole view.
+    const perPixel = (2 * controls.distance * Math.tan((camera.fov * Math.PI) / 360)) / height
+    const offsetX = (area.left + area.right) / 2 - width / 2
+    const offsetY = (area.top + area.bottom) / 2 - height / 2
+    pan(-offsetX * perPixel, (offsetY * perPixel) / Math.max(0.3, Math.sin(controls.pitch)))
   }
 
   // The RTS camera: a point on the ground it looks at, a distance, a turn about the vertical and a pitch.
@@ -930,6 +1056,19 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       if (!flag.group.visible) continue
       wave(flag.cloth, nowMs, group.id)
       flag.disc.scale.setScalar(baseRadiusCm(config, group) / 100)
+      // The group's fire: a flame that grows with the nights of wood it holds, wood stacked beside it, ashes when out.
+      const fire = campfireAt(pair, group.id)
+      flag.fire.visible = fire !== null
+      if (!fire) continue
+      flag.fireFlame.visible = fire.look === 'burning'
+      if (fire.look === 'burning') {
+        const size = 1 + 1.6 * fire.size
+        flag.fireFlame.scale.set(size, size * (1 + 0.18 * Math.sin(nowMs / 70 + group.id * 2.3)), size)
+      }
+      flag.fireAsh.visible = fire.look === 'out'
+      const pile = bundleScale(fire.wood, 2 * config.campfireWoodPerHour * 12)
+      flag.firePile.visible = pile > 0
+      flag.firePile.scale.setScalar(Math.max(pile, 0.01) * 1.4)
     }
 
     // The thickets and stands the followed forager knows, redrawn only when the minute or forager changes.
@@ -967,6 +1106,23 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
 
     const poses = figures.map((_, id) => foragerPose(pair, id, interpolate))
+    // With a group selected, foragers outside it are drawn see-through.
+    const selectedGroup = options.selected?.kind === 'group' ? state.groups[options.selected.id] : undefined
+    const members = selectedGroup ? livingMembers(state, selectedGroup) : []
+    const inSelected = new Set(members)
+    for (const [id, figure] of figures.entries()) {
+      const faded = selectedGroup !== undefined && !inSelected.has(id)
+      if (faded !== figure.faded) {
+        figure.faded = faded
+        for (const material of [figure.material, figure.skin, figure.sashMaterial]) {
+          material.transparent = faded
+          material.opacity = faded ? FADED_OPACITY : 1
+          material.depthWrite = !faded
+          material.needsUpdate = true
+        }
+        figure.root.traverse((part) => (part.castShadow = !faded))
+      }
+    }
     for (const [id, figure] of figures.entries()) {
       const pose = poses[id]!
       const forager = state.foragers[id]!
@@ -1013,17 +1169,64 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
     followRing.visible = followedId < figures.length
 
-    // A selected group's living members each stand in a ring of its colour.
-    const selectedGroup = options.selected?.kind === 'group' ? state.groups[options.selected.id] : undefined
-    const members = selectedGroup ? livingMembers(state, selectedGroup) : []
+    // A selected group's living members each stand in a ring of its colour, with a line from the flag to each one
+    // away from home, and a pin over each that stays the same size at every zoom.
     for (const [index, ring] of memberRings.entries()) ring.visible = index < members.length
+    for (const line of memberLines) line.visible = false
+    const color = selectedGroup ? groupColor(selectedGroup.id) : ''
+    let lines = 0
     for (const [index, id] of members.entries()) {
       const ring = memberRingAt(index)
-      const spot = at(poses[id]!.x, poses[id]!.y)
+      const pose = poses[id]!
+      const spot = at(pose.x, pose.y)
       ring.visible = true
-      ;(ring.material as MeshBasicMaterial).color.set(hex(groupColor(selectedGroup!.id)))
+      ;(ring.material as MeshBasicMaterial).color.set(hex(color))
       ring.position.set(spot.x, 0.04, spot.z)
       ring.scale.setScalar(0.75)
+      const flag = selectedGroup!.flag
+      if (Math.hypot(pose.x - flag.x, pose.y - flag.y) > baseRadiusCm(config, selectedGroup!)) {
+        const line = memberLineAt(lines)
+        lines += 1
+        const home = at(flag.x, flag.y)
+        const positions = line.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+        positions.setXYZ(0, home.x, 0.08, home.z)
+        positions.setXYZ(1, spot.x, 0.08, spot.z)
+        positions.needsUpdate = true
+        line.geometry.computeBoundingSphere()
+        ;(line.material as InstanceType<Three['LineBasicMaterial']>).color.set(hex(color))
+        line.visible = true
+      }
+    }
+    camera.updateMatrixWorld()
+    const width = canvas.clientWidth
+    const height = canvas.clientHeight
+    const clear = options.clear ?? { left: 24, top: 24, right: width - 24, bottom: height - 24 }
+    for (const [index, pin] of pins.entries()) pin.button.hidden = index >= members.length
+    // Pins that would cover one another, for members standing together, are stacked.
+    const placed: { x: number; y: number }[] = []
+    for (const [index, id] of members.entries()) {
+      const pin = pinAt(index)
+      const pose = poses[id]!
+      const spot = at(pose.x, pose.y)
+      projected.set(spot.x, 2.4, spot.z).applyMatrix4(camera.matrixWorldInverse)
+      const behind = projected.z > 0
+      projected.set(spot.x, 2.4, spot.z).project(camera)
+      const place = pinPlacement(((projected.x + 1) / 2) * width, ((1 - projected.y) / 2) * height, behind, clear, {
+        width,
+        height,
+      })
+      pin.id = id
+      pin.button.hidden = false
+      pin.label.textContent = String(id + 1)
+      pin.button.setAttribute('aria-label', `Follow Forager ${id + 1}`)
+      pin.button.style.setProperty('--pin-color', color)
+      const covered = placed.filter((other) => Math.abs(other.x - place.x) < 24 && Math.abs(other.y - place.y) < 24)
+      placed.push({ x: place.x, y: place.y })
+      // Stacked downwards, so pins held at a side of the clear view stay inside it.
+      pin.button.style.transform = `translate(${place.x}px, ${place.y + covered.length * 30}px)`
+      pin.button.classList.toggle('is-edge', place.edge)
+      pin.button.classList.toggle('is-highlighted', options.highlightedId === id)
+      pin.arrow.style.transform = `rotate(${place.angle}rad)`
     }
 
     const swaps = interpolate ? currentSwaps(pair) : []
@@ -1258,6 +1461,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         disposable.dispose()
       for (const ring of [followRing, targetRing, selectRing, ...memberRings])
         (ring.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
+      for (const line of memberLines) {
+        line.geometry.dispose()
+        ;(line.material as InstanceType<Three['LineBasicMaterial']>).dispose()
+      }
+      ashMaterial.dispose()
+      pinLayer.remove()
       for (const loop of [perception, sight]) (loop.material as InstanceType<Three['LineBasicMaterial']>).dispose()
       for (const arc of swapArcs) arc.line.geometry.dispose()
       renderer.dispose()

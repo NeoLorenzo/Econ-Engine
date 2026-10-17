@@ -76,7 +76,7 @@ describe('sight', () => {
     observePlaces(config, forager, TEN_AM + 1)
     expect(forager.placeSeen[0]).toBe(TEN_AM)
     // Seen ground never needs exploring again.
-    expect(placeWanted(config, forager, 0, TEN_AM + 10 * 1_440, 'explore')).toBe(false)
+    expect(placeWanted(forager, 0)).toBe(false)
   })
 
   it('walks towards another forager seen 300 m away to seek company', () => {
@@ -105,7 +105,7 @@ describe('exploring and checking', () => {
     forager.placeSeen[399] = TEN_AM - 10
     forager.placesSeen = placeCount(config)
     forager.exploreTarget = null
-    expect(choosePlace(config, forager, TEN_AM, 'explore')).toBeNull()
+    expect(choosePlace(config, forager, TEN_AM)).toBeNull()
     // Every site was checked an hour ago, so none is worth checking yet; then two go a day unchecked.
     expect(idleGoal(state, forager, TEN_AM)).toBeNull()
     forager.siteChecked[3] = TEN_AM - 24 * 60

@@ -1,10 +1,11 @@
 import type { ValleyConfig } from './types'
 
 /**
- * The canonical Life 7 valley: Life 5's valley, 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees,
- * which together grow exactly what Life 4's land grew, and Life 4's band of 8 born alike, who bring firewood home in
- * loads of 30 kg. They start scattered and form groups when they meet, as in Life 6. By day they see across the
- * valley, check the thickets and stands they know when idle, walk more slowly under a load, and take a full load home.
+ * The canonical Life 8 valley: 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees, and a band of 8
+ * born alike, who bring firewood home in loads of 30 kg, swap wood for food and get better at what they practise.
+ * They start scattered and form groups when they meet. By day they see across the valley, check the thickets and
+ * stands they know when idle, walk more slowly under a load, and take a full load home. Each group keeps one fire at
+ * its flag, which warms every member and which members feed.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
@@ -51,65 +52,44 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   woodLoad: 30,
   skillMinPercent: 100,
   skillMaxPercent: 100,
-  swapping: true,
-  quotes: true,
   termsMemoryHours: 24,
-  practice: true,
   practiceDays: 30,
   practiceHalfHours: 60,
   practiceMinPercent: 50,
   practiceMaxPercent: 150,
   startPracticeHoursPerDay: 2,
-  groups: true,
   scattered: true,
-  explore: true,
-  knowValley: false,
   startSpacingCm: 5_000,
   placeCm: 3_000,
   exploreAfterHours: 24,
   sightRadiusCm: 100_000,
-  checkSites: true,
-  carryCost: true,
   bodyKg: 60,
   berryKcalPerKg: 500,
-  loadHome: true,
+  sharedFire: true,
+  campfireWoodPerHour: 1,
+  campfirePerMember: false,
+  feedSpare: true,
 }
 
-/** Life 6's valley: foragers see 25 m, sweep places, and carry loads at no cost. */
-export const LIFE6_VALLEY: Partial<ValleyConfig> = {
-  sightRadiusCm: 2_500,
-  checkSites: false,
-  carryCost: false,
-  loadHome: false,
-}
-
-/** Life 5's valley: the band starts around the camp knowing the whole valley, rests when idle and swaps with anyone. */
-export const LIFE5_VALLEY: Partial<ValleyConfig> = {
-  ...LIFE6_VALLEY,
-  groups: false,
-  scattered: false,
-  explore: false,
-  knowValley: true,
-}
-
-/** Life 3's band in the valley: born skills from half to one and a half times the usual, and no practice. */
-export const LIFE3_BAND: Partial<ValleyConfig> = { skillMinPercent: 50, skillMaxPercent: 150, practice: false }
-
-const BOOLEAN_KEYS = new Set([
-  'swapping',
-  'quotes',
-  'practice',
-  'groups',
-  'scattered',
-  'explore',
-  'knowValley',
-  'checkSites',
-  'carryCost',
-  'loadHome',
-])
+const BOOLEAN_KEYS = new Set(['scattered', 'sharedFire', 'campfirePerMember', 'feedSpare'])
 
 /** The points of the square spiral around the camp: the 8 of the first ring, then the 16 of the second, and so on. */
 export function spiralOffsets(count: number) {
+  return spiralPrefix(count).slice(0, count)
+}
+
+/** The spiral's points computed so far; every longer spiral starts with every shorter one. */
+let spiral: [number, number][] = []
+
+/** Point `index` of the spiral, from 0. */
+export const spiralOffset = (index: number) => spiralPrefix(index + 1)[index]!
+
+function spiralPrefix(count: number) {
+  if (spiral.length < count) spiral = computeSpiral(Math.max(count, 2 * spiral.length, 64))
+  return spiral
+}
+
+function computeSpiral(count: number) {
   const points: [number, number][] = []
   for (let ring = 1; points.length < count; ring += 1) {
     for (let x = -ring; x <= ring; x += 1) points.push([x, -ring])
@@ -159,6 +139,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'sightRadiusCm',
     'bodyKg',
     'berryKcalPerKg',
+    'campfireWoodPerHour',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
@@ -201,8 +182,8 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   const skillRangeOk = config.skillMinPercent >= 1 && config.skillMinPercent <= config.skillMaxPercent
   if (!skillRangeOk) errors.push('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
   if (practiceRangeOk && skillRangeOk) {
-    const low = config.practice ? config.practiceMinPercent : 100
-    const high = config.practice ? config.practiceMaxPercent : 100
+    const low = config.practiceMinPercent
+    const high = config.practiceMaxPercent
     const lowest = (base: number) => Math.floor((base * config.skillMinPercent * low) / 10_000)
     const highest = (base: number) => Math.floor((base * config.skillMaxPercent * high) / 10_000)
     if (lowest(config.forageKcalPerHour) < 1 || lowest(config.woodPerHour) < 1)
@@ -219,7 +200,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     const outer = Math.max(Math.abs(outerX), Math.abs(outerY)) * config.hearthSpacingCm
     const clear = config.campClearingCm - Math.max(config.thicketRadiusCm, config.standRadiusCm)
     if (2 * outer * outer > clear * clear) errors.push('The band’s hearths must fit inside the camp’s clearing')
-    if (config.groups && config.bandSize < 2) errors.push('A band that starts as one group needs at least two foragers')
+    if (config.bandSize < 2) errors.push('A band that starts as one group needs at least two foragers')
   }
   // Standing at a place's centre must show all of it, or exploring could never see it.
   if (config.placeCm ** 2 > 2 * config.perceptionRadiusCm ** 2)
@@ -227,7 +208,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   if (config.sightRadiusCm < config.perceptionRadiusCm)
     errors.push('Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm')
   // A site is checked from within perceptionRadiusCm − its radius of its centre, which must leave room to stand.
-  if (config.checkSites && config.perceptionRadiusCm <= Math.max(config.thicketRadiusCm, config.standRadiusCm))
+  if (config.perceptionRadiusCm <= Math.max(config.thicketRadiusCm, config.standRadiusCm))
     errors.push('A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm and standRadiusCm')
   if (2 * config.siteMarginCm >= config.valleySizeCm) errors.push('siteMarginCm must leave room for sites')
   return errors

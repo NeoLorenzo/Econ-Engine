@@ -63,7 +63,12 @@ export default function App() {
   }, [runner, running, speed])
   useEffect(() => () => runner.destroy(), [runner])
 
-  const toggleRunning = useCallback(() => setRunning((value) => !value), [])
+  // Pausing stops the runner here, so the last day it computed is published in the same update as the Paused label
+  // and the day shown never moves after it.
+  const toggleRunning = useCallback(() => {
+    if (running) runner.stop()
+    setRunning(!running)
+  }, [runner, running])
   const restart = () => {
     setRunning(false)
     runner.reset(createSimulation(appliedConfig))
@@ -222,9 +227,9 @@ export default function App() {
             <a
               className="tabs-link"
               href="life.html"
-              title="Life 7: the bottom-up core, where foragers who see across a small valley form groups and carry their loads home"
+              title="Life 8: the bottom-up core, where foragers in a small valley form groups that share one fire"
             >
-              Life 7
+              Life 8
             </a>
           </nav>
           <div className="controls" role="group" aria-label="Simulation controls">

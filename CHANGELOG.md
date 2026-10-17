@@ -2,6 +2,112 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [CI-ShardedTests-042] - (2026-10-17)
+
+### Changed
+
+- **CI runs the tests on three machines at once.** The tests job is a matrix of three shards. A custom sequencer in `vite.config.ts` deals the test files to shards by their cost on a CI core, longest first, each to the shard with the least work so far, rather than by a hash of their names, which could put the long files together. Every file runs in exactly one shard, and `browser-check` still passes only when every shard and the browser job do.
+- **No test file runs more than two sets of eight runs.** Experiment 2 is split between `fireSizeShared.test.ts` (the shared fire against own fires) and `fireSizePerMember.test.ts` (a fire for each member against own fires), experiment 3 has its own file again (`spareWood.test.ts`), and experiment 5's eight 400-day runs are spread over four files. Long files also start first, so no worker is left finishing one alone.
+- `AGENTS.md` asks new steps to keep experiment files short and to list long files' costs.
+
+### Validation
+
+- The three shards ran 14, 15 and 15 files and 198, 89 and 128 tests: all 44 files and 415 tests, each once. Each shard took 42 to 43 seconds locally.
+- `npm run agent:check` passes.
+
+## [CI-ParallelChecks-041] - (2026-10-17)
+
+### Changed
+
+- **The pull-request check runs in parallel.** The tests run in one job, and lint, the typecheck, the build and the browser check in another; `browser-check`, the status `main` requires, now passes only when both jobs succeed. The typecheck was not run in CI before.
+- **The fast-mode browser check pauses five times** and judges the median pause, rather than one pause on a noisy shared runner. Each time it also checks that the day shown does not move after Pause.
+- **The valley engine and checker:** a forager standing still reuses its last view of the plants around it, and the checker keeps each minute's turn order in a reused array rather than a new map.
+
+### Fixed
+
+- **The MVP9 page's day could jump after Pause.** While running, the page shows a new day only every 100 ms, and pausing published the last days computed one render after the Paused label, so the day shown moved forward once after pausing. Pausing now publishes them in the same update. The MVP9 simulation is unchanged.
+
+### Validation
+
+- All 24 Life 8 fingerprints match.
+- The browser check passed five runs in a row locally, each of five pauses, with median pauses of 103 to 190 ms.
+- `npm run agent:check` passes; the tests take 80 seconds locally.
+
+## [TESTS-FasterSuite-040] - (2026-10-16)
+
+### Changed
+
+- **Life 8's experiment tests share their runs.** Each test file runs in its own process, so a simulation two files need is run twice. Experiments 1 and 4 now share a file (`feedingAndGroups.test.ts`), as do 2 and 3 (`fireSizeAndSpare.test.ts`): 6 runs of 8 seeds instead of 9.
+- **The longest runs are split.** Experiment 5's eight 400-day runs of a band of 12, which alone set how long the suite took, are split across `feedsFire1.test.ts` and `feedsFire2.test.ts`.
+- **Every core runs tests.** The test runner uses a worker on every core rather than the default of one fewer, a third more on a 4-core CI runner.
+- **Two MVP9 tests run 2,000 days instead of 10,000.** They check that money stays conserved and that stored history stays within its bounds of 400 days and 1,600 events; 2,000 days exercises the bounds five times over. The MVP9 code is unchanged.
+- **The valley engine and checker do less needless work,** with every trajectory unchanged: each site's centre and check radius are kept in typed arrays rather than looked up and recomputed for every forager every minute; the spiral of hearth slots is computed once rather than rebuilt for each member each minute; and the checker builds each minute's lookup of turns once rather than three times.
+
+### Validation
+
+- The fingerprints of all 24 Life 8 runs match, so no trajectory changed.
+- `npm run agent:check` passes. The tests take 87 seconds locally, against 222 after update 039 and 565 before it; the suite uses about 410 seconds of computer time, against 7,800 before update 039.
+
+## [LIFE8-OnlyLife8-039] - (2026-10-16)
+
+### Removed
+
+- **Life 0 to Life 7.** The repository now holds only the current Life step. The hourly core (`src/life/`) and its observer code (`src/lifeView/`) are deleted, with every Life 0 to Life 4 experiment and test. The valley's Life 5, Life 6 and Life 7 experiments and tests are deleted, with their presets (`LIFE5_VALLEY`, `LIFE6_VALLEY`, `LIFE7_VALLEY`, `LIFE3_BAND`) and the specifications `docs/LIFE0_SPEC.md` to `docs/LIFE7_SPEC.md`. All remain in git history; this changelog and the lab notes keep their records.
+- **Switches that only recreated earlier steps:** `groups`, `explore`, `knowValley`, `checkSites`, `carryCost`, `loadHome`, `swapping`, `quotes` and `practice`. Each behaviour is now simply how the valley works. Four switches remain, each one of Life 8's counterfactuals: `scattered`, `sharedFire`, `campfirePerMember` and `feedSpare`.
+- The observer's setup offers only those four switches, and drops the descriptions of what the removed ones did.
+
+### Changed
+
+- **The Life 8 specification stands alone.** It now describes the whole simulation: the valley, the forager, the minute, the rules, the defaults, the invariants, the theory and the experiments. Where it compared with Life 7, it compares with every forager keeping its own fire (`sharedFire` off), which is the same configuration. Experiment 5, Life 7 as a special case, is gone; how many the valley feeds becomes experiment 5.
+- What the valley borrowed from the hourly core moved into it: carried food (`src/valley/food.ts`), the display helpers and colour scale (`src/valleyView/display.ts`), the specialization chart and the stylesheet.
+- `AGENTS.md`, the README, the merge document's ladder, and the architecture and validation guides describe only Life 8, and a new step now replaces the current spec and removes the previous step's experiments.
+
+### Added
+
+- **`fingerprints.test.ts`.** Life 8 runs exactly as recorded: 30 days on three seeds for the canonical valley and each configuration the experiments use match fingerprints of their daily summaries and totals, recorded from Life 8's code before this change, with every invariant checked every minute. A refactor or speed-up that changes any trajectory fails it.
+
+### Validation
+
+- Every Life 8 configuration runs exactly as before the change: the fingerprints of 24 runs, eight configurations on three seeds, match.
+- `npm run agent:check` passes. The test suite takes 222 seconds locally, against 565 before, and about a third as much computer time.
+
+## [LIFE8-SharedFire-038] - (2026-10-16)
+
+### Added
+
+- **Life 8, a shared fire.** The valley core implements the [Life 8 specification](docs/LIFE8_SPEC.md):
+  - **one fire per group:** each standing group keeps a fire at its flag's point, in place of its members' own; a forager without a group keeps its own fire, as in Life 7;
+  - **burning:** at the start of every night hour, before anyone acts, each fire burns `campfireWoodPerHour`, 1 kg, however many sleep at it, if it holds that much, and is lit for the hour; otherwise it is out, and it relights at no cost at the first night hour it holds an hour's wood;
+  - **warmth:** a member asleep at its hearth is warm exactly when its group's fire is lit, whether or not it gave, and burns no wood of its own;
+  - **feeding:** after swapping, a member at its hearth puts its spare wood, above two nights' worth, into the fire, and when the fire holds less than the rest of the night needs (by day, a whole night) adds wood from its stock up to what the fire lacks;
+  - **dissolution:** a group's survivor takes back the wood left in its fire;
+  - **contributions:** each group records the wood each member has given its fire, and each forager the wood it has given and the time it has slept warm by a group's fire.
+
+  One switch, `sharedFire`, turns the change off. `LIFE7_VALLEY` sets it to give Life 7 exactly, which a test checks against fingerprints recorded from Life 7's code; `LIFE6_VALLEY` and `LIFE5_VALLEY` include it, and Life 5's, Life 6's and Life 7's experiments and tests run with their own settings. Two more switches give the experiments' counterfactuals: `campfirePerMember`, a fire that burns a kilogram an hour for each living member, and `feedSpare` off, members who give only to a low fire.
+- **Events and summaries.** Fire events for each standing group at the start of every night hour, feed events for every gift, the wood a survivor takes back on a dissolve event, and the group whose fire a member slept by on its action event. Daily summaries add every forager's wood given, the wood burned in shared fires, and night hours fires were lit and out.
+- **Invariants.** Wood is conserved through fires; each fire burns exactly its hour's wood, only at the start of a night hour and only with that much, and every standing fire is tended; every gift comes from a member at its hearth into its own group's fire, in exactly the amount the rule gives; a sleeping member's warmth matches its fire and it burns none of its own wood; a survivor takes back exactly what the fire held; and the records of gifts match what fires burned and hold.
+- **Theory.** The wood a fire burns in a night and each member's share of it.
+- **Experiments.** Who feeds the fire, in scattered groups and in a band that starts as one; how big a fire, with fires of 2 kg an hour and of a kilogram a member, beside Life 7; spare wood and exchange, with members who give only to a low fire; groups beside Life 7; Life 7 as a special case; and how many the valley feeds. Per-run measures add wood given and given spare, wood burned in shared fires, hours lit and out, each group's leading giver and members giving less than a quarter of an even share, and the correlation of giving with gathering.
+- **The observer.** `life.html` shows Life 8:
+  - each group's fire burns at its flag, its flame sized by the nights of wood it holds, with its wood stacked beside it and ashes when it is out; members' own hearths no longer show flames;
+  - selecting a group frames it in the part of the view the cards leave clear; each living member gets a numbered pin in the group's colour that keeps its size at every zoom, held at the edge of the clear view and pointing towards members out of sight; lines run from the flag to members away from home, and everyone outside the group fades;
+  - the group card shows the fire's state and a table of what each member who ever joined has given the fire, its share, what it gave today, what it gathered and swapped and how long it slept warm, with a sentence on who gave most and whether anyone gave nothing; hovering a member brightens its pin;
+  - the HUD shows the followed member's group fire and what it has given; the setup adds the shared fire switch and the fire's wood an hour.
+
+### Changed
+
+- **Selecting a group.** Picking a group's flag, badge or base now frames the group, as its chip does, and the group card is wider and scrolls within the screen.
+- The merge document's ladder describes step 8 as built. The MVP9 top bar's link reads "Life 8".
+
+### Validation
+
+- **Who feeds the fire.** In every standing group of two or more, on every seed, every member gives; none gives less than a quarter of an even share. A group's leading giver gives 1.10 times an even share in scattered groups and 1.38 in a band that starts as one group. Giving correlates with gathering at 1.00 across members; 39% of the wood given is spare, the rest taken from stocks for a low fire.
+- **How big a fire.** Members burn 4.0 kg of wood a forager-day and gather for 0.28 hours, against 11.7 kg and 0.66 hours in Life 7; with a fire of 2 kg an hour, 8.2 kg and 0.51 hours; with a kilogram an hour for each member, 11.8 kg and 0.68 hours. Members work 2.39 hours a day, against 2.85 in Life 7.
+- **Spare wood and exchange.** 3 runs of 32 swap, and members buy under 0.1% of the wood they burn, against every run and 9.4% in Life 7; with a fire a member, 28 runs and 0.1%. With members giving only to a low fire, every run swaps and members buy 15.4%, and sleep cold 4.7% of night hours against 2.7%.
+- **Groups.** A band that starts as one group burns 1.5 kg a forager-day and gathers for 0.12 hours, against 11.0 kg and 0.63 in Life 7, and sleeps cold 1.7% of night hours against 8.4%. Fires are lit 97% of night hours in scattered groups and 98% in one group.
+- **Life 7 is a special case.** With `LIFE7_VALLEY`, the daily summaries and totals of six runs, for the band born equal and Life 3's band on three seeds over 30 days, match fingerprints recorded from Life 7's code. Life 6's and Life 5's fingerprints still match with their settings.
+- **Capacity.** Bands of 8 and 12 are intact at day 400. A band of 16 keeps 6.0 survivors, all its deaths before day 100, against 5.8 in Life 7.
+
 ## [LIFE7-SightAndLoads-037] - (2026-10-13)
 
 ### Added

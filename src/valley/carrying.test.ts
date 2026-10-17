@@ -47,7 +47,6 @@ describe('a load', () => {
     expect(speedForLoad(config, 0)).toBe(125)
     expect(speedForLoad(config, 10)).toBe(107)
     expect(speedForLoad(config, 30)).toBe(83)
-    expect(speedForLoad({ ...config, carryCost: false }, 30)).toBe(125)
     const theory = valleyTheory(config)
     expect(theory.loadedWalkSeconds(15_000, 30)).toBe(181)
     expect(theory.carryCostKcal(15_000, 30)).toBeCloseTo(5.08, 2)
@@ -103,14 +102,6 @@ describe('taking a load home', () => {
     const event = lastEventOf(stepValley(state), 0)!
     expect(['seeking food', 'foraging', 'searching']).toContain(event.reason)
     expect(event.speedCmPerSecond).toBe(83)
-  })
-
-  it('goes exploring with its load when the rule is off, as in Life 6', () => {
-    const state = cloneValley(createValley({ loadHome: false }))
-    state.minute = TEN_AM
-    withFullLoad(state.foragers[0]!, state)
-    const event = lastEventOf(stepValley(state), 0)!
-    expect(['exploring', 'checking']).toContain(event.reason)
   })
 })
 

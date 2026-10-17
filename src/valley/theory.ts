@@ -12,7 +12,7 @@ export function valleyTheory(config: ValleyConfig) {
   const daylight = 24 - night
   const restDelta = config.forageCostKcalPerHour - config.restKcalPerHour
   const travelDelta = config.travelKcalPerHour - config.restKcalPerHour
-  /** Sleeping warm every night hour and resting every daylight hour, Life 0's `F`. */
+  /** Sleeping warm every night hour and resting every daylight hour. */
   const fixedDailyCostKcal = night * config.sleepKcalPerHour + daylight * config.restKcalPerHour
   /**
    * Hours of foraging a day at hourly rate `g`, given `gatherHours` of gathering and `walkHours` of walking: each hour
@@ -72,5 +72,11 @@ export function valleyTheory(config: ValleyConfig) {
     loadedWalkSeconds,
     carryCostKcal,
     shortestCheckTourHours,
+    /** The wood a group's fire burns in a night, whatever the group's size. */
+    campfireNightWood: night * config.campfireWoodPerHour,
+    /** The wood each member of a group of `n` needs a night with one shared fire. */
+    campfireWoodPerMember: (n: number) => (night * config.campfireWoodPerHour) / n,
+    /** Hours of gathering a day for a member of a group of `n` at rate `w`, its share of the fire's night. */
+    campfireGatherHoursPerDay: (n: number, w: number) => (night * config.campfireWoodPerHour) / n / w,
   }
 }
