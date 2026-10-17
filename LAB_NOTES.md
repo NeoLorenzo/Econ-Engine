@@ -6,6 +6,27 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [CI-ShardedTests-042] - (2026-10-17)
+
+### Problem
+
+After update 041 CI took 4 minutes 17 seconds, all of it the tests job, while the owner wanted it shorter still. The owner chose to keep the per-minute checker on in every experiment and to split the tests across parallel CI jobs instead.
+
+### What was measured
+
+- On one 4-core runner the tests were bound by total computing time, and the four heaviest files ran on one core each for two to three and a half minutes. Splitting the job alone would not have helped: a file that takes three minutes takes three minutes on any machine.
+- Vitest's `--shard` deals files by a hash of their paths, which could put the heaviest files on the same machine.
+
+### Decisions
+
+- Split the experiment files so none runs more than two sets of eight runs, at the cost of a few runs repeated across files (own fires in both halves of experiment 2).
+- Deal files to three shards by measured cost, longest first, to the least loaded shard, and run the longest first within each shard.
+- Three shards rather than more: with the longest file about 100 seconds on a CI core, more shards would not finish sooner.
+
+### Open questions
+
+- The cost table needs a line when a long test file is added; a file left out counts as short, which only makes the deal less even, never skips it.
+
 ## [CI-ParallelChecks-041] - (2026-10-17)
 
 ### Problem

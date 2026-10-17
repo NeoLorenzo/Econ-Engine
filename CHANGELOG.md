@@ -2,6 +2,19 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [CI-ShardedTests-042] - (2026-10-17)
+
+### Changed
+
+- **CI runs the tests on three machines at once.** The tests job is a matrix of three shards. A custom sequencer in `vite.config.ts` deals the test files to shards by their cost on a CI core, longest first, each to the shard with the least work so far, rather than by a hash of their names, which could put the long files together. Every file runs in exactly one shard, and `browser-check` still passes only when every shard and the browser job do.
+- **No test file runs more than two sets of eight runs.** Experiment 2 is split between `fireSizeShared.test.ts` (the shared fire against own fires) and `fireSizePerMember.test.ts` (a fire for each member against own fires), experiment 3 has its own file again (`spareWood.test.ts`), and experiment 5's eight 400-day runs are spread over four files. Long files also start first, so no worker is left finishing one alone.
+- `AGENTS.md` asks new steps to keep experiment files short and to list long files' costs.
+
+### Validation
+
+- The three shards ran 14, 15 and 15 files and 198, 89 and 128 tests: all 44 files and 415 tests, each once. Each shard took 42 to 43 seconds locally.
+- `npm run agent:check` passes.
+
 ## [CI-ParallelChecks-041] - (2026-10-17)
 
 ### Changed

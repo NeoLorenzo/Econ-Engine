@@ -270,7 +270,7 @@ Reported: survivors over time (design rule 28), groups standing, dissolutions, a
 | `src/valley/trade.ts`, `fire.ts` | Wood need, swaps and quotes, and the shared fire |
 | `src/valley/engine.ts` | The minute |
 | `src/valley/invariants.ts`, `theory.ts`, `experiments.ts` | The invariants, theory and experiments above |
-| `src/valley/*.test.ts` | Unit tests, `fingerprints.test.ts`, and experiments 1 to 5: 1 and 4 share a file and their runs (`feedingAndGroups`), as do 2 and 3 (`fireSizeAndSpare`), and experiment 5's seeds are split across two files (`feedsFire1`, `feedsFire2`) so the longest runs proceed in parallel |
+| `src/valley/*.test.ts` | Unit tests, `fingerprints.test.ts`, and experiments 1 to 5 in files of at most two sets of eight runs each, so they run in parallel: 1 and 4 share `feedingAndGroups`, 2 is split between `fireSizeShared` and `fireSizePerMember`, 3 is `spareWood`, and 5's seeds are spread over `feedsFire1` to `feedsFire4` |
 | `src/valleyView/` | The observer |
 
 Nothing under `src/sim` changes, so MVP9 keeps its trajectory bit for bit.

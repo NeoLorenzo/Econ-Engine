@@ -36,6 +36,7 @@ The owner directs the project but does not write code. Explain choices in plain 
    - The observer only interpolates between real states.
    - Remove the previous step's experiments and tests, and any switch whose only purpose was to recreate an earlier step; keep a switch only when the new step's own experiments use it.
    - Before changing the engine, check `fingerprints.test.ts` passes; afterwards, record new fingerprints for the new step. A refactor or speed-up must leave them unchanged.
+   - Keep each experiment test file to about two sets of eight runs, splitting seeds across files where needed, and list any file that takes more than about ten seconds in `TEST_SECONDS` in `vite.config.ts`, so CI deals the files evenly across its parallel jobs.
 5. **Check it in the browser.**
    - `.claude/launch.json` starts the dev server on port 5180.
    - A hidden preview pane does not animate, so use the Step button and screenshots.

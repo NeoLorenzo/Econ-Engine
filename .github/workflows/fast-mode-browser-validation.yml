@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
-# The tests and the browser check run side by side. `browser-check`, the status main requires, passes only when both do.
+# The tests, split three ways, and the browser check run side by side. `browser-check`, the status main requires,
+# passes only when all of them do.
 jobs:
   tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Each shard is a third of the test files, dealt by their cost in `vite.config.ts`; together they run every test.
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,7 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run test:run
+      - run: npx vitest run --shard=${{ matrix.shard }}/3
 
   browser:
     runs-on: ubuntu-latest
