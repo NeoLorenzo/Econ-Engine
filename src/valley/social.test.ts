@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE6_VALLEY } from './config'
 import { cloneValley, createValley, lastEventOf, runValley, stepValley } from './engine'
 import { ValleyChecker } from './invariants'
 import {
@@ -19,11 +18,13 @@ import type { Forager, ValleyState } from './types'
 
 const TEN_AM = 600
 
-// These are Life 6's rules, so they run in Life 6's valley; Life 7's sight and sites are tested in `sites.test.ts`.
+// Places, meeting and groups, with sight as short as close sight so that what a forager sees stays near it; long
+// sight and sites are tested in `sites.test.ts`.
+const SHORT_SIGHT = { sightRadiusCm: 2_500 }
 
-/** A copy of Life 6's valley at minute `minute`, with every forager changed by `change`. */
+/** A copy of the valley with short sight at minute `minute`, with every forager changed by `change`. */
 function valleyAt(minute: number, change: (state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley(LIFE6_VALLEY))
+  const state = cloneValley(createValley(SHORT_SIGHT))
   state.minute = minute
   change(state)
   return state
@@ -35,7 +36,7 @@ const put = (forager: Forager, x: number, y: number) => {
 }
 
 describe('places', () => {
-  const { config } = createValley(LIFE6_VALLEY)
+  const { config } = createValley(SHORT_SIGHT)
 
   it('divides the valley into 400 places of 30 m', () => {
     expect(placesPerSide(config)).toBe(20)
@@ -48,7 +49,7 @@ describe('places', () => {
     expect(placeInView(config, 21, 4_500, 4_500)).toBe(true)
     // 21.2 m to the far corners from the centre; 6 m off centre, the far corners lie beyond 25 m.
     expect(placeInView(config, 21, 5_100, 4_500)).toBe(false)
-    const forager = createValley(LIFE6_VALLEY).foragers[0]!
+    const forager = createValley(SHORT_SIGHT).foragers[0]!
     put(forager, 4_500, 4_500)
     observePlaces(config, forager, 7)
     expect(forager.placeSeen[21]).toBe(7)
@@ -56,25 +57,27 @@ describe('places', () => {
     expect(forager.placesSeen).toBe(1)
   })
 
-  it('explores the nearest place not seen for a day, ties to the lowest ID, and keeps it as its target', () => {
+  it('explores the nearest place never seen, ties to the lowest ID, and keeps it as its target', () => {
     const state = valleyAt(TEN_AM)
     const forager = state.foragers[0]!
     put(forager, 4_500, 3_000)
     forager.placeSeen.fill(TEN_AM - 10)
-    forager.placesSeen = placeCount(state.config)
-    // Places 1 and 21 are equally near; 1 has the lower ID.
-    forager.placeSeen[1] = TEN_AM - 24 * 60
-    forager.placeSeen[21] = TEN_AM - 24 * 60
-    expect(choosePlace(state.config, forager, TEN_AM, 'explore')).toBe(1)
+    forager.placesSeen = placeCount(state.config) - 2
+    // Places 1 and 21 are equally near and never seen; 1 has the lower ID.
+    forager.placeSeen[1] = -1
+    forager.placeSeen[21] = -1
+    expect(choosePlace(state.config, forager, TEN_AM)).toBe(1)
     forager.placeSeen[250] = -1
+    forager.placesSeen -= 1
     put(forager, 30_000, 37_000)
-    expect(choosePlace(state.config, forager, TEN_AM, 'explore')).toBe(1)
+    expect(choosePlace(state.config, forager, TEN_AM)).toBe(1)
     forager.placeSeen[1] = TEN_AM
-    expect(choosePlace(state.config, forager, TEN_AM, 'explore')).toBe(250)
-    const fresh = valleyAt(TEN_AM).foragers[0]!
-    fresh.placeSeen.fill(TEN_AM - 10)
-    fresh.placesSeen = placeCount(state.config)
-    expect(choosePlace(state.config, fresh, TEN_AM, 'explore')).toBeNull()
+    forager.placesSeen += 1
+    expect(choosePlace(state.config, forager, TEN_AM)).toBe(250)
+    const seenAll = valleyAt(TEN_AM).foragers[0]!
+    seenAll.placeSeen.fill(TEN_AM - 10)
+    seenAll.placesSeen = placeCount(state.config)
+    expect(choosePlace(state.config, seenAll, TEN_AM)).toBeNull()
   })
 
   it('searches only places never seen, and none it could not reach and leave before dusk', () => {
@@ -86,10 +89,10 @@ describe('places', () => {
     forager.placeSeen[0] = 0
     put(forager, 1_500, 1_500)
     forager.hearth = { x: 1_500, y: 1_500 }
-    expect(choosePlace(state.config, forager, TEN_AM, 'search')).toBe(399)
+    expect(choosePlace(state.config, forager, TEN_AM)).toBe(399)
     // Ten minutes before dusk, the far corner of the valley is out of reach.
     forager.exploreTarget = null
-    expect(choosePlace(state.config, forager, 18 * 60 - 10, 'search')).toBeNull()
+    expect(choosePlace(state.config, forager, 18 * 60 - 10)).toBeNull()
   })
 })
 
@@ -187,13 +190,13 @@ describe('meeting', () => {
 })
 
 describe('groups in a run', () => {
-  /** Runs Life 6's valley with the checker to `minutes`, then on until `ready`, damages that minute and checks. */
+  /** Runs the valley with short sight and the checker to `minutes`, then on until `ready`, damages that minute and checks. */
   const breaking = (
     minutes: number,
     damage: (state: ValleyState) => void,
     ready: (state: ValleyState) => boolean = () => true,
   ) => {
-    const base = createValley(LIFE6_VALLEY)
+    const base = createValley(SHORT_SIGHT)
     const check = new ValleyChecker(base)
     let after = stepValley(runValley(base, minutes, { onMinute: (state) => check.assert(state) }))
     while (!ready(after)) {
@@ -206,7 +209,7 @@ describe('groups in a run', () => {
   const grouped = (state: ValleyState) => state.groups.length > 0
 
   it('lets a band without groups form them, keeping every invariant', () => {
-    const start = createValley(LIFE6_VALLEY)
+    const start = createValley(SHORT_SIGHT)
     const checker = new ValleyChecker(start)
     const end = runValley(start, 1_440, { onMinute: (state) => checker.assert(state) })
     expect(end.groups.length).toBeGreaterThan(0)

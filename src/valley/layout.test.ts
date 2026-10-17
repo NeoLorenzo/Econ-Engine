@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIFE5_VALLEY, resolveValleyConfig } from './config'
+import { resolveValleyConfig } from './config'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { drawStarts, forEachPlantWithin, generateLayout, nearestPlant } from './layout'
 import { hourlyShare, minuteCost, workSeconds } from './work'
@@ -49,13 +49,13 @@ describe('layout', () => {
     expect(layout.trees.count).toBe(config.standCount * config.treesPerStand)
   })
 
-  it('puts the hearths on the spiral around the camp in Life 5’s valley', () => {
-    const camp = generateLayout(resolveValleyConfig(LIFE5_VALLEY))
+  it('puts the hearths on the spiral around the camp in a band that starts as one group', () => {
+    const camp = generateLayout(resolveValleyConfig({ scattered: false }))
     expect(camp.hearths[0]).toEqual({ x: camp.camp.x - 300, y: camp.camp.y - 300 })
     expect(camp.hearths[3]).toEqual({ x: camp.camp.x + 300, y: camp.camp.y })
   })
 
-  it('scatters the starts apart, from a stream of their own, leaving the plants where Life 5 put them', () => {
+  it('scatters the starts apart, from a stream of their own, leaving the plants where a band around the camp has them', () => {
     expect(layout.hearths).toEqual(drawStarts(config))
     for (const [index, start] of layout.hearths.entries()) {
       expect(start.x).toBeGreaterThanOrEqual(0)
@@ -63,7 +63,7 @@ describe('layout', () => {
       for (const other of layout.hearths.slice(0, index))
         expect(distanceSq(start.x, start.y, other.x, other.y)).toBeGreaterThanOrEqual(config.startSpacingCm ** 2)
     }
-    const camp = generateLayout(resolveValleyConfig(LIFE5_VALLEY))
+    const camp = generateLayout(resolveValleyConfig({ scattered: false }))
     expect(Array.from(camp.bushes.x)).toEqual(Array.from(layout.bushes.x))
     expect(Array.from(camp.trees.y)).toEqual(Array.from(layout.trees.y))
     expect(drawStarts(resolveValleyConfig({ seed: 1 }))).not.toEqual(layout.hearths)

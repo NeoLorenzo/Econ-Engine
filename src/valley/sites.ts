@@ -2,7 +2,7 @@ import { isDaylight, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
 import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
 
-// Life 7: thickets and stands as sites, which a forager spots from afar, checks up close, and walks to when it checks
+// Thickets and stands as sites, which a forager spots from afar, checks up close, and walks to when it checks
 // what it knows or searches for food or wood.
 
 /** Sites are numbered thickets first, in layout order, then stands. */
@@ -24,16 +24,43 @@ export const checkRadius = (config: ValleyConfig, site: number) => config.percep
 export const sightOf = (config: ValleyConfig, minute: number) =>
   isDaylight(config, minute) ? config.sightRadiusCm : config.perceptionRadiusCm
 
+/** Every site's centre and the square of its check radius, by ID, kept per layout; they hold no simulation state. */
+export interface SiteGeometry {
+  x: Int32Array
+  y: Int32Array
+  checkSq: Float64Array
+}
+
+const geometries = new WeakMap<ValleyLayout, SiteGeometry>()
+
+export function siteGeometry(config: ValleyConfig, layout: ValleyLayout): SiteGeometry {
+  let geometry = geometries.get(layout)
+  if (!geometry) {
+    const count = siteCount(config)
+    geometry = { x: new Int32Array(count), y: new Int32Array(count), checkSq: new Float64Array(count) }
+    for (let site = 0; site < count; site += 1) {
+      const centre = siteCentre(config, layout, site)
+      geometry.x[site] = centre.x
+      geometry.y[site] = centre.y
+      geometry.checkSq[site] = checkRadius(config, site) ** 2
+    }
+    geometries.set(layout, geometry)
+  }
+  return geometry
+}
+
 /** Spots every site whose centre is within sight, and checks every site it stands close enough to see all of. */
 export function observeSites(config: ValleyConfig, layout: ValleyLayout, forager: Forager, minute: number) {
-  if (!config.checkSites) return
-  const sight = sightOf(config, minute)
-  for (let site = 0; site < siteCount(config); site += 1) {
-    const centre = siteCentre(config, layout, site)
-    const sq = distanceSq(forager.x, forager.y, centre.x, centre.y)
-    if (sq <= sight * sight) forager.siteKnown[site] = 1
-    const close = checkRadius(config, site)
-    if (sq <= close * close) forager.siteChecked[site] = minute
+  const sightSq = sightOf(config, minute) ** 2
+  const { x, y, checkSq } = siteGeometry(config, layout)
+  const known = forager.siteKnown
+  const checked = forager.siteChecked
+  for (let site = 0; site < x.length; site += 1) {
+    const dx = forager.x - x[site]!
+    const dy = forager.y - y[site]!
+    const sq = dx * dx + dy * dy
+    if (sq <= sightSq) known[site] = 1
+    if (sq <= checkSq[site]!) checked[site] = minute
   }
 }
 

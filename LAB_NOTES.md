@@ -6,6 +6,157 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [CI-ShardedTests-042] - (2026-10-17)
+
+### Problem
+
+After update 041 CI took 4 minutes 17 seconds, all of it the tests job, while the owner wanted it shorter still. The owner chose to keep the per-minute checker on in every experiment and to split the tests across parallel CI jobs instead.
+
+### What was measured
+
+- On one 4-core runner the tests were bound by total computing time, and the four heaviest files ran on one core each for two to three and a half minutes. Splitting the job alone would not have helped: a file that takes three minutes takes three minutes on any machine.
+- Vitest's `--shard` deals files by a hash of their paths, which could put the heaviest files on the same machine.
+
+### Decisions
+
+- Split the experiment files so none runs more than two sets of eight runs, at the cost of a few runs repeated across files (own fires in both halves of experiment 2).
+- Deal files to three shards by measured cost, longest first, to the least loaded shard, and run the longest first within each shard.
+- Three shards rather than more: with the longest file about 100 seconds on a CI core, more shards would not finish sooner.
+
+### Open questions
+
+- The cost table needs a line when a long test file is added; a file left out counts as short, which only makes the deal less even, never skips it.
+
+## [CI-ParallelChecks-041] - (2026-10-17)
+
+### Problem
+
+After update 040, CI ran its tests in 5.6 minutes, then a browser check failed: one pause took 1,572 ms against a 1,500 ms limit, where earlier runs had measured between 695 and 1,223. The owner asked for the check to pause several times and judge the middle or the average, and for CI to be shorter still.
+
+### Findings
+
+- **Pausing several times found a real fault.** On the second or third pause in a run, the day shown moved forward once after the Paused label appeared, in every run tried. While running, the MVP9 page publishes a new day every 100 ms; pausing rendered the label first and published the days already computed one render later. A single pause, as the old check made, caught it only by chance. Pausing now stops the runner in the same handler, so the label and the final day render together.
+- **CI's test step is bound by total computing time,** not by one file: GitHub's runner has 4 cores, each two to three times slower than the development machine, and Life 8's experiments are about 60% of the work.
+- **One job did everything in sequence:** lint, the tests, the build, installing Chromium and the browser check, about a minute after the tests. It never ran the typecheck.
+- Reusing a standing forager's view and a reused turn array cut a band of 12's checked run by about 9%.
+
+### Decisions
+
+- Run the tests and the browser check in parallel jobs, with the required `browser-check` passing only when both do. A skipped job counts as passing for a required check, so the gate always runs and checks both results.
+- Judge the median of five pauses, which keeps the 1,500 ms bound meaningful on a shared runner.
+
+### Open questions
+
+- The remaining levers trade coverage or need the owner's choice: running the experiments without the per-minute checker, which the fingerprint and unit tests would still cover; fewer seeds; or splitting the tests across parallel jobs.
+
+## [TESTS-FasterSuite-040] - (2026-10-16)
+
+### Problem
+
+Even with only Life 8 left, the owner found CI far too slow. The tests used about 970 seconds of computer time, and one file, the band of 12 over 400 days, took 238 seconds by itself, so the suite could not finish sooner however many cores ran it.
+
+### What was measured
+
+- **Repeated runs.** Each test file runs in its own process, so simulations shared between files ran again in each. The canonical valley's 100-day runs ran in four files and the band that starts as one group in two.
+- **The longest path.** The suite's wall time was the band of 12 file, not the total.
+- **Idle cores.** Vitest runs one worker fewer than the machine has cores, which leaves a quarter of a 4-core CI runner unused.
+- **The engine and checker.** Profiling a 100-day run with the checker on found every forager measuring its distance to all 40 sites every minute through lookups and recomputed radii, the spiral of hearth slots rebuilt for every member every minute, and the checker building the same lookup of turns three times a minute. Fixing these cut a run by about 8%; what remains is spread thinly, mostly the memory each forager keeps of what it sees, which the model needs.
+- **MVP9.** Two tests ran 10,000 days each, 39 seconds apiece, to check conservation and bounded history, whose bounds are reached by day 400.
+
+### Decisions
+
+- Group experiments that share runs into one file, and split the longest experiment's seeds across two.
+- Run a worker on every core.
+- Shorten the two MVP9 tests to 2,000 days, five times the history bound, leaving the MVP9 code unchanged.
+- Keep the checker on every minute in every experiment, as the design rules and the specification require; it is half of each run's cost, but it has found real gaps before.
+- Every change was checked against the fingerprint test: all 24 Life 8 runs are unchanged.
+
+### Findings
+
+- The tests take 87 seconds locally, against 222, and about 410 seconds of computer time, against 970.
+
+### Open questions
+
+- How long does CI take now on GitHub's runner?
+- The Pages deploy re-runs the whole suite on every push to `main`, after the pull request has already run it. Should it only build and deploy?
+
+## [LIFE8-OnlyLife8-039] - (2026-10-16)
+
+### Problem
+
+CI took about 27 minutes a run, 26 of them in tests. Profiling showed why: nearly all the time went to experiments, each a set of real simulations of up to 400 days checked every minute. A quarter was the hourly core of Life 0 to Life 4, frozen as a reference, and most of the rest the valley's Life 5, Life 6 and Life 7 experiments, re-run on every pull request though nothing in them could change. The owner decided the project should hold only the current Life step: the simulation is not interested in old experiments and what they showed, only in the current ones. The MVP9 economy stays.
+
+### Decisions
+
+- **Remove Life 0 to Life 7 entirely,** code, experiments, tests, presets and specifications, keeping them in git history, the changelog and the lab notes.
+- **Remove every switch that existed only to recreate an earlier step,** at the owner's choice of removing all of it rather than only the tests. Each removed switch was on in Life 8, so its behaviour becomes how the valley works and its off-branch is deleted.
+- **Keep the switches Life 8's own experiments use,** including `sharedFire`: with it off, every forager keeps its own fire, the comparison every Life 8 experiment makes. That configuration is exactly what Life 7 was, so every comparison in the Life 8 specification still holds, now named "own fires".
+- **Prove nothing changed.** Before touching the engine, fingerprints of 24 runs (the canonical valley and seven other configurations, on three seeds over 30 days) were recorded from Life 8's code. After the change they match, with the checker on. They are kept as a test, so the next clean-up or speed-up is held to the same standard.
+- **One specification.** With Life 7's specification gone, Life 8's would have described only changes to something no longer in the repository, so it was rewritten to describe the whole simulation. From now on a new step's specification replaces the current one.
+
+### Findings
+
+- The suite takes 222 seconds locally, against 565, on a 32-thread machine. Most of what remains is Life 8's five experiments, above all the band of 12 over 400 days, and the MVP9 tests.
+- Profiling a 100-day run found the checker doubles its cost, 2.1 seconds against 1.1, and the engine spends much of its time on things that could be cheaper without changing any result: every forager measures its distance to all 40 sites every minute even after it knows them all, the checker builds the same lookups three times a minute, and small lists are rebuilt thousands of times a second. These were not changed here.
+
+### Open questions
+
+- Should the engine and checker be made faster? The fingerprint test now makes that safe.
+- How long does CI take now on GitHub's 4-core runner, and is splitting the tests across parallel jobs still worth it?
+
+## [LIFE8-SharedFire-038] - (2026-10-16)
+
+### Problem
+
+Since Life 3 every forager has burned its own wood at its own hearth, so wood has been a private good: a forager was warm if and only if it held the wood. Life 6 gave groups a flag and laid every member's hearth on a spiral a few metres round it, leaving the flag's own point free for a shared fire. The ladder's step 8 asks who feeds a fire that warms everyone at it. The owner also asked to see how much each member contributes, in wood or even food, and found selecting a group nearly useless: the members it ringed could not be found on the map.
+
+### Decisions
+
+- **The owner's rules, taken as given.** One fire at each group's flag replaces its members' own fires. A member adds wood if it has spare wood or the fire is low. A fire that dies has to be relit, at no cost. Members still never change group.
+- **A fire is a fire.** It burns a kilogram an hour, the same as one hearth fire, however many sleep around it. This is the step's economy of scale, so the experiments vary it: 2 kg an hour, and a kilogram for each member, which saves nothing. The owner chose the fixed fire.
+- **Burning before anyone acts.** Each night hour starts with every fire burning its hour or going out, so every member asleep in that hour knows whether it is warm. Relighting at no cost means a fire is lit at the first night hour it holds an hour's wood.
+- **Spare and low.** Spare wood is wood above the two nights' target a forager already kept; a fire is low when it holds less than the rest of the night needs, and by day less than a night. A member feeds after swapping, at its hearth, awake or asleep.
+- **Members keep Life 7's wood need.** A member still gathers below a night's wood until it holds two nights' worth. That stock is now its reserve for the fire, and it only ever falls when the member feeds a low fire or sells.
+- **A forager without a group keeps its own fire,** or it would sleep cold until it met someone. A group's survivor takes back what its fire held.
+- **Food.** Nothing in the valley gives food away, so the contributions table shows food paid and received for wood in swaps rather than inventing a gift.
+- **Pins over members.** Rings at members' feet are too small to see from afar. Pins are buttons over the canvas, placed by projecting each member, so they keep their size at every zoom and can be clicked. The page measures the part of the view its cards leave clear; the camera frames the group in it, and pins for members out of sight wait at its edge, pointing their way.
+
+### What the prototype found
+
+A throwaway prototype, a copy of the valley core with the new rules, on 32 seeds over 400 days:
+
+- **Everyone feeds the fire, in proportion to what they gather.** A member's wood goes nowhere but into the fire or a swap, so what it gives is what it gathers.
+- **One fire per group needs a third of the wood,** 4.0 kg a forager-day against 11.7 in Life 7.
+- **Exchange disappears, and not because wood is plentiful.** With a fire that burns a kilogram for each member, as much wood as Life 7, members still bought only 0.1% of their wood. With members giving only to a low fire, they kept their spare wood and bought 16.1% (pooled over all wood burned, as the experiments measure it, 15.4%).
+- **Fires are lit 97% of night hours,** dark only in the first nights before anyone has gathered.
+
+### Findings
+
+From `experiments.ts` on 32 seeds over 400 days, measured over days 21 to 400, checking every invariant every minute. The implementation reproduced the prototype's numbers.
+
+- **Who feeds the fire.** In every standing group of two or more, on every seed, every member gives; none gives less than a quarter of an even share. A group's leading giver gives 1.10 times an even share in scattered groups and 1.38 in a band that starts as one group. Giving correlates with gathering at 1.00 across members; 39% of the wood given is spare, the rest taken from stocks for a low fire.
+- **How big a fire.** Members burn 4.0 kg of wood a forager-day and gather for 0.28 hours, against 11.7 kg and 0.66 hours in Life 7; with a fire of 2 kg an hour, 8.2 kg and 0.51 hours; with a kilogram an hour for each member, 11.8 kg and 0.68 hours. Members work 2.39 hours a day, against 2.85 in Life 7.
+- **Spare wood and exchange.** 3 runs of 32 swap, and members buy under 0.1% of the wood they burn, against every run and 9.4% in Life 7; with a fire a member, 28 runs and 0.1%. With members giving only to a low fire, every run swaps and members buy 15.4%, and sleep cold 4.7% of night hours against 2.7%.
+- **Groups.** A band that starts as one group burns 1.5 kg a forager-day and gathers for 0.12 hours, against 11.0 kg and 0.63 in Life 7, and sleeps cold 1.7% of night hours against 8.4%. Fires are lit 97% of night hours in scattered groups and 98% in one group.
+- **Life 7 is reproduced exactly** with the shared fire off, against fingerprints recorded from Life 7's code before the change.
+- **Capacity.** Bands of 8 and 12 are intact at day 400. A band of 16 keeps 6.0 survivors, all its deaths before day 100, against 5.8 in Life 7.
+
+The answer to the step's question is that everyone feeds the fire, and roughly equally, because the rules leave no one able not to. A member's stock goes nowhere but into the fire or a swap, whoever is at home when the fire runs low pays from their stock, runs short, gathers a load, and comes home with spare wood that goes straight into the fire. The cost rotates with who happens to be home. The shared fire does what sharing a fire is for, a third of the wood for the same warmth, but feeding it spare wood ends the trade in wood that every step since Life 3 has found: no one holds wood to sell.
+
+### Trade-offs
+
+- **A path that resolved to nowhere.** The 32-seed report scripts wrote to a Git Bash path, which Node on Windows does not resolve, and nine of ten configurations ran for nothing before the mistake showed. The reports were rerun with a Windows path.
+- **What the hidden preview pane can show.** It draws a frame only when a screenshot is taken, and runs no animation frames otherwise, so framing a group was first scheduled for the next frame and never happened in the checks. Framing now runs in a layout effect once the group card is on the page, which also measures the clear view correctly.
+- **The clear part of a 1,024-pixel window is narrow.** Between the HUD and the group card about 240 pixels are left, and a group spread across the valley does not fit even at the camera's farthest distance. Members out of sight are then shown by pins at the edge, which point their way.
+- **Test time.** Life 8's experiments add five test files beside Life 7's, which keep running with Life 7's settings.
+
+### Open questions
+
+- Nobody can choose not to feed the fire. Would members who decide whether to feed, remembering who fed it, free-ride, and would anyone refuse warmth to those who did not give?
+- Trade ends because spare wood goes into the fire. Does exchange return once there is something else to want, such as tools (Life 9)?
+- One fire saves wood but not enough food to feed a band of 16. What would a larger valley, or longer trips for wood, make of the saving?
+- Would a fire's warmth draw people from other groups, if members could change group?
+
 ## [LIFE7-SightAndLoads-037] - (2026-10-13)
 
 ### Problem

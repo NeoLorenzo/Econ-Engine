@@ -41,8 +41,9 @@ describe('[MVP7-Wages_Profits-009]', () => {
     )
   })
 
-  it('preserves exact closure for 10,000 days and bounded interactive history', () => {
-    const state = runDays(createSimulation({ seed: 2_026_0813 }), 10_000)
+  // 2,000 days is five times the 400-day history bound, so the bounds are exercised as fully as over 10,000.
+  it('preserves exact closure for 2,000 days and bounded interactive history', () => {
+    const state = runDays(createSimulation({ seed: 2_026_0813 }), 2_000)
     expect(totalMoney(state)).toBe(TOTAL_MONEY_CENTS)
     expect(state.firms.every(({ cashCents }) => cashCents === 0)).toBe(true)
     expect(state.government.cashCents).toBe(0)

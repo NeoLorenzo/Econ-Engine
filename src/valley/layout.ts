@@ -74,7 +74,7 @@ class Draws {
 }
 
 /**
- * Scattered starts, from a stream of their own so the plants stand where Life 5 put them: points drawn uniformly over
+ * Scattered starts, from a stream of their own so the plants stand where they would without them: points drawn uniformly over
  * the valley in forager ID order, each at least `startSpacingCm` from the earlier ones.
  */
 export function drawStarts(config: ValleyConfig): Point[] {
@@ -134,9 +134,9 @@ export function buildIndex(plants: Plants, cellCm: number, valleySizeCm: number)
 }
 
 /**
- * The layout of the [specification](../../docs/LIFE5_SPEC.md#layout): site centres, then each thicket's bushes and
- * each stand's trees, then the starting hearths: scattered (Life 6) or on a spiral around the camp (Life 5). Throws if a
- * site, plant or start cannot be placed.
+ * The valley's layout: site centres, then each thicket's bushes and each stand's trees, then the starting hearths:
+ * scattered, or on a spiral around the camp for a band that starts as one group. Throws if a site, plant or start
+ * cannot be placed.
  */
 export function generateLayout(config: ValleyConfig): ValleyLayout {
   const draws = new Draws(deriveLayoutSeed(config.seed))

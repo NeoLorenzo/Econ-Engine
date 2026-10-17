@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { takeOldest } from '../life/food'
-import { LIFE5_VALLEY } from './config'
+import { takeOldest } from './food'
 import { cloneValley, createValley, eatCarried, lastEventOf, runValley, stepValley } from './engine'
 import { choosePlant } from './forager'
 import { distance } from './geometry'
@@ -8,9 +7,9 @@ import { ValleyChecker } from './invariants'
 import { swap } from './trade'
 import type { Forager, ValleyState } from './types'
 
-/** A copy of Life 5's valley at minute `minute`, with forager 0 changed by `change`. */
+/** A copy of the valley with the band as one group around the camp at minute `minute`, forager 0 changed by `change`. */
 function valleyAt(minute: number, change: (forager: Forager, state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley(LIFE5_VALLEY))
+  const state = cloneValley(createValley({ scattered: false }))
   state.minute = minute
   change(state.foragers[0]!, state)
   return state
@@ -76,11 +75,15 @@ describe('a forager’s minute', () => {
     expect(distance(forager.x, forager.y, next.layout.bushes.x[0]!, next.layout.bushes.y[0]!)).toBeLessThanOrEqual(100)
   })
 
-  it('sleeps at its hearth at night, warm while it has wood and cold without', () => {
-    const warm = lastEventOf(stepValley(valleyAt(NIGHT, (forager) => (forager.wood = 5))), 0)!
-    expect(warm).toMatchObject({ action: 'sleep', burnedWood: 1, sleptCold: false })
-    const cold = lastEventOf(stepValley(valleyAt(NIGHT)), 0)!
-    expect(cold).toMatchObject({ action: 'sleep', burnedWood: 0, sleptCold: true })
+  it('sleeps at its own hearth at night without a group, warm while it has wood and cold without', () => {
+    const alone = (wood: number) => {
+      const state = cloneValley(createValley())
+      state.minute = NIGHT
+      state.foragers[0]!.wood = wood
+      return lastEventOf(stepValley(state), 0)!
+    }
+    expect(alone(5)).toMatchObject({ action: 'sleep', burnedWood: 1, sleptCold: false })
+    expect(alone(0)).toMatchObject({ action: 'sleep', burnedWood: 0, sleptCold: true })
   })
 })
 

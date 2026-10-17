@@ -1,16 +1,17 @@
-import { carriedKcal } from '../life/food'
+import { carriedKcal } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { spiralOffsets } from '../valley/config'
 import { lastEventOf } from '../valley/engine'
-import { MINUTES_PER_DAY, loadKg, loadOf, speedForLoad } from '../valley/forager'
+import { campfireBurn } from '../valley/fire'
+import { MINUTES_PER_DAY, isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { practicePercents } from '../valley/practice'
 import { siteCentre, siteCount, siteRadius, sitesKnown } from '../valley/sites'
-import { livingMembers, placeCount, placesPerSide, placeWanted } from '../valley/social'
+import { livingMembers, placeCount, placesPerSide } from '../valley/social'
 import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
 import type { ActionEvent, Group, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
-import { foragerColor, foragerName, formatHours } from '../lifeView/lifeViewModel'
+import { foragerColor, foragerName, formatHours } from './display'
 
-export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from '../lifeView/lifeViewModel'
+export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from './display'
 export { foragerColor, formatHours }
 
 /**
@@ -241,13 +242,15 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   if (event.reason === 'taking a load home') return `Taking ${event.loadWood} kg of firewood home`
   if (event.action === 'sleep') {
     if (event.energyAfterKcal === 0) return 'Starved in its sleep'
+    if (event.fireGroupId !== null)
+      return event.sleptCold ? 'Sleeping cold: its group’s fire is out' : 'Sleeping warm by its group’s fire'
     if (event.sleptCold) return 'Sleeping cold, with no wood to burn'
     return woodMatters(state.config) ? 'Sleeping warm by its fire' : 'Sleeping through the night'
   }
   if (event.reason === 'satiated') return 'Resting, well fed'
   if (event.reason === 'exploring') {
     if (event.action !== 'walk') return 'Looking around'
-    return state.config.checkSites ? 'Exploring ground it has never seen' : 'Exploring, to see what has changed'
+    return 'Exploring ground it has never seen'
   }
   if (event.reason === 'checking' && event.siteId !== null) {
     const site = siteName(state.config, event.siteId)
@@ -286,7 +289,6 @@ export function formatMinutes(minutes: number) {
 
 const seenLabel = (state: ValleyState, seen: number) => {
   if (seen < 0) return 'never'
-  if (seen === 0 && state.config.knowValley) return 'at the start'
   // An observation made during minute `m` is "this minute" until minute `m + 1` begins.
   const ago = state.minute - 1 - seen
   return ago <= 0 ? 'this minute' : `${formatMinutes(ago)} ago`
@@ -311,9 +313,96 @@ export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: n
   }
 }
 
+/** What a group's fire holds and whether it burns, or null without shared fires or once the group has dissolved. */
+export function campfireOf(state: ValleyState, groupId: number) {
+  const group = state.groups[groupId]!
+  if (!state.config.sharedFire || group.dissolvedMinute !== null) return null
+  const burn = campfireBurn(state, group)
+  return {
+    wood: group.fireWood,
+    lit: group.fireLit,
+    /** Nights of burning in the wood it holds. */
+    nights: group.fireWood / (burn * nightHours(state.config)),
+    burnPerHour: burn,
+  }
+}
+
+/**
+ * How a group's fire looks in the minute being drawn: burning in a night hour it is lit; banked by day while it holds
+ * wood; out at night when it is not lit, or by day with no wood. Its size follows the nights of wood it holds.
+ */
+export function campfireAt(pair: DisplayPair, groupId: number) {
+  const fire = campfireOf(pair.next, groupId)
+  if (!fire) return null
+  const minute = pair.previous.minute
+  const look: 'burning' | 'banked' | 'out' = fire.lit
+    ? 'burning'
+    : isDaylight(pair.next.config, minute) && fire.wood > 0
+      ? 'banked'
+      : 'out'
+  return { look, wood: fire.wood, size: Math.min(1, fire.nights) }
+}
+
+export interface Contribution {
+  id: number
+  name: string
+  color: string
+  /** Alive and still in the group. */
+  member: boolean
+  alive: boolean
+  /** Wood it has put into the group's fire since it joined, and into fires today. */
+  given: number
+  givenToday: number
+  /** Its share of all the wood the group's fire has been given. */
+  share: number
+  /** Wood it has gathered since the run began. */
+  gathered: number
+  woodBought: number
+  woodSold: number
+  kcalPaid: number
+  kcalReceived: number
+  /** Hours it has slept warm by a group's fire. */
+  warmHours: number
+}
+
+/** Each forager that ever joined a group: what it has given the group's fire, gathered, swapped and been warmed by. */
+export function groupContributions(state: ValleyState, groupId: number): Contribution[] {
+  const group = state.groups[groupId]!
+  const total = sum(group.given)
+  return group.members.map((id, slot) => {
+    const forager = state.foragers[id]!
+    const gathered = sum(state.days.map((day) => day.gatheredWoodById[id]!)) + state.today.gatheredWoodById[id]!
+    return {
+      id,
+      name: foragerName(id),
+      color: foragerColor(state.config, forager),
+      member: forager.alive && forager.groupId === groupId,
+      alive: forager.alive,
+      given: group.given[slot]!,
+      givenToday: state.today.fireGivenById[id]!,
+      share: total ? group.given[slot]! / total : 0,
+      gathered,
+      ...forager.swapTotals,
+      warmHours: forager.warmByFireMinutes / 60,
+    }
+  })
+}
+
+/** One sentence on who feeds a group's fire: who has given the most, and who, if anyone, has given nothing. */
+export function contributionNote(contributions: readonly Contribution[]) {
+  const total = sum(contributions.map((row) => row.given))
+  if (!total) return 'No one has put wood into its fire yet.'
+  const top = contributions.reduce((best, row) => (row.given > best.given ? row : best))
+  const even = total / contributions.length
+  const nothing = contributions.filter((row) => row.given === 0).map((row) => row.name)
+  const lead = `${top.name} has given the most, ${Math.round(top.share * 100)}% of its wood (${(top.given / even).toFixed(1)} times an even share).`
+  if (!nothing.length) return `${lead} Everyone has given some.`
+  return `${lead} ${nothing.join(', ')} ${nothing.length === 1 ? 'has' : 'have'} given nothing.`
+}
+
 /**
  * What the group card shows: when the group was founded, each living member with what it is doing and carrying, the
- * wood and food its members hold, and the swaps among them over the last day.
+ * wood and food its members hold, the swaps among them over the last day, and its fire.
  */
 export function groupInspection(pair: DisplayPair, groupId: number) {
   const state = pair.next
@@ -336,6 +425,7 @@ export function groupInspection(pair: DisplayPair, groupId: number) {
     for (const made of day)
       if (made.kind === 'swap' && made.minute >= since && inGroup.has(made.sellerId) && inGroup.has(made.buyerId))
         swaps += 1
+  const contributions = state.config.sharedFire ? groupContributions(state, groupId) : []
   return {
     name: groupName(groupId),
     color: groupColor(groupId),
@@ -347,6 +437,12 @@ export function groupInspection(pair: DisplayPair, groupId: number) {
     wood: sum(living.map((id) => state.foragers[id]!.wood)),
     foodKcal: sum(living.map((id) => carriedKcal(state.foragers[id]!.carried))),
     swapsLastDay: swaps,
+    fire: campfireOf(state, groupId),
+    /** Night hours its fire has burned and been out since the group was founded. */
+    litHours: group.litHours,
+    darkHours: group.darkHours,
+    contributions,
+    contributionNote: contributions.length ? contributionNote(contributions) : null,
   }
 }
 
@@ -377,10 +473,9 @@ export interface SiteRing {
   fresh: boolean
 }
 
-/** The thickets and stands the followed forager knows, and whether it checked each lately; none without checking. */
+/** The thickets and stands the followed forager knows, and whether it checked each lately. */
 export function siteRings(state: ValleyState, foragerId: number): SiteRing[] {
   const { config, layout } = state
-  if (!config.checkSites) return []
   const forager = state.foragers[foragerId]!
   const minute = Math.max(0, state.minute - 1)
   const rings: SiteRing[] = []
@@ -448,6 +543,9 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     sitesCheckedLately: forager.siteChecked.filter(
       (checked) => checked >= 0 && Math.max(0, state.minute - 1) - checked < 60 * config.exploreAfterHours,
     ).length,
+    /** The wood it has put into fires, and its group's fire, if it sleeps by one. */
+    fireGiven: forager.fireGiven,
+    groupFire: forager.groupId === null ? null : campfireOf(state, forager.groupId),
   }
 }
 
@@ -493,17 +591,87 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
 
 /**
  * How dark to draw each place on the ground for what a forager knows, row by row from the valley's first row: places it
- * has never seen darkest, places not seen for `exploreAfterHours` a little dark (only without `checkSites`, since
- * otherwise seen ground stays seen), and the rest clear. Values are 0–255.
+ * has never seen dark, and the rest clear, since seen ground stays seen. Values are 0–255.
  */
 export function knowledgeShades(state: ValleyState, foragerId: number) {
   const forager = state.foragers[foragerId]!
   const shades = new Uint8Array(placesPerSide(state.config) ** 2)
-  const minute = Math.max(0, state.minute - 1)
-  for (let place = 0; place < shades.length; place += 1)
-    shades[place] =
-      forager.placeSeen[place]! < 0 ? 150 : placeWanted(state.config, forager, place, minute, 'explore') ? 60 : 0
+  for (let place = 0; place < shades.length; place += 1) shades[place] = forager.placeSeen[place]! < 0 ? 150 : 0
   return shades
+}
+
+/** The part of the view, in pixels from its top left, that the cards over it leave clear. */
+export interface ClearView {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+/**
+ * Where a pin over a point on screen goes, in pixels: where the point is while it lies in the clear part of the view,
+ * or else held at the clear part's edge, on the line from its centre towards the point. A point behind the camera
+ * projects mirrored through the centre of the view, so it is mirrored back first. At the edge, `angle` is the way the
+ * pin points, in radians clockwise from the screen's right.
+ */
+export function pinPlacement(
+  x: number,
+  y: number,
+  behind: boolean,
+  clear: ClearView,
+  view: { width: number; height: number },
+) {
+  const inside = !behind && x >= clear.left && x <= clear.right && y >= clear.top && y <= clear.bottom
+  if (inside) return { x, y, edge: false, angle: 0 }
+  const cx = (clear.left + clear.right) / 2
+  const cy = (clear.top + clear.bottom) / 2
+  let dx = behind ? view.width - x - cx : x - cx
+  let dy = behind ? view.height - y - cy : y - cy
+  if (dx === 0 && dy === 0) dy = 1
+  const scale = Math.min(
+    dx ? (dx > 0 ? clear.right - cx : clear.left - cx) / dx : Infinity,
+    dy ? (dy > 0 ? clear.bottom - cy : clear.top - cy) / dy : Infinity,
+  )
+  dx *= scale
+  dy *= scale
+  return { x: cx + dx, y: cy + dy, edge: true, angle: Math.atan2(dy, dx) }
+}
+
+/**
+ * The clear part of a view `width` by `height` pixels, given the cards laid over it: a tall, narrow card at a side
+ * takes that side, and any other card, wide as on a phone or short as a folded panel, takes the top or bottom.
+ * `margin` pixels more are left at every edge. A view left with less than `least` pixels across or down keeps its
+ * middle third that way instead.
+ */
+export function clearView(
+  width: number,
+  height: number,
+  cards: readonly { left: number; top: number; right: number; bottom: number }[],
+  margin = 24,
+  least = 120,
+): ClearView {
+  let left = 0
+  let right = width
+  let top = 0
+  let bottom = height
+  for (const card of cards) {
+    if (card.right <= card.left || card.bottom <= card.top) continue
+    const side = card.right - card.left < width * 0.45 && card.bottom - card.top >= height * 0.4
+    if (side) {
+      if ((card.left + card.right) / 2 < width / 2) left = Math.max(left, card.right)
+      else right = Math.min(right, card.left)
+    } else if ((card.top + card.bottom) / 2 < height / 2) top = Math.max(top, card.bottom)
+    else bottom = Math.min(bottom, card.top)
+  }
+  if (right - left - 2 * margin < least) {
+    left = width / 3
+    right = (2 * width) / 3
+  }
+  if (bottom - top - 2 * margin < least) {
+    top = height / 3
+    bottom = (2 * height) / 3
+  }
+  return { left: left + margin, top: top + margin, right: right - margin, bottom: bottom - margin }
 }
 
 /** The groups whose flags stand, with where and in what colour. */
@@ -514,10 +682,13 @@ export const standingFlags = (state: ValleyState) =>
 export const currentSwaps = ({ previous, next }: DisplayPair): SwapEvent[] =>
   next.lastSwaps.filter((made) => made.minute === previous.minute)
 
-/** Whether a forager's hearth burns in the minute being drawn, is dark because it sleeps cold, or is not in use. */
+/**
+ * Whether a forager's own hearth burns in the minute being drawn, is dark because it sleeps cold, or is not in use. A
+ * member asleep by its group's fire does not use its own.
+ */
 export function hearthAt(pair: DisplayPair, foragerId: number): 'lit' | 'cold' | null {
   const event = currentEvent(pair, foragerId)
-  if (event?.action !== 'sleep') return null
+  if (event?.action !== 'sleep' || event.fireGroupId !== null) return null
   return event.sleptCold ? 'cold' : pair.next.foragers[foragerId]!.warm ? 'lit' : null
 }
 
