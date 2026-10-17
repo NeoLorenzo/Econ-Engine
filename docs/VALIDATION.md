@@ -78,7 +78,7 @@ npm run build
 npm run check
 ```
 
-The durable browser check runs through `.github/workflows/fast-mode-browser-validation.yml` from a production build. It intentionally remains separate from the local `npm run check` command because it installs Chromium and is meant as focused browser-level CI coverage.
+The durable browser check runs through `.github/workflows/fast-mode-browser-validation.yml` from a production build. It intentionally remains separate from the local `npm run check` command because it installs Chromium and is meant as focused browser-level CI coverage. The Pages deploy, `.github/workflows/deploy-pages.yml`, waits for this workflow to pass on a push to `main` and then only builds and deploys that commit, so the site is never published from a commit whose tests or browser check failed, and the tests are not run a second time.
 
 Final command and browser results are recorded in the newest changelog and lab-note entries. Validation establishes accounting, causality, reproducibility, and the known controlled benchmark; it does not establish realism, welfare, or general equilibrium.
 
