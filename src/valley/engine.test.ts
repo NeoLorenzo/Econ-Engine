@@ -173,11 +173,11 @@ describe('the engine', () => {
     JSON.stringify({
       minute: state.minute,
       bushes: Array.from(state.bushKcal),
-      trees: Array.from(state.treeWood),
+      trees: Array.from(state.woodStock),
       foragers: state.foragers.map((forager) => ({
         ...forager,
         bushMemory: Array.from(forager.bushMemory.stock),
-        treeMemory: Array.from(forager.treeMemory.stock),
+        woodMemory: Array.from(forager.woodMemory.stock),
       })),
       totals: state.totals,
       days: state.days,

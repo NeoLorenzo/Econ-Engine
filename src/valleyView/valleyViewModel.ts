@@ -1,7 +1,7 @@
 import { askOf, expectedQuality, usableAsk } from '../valley/axes'
 import { carriedKcal } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
-import { spiralOffsets } from '../valley/config'
+import { ringOf } from '../valley/config'
 import { lastEventOf } from '../valley/engine'
 import { campfireBurn } from '../valley/fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
@@ -122,7 +122,7 @@ export function foragerPose(pair: DisplayPair, foragerId: number, interpolate = 
     }
   }
   const { layout } = next
-  const plants = event.workedFor === 'food' ? layout.bushes : layout.trees
+  const plants = event.workedFor === 'food' ? layout.bushes : layout.woodPlants
   const toward = (xs: Int32Array, ys: Int32Array, id: number | null) =>
     id === null ? null : headingOf(xs[id]! - position.x, ys[id]! - position.y)
   const facing =
@@ -166,17 +166,34 @@ export const holdsAxe = (pair: DisplayPair, foragerId: number) => {
 
 /** A plant's stock, part of the way through the minute. */
 export function displayedStock(pair: DisplayPair, kind: 'bush' | 'tree', id: number, interpolate = true) {
-  const before = kind === 'bush' ? pair.previous.bushKcal[id]! : pair.previous.treeWood[id]!
-  const after = kind === 'bush' ? pair.next.bushKcal[id]! : pair.next.treeWood[id]!
+  const before = kind === 'bush' ? pair.previous.bushKcal[id]! : pair.previous.woodStock[id]!
+  const after = kind === 'bush' ? pair.next.bushKcal[id]! : pair.next.woodStock[id]!
   return interpolate ? lerp(before, after, pair.alpha) : after
 }
 
 /**
- * How tall a tree stands for the logs it holds: whole when full, lower as logs are cut, and a stump with none, drawn
- * as a share of its full height. A log comes off at the end of the minute it is cut.
+ * How a tree is drawn part of the way through the minute. A standing tree's crown fills out with its branches. A
+ * felled tree lies where it fell beside its stump: its trunk shortens from the butt as logs are cut from it, and its
+ * crown, lying at the far end, shrinks as its branches are gathered. A log comes off at the end of the minute it is
+ * cut, and the tree falls then.
  */
-export const treeStanding = (logs: number, logsPerTree: number) =>
-  logs <= 0 ? 0 : 0.55 + (0.45 * logs) / Math.max(1, logsPerTree)
+export function treeShape(pair: DisplayPair, id: number, interpolate = true) {
+  const { config } = pair.next
+  const wood = displayedStock(pair, 'tree', id, interpolate)
+  const felled = pair.next.treeFelledMinute[id]! >= 0
+  if (!felled) return { felled, trunk: 1, crown: 0.8 + 0.2 * Math.min(1, wood / Math.max(1, config.treeCapacityWood)) }
+  return {
+    felled,
+    trunk: pair.next.treeLogs[id]! / Math.max(1, config.logsPerTree),
+    crown: Math.min(1, wood / Math.max(1, config.treeCapacityWood + config.fellWood)),
+  }
+}
+
+/** A tree as the inspector names it: standing, lying felled with logs or branches left, or a bare stump. */
+export function treeState(state: ValleyState, id: number): 'standing' | 'felled' | 'stump' {
+  if (state.treeFelledMinute[id]! < 0) return 'standing'
+  return state.treeLogs[id]! > 0 || state.woodStock[id]! > 0 ? 'felled' : 'stump'
+}
 
 /**
  * Shares `amount` out among `count` parts one after another, each from 0 (empty) to 1 (full). The fills add up to the
@@ -187,9 +204,8 @@ export const fillInTurn = (amount: number, capacity: number, count: number) =>
     Math.min(1, Math.max(0, (Math.max(0, amount) / capacity) * count - index)),
   )
 
-/** Berries drawn on each bush, and dead branches in each tree's pile. */
+/** Berries drawn on each bush. */
 export const BERRIES_PER_BUSH = 10
-export const LOGS_PER_PILE = 6
 
 /** How a plant looks: fixed by its kind and ID, so it looks the same in every run, and drawn from no simulation stream. */
 export interface PlantLook {
@@ -218,7 +234,7 @@ export function displayedLoad(pair: DisplayPair, foragerId: number, interpolate 
   const after = pair.next.foragers[foragerId]!
   const t = interpolate ? pair.alpha : 1
   const wood = lerp(before.wood, after.wood, t)
-  // The wood gathered on this trip is on its back; the rest of what it holds is stacked by its hearth.
+  // The wood gathered on this trip is on its back; the rest of what it holds is stacked by its hearth or hut.
   const onBack = Math.min(wood, lerp(before.tripWood, after.tripWood, t))
   return {
     onBack,
@@ -247,11 +263,18 @@ export function stepFollowed(state: ValleyState, current: number, direction: 1 |
   return current
 }
 
-/** What a night's fire burns in wood and saves in food, or null where nights are not cold. */
+/** What a night by one's own fire burns in wood and saves in food, or null where nights are not cold. */
 export function fireSaving(config: ValleyConfig) {
   if (!woodMatters(config)) return null
-  return { wood: nightWood(config), kcal: nightHours(config) * (config.coldSleepKcalPerHour - config.sleepKcalPerHour) }
+  return {
+    wood: nightWood(config),
+    kcal: nightHours(config) * (config.coldSleepKcalPerHour - config.fireSleepKcalPerHour),
+  }
 }
+
+/** A wood plant by name: a tree, or the bush whose sticks it is. */
+export const woodPlantName = (state: ValleyState, id: number) =>
+  id < state.layout.trees.count ? treeName(state, id) : bushName(state, id - state.layout.trees.count)
 
 /** People count bushes, trees and foragers from 1. */
 export const bushName = (state: ValleyState, id: number) => `a bush in thicket ${state.layout.bushes.site[id]! + 1}`
@@ -289,17 +312,24 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
     return event.laidLog ? 'Laying a log in its hut' : 'Carrying a log home for its hut'
   if (event.action === 'sleep') {
     if (event.energyAfterKcal === 0) return 'Starved in its sleep'
-    if (event.inHut) return 'Sleeping in its hut'
-    if (event.fireGroupId !== null)
+    if (event.fireGroupId !== null) {
+      if (event.warmth === 'fire and hut') return 'Sleeping snug in its hut by its group’s fire'
+      if (event.warmth === 'hut') return 'Sleeping in its hut, a little cold: its group’s fire is out'
       return event.sleptCold ? 'Sleeping cold: its group’s fire is out' : 'Sleeping warm by its group’s fire'
+    }
+    if (event.warmth === 'fire and hut') return 'Sleeping in its hut by its own fire'
+    if (event.warmth === 'hut') return 'Sleeping in its hut, with no wood to burn'
     if (event.sleptCold) return 'Sleeping cold, with no wood to burn'
     return woodMatters(state.config) ? 'Sleeping warm by its fire' : 'Sleeping through the night'
   }
   if (event.reason === 'satiated') return 'Resting, well fed'
-  if (event.reason === 'cutting a log')
-    return event.cutLog
-      ? `Cutting a log from ${treeName(state, event.treeId!)}`
-      : `Swinging its axe at ${treeName(state, event.treeId!)}`
+  if (event.reason === 'cutting a log') {
+    if (event.felled) return `Felling ${treeName(state, event.treeId!)}`
+    if (event.cutLog) return `Cutting a log from ${treeName(state, event.treeId!)}`
+    return state.treeFelledMinute[event.treeId!]! >= 0
+      ? `Cutting up ${treeName(state, event.treeId!)} where it fell`
+      : `Chopping at ${treeName(state, event.treeId!)} to fell it`
+  }
   if (event.reason === 'seeking a tree') return 'Walking to a tree to cut a log for its hut'
   if (event.reason === 'fetching a stone')
     return `Walking to ${stoneName(state, event.stoneId!)} for a stone to make an axe`
@@ -329,22 +359,26 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   if (event.reason === 'waiting for company') return 'Waiting for company at a flag'
   if (event.reason === 'searching') {
     const where = event.siteId === null ? 'new ground' : siteName(state.config, event.siteId)
-    return event.workedFor === 'wood' ? `Searching ${where} for deadwood` : `Searching ${where} for berries`
+    return event.workedFor === 'wood' ? `Searching ${where} for firewood` : `Searching ${where} for berries`
   }
   if (event.reason === 'waiting to swap') return 'Resting, carrying food to swap for wood'
   if (event.reason === 'too late to set out') return 'Too late in the day to set out'
   if (event.reason === 'waiting for regrowth')
-    return event.workedFor === 'wood' ? 'Short of wood, waiting for deadwood to fall' : 'Hungry, waiting for berries'
+    return event.workedFor === 'wood' ? 'Short of wood, waiting for branches to grow' : 'Hungry, waiting for berries'
   if (event.action === 'forage') return `Picking berries${toSwap} from ${bushName(state, event.plantId!)}`
   if (event.action === 'gather') {
-    const where = treeName(state, event.plantId!)
-    return event.reason === 'filling a load'
-      ? `Gathering deadwood under ${where} to fill a load`
-      : `Gathering deadwood${toSwap} under ${where}`
+    const id = event.plantId!
+    const what =
+      id >= state.layout.trees.count
+        ? `Gathering sticks${toSwap} from ${woodPlantName(state, id)}`
+        : state.treeFelledMinute[id]! >= 0
+          ? `Gathering branches${toSwap} from ${woodPlantName(state, id)} lying felled`
+          : `Snapping branches${toSwap} off ${woodPlantName(state, id)}`
+    return event.reason === 'filling a load' ? `${what} to fill a load` : what
   }
   if (event.action === 'walk')
-    return event.workedFor === 'wood' ? `Walking to a tree for wood${toSwap}` : `Walking to a bush${toSwap}`
-  return event.workedFor === 'wood' ? 'Looking for deadwood' : 'Looking for berries'
+    return event.workedFor === 'wood' ? `Walking to gather firewood${toSwap}` : `Walking to a bush${toSwap}`
+  return event.workedFor === 'wood' ? 'Looking for firewood' : 'Looking for berries'
 }
 
 /** Minutes as a short phrase: "40 min", "3 h 5 min", "2 d 4 h". */
@@ -366,9 +400,17 @@ const seenLabel = (state: ValleyState, seen: number) => {
 /** What the inspector shows for a bush or tree: the truth beside what the followed forager believes. */
 export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: number, foragerId: number) {
   const forager = state.foragers[foragerId]!
-  const memory = kind === 'bush' ? forager.bushMemory : forager.treeMemory
-  const stock = kind === 'bush' ? state.bushKcal[id]! : state.treeWood[id]!
+  const memory = kind === 'bush' ? forager.bushMemory : forager.woodMemory
+  const stock = kind === 'bush' ? state.bushKcal[id]! : state.woodStock[id]!
+  const felledMinute = kind === 'tree' ? state.treeFelledMinute[id]! : -1
+  const regrowMinute = felledMinute + state.config.treeRegrowthDays * 1_440
   return {
+    /** A bush's sticks, and a tree's state: standing, felled, or a stump that grows back in some days. */
+    sticks: kind === 'bush' ? state.woodStock[state.layout.trees.count + id]! : null,
+    sticksCapacity: state.config.bushCapacityWood,
+    treeState: kind === 'tree' ? treeState(state, id) : null,
+    regrowsInDays:
+      kind === 'tree' && felledMinute >= 0 ? Math.max(1, Math.ceil((regrowMinute - state.minute) / 1_440)) : null,
     name:
       kind === 'bush'
         ? `Bush in thicket ${state.layout.bushes.site[id]! + 1}`
@@ -608,10 +650,23 @@ export function groupInspection(pair: DisplayPair, groupId: number) {
   }
 }
 
-/** How far the coloured ground round a group's base reaches: past the farthest hearth on its spiral, in centimetres. */
+/**
+ * The direction from a member's hut to its group's fire, as a unit vector in metres, or null for a forager whose hut
+ * is not on a ring round a flag. The hut's door faces the fire, and its builder sleeps with its feet towards it.
+ */
+export function towardFire(state: ValleyState, foragerId: number, x: number, y: number) {
+  const forager = state.foragers[foragerId]!
+  const group = forager.groupId === null ? null : state.groups[forager.groupId]!
+  if (!group) return null
+  const dx = group.flag.x - x
+  const dy = group.flag.y - y
+  const length = Math.hypot(dx, dy)
+  return length === 0 ? null : { x: dx / length, z: dy / length }
+}
+
+/** How far the coloured ground round a group's base reaches: past the outer ring of its huts, in centimetres. */
 export function baseRadiusCm(config: ValleyConfig, group: Group) {
-  const [dx, dy] = spiralOffsets(Math.max(1, group.members.length)).at(-1)!
-  return Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * config.hearthSpacingCm * Math.SQRT2) + 250
+  return ringOf(Math.max(1, group.members.length) - 1) * config.hutRingCm + 350
 }
 
 /** The middle of a group's flag and living members, and how far from it the farthest lies, to frame the group. */

@@ -225,16 +225,32 @@ export function choosePlant(
   minute: number,
   fallback = true,
 ): number | null {
-  const plants = good === 'food' ? layout.bushes : layout.trees
-  const index = good === 'food' ? layout.bushIndex : layout.treeIndex
-  const memory = good === 'food' ? forager.bushMemory : forager.treeMemory
+  const plants = good === 'food' ? layout.bushes : layout.woodPlants
+  const index = good === 'food' ? layout.bushIndex : layout.woodIndex
+  const memory = good === 'food' ? forager.bushMemory : forager.woodMemory
   const threshold = minuteOfWork(good === 'food' ? forager.forageRate : forager.woodRate)
   const left = daylightSecondsLeft(config, minute)
   const speed = walkSpeed(config, forager)
   const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)
-  const target = good === 'food' ? forager.targetBushId : forager.targetTreeId
+  const target = good === 'food' ? forager.targetBushId : forager.targetWoodId
   if (target !== null && reachable(target) && (memory.seen[target] !== minute || memory.stock[target]! >= threshold))
     return target
+  if (good === 'wood') {
+    // It clears the crown of a felled tree before it takes from a plant still growing: a tree it saw from afar holding
+    // fewer than every log is down, and trees come first among wood plants.
+    const fallen = nearestPlant(
+      layout.treeIndex,
+      layout.trees,
+      forager.x,
+      forager.y,
+      (id) =>
+        forager.logMemory.seen[id]! >= 0 &&
+        forager.logMemory.stock[id]! < config.logsPerTree &&
+        memory.stock[id]! >= threshold &&
+        reachable(id),
+    )
+    if (fallen !== null) return fallen
+  }
   const nearest = nearestPlant(
     index,
     plants,

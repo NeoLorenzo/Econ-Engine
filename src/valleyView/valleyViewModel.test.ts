@@ -24,6 +24,8 @@ import {
   knowledgeShades,
   plantInspection,
   siteRings,
+  towardFire,
+  treeShape,
   type DisplayPair,
 } from './valleyViewModel'
 
@@ -107,6 +109,31 @@ describe('plants and the camera', () => {
     expect(closeTilt(CAMERA_LIMITS.nearest)).toBeCloseTo(0.6)
     expect(closeTilt(60)).toBe(0)
     expect(closeTilt(15)).toBeGreaterThan(0)
+  })
+})
+
+describe('trees and huts', () => {
+  it('draws a standing tree upright, and a felled one lying, shorter for each log cut and its crown thinning', () => {
+    const state = cloneValley(createValley())
+    const standing = treeShape({ previous: state, next: state, alpha: 1 }, 0)
+    expect(standing).toMatchObject({ felled: false, trunk: 1, crown: 1 })
+    state.treeFelledMinute[0] = 0
+    state.treeLogs[0] = 1
+    state.woodStock[0] = 15
+    const felled = treeShape({ previous: state, next: state, alpha: 1 }, 0)
+    expect(felled.felled).toBe(true)
+    expect(felled.trunk).toBeCloseTo(1 / 3, 10)
+    expect(felled.crown).toBeCloseTo(15 / 35, 10)
+  })
+
+  it('turns a member’s hut, and the member asleep in it, towards its group’s fire', () => {
+    const state = cloneValley(createValley({ scattered: false }))
+    const hearth = state.foragers[3]!.hearth
+    // Slot 3 lies due east of the flag, so the fire is due west.
+    const toward = towardFire(state, 3, hearth.x, hearth.y)!
+    expect(toward.x).toBeCloseTo(-1, 10)
+    expect(toward.z).toBeCloseTo(0, 10)
+    expect(towardFire(cloneValley(createValley()), 0, 100, 100)).toBeNull()
   })
 })
 
@@ -194,7 +221,7 @@ describe('groups and what a forager knows', () => {
     for (const [change, text] of [
       [{ reason: 'checking', action: 'walk', siteId: 3 }, 'Walking to thicket 4 to see what it holds'],
       [{ reason: 'checking', action: 'rest', siteId: 33 }, 'Looking over stand 2'],
-      [{ reason: 'searching', action: 'walk', siteId: 34, workedFor: 'wood' }, 'Searching stand 3 for deadwood'],
+      [{ reason: 'searching', action: 'walk', siteId: 34, workedFor: 'wood' }, 'Searching stand 3 for firewood'],
       [{ reason: 'searching', action: 'walk', siteId: null, workedFor: 'food' }, 'Searching new ground for berries'],
       [{ reason: 'taking a load home', action: 'walk', loadWood: 30 }, 'Taking 30 kg of firewood home'],
     ] as const) {

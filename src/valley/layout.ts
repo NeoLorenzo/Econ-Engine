@@ -1,5 +1,5 @@
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
-import { spiralOffsets } from './config'
+import { ringOffset } from './config'
 import { distanceSq } from './geometry'
 import type { PlantIndex, Plants, Point, ValleyConfig, ValleyLayout } from './types'
 
@@ -131,6 +131,19 @@ function scatter(draws: Draws, count: number, centre: Point, radius: number, spa
   return placed
 }
 
+/** Every plant that holds wood: the trees, then the bushes, in ID order, each keeping its site. */
+export function woodPlantsOf(trees: Plants, bushes: Plants): Plants {
+  const count = trees.count + bushes.count
+  const plants: Plants = { count, x: new Int32Array(count), y: new Int32Array(count), site: new Int32Array(count) }
+  plants.x.set(trees.x)
+  plants.x.set(bushes.x, trees.count)
+  plants.y.set(trees.y)
+  plants.y.set(bushes.y, trees.count)
+  plants.site.set(trees.site)
+  plants.site.set(bushes.site, trees.count)
+  return plants
+}
+
 function plantsOf(sites: readonly Point[][]): Plants {
   const count = sites.reduce((sum, site) => sum + site.length, 0)
   const plants: Plants = { count, x: new Int32Array(count), y: new Int32Array(count), site: new Int32Array(count) }
@@ -156,7 +169,7 @@ export function buildIndex(plants: Plants, cellCm: number, valleySizeCm: number)
 
 /**
  * The valley's layout: site centres, then each thicket's bushes, each stand's trees and each outcrop's stone spots,
- * then the starting hearths: scattered, or on a spiral around the camp for a band that starts as one group. Throws if
+ * then the starting hearths: scattered, or on the rings round the camp for a band that starts as one group. Throws if
  * a site, plant, stone spot or start cannot be placed.
  */
 export function generateLayout(config: ValleyConfig): ValleyLayout {
@@ -207,12 +220,13 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const bushes = plantsOf(bushSites)
   const trees = plantsOf(treeSites)
   const stones = plantsOf(stoneSites)
+  const woodPlants = woodPlantsOf(trees, bushes)
   const hearths = config.scattered
     ? drawStarts(config)
-    : spiralOffsets(config.bandSize).map(([x, y]) => ({
-        x: camp.x + x * config.hearthSpacingCm,
-        y: camp.y + y * config.hearthSpacingCm,
-      }))
+    : Array.from({ length: config.bandSize }, (_, slot) => {
+        const offset = ringOffset(config, slot)
+        return { x: camp.x + offset.x, y: camp.y + offset.y }
+      })
   return {
     camp,
     thickets,
@@ -221,9 +235,11 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
     bushes,
     trees,
     stones,
+    woodPlants,
     hearths,
     bushIndex: buildIndex(bushes, config.perceptionRadiusCm, size),
     treeIndex: buildIndex(trees, config.perceptionRadiusCm, size),
+    woodIndex: buildIndex(woodPlants, config.perceptionRadiusCm, size),
     stoneIndex: buildIndex(stones, config.perceptionRadiusCm, size),
   }
 }

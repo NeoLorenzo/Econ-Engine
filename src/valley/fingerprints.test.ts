@@ -3,8 +3,8 @@ import { createValley, runValley } from './engine'
 import { ValleyChecker } from './invariants'
 import type { ValleyConfig } from './types'
 
-// Life 9 runs exactly as recorded: the daily summaries and totals of 30 days on three seeds, for the canonical valley
-// and each configuration the experiments use, match fingerprints recorded from Life 9's code. A change that alters
+// Life 9.5 runs exactly as recorded: the daily summaries and totals of 30 days on three seeds, for the canonical valley
+// and each configuration the experiments use, match fingerprints recorded from Life 9.5's code. A change that alters
 // any trajectory, even a refactor or a speed-up meant to change nothing, fails here.
 
 function fingerprintOf(value: unknown) {
@@ -24,27 +24,27 @@ const CONFIGS: Record<string, Partial<ValleyConfig>> = {
 }
 
 const RECORDED = [
-  { config: 'canonical', seed: 20260813, days: '3a243df2:45722', totals: '16ec24bd:409' },
-  { config: 'canonical', seed: 1, days: '30aeb0a:45636', totals: '7716d18e:406' },
-  { config: 'canonical', seed: 2, days: 'c9b1213f:45693', totals: 'c10daf24:409' },
-  { config: 'together', seed: 20260813, days: '5e6ce7e1:45518', totals: 'a1f33825:409' },
-  { config: 'together', seed: 1, days: 'ac6b800e:45473', totals: 'e6962d5f:406' },
-  { config: 'together', seed: 2, days: 'e9280155:45468', totals: '2db24bf2:406' },
-  { config: 'noPractice', seed: 20260813, days: '3a3f0606:45928', totals: '66ac8758:409' },
-  { config: 'noPractice', seed: 1, days: '54d3ec72:45845', totals: '7dc92f4a:406' },
-  { config: 'noPractice', seed: 2, days: 'f98e7a0e:45935', totals: '5041daa7:409' },
-  { config: 'talent', seed: 20260813, days: '5622a181:45740', totals: 'b34bcec5:415' },
-  { config: 'talent', seed: 1, days: '14cdb60b:45668', totals: '2fa8dab4:406' },
-  { config: 'talent', seed: 2, days: '90d379ef:45742', totals: '67eac018:415' },
-  { config: 'twelve', seed: 20260813, days: '82c52447:53042', totals: '79d474b7:412' },
-  { config: 'twelve', seed: 1, days: 'd381ba8c:52941', totals: '6a8caabf:412' },
-  { config: 'twelve', seed: 2, days: '7754dbb1:53164', totals: '49985d76:417' },
-  { config: 'unequal', seed: 20260813, days: 'c773b714:45588', totals: 'f7ad0975:408' },
-  { config: 'unequal', seed: 1, days: '30355a9f:45568', totals: '8253f29c:409' },
-  { config: 'unequal', seed: 2, days: '32f1166b:45528', totals: 'dd8cf3e:408' },
+  { config: 'canonical', seed: 20260813, days: '69a59c6:45860', totals: 'cb8b934:425' },
+  { config: 'canonical', seed: 1, days: '24ba2a7d:45766', totals: '7b6422d8:425' },
+  { config: 'canonical', seed: 2, days: '676ef36f:45764', totals: 'c777511b:425' },
+  { config: 'together', seed: 20260813, days: 'e244f205:45536', totals: '9d00dfb6:429' },
+  { config: 'together', seed: 1, days: 'a10bb198:45522', totals: 'd9b0290a:423' },
+  { config: 'together', seed: 2, days: '33bde535:45537', totals: 'c5044818:423' },
+  { config: 'noPractice', seed: 20260813, days: 'eb2a9624:46112', totals: '455c4b18:425' },
+  { config: 'noPractice', seed: 1, days: 'd65915b7:45998', totals: '11199fc0:425' },
+  { config: 'noPractice', seed: 2, days: '7888c87d:45991', totals: 'b609d569:425' },
+  { config: 'talent', seed: 20260813, days: '1370918a:45970', totals: '780c5748:431' },
+  { config: 'talent', seed: 1, days: '78eb353e:45834', totals: '63db5962:431' },
+  { config: 'talent', seed: 2, days: 'c3f613a0:45846', totals: 'e23374fc:431' },
+  { config: 'twelve', seed: 20260813, days: '8d1e8d3c:53165', totals: '7ac9598d:430' },
+  { config: 'twelve', seed: 1, days: '8dfcf18b:53238', totals: '7e40a3bd:429' },
+  { config: 'twelve', seed: 2, days: '17728920:53258', totals: 'ab5676bd:430' },
+  { config: 'unequal', seed: 20260813, days: '458afcde:45347', totals: 'b1b332bb:425' },
+  { config: 'unequal', seed: 1, days: 'd8fe7705:45697', totals: 'e2d830f5:425' },
+  { config: 'unequal', seed: 2, days: '75a5fb62:45729', totals: 'ebcf43de:431' },
 ] as const
 
-describe('Life 9 runs exactly as recorded', () => {
+describe('Life 9.5 runs exactly as recorded', () => {
   for (const recorded of RECORDED) {
     it(`for the ${recorded.config} valley on seed ${recorded.seed}`, () => {
       const start = createValley({ ...CONFIGS[recorded.config], seed: recorded.seed })

@@ -66,7 +66,7 @@ describe('warmth', () => {
     const after = stepValley(together(EIGHT_PM, 12))
     // Member 1 gave the fire's wood; the others gave nothing.
     for (const event of after.lastEvents)
-      expect(event).toMatchObject({ reason: 'night', fireGroupId: 0, burnedWood: 0, sleptCold: false })
+      expect(event).toMatchObject({ reason: 'night', fireGroupId: 0, burnedWood: 0, sleptCold: false, warmth: 'fire' })
     expect(after.foragers.filter((forager) => forager.fireGiven === 0)).toHaveLength(7)
   })
 
@@ -81,7 +81,7 @@ describe('warmth', () => {
     state.foragers[0]!.wood = 5
     state.totals.initialWood += 5
     const event = lastEventOf(stepValley(state), 0)!
-    expect(event).toMatchObject({ reason: 'night', fireGroupId: null, burnedWood: 1, sleptCold: false })
+    expect(event).toMatchObject({ reason: 'night', fireGroupId: null, burnedWood: 1, sleptCold: false, warmth: 'fire' })
   })
 })
 
@@ -184,8 +184,11 @@ describe('the checker', () => {
   })
 
   it('catches a member warm by a dark fire', () => {
-    expect(damaged(together(EIGHT_PM, 0), (after) => (after.lastEvents[0]!.sleptCold = false))).toMatch(
+    expect(damaged(together(EIGHT_PM, 0), (after) => (after.lastEvents[0]!.warmth = 'fire'))).toMatch(
       'warmth does not match',
+    )
+    expect(damaged(together(EIGHT_PM, 0), (after) => (after.lastEvents[0]!.sleptCold = false))).toMatch(
+      'slept cold at another warmth',
     )
   })
 

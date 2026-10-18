@@ -80,15 +80,19 @@ export function planHut(state: ValleyState, forager: Forager, minute: number, sp
   const needLogs = wantsLogs(state, forager)
   const left = daylightSecondsLeft(config, minute)
   if (needLogs && forager.axe) {
+    // It finishes a tree already felled before it fells another: the nearest it knows lying with a log, else the
+    // nearest standing. A standing tree holds every log, so what it saw from afar tells them apart.
     const { trees, treeIndex } = layout
-    const tree = nearestPlant(
-      treeIndex,
-      trees,
-      forager.x,
-      forager.y,
-      (id) =>
-        forager.logMemory.stock[id]! > 0 && reachableInTime(config, forager, trees.x[id]!, trees.y[id]!, left, speed),
-    )
+    const nearestWith = (fallen: boolean) =>
+      nearestPlant(treeIndex, trees, forager.x, forager.y, (id) => {
+        const logs = forager.logMemory.stock[id]!
+        return (
+          logs > 0 &&
+          logs < config.logsPerTree === fallen &&
+          reachableInTime(config, forager, trees.x[id]!, trees.y[id]!, left, speed)
+        )
+      })
+    const tree = nearestWith(true) ?? nearestWith(false)
     if (tree !== null) return { kind: 'cut', treeId: tree }
   }
   const lacksAxe = needLogs && !forager.axe
@@ -182,8 +186,9 @@ export function workAxe(state: ValleyState, forager: Forager, seconds: number, m
 
 /**
  * `seconds` cutting at tree `treeId` with the forager's axe: its cut grows by the seconds times the axe's quality, and
- * a log comes off when it reaches a log's cut. An axe with no logs left is thrown away, and the cut so far is lost.
- * Changes the working copies in place; returns the events.
+ * a log comes off when it reaches a log's cut. The first log cut from a standing tree fells it whole, bringing its
+ * crown's `fellWood` of branches down where it lies. An axe with no logs left is thrown away, and the cut so far is
+ * lost. Changes the working copies in place; returns the events.
  */
 export function cutAt(state: ValleyState, forager: Forager, treeId: number, seconds: number, minute: number) {
   const { config } = state
@@ -193,6 +198,13 @@ export function cutAt(state: ValleyState, forager: Forager, treeId: number, seco
   forager.chopRemainder += seconds * axe.quality
   if (forager.chopRemainder < logCut(config)) return { cut, worn }
   forager.chopRemainder -= logCut(config)
+  const felled = state.treeFelledMinute[treeId]! < 0
+  if (felled) {
+    state.treeFelledMinute[treeId] = minute
+    // Trees come first among wood plants, so a tree's branches are wood plant `treeId`.
+    state.woodStock[treeId]! += config.fellWood
+    state.totals.fellenWood += config.fellWood
+  }
   state.treeLogs[treeId]! -= 1
   forager.log = 1
   state.totals.logsCut += 1
@@ -207,6 +219,7 @@ export function cutAt(state: ValleyState, forager: Forager, treeId: number, seco
     quality: axe.quality,
     axeLogsLeft: used.logsLeft,
     treeLogsAfter: state.treeLogs[treeId]!,
+    felled,
   }
   if (used.logsLeft > 0) forager.axe = used
   else {

@@ -2,6 +2,21 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE9-CampAndFirewood-045] - (2026-10-18)
+
+### Changed
+
+- **Life 9.5, a revision of Life 9.** The ladder is unchanged.
+- **Firewood comes from living plants.** There is no deadwood. Bushes hold 2 kg of sticks each and trees hold branches, both gathered by hand; thickets now hold wood as well as berries. A forager gathering wood clears a felled tree's crown it knows before taking from anything still growing.
+- **Trees come down whole.** The first log cut from a standing tree fells it, bringing 10 kg more branches down with its crown, and its other logs are cut from the trunk where it lies. A member finishes a felled tree before felling another. A stump grows back into a whole tree 60 days after it fell, replacing the log a tree regrew every 30 days.
+- **Huts stand on a ring round the fire.** The first ring holds 8 huts 7 m from the fire and the second 16 at 14 m, replacing Life 9's square spiral 3 m apart (`hutRingCm` replaces `hearthSpacingCm`).
+- **Warmth comes in four steps.** An hour asleep costs 60 kcal in a whole hut by a lit fire, 80 by the fire alone, 120 in a hut alone and 150 with neither (new `fireSleepKcalPerHour` and `hutSleepKcalPerHour`). In Life 9 a whole hut was as warm as the fire. A forager without a group now tends its own fire in its hut too.
+- **The observer** shows felled trees lying beside their stumps, trunks shortening as they are cut up and crowns shrinking as their branches are gathered; huts turned with their length towards the fire, long enough for their builder to sleep inside, feet to the flames; members' wood stacked beside their huts, and a fire of its own only for a forager without a group. The inspector shows a bush's sticks and a tree's state; the followed person's activity names sticks, branches, felling and its warmth.
+
+### Validation
+
+- New fingerprints for Life 9.5. The invariants replay every tree's fall and regrowth and check every sleeper's warmth; new unit tests cover felling, stumps, sticks, branches, rings, warmth, and the observer's trees and hut facing.
+
 ## [LIFE9-HutsAndAxes-044] - (2026-10-18)
 
 ### Added

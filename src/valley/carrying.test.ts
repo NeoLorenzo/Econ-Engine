@@ -54,7 +54,7 @@ describe('a load', () => {
 
   it('costs the same each second of walking, so each metre costs more', () => {
     const minute = { walk: 60, work: 0, stand: 0, sleep: 0 }
-    expect(minuteCost(config, minute, false)).toBe(60 * config.travelKcalPerHour)
+    expect(minuteCost(config, minute, null)).toBe(60 * config.travelKcalPerHour)
   })
 
   it('counts in what can be reached before dusk and when it must set out for home', () => {

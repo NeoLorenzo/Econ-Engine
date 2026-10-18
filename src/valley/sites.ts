@@ -8,11 +8,17 @@ import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
 /** Sites are numbered thickets first, in layout order, then stands, then outcrops. */
 export const siteCount = (config: ValleyConfig) => config.thicketCount + config.standCount + config.outcropCount
 
-/** What a site holds: berries in a thicket, deadwood in a stand, stones at an outcrop. */
+/** What kind a site is: a thicket of berries, a stand of trees, an outcrop of stones. */
 export type SiteKind = Good | 'stone'
 
 export const siteGood = (config: ValleyConfig, site: number): SiteKind =>
   site < config.thicketCount ? 'food' : site < config.thicketCount + config.standCount ? 'wood' : 'stone'
+
+/** Whether a site holds a good: berries in a thicket; wood in a stand, and in a thicket whose bushes hold sticks. */
+export const siteHolds = (config: ValleyConfig, site: number, good: Good) => {
+  const kind = siteGood(config, site)
+  return kind === good || (good === 'wood' && kind === 'food' && config.bushCapacityWood > 0)
+}
 
 export function siteCentre(config: ValleyConfig, layout: ValleyLayout, site: number): Point {
   if (site < config.thicketCount) return layout.thickets[site]!
@@ -98,7 +104,7 @@ export function chooseSite(
   let best: number | null = null
   let bestSq = Infinity
   for (let site = 0; site < siteCount(config); site += 1) {
-    if (good !== null && siteGood(config, site) !== good) continue
+    if (good !== null && !siteHolds(config, site, good)) continue
     if (!siteWanted(config, forager, site, minute, why)) continue
     const centre = siteCentre(config, layout, site)
     const sq = distanceSq(forager.x, forager.y, centre.x, centre.y)

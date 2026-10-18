@@ -354,7 +354,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 9 · huts and axes</span>
+        <span className="life-title">Life 9.5 · huts round the fire</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -616,8 +616,18 @@ export default function ValleyApp() {
             <dd className="num">
               {selected!.kind === 'bush'
                 ? `${plant.stock.toLocaleString('en-US')} of ${formatKcal(plant.capacity)}`
-                : `${plant.stock} of ${formatKg(plant.capacity)} of deadwood`}
+                : plant.treeState === 'standing'
+                  ? `${plant.stock} of ${formatKg(plant.capacity)} of branches`
+                  : `${formatKg(plant.stock)} of branches on the ground`}
             </dd>
+            {plant.sticks !== null && (
+              <>
+                <dt>Sticks</dt>
+                <dd className="num">
+                  {plant.sticks} of {formatKg(plant.sticksCapacity)}
+                </dd>
+              </>
+            )}
             <dt>{name} remembers</dt>
             <dd className="num">
               {plant.remembered === null
@@ -633,8 +643,22 @@ export default function ValleyApp() {
                 <dt>Logs to cut</dt>
                 <dd className="num">
                   {plant.logs} of {plant.logsCapacity}
-                  {plant.logs === 0 && ', a stump'}
+                  {plant.treeState === 'standing'
+                    ? ', standing'
+                    : plant.logs > 0
+                      ? ', lying where it fell'
+                      : `, ${plant.treeState === 'stump' ? 'a stump' : 'all cut'}`}
                 </dd>
+                {plant.regrowsInDays !== null && (
+                  <>
+                    <dt>Grows back</dt>
+                    <dd className="num">
+                      {plant.logs > 0
+                        ? 'once its logs are cut'
+                        : `in ${plant.regrowsInDays} day${plant.regrowsInDays === 1 ? '' : 's'}`}
+                    </dd>
+                  </>
+                )}
               </>
             )}
           </dl>
@@ -692,7 +716,10 @@ export default function ValleyApp() {
                 : `loses a log in ${hut.weathersInDays} day${hut.weathersInDays === 1 ? '' : 's'}`}
             </dd>
           </dl>
-          <p className="life-note">A whole hut keeps its builder warm at night even when the fire is out.</p>
+          <p className="life-note">
+            A whole hut keeps its builder a little warm at night when the fire is out; in its hut by the lit fire it
+            sleeps warmest.
+          </p>
         </section>
       )}
 
@@ -865,7 +892,7 @@ export default function ValleyApp() {
           <p className="life-note">
             {group.dissolved
               ? 'The group dissolved when only one of its members was left alive, and its flag came down.'
-              : `Its members sleep at their hearths around its flag${group.fire ? ', all warmed by its one fire,' : ''} and swap only with each other. ${group.joinedEver} have joined it. A numbered pin marks each member; click one to follow it.`}
+              : `Its members sleep in their huts on a ring round its flag${group.fire ? ', all warmed by its one fire,' : ''} and swap only with each other. ${group.joinedEver} have joined it. A numbered pin marks each member; click one to follow it.`}
           </p>
         </section>
       )}
@@ -963,21 +990,21 @@ export default function ValleyApp() {
           <p className="life-note">
             Running seed {setup.seed}: {setup.bandSize} foragers in a valley {config.valleySizeCm / 100} m across,{' '}
             {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
-            knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, and berries and deadwood up
+            knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, and berries and firewood up
             close. When their needs are met they explore ground they have never seen, then check the thickets and stands
             they have not checked for {formatHours(setup.exploreAfterHours)}. A load slows them down, so every metre
             costs more, and they take a full load home before anything else. Those without a group look for company: two
-            who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their
-            flag and swap wood for food only with each other, telling each other their terms.{' '}
-            {`Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs, cut from trees with an axe it makes from a stone and wood${setup.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${setup.craftPractice ? 'grows with practice' : 'stays fixed'}.`}{' '}
+            who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep on a ring
+            round their flag and swap wood for food only with each other, telling each other their terms.{' '}
+            {`Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs on the ring round the fire, cut from trees it fells with an axe it makes from a stone and wood${setup.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${setup.craftPractice ? 'grows with practice' : 'stays fixed'}. A hut keeps its sleeper a little warm, the fire more, and both together most.`}{' '}
             They are born with skills{' '}
             {setup.skillMinPercent === setup.skillMaxPercent
               ? `of ${setup.skillMinPercent}%`
               : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
             , which grow with practice over {setup.practiceDays} days from {setup.practiceMinPercent}% towards{' '}
-            {setup.practiceMaxPercent}%. They pick berries bush by bush and gather deadwood under the trees, bringing it
-            home in loads of {formatKg(setup.woodLoad)}. Each is coloured by what wood costs it, from{' '}
-            <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
+            {setup.practiceMaxPercent}%. They pick berries bush by bush and gather sticks from bushes and branches from
+            trees, bringing them home in loads of {formatKg(setup.woodLoad)}. Each is coloured by what wood costs it,
+            from <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
             group’s colour; each group’s base has a fire, a flag, coloured ground and a lettered badge. Ground the
             followed person has never seen is darkest, and a ring marks each thicket and stand it knows, bright if it

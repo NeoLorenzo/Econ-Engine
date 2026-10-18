@@ -134,7 +134,7 @@ describe('meeting', () => {
     const flag = state.groups[0]!.flag
     expect(state.foragers[0]!.hearth).toEqual(hearthAround(state.config, flag, 0))
     expect(state.foragers[1]!.hearth).toEqual(hearthAround(state.config, flag, 1))
-    expect(state.foragers[0]!.hearth).toEqual({ x: flag.x - 300, y: flag.y - 300 })
+    expect(state.foragers[0]!.hearth).toEqual({ x: flag.x - 494, y: flag.y - 494 })
     expect(state.groups[0]!.members).toEqual([0, 1])
   })
 
