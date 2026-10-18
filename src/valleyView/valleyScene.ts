@@ -15,6 +15,7 @@ import { livingMembers, placesPerSide } from '../valley/social'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
 import { hex, palette } from '../ui/theme'
+import { LOG_LENGTH, LOG_RADIUS, hutPlan, pieceLength } from './hutPlan'
 import {
   BERRIES_PER_BUSH,
   closeTilt,
@@ -76,6 +77,9 @@ const BUNDLE = 0xb07a45
 const DEAD = 0x6b6b66
 const SKIN = 0xc79a74
 const HUT_LOG = 0x7a5536
+/** Two more barks, so a hut's logs are not all one colour, and a log's sawn ends. */
+const HUT_LOG_SHADES = [HUT_LOG, 0x6e4c30, 0x84603d]
+const LOG_END = 0xc9a26b
 const ROCK = 0x8c877c
 const AXE_HEAD = 0x55524c
 /** Points along each swap's arc. */
@@ -137,8 +141,7 @@ const CROWN_CONES: [number, number, number][] = [
   [6.2, 2.4, 5.2],
   [8.8, 1.7, 4],
 ]
-/** A hut's length, long enough to lie in, and how far a sleeper's feet lie from its middle, towards the door. */
-const HUT_LENGTH = 2.7
+/** How far a sleeper's feet lie from its hut's middle, towards the door. */
 const SLEEPER_FEET = 0.95
 
 interface Figure {
@@ -167,7 +170,7 @@ interface Figure {
 /** A hut: an A-frame of logs, each shown once laid. */
 interface HutModel {
   group: Group
-  logs: Mesh[]
+  logs: Group[]
 }
 
 /** How each tree was last drawn, so only trees that change are redrawn. */
@@ -289,11 +292,25 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const bundleLogGeometry = new THREE.CylinderGeometry(0.045, 0.045, 0.75, 6)
   const bundleMaterial = new THREE.MeshStandardMaterial({ color: BUNDLE, roughness: 0.9, flatShading: true })
   const parcelGeometry = new THREE.DodecahedronGeometry(0.12, 0)
-  const hutLogGeometry = new THREE.CylinderGeometry(0.1, 0.1, HUT_LENGTH, 7)
-  hutLogGeometry.rotateZ(Math.PI / 2)
-  const hutLogMaterial = new THREE.MeshStandardMaterial({ color: HUT_LOG, roughness: 0.95, flatShading: true })
-  const shoulderLogGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 7)
-  shoulderLogGeometry.rotateZ(Math.PI / 2)
+  const logEndMaterial = new THREE.MeshStandardMaterial({ color: LOG_END, roughness: 0.9, flatShading: true })
+  const barkMaterials = HUT_LOG_SHADES.map(
+    (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.95, flatShading: true }),
+  )
+  const hutLogMaterial = barkMaterials[0]!
+  // Every hut is built to the same plan, so each piece's shape and place are worked out once.
+  const hutPieces = hutPlan().map((pieces) =>
+    pieces.map((piece) => {
+      const from = new THREE.Vector3(...piece.from)
+      const to = new THREE.Vector3(...piece.to)
+      return {
+        geometry: new THREE.CylinderGeometry(LOG_RADIUS, LOG_RADIUS, pieceLength(piece), 8),
+        position: from.clone().add(to).multiplyScalar(0.5),
+        quaternion: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.sub(from).normalize()),
+      }
+    }),
+  )
+  const shoulderLogGeometry = new THREE.CylinderGeometry(LOG_RADIUS, LOG_RADIUS, LOG_LENGTH, 8)
+  shoulderLogGeometry.rotateX(Math.PI / 2)
   const rockGeometry = new THREE.DodecahedronGeometry(0.28, 0)
   const rockMaterial = new THREE.MeshStandardMaterial({ color: ROCK, roughness: 1, flatShading: true })
   const axeHandleGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.55, 5)
@@ -526,10 +543,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     bundle.position.set(0, 0.45, -0.24)
     const parcel = new THREE.Mesh(parcelGeometry, bundleMaterial)
     parcel.position.set(0.24, 0.05, 0.05)
-    // A log across the shoulders, and an axe held in the right hand.
-    const shoulderLog = new THREE.Mesh(shoulderLogGeometry, hutLogMaterial)
-    shoulderLog.position.set(0, 0.68, -0.08)
-    shoulderLog.rotation.y = 0.25
+    // A log on one shoulder, pointing the way it walks, and an axe held in the right hand.
+    const shoulderLog = new THREE.Mesh(shoulderLogGeometry, [hutLogMaterial, logEndMaterial, logEndMaterial])
+    shoulderLog.position.set(0.12, 0.62, 0.1)
+    shoulderLog.rotation.x = -0.12
     shoulderLog.castShadow = true
     const axe = new THREE.Group()
     const handle = new THREE.Mesh(axeHandleGeometry, bundleMaterial)
@@ -570,33 +587,32 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   /**
-   * A hut at its builder's sleeping spot: an A-frame about 1.6 m tall and 2.7 m long, long enough to lie in, its logs
-   * laid in rows up both sides in the order they were laid, the first at the foot of the left side. Its length runs
-   * towards the group's fire, `toward`, so its open end faces the flames; a hut left behind keeps the way it faced.
+   * A hut at its builder's sleeping spot, built to the plan: an A-frame 2.4 m long, about 1.5 m wide and 1.2 m tall, its
+   * logs shown in the order they were laid. Its open end faces the group's fire, `toward`; a hut left behind keeps the
+   * way it faced.
    */
-  function makeHut(
-    id: number,
-    x: number,
-    z: number,
-    logCount: number,
-    toward: { x: number; z: number } | null,
-  ): HutModel {
+  function makeHut(id: number, x: number, z: number, toward: { x: number; z: number } | null): HutModel {
     const group = new THREE.Group()
-    const hutLogs = Array.from({ length: logCount }, (_, index) => {
-      const side = index % 2 === 0 ? -1 : 1
-      const row = Math.floor(index / 2)
-      const rows = Math.max(1, Math.ceil(logCount / 2))
-      const log = new THREE.Mesh(hutLogGeometry, hutLogMaterial)
-      const rise = row / rows
-      log.position.set(0, 0.1 + rise * 1.5, side * (0.95 - rise * 0.85))
-      log.castShadow = true
-      log.receiveShadow = true
-      log.userData.hutId = id
+    const hutLogs = hutPieces.map((pieces, index) => {
+      const log = new THREE.Group()
+      for (const piece of pieces) {
+        const mesh = new THREE.Mesh(piece.geometry, [
+          barkMaterials[index % barkMaterials.length]!,
+          logEndMaterial,
+          logEndMaterial,
+        ])
+        mesh.position.copy(piece.position)
+        mesh.quaternion.copy(piece.quaternion)
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        mesh.userData.hutId = id
+        log.add(mesh)
+      }
       group.add(log)
       return log
     })
     group.position.set(x, 0, z)
-    // The logs run along the hut's local x, which turns to point at the fire.
+    // The hut's length runs along its local x, which turns to point at the fire.
     if (toward) group.rotation.y = Math.atan2(-toward.z, toward.x)
     hutGroup.add(group)
     return { group, logs: hutLogs }
@@ -1246,12 +1262,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           hut.id,
           spot.x,
           spot.z,
-          config.hutLogs,
           home ? towardFire(state, hut.builderId, hut.x, hut.y) : null,
         )
       }
-      const shown = displayedHutLogs(pair, hut.id)
-      for (const [index, log] of hutModels[hut.id]!.logs.entries()) log.visible = index < shown
+      // The plan's logs stand for the hut's share of its whole, should `hutLogs` differ from the plan.
+      const logs = hutModels[hut.id]!.logs
+      const shown = Math.floor((displayedHutLogs(pair, hut.id) * logs.length) / config.hutLogs)
+      for (const [index, log] of logs.entries()) log.visible = index < shown
     }
 
     // Flags stand while their groups do; a flag is made the first time its group is drawn.
@@ -1704,8 +1721,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         clothGeometry,
         discGeometry,
         sashGeometry,
-        hutLogGeometry,
-        hutLogMaterial,
+        ...hutPieces.flat().map((piece) => piece.geometry),
+        ...barkMaterials,
+        logEndMaterial,
         shoulderLogGeometry,
         rockGeometry,
         rockMaterial,

@@ -2,6 +2,17 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE9-LogHuts-046] - (2026-10-18)
+
+### Changed
+
+- **Huts are built like real log huts.** A hut is a small A-frame for one sleeper, 2.4 m long, about 1.5 m wide and 1.2 m tall, its open end towards the fire: two A's of a log each, 9 wall logs a side each resting on the one below, a ridge log, and two logs cut into posts closing the back. Every log is drawn as a 20 kg pole, 14 cm thick and 2.4 m long, touching the ground or the logs laid before it, with no gaps and nothing in the air. The log carried home rides on one shoulder, pointing the way its carrier walks.
+- **A whole hut takes 23 logs** instead of 10 (`hutLogs`).
+
+### Validation
+
+- New fingerprints for the 23-log hut; unit tests for the hut plan check every log's pieces fit in one log and every piece rests on the ground or on one laid before it.
+
 ## [LIFE9-CampAndFirewood-045] - (2026-10-18)
 
 ### Changed

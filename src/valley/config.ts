@@ -7,7 +7,7 @@ import type { Point, ValleyConfig } from './types'
  * loads of 30 kg, swap wood for food and get better at what they practise. They start scattered and form groups when
  * they meet. By day they see across the valley, check the sites they know when idle, walk more slowly under a load,
  * and take a full load home. Each group keeps one fire at its flag, which members feed, with their huts on a ring round
- * it. Every member wants a hut of 10 logs, cut from felled trees with an axe it makes from a stone and a kilogram of
+ * it. Every member wants a hut of 23 logs, cut from felled trees with an axe it makes from a stone and a kilogram of
  * wood, or buys from another member for food. A night by the fire in a whole hut is the warmest.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
@@ -84,7 +84,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   treeRegrowthDays: 60,
   logKg: 20,
   logChopMinutes: 30,
-  hutLogs: 10,
+  hutLogs: 23,
   hutLogDays: 10,
   axeHours: 4,
   axeLogs: 40,

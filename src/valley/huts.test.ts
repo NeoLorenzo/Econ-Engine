@@ -289,10 +289,11 @@ describe('huts', () => {
     giveHut(state, state.foragers[0]!)
     giveHut(state, state.foragers[3]!)
     const after = stepValley(state)
-    expect(after.huts[0]!.logs).toBe(9)
-    expect(after.huts[1]!.logs).toBe(10)
+    const whole = state.config.hutLogs
+    expect(after.huts[0]!.logs).toBe(whole - 1)
+    expect(after.huts[1]!.logs).toBe(whole)
     expect(after.totals.rottedLogs).toBe(1)
-    expect(after.lastHutEvents).toEqual([{ kind: 'weather', minute: 10 * 1_440, hutId: 0, logsAfter: 9 }])
+    expect(after.lastHutEvents).toEqual([{ kind: 'weather', minute: 10 * 1_440, hutId: 0, logsAfter: whole - 1 }])
   })
 
   it('leaves a hut behind when its builder’s hearth moves', () => {

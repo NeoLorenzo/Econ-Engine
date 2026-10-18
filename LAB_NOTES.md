@@ -6,6 +6,25 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE9-LogHuts-046] - (2026-10-18)
+
+### Problem
+
+The owner found the huts unrealistic: gaps between the logs, and logs floating in the air. Each of the 10 logs was drawn 20 cm thick and 2.7 m long, about 70 kg of wood for a 20 kg log, in rows spaced further apart than the logs were thick.
+
+### Decisions
+
+- **Draw a log as what 20 kg of wood is:** a dry pole 14 cm thick and 2.4 m long.
+- **One plan, built as a person would build it.** A small A-frame for one sleeper: two A's first, each a log cut in two, legs dug in and tied at the top; then wall logs along the outside of both A's, from the ground up on alternate sides, each resting on the one below; a ridge log in the groove at the top; and two logs cut into posts against the back A. The front stays open, towards the fire. At every stage each piece rests on the ground or on pieces already laid. The owner approved it from a three.js preview before it went into the game.
+- **The hut's size sets the logs it needs: 23**, against 10. At 3 logs a tree that is about 8 felled trees a hut, against 144 trees in the valley.
+- The plan is fixed, so a configuration with another `hutLogs` shows the plan's share of a whole hut.
+
+### What the implementation showed
+
+- On the canonical seed, the first member's hut was whole by day 7, drawn in the browser as planned, its sleeper inside.
+
+This is an observation from a single run, not an experiment.
+
 ## [LIFE9-CampAndFirewood-045] - (2026-10-18)
 
 ### Problem
