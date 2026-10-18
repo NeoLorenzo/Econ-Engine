@@ -1,11 +1,12 @@
 import type { ValleyConfig } from './types'
 
 /**
- * The canonical Life 8 valley: 600 m square, with 32 thickets of 60 bushes and 8 stands of 8 trees, and a band of 8
- * born alike, who bring firewood home in loads of 30 kg, swap wood for food and get better at what they practise.
- * They start scattered and form groups when they meet. By day they see across the valley, check the thickets and
- * stands they know when idle, walk more slowly under a load, and take a full load home. Each group keeps one fire at
- * its flag, which warms every member and which members feed.
+ * The canonical Life 9 valley: 600 m square, with 32 thickets of 60 bushes, 12 stands of 12 trees and 4 outcrops of
+ * stones, and a band of 8 born alike, who bring firewood home in loads of 30 kg, swap wood for food and get better at
+ * what they practise. They start scattered and form groups when they meet. By day they see across the valley, check
+ * the sites they know when idle, walk more slowly under a load, and take a full load home. Each group keeps one fire at
+ * its flag, which warms every member and which members feed. Every member wants a hut of 10 logs, cut with an axe it
+ * makes from a stone and a kilogram of wood, or buys from another member for food.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
@@ -17,8 +18,8 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   bushCapacityKcal: 400,
   initialBushKcal: 400,
   bushRegrowthKcalPerDay: 20,
-  standCount: 8,
-  treesPerStand: 8,
+  standCount: 12,
+  treesPerStand: 12,
   standRadiusCm: 1_500,
   treeSpacingCm: 400,
   treeCapacityWood: 25,
@@ -65,13 +66,28 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   sightRadiusCm: 100_000,
   bodyKg: 60,
   berryKcalPerKg: 500,
-  sharedFire: true,
   campfireWoodPerHour: 1,
-  campfirePerMember: false,
-  feedSpare: true,
+  outcropCount: 4,
+  stonesPerOutcrop: 12,
+  outcropRadiusCm: 1_000,
+  stoneSpacingCm: 300,
+  stonesPerSpot: 5,
+  logsPerTree: 3,
+  logRegrowthDays: 30,
+  logKg: 20,
+  logChopMinutes: 30,
+  hutLogs: 10,
+  hutLogDays: 10,
+  axeHours: 4,
+  axeLogs: 40,
+  axeWood: 1,
+  craftSkillMinPercent: 100,
+  craftSkillMaxPercent: 100,
+  axeTrade: true,
+  craftPractice: true,
 }
 
-const BOOLEAN_KEYS = new Set(['scattered', 'sharedFire', 'campfirePerMember', 'feedSpare'])
+const BOOLEAN_KEYS = new Set(['scattered', 'axeTrade', 'craftPractice'])
 
 /** The points of the square spiral around the camp: the 8 of the first ring, then the 16 of the second, and so on. */
 export function spiralOffsets(count: number) {
@@ -140,6 +156,15 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'bodyKg',
     'berryKcalPerKg',
     'campfireWoodPerHour',
+    'outcropRadiusCm',
+    'stoneSpacingCm',
+    'logRegrowthDays',
+    'logKg',
+    'logChopMinutes',
+    'hutLogs',
+    'hutLogDays',
+    'axeHours',
+    'axeLogs',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
@@ -155,6 +180,11 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'shelfLifeHours',
     'woodLoad',
     'termsMemoryHours',
+    'outcropCount',
+    'stonesPerOutcrop',
+    'stonesPerSpot',
+    'logsPerTree',
+    'axeWood',
   ]
   for (const key of notNegative) if ((config[key] as number) < 0) errors.push(`${key} must not be negative`)
   if (errors.length) return errors
@@ -175,12 +205,19 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     errors.push('initialReserveKcal must be between 1 and reserveMaxKcal')
   if (config.coldSleepKcalPerHour < config.sleepKcalPerHour)
     errors.push('coldSleepKcalPerHour must be at least sleepKcalPerHour')
+  // An axe costs the extra energy of working instead of resting, which must be something.
+  if (config.forageCostKcalPerHour <= config.restKcalPerHour)
+    errors.push('forageCostKcalPerHour must be more than restKcalPerHour')
+  if (Math.floor((config.walkCmPerSecond * config.bodyKg) / (config.bodyKg + config.logKg)) < 1)
+    errors.push('A forager must be able to carry a log at 1 cm a second')
   if (config.startPracticeHoursPerDay < 0 || config.startPracticeHoursPerDay > 24)
     errors.push('startPracticeHoursPerDay must be between 0 and 24')
   const practiceRangeOk = config.practiceMinPercent >= 1 && config.practiceMinPercent <= config.practiceMaxPercent
   if (!practiceRangeOk) errors.push('Practice must satisfy 1 ≤ practiceMinPercent ≤ practiceMaxPercent')
   const skillRangeOk = config.skillMinPercent >= 1 && config.skillMinPercent <= config.skillMaxPercent
   if (!skillRangeOk) errors.push('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
+  if (config.craftSkillMinPercent < 1 || config.craftSkillMinPercent > config.craftSkillMaxPercent)
+    errors.push('Craft must satisfy 1 ≤ craftSkillMinPercent ≤ craftSkillMaxPercent')
   if (practiceRangeOk && skillRangeOk) {
     const low = config.practiceMinPercent
     const high = config.practiceMaxPercent
@@ -198,7 +235,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   if (!config.scattered) {
     const [outerX, outerY] = spiralOffsets(config.bandSize).at(-1)!
     const outer = Math.max(Math.abs(outerX), Math.abs(outerY)) * config.hearthSpacingCm
-    const clear = config.campClearingCm - Math.max(config.thicketRadiusCm, config.standRadiusCm)
+    const clear = config.campClearingCm - Math.max(config.thicketRadiusCm, config.standRadiusCm, config.outcropRadiusCm)
     if (2 * outer * outer > clear * clear) errors.push('The band’s hearths must fit inside the camp’s clearing')
     if (config.bandSize < 2) errors.push('A band that starts as one group needs at least two foragers')
   }
@@ -208,8 +245,10 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   if (config.sightRadiusCm < config.perceptionRadiusCm)
     errors.push('Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm')
   // A site is checked from within perceptionRadiusCm − its radius of its centre, which must leave room to stand.
-  if (config.perceptionRadiusCm <= Math.max(config.thicketRadiusCm, config.standRadiusCm))
-    errors.push('A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm and standRadiusCm')
+  if (config.perceptionRadiusCm <= Math.max(config.thicketRadiusCm, config.standRadiusCm, config.outcropRadiusCm))
+    errors.push(
+      'A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm, standRadiusCm and outcropRadiusCm',
+    )
   if (2 * config.siteMarginCm >= config.valleySizeCm) errors.push('siteMarginCm must leave room for sites')
   return errors
 }

@@ -85,7 +85,7 @@ Firms, posted-price markets, employment and payroll, Government and fiscal trans
 
 Each step adds one thing, answers one question that could come out either way, and is validated before the next begins (design rule 12). Each will get its own specification.
 
-Steps 0 to 7 built the valley one mechanism at a time: a lone forager, a band, sharing, wood and skill, practice, real scale, groups, and sight and loads. Life 8 holds everything they added. Their specifications, code and experiments were removed in update 039, so that the repository holds only the current step; they remain in git history, the changelog and the lab notes.
+Steps 0 to 8 built the valley one mechanism at a time: a lone forager, a band, sharing, wood and skill, practice, real scale, groups, sight and loads, and a shared fire. Life 9 holds everything they added. Their specifications, code and experiments were removed in update 039, so that the repository holds only the current step; they remain in git history, the changelog and the lab notes.
 
 | Step | Adds | Question | Validation |
 | --- | --- | --- | --- |
@@ -120,17 +120,11 @@ The core ticks in minutes, decides by priority rules, lives in `src/valley/`, an
 - Whether the project is renamed, for example to Life Engine, once the merged core is the main line of work.
 - Which, if any, of Life Engine's low-poly art (trees, rocks, human models) is converted to glTF for the three.js world.
 
-## Step 8: settled
+## Step 9: settled
 
-The [step 8 specification](LIFE8_SPEC.md) settled step 8's design. The owner set its rules: one fire at each group's flag replaces its members' own; a member adds wood if it has spare wood or the fire is low; a fire that dies must be relit, at no cost; members still never change group. The owner also asked to see what each member contributes, and to see a selected group's members on the map. Its other choices:
+The [step 9 specification](LIFE9_SPEC.md) settled step 9. The owner set its rules: every member has an inherent drive for a hut of its own, a basic wooden hut; tools are only instrumental, wanted because cutting logs needs an axe; axes are made with a skill that grows with practice, so the skilled make them faster and better, and better axes cut faster and last longer; axes wear out; and members may trade them. The owner also asked for stone outcrops as a resource and more trees. Its other choices: huts weather a log every 10 days, so the need for axes never ends; a whole hut keeps its sleeper warm with the fire out; an axe is priced at the extra energy of making it; and a maker can promise an axe to a member who asks.
 
-- **A fire is a fire:** it burns a kilogram an hour however many sleep around it, which the owner chose over a fire that burns for each member.
-- **Burning before anyone acts:** at the start of every night hour each fire burns its hour or goes out, and relights at the first night hour it holds an hour's wood.
-- **Spare and low:** spare is wood above a member's two nights' target; low is less than the rest of the night needs, or a night by day. Members keep Life 7's wood need, so their stock is their reserve for the fire.
-- **Its counterfactual:** one switch, `sharedFire`, gives every forager its own fire again.
-- **The observer:** pins over a selected group's members that keep their size at every zoom and wait at the edge of the clear view for members out of sight; framing within the part of the view the cards leave clear; and a table of what each member gives.
-
-The answer to the step's question is that everyone feeds the fire, roughly in proportion to what they gather, because a member's wood goes nowhere else: no member gives less than a quarter of an even share, and the leading giver about 1.1 times one. One fire per group burns a third of the wood, 4.0 kg a forager-day against 11.7, but trade in wood almost disappears, because spare wood goes into the fire as soon as its gatherer is home. Members who give only to a low fire keep their spare wood and buy 15.4% of what they burn. The [lab notes](../LAB_NOTES.md) record the open questions this leaves.
+From step 9 on, the owner set the Life core in a feature-building phase: experiments wait for a later, stable version, and each step's specification lists its questions for later.
 
 ## References
 

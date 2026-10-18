@@ -4,7 +4,7 @@
 
 The repository holds two simulation cores:
 
-- **The Life core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is built bottom-up, one step at a time, following the ladder in [docs/MERGE.md](docs/MERGE.md#the-ladder). Only the current Life step exists: its specification describes the whole simulation, and only its experiments run. Earlier steps live in git history, the changelog and the lab notes.
+- **The Life core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is built bottom-up, one step at a time, following the ladder in [docs/MERGE.md](docs/MERGE.md#the-ladder). Only the current Life step exists: its specification describes the whole simulation. Earlier steps live in git history, the changelog and the lab notes.
 - **The MVP9 core** (`src/sim/`, observer in `src/App.tsx` and `src/ui/`) is frozen as a reference. Do not change it unless explicitly asked; any change must keep its canonical trajectory bit-for-bit.
 
 Before starting Life work, read:
@@ -19,35 +19,34 @@ Before starting Life work, read:
 
 The owner directs the project but does not write code. Explain choices in plain language with a recommendation, and ask only for decisions that are genuinely theirs.
 
-1. **Spec first.** Write `docs/LIFE<n>_SPEC.md`, headed `[LIFE<n>-<Name>-<NNN>]` and modelled on the current spec. It describes the whole simulation, not only what changes, and replaces the current spec. It covers:
-   - a question that could come out either way;
-   - design decisions with their reasons;
+The Life core is in a feature-building phase: get features working, and leave experiments for a later, stable version of the engine. Do not run throwaway prototypes, multi-seed sweeps or experiment tests unless the owner asks for them.
+
+1. **Spec first.** Write a short `docs/LIFE<n>_SPEC.md`, headed `[LIFE<n>-<Name>-<NNN>]` and modelled on the current spec. It describes the whole simulation, not only what changes, and replaces the current spec. It covers:
+   - the step's question, and its design decisions with their reasons;
    - the order of phases in a tick, defaults and configuration validation;
-   - invariants, theory, and experiments with expected outcomes;
-   - the observer, the code layout and the tests;
-   - what the step leaves out.
-2. **Check the predictions before presenting the spec.** Run a quick throwaway prototype in the scratchpad, not in the repository, and correct the spec wherever the prototype disagrees with it.
-3. **Get the owner's approval** of the spec before implementing it.
-4. **Implement.**
+   - invariants and the observer;
+   - the code layout and the tests;
+   - questions left for later experiments, and what the step leaves out.
+2. **Get the owner's approval** of the spec before implementing it.
+3. **Implement.**
    - The step function is pure and deterministic.
    - Quantities are integers, and invariants are checked every tick.
    - Every random draw comes from a named, derived stream.
-   - Each experiment is also a test.
    - The observer only interpolates between real states.
-   - Remove the previous step's experiments and tests, and any switch whose only purpose was to recreate an earlier step; keep a switch only when the new step's own experiments use it.
+   - Add a few fast unit tests for the new rules and for the checker catching broken records; no experiment tests.
+   - Remove any switch whose only purpose was to recreate an earlier step.
    - Before changing the engine, check `fingerprints.test.ts` passes; afterwards, record new fingerprints for the new step. A refactor or speed-up must leave them unchanged.
-   - Keep each experiment test file to about two sets of eight runs, splitting seeds across files where needed, and list any file that takes more than about ten seconds in `TEST_SECONDS` in `vite.config.ts`, so CI deals the files evenly across its parallel jobs.
-5. **Check it in the browser.**
+4. **Check it in the browser.**
    - `.claude/launch.json` starts the dev server on port 5180.
-   - A hidden preview pane does not animate, so use the Step button and screenshots.
-   - Check the 375px layout and the console.
-6. **Document it.**
+   - A hidden preview pane does not animate: show the pane, or use the Step button and screenshots.
+   - A quick look at the new feature and the console is enough.
+5. **Document it, briefly.**
    - Add changelog and lab-notes entries, newest first, with the same ID.
    - Update the Life sections of the architecture and validation docs, and the README if anything user-visible changed.
    - Correct the spec wherever implementation proved it wrong.
 
    Update numbers (`NNN`) are global and sequential across the changelog and lab notes, one base number per commit; the last used is in the newest changelog entry.
-7. **Git.** Work on a branch, never on `main`. Pull requests are squash-merged. Never add Claude attribution, such as `Co-Authored-By` trailers or "Generated with" lines, to commits or pull requests.
+6. **Git.** Work on a branch, never on `main`. Pull requests are squash-merged. Never add Claude attribution, such as `Co-Authored-By` trailers or "Generated with" lines, to commits or pull requests.
 
 ## Validation
 

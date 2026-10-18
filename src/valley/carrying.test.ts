@@ -37,7 +37,7 @@ describe('a load', () => {
     forager.tripWood = 12
     forager.wood = 20
     forager.carried = [{ kcal: 1_200, harvestTick: TEN_AM }]
-    expect(loadOf(forager)).toEqual({ wood: 12, berriesKcal: 1_200 })
+    expect(loadOf(forager)).toEqual({ wood: 12, berriesKcal: 1_200, log: 0 })
     expect(loadKg(config, 12, 1_200)).toBe(14)
     forager.wood = 5
     expect(loadOf(forager).wood).toBe(5)

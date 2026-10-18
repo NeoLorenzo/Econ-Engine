@@ -23,15 +23,16 @@ export const minuteOfWork = (rate: number) => Math.ceil(rate / 60)
 
 export const atHearth = (forager: Forager) => forager.x === forager.hearth.x && forager.y === forager.hearth.y
 
-/** What a forager carries: the wood of its trip, of which it can hold no more than it has, and its berries. */
+/** What a forager carries: the wood of its trip, of which it can hold no more than it has, its berries and its log. */
 export const loadOf = (forager: Forager) => ({
   wood: Math.min(forager.tripWood, forager.wood),
   berriesKcal: carriedKcal(forager.carried),
+  log: forager.log,
 })
 
-/** A load in whole kilograms: its wood, and its berries at `berryKcalPerKg`, rounded down. */
-export const loadKg = (config: ValleyConfig, wood: number, berriesKcal: number) =>
-  wood + Math.floor(berriesKcal / config.berryKcalPerKg)
+/** A load in whole kilograms: its wood, its berries at `berryKcalPerKg`, rounded down, and its logs at `logKg`. */
+export const loadKg = (config: ValleyConfig, wood: number, berriesKcal: number, logs = 0) =>
+  wood + Math.floor(berriesKcal / config.berryKcalPerKg) + logs * config.logKg
 
 /**
  * Walking speed under a load of `kg`, in centimetres a second: `floor(walkCmPerSecond · bodyKg / (bodyKg + kg))`,
@@ -44,7 +45,7 @@ export const speedForLoad = (config: ValleyConfig, kg: number) =>
 /** A forager's walking speed for what it carries now. */
 export function walkSpeed(config: ValleyConfig, forager: Forager) {
   const load = loadOf(forager)
-  return speedForLoad(config, loadKg(config, load.wood, load.berriesKcal))
+  return speedForLoad(config, loadKg(config, load.wood, load.berriesKcal, load.log))
 }
 
 /** Hunger with hysteresis: hungry below `hungryBelowKcal`, until satiated at `satiatedAtKcal`. */
@@ -101,6 +102,34 @@ export function observe(memory: PlantMemory, view: Int32Array, stocks: Int32Arra
     memory.stock[id] = stocks[id]!
     memory.seen[id] = minute
   }
+}
+
+/**
+ * Records the stock of everything of one kind within `radius` of a point, and the minute: the logs on trees and the
+ * stones on stone spots, which a forager sees as far as its long sight. A radius that reaches every corner of the
+ * valley sees everything.
+ */
+export function observeFar(
+  config: ValleyConfig,
+  memory: PlantMemory,
+  index: PlantIndex,
+  plants: Plants,
+  stocks: Int32Array,
+  x: number,
+  y: number,
+  radius: number,
+  minute: number,
+) {
+  const far = Math.max(x, config.valleySizeCm - x) ** 2 + Math.max(y, config.valleySizeCm - y) ** 2
+  if (radius * radius >= far) {
+    memory.stock.set(stocks)
+    memory.seen.fill(minute)
+    return
+  }
+  forEachPlantWithin(index, plants, x, y, radius, (id) => {
+    memory.stock[id] = stocks[id]!
+    memory.seen[id] = minute
+  })
 }
 
 export type Work = { good: Good; forTrade: boolean; trip: Forager['trip'] } | 'wait' | null

@@ -94,14 +94,34 @@ export interface ValleyConfig {
   bodyKg: number
   /** Carried berries weigh a kilogram for every this many kilocalories. */
   berryKcalPerKg: number
-  /** Each group keeps one fire at its flag, which warms its members and replaces their own fires. */
-  sharedFire: boolean
   /** Wood a group's fire burns in a night hour. */
   campfireWoodPerHour: number
-  /** A group's fire burns `campfireWoodPerHour` for each living member, rather than once. */
-  campfirePerMember: boolean
-  /** A member at its hearth puts its spare wood into the fire, as well as wood from its stock when the fire is low. */
-  feedSpare: boolean
+  /** Outcrops, a third kind of site, each with stone spots holding stones that never come back. */
+  outcropCount: number
+  stonesPerOutcrop: number
+  outcropRadiusCm: number
+  stoneSpacingCm: number
+  stonesPerSpot: number
+  /** Logs a standing tree holds, apart from its deadwood; a tree short of logs regrows one every this many days. */
+  logsPerTree: number
+  logRegrowthDays: number
+  /** A log's weight, carried one at a time, and the minutes it takes to cut one with an axe of quality 100. */
+  logKg: number
+  logChopMinutes: number
+  /** A hut is whole with this many logs, and loses one every `hutLogDays` days. */
+  hutLogs: number
+  hutLogDays: number
+  /** Making an axe takes `axeHours` at craft 100% and uses `axeWood` kg; an axe of quality 100 lasts `axeLogs` logs. */
+  axeHours: number
+  axeLogs: number
+  axeWood: number
+  /** Born craft skills are drawn from this range, in percent. */
+  craftSkillMinPercent: number
+  craftSkillMaxPercent: number
+  /** Members may ask for, promise and sell axes. */
+  axeTrade: boolean
+  /** Craft grows with practice; off, practice at making axes is fixed at 100%. */
+  craftPractice: boolean
 }
 
 export interface Point {
@@ -131,12 +151,16 @@ export interface ValleyLayout {
   camp: Point
   thickets: Point[]
   stands: Point[]
+  outcrops: Point[]
   bushes: Plants
   trees: Plants
+  /** Stone spots, by ID, each belonging to an outcrop. */
+  stones: Plants
   /** Each forager's starting hearth, by forager ID. A forager's hearth moves when it joins a group. */
   hearths: Point[]
   bushIndex: PlantIndex
   treeIndex: PlantIndex
+  stoneIndex: PlantIndex
 }
 
 export type Good = 'food' | 'wood'
@@ -149,7 +173,7 @@ export interface Group {
   dissolvedMinute: number | null
   /** Every forager that ever joined, in order of joining; slot `i` of the spiral around the flag went to `members[i]`. */
   members: number[]
-  /** With `sharedFire`: the wood in its fire, and whether the fire is lit this hour. */
+  /** The wood in its fire, and whether the fire is lit this hour. */
   fireWood: number
   fireLit: boolean
   /** The wood each member has put into the fire, in the order of `members`. */
@@ -168,12 +192,63 @@ export interface HeardTerms {
 export interface TaskSeconds {
   forage: number
   gather: number
+  /** Making axes. */
+  make: number
 }
 
 /** Seconds at each task on each of a forager's last `practiceDays` days, oldest first. */
 export interface PracticeLog {
   forage: number[]
   gather: number[]
+  make: number[]
+}
+
+/** An axe: its quality, the logs it has left to cut, who made it and when. */
+export interface Axe {
+  id: number
+  quality: number
+  logsLeft: number
+  makerId: number
+  madeMinute: number
+}
+
+/** An axe being made: the seconds worked and needed, and whether it is for sale. Its stone and wood are in it. */
+export interface AxeMaking {
+  worked: number
+  needed: number
+  forSale: boolean
+}
+
+/** The best asking price for an axe a forager has heard: from whom, for what quality, whether it is made, and when. */
+export interface HeardAsk {
+  sellerId: number
+  price: number
+  quality: number
+  ready: boolean
+  minute: number
+}
+
+/** A hut, standing where it was begun, with the logs it holds. */
+export interface Hut {
+  id: number
+  builderId: number
+  x: number
+  y: number
+  logs: number
+  begunMinute: number
+  /** The minute its builder's hearth moved away from it, or null. */
+  abandonedMinute: number | null
+}
+
+export interface AxeTotals {
+  madeOwn: number
+  madeForSale: number
+  sold: number
+  bought: number
+  wornOut: number
+  kcalReceived: number
+  kcalPaid: number
+  logsCut: number
 }
 
 export interface TradeTrip {
@@ -213,9 +288,30 @@ export interface Forager {
   targetTreeId: number | null
   bushMemory: PlantMemory
   treeMemory: PlantMemory
+  /** The logs on each tree and the stones on each stone spot, as it last saw them from afar. */
+  logMemory: PlantMemory
+  stoneMemory: PlantMemory
   /** Born skills, in percent. */
   foragingSkill: number
   woodSkill: number
+  craftSkill: number
+  /** Its craft for the day, in percent: born craft skill times practice. */
+  craft: number
+  /** Whether it carries a log, and the stones it holds. */
+  log: number
+  stone: number
+  /** Its hut, by ID, while it stands at its hearth; null if it has none. */
+  hutId: number | null
+  axe: Axe | null
+  spareAxe: Axe | null
+  making: AxeMaking | null
+  /** The part of a log it has cut, in seconds times quality. */
+  chopRemainder: number
+  promised: boolean
+  heardAsk: HeardAsk | null
+  axeTotals: AxeTotals
+  /** Minutes asleep in its whole hut. */
+  hutSleepMinutes: number
   /** Hourly rates for the day. It knows them. */
   forageRate: number
   woodRate: number
@@ -249,13 +345,16 @@ export interface Forager {
   knownFlags: number[]
   /** The place it is walking to explore or search, if any. */
   exploreTarget: number | null
-  /** For each site, thickets then stands, 1 if it has spotted it. */
+  /** For each site, thickets, stands then outcrops, 1 if it has spotted it. */
   siteKnown: Uint8Array
   /** For each site, the last minute it stood close enough to see every plant in it, or −1 if never. */
   siteChecked: Int32Array
 }
 
-export type ForagerAction = 'sleep' | 'rest' | 'walk' | 'forage' | 'gather'
+export type ForagerAction = 'sleep' | 'rest' | 'walk' | 'forage' | 'gather' | 'cut' | 'make'
+
+/** Work for a hut: cutting a log, picking up a stone, or making an axe. */
+export type HutTask = 'cut' | 'stone' | 'make'
 
 export type ActionReason =
   | 'going home'
@@ -275,6 +374,18 @@ export type ActionReason =
   | 'searching'
   | 'checking'
   | 'taking a load home'
+  | 'taking a log home'
+  | 'making an axe'
+  | 'going home to make an axe'
+  | 'cutting a log'
+  | 'seeking a tree'
+  | 'waiting for an axe being made'
+  | 'going home to wait for an axe'
+  | 'picking food to buy an axe'
+  | 'taking food home to buy an axe'
+  | 'waiting to buy an axe'
+  | 'fetching a stone'
+  | 'picking up a stone'
 
 /** One forager's minute. Its seconds add up to 60. */
 export interface ActionEvent {
@@ -322,7 +433,94 @@ export interface ActionEvent {
   speedCmPerSecond: number
   /** The group whose fire it slept by, if it slept as a member; null if it tended its own fire or did not sleep. */
   fireGroupId: number | null
+  /** Its log at the start of its action, which slows it at `logKg`. */
+  loadLog: number
+  /** Work for its hut this minute, and the tree or stone spot it worked or walked towards. */
+  task: HutTask | null
+  treeId: number | null
+  stoneId: number | null
+  /** A log it cut, a stone it picked up, and a log it laid in its hut this minute. */
+  cutLog: boolean
+  tookStone: boolean
+  laidLog: boolean
+  /** Asleep in its whole hut. */
+  inHut: boolean
 }
+
+/** A log cut from a tree. */
+export interface CutEvent {
+  kind: 'cut'
+  minute: number
+  foragerId: number
+  treeId: number
+  axeId: number
+  quality: number
+  axeLogsLeft: number
+  treeLogsAfter: number
+}
+
+/** An axe finished. */
+export interface MadeEvent {
+  kind: 'made'
+  minute: number
+  foragerId: number
+  axe: Axe
+  craft: number
+  forSale: boolean
+}
+
+/** An axe worn out and thrown away. */
+export interface WornEvent {
+  kind: 'worn'
+  minute: number
+  foragerId: number
+  axeId: number
+  makerId: number
+}
+
+/** A maker promised to make an axe for sale to a member that asked for one. */
+export interface PromiseEvent {
+  kind: 'promise'
+  minute: number
+  promiserId: number
+  askerId: number
+  ask: number
+  quality: number
+}
+
+/** An axe sold for food. */
+export interface SaleEvent {
+  kind: 'sale'
+  minute: number
+  sellerId: number
+  buyerId: number
+  axe: Axe
+  price: number
+  /** The seller's ask and the axe's worth to the buyer, between which the price lies. */
+  ask: number
+  worth: number
+}
+
+export type AxeEvent = CutEvent | MadeEvent | WornEvent | PromiseEvent | SaleEvent
+
+/** A hut lost a log to the weather. */
+export interface WeatherEvent {
+  kind: 'weather'
+  minute: number
+  hutId: number
+  logsAfter: number
+}
+
+/** A hut left behind when its builder's hearth moved. */
+export interface AbandonEvent {
+  kind: 'abandon'
+  minute: number
+  hutId: number
+  foragerId: number
+  logs: number
+}
+
+export type HutEvent = WeatherEvent | AbandonEvent
 
 export interface DeathEvent {
   kind: 'death'
@@ -367,6 +565,9 @@ export interface PracticeEvent {
   woodRateBefore: number
   forageRate: number
   woodRate: number
+  makePercent: number
+  craftBefore: number
+  craft: number
 }
 
 /** Two foragers without a group met and founded one, the forager whose turn it was first. */
@@ -431,7 +632,16 @@ export interface FeedEvent {
 }
 
 export type ValleyEvent =
-  ActionEvent | DeathEvent | SwapEvent | QuoteEvent | PracticeEvent | GroupEvent | FireEvent | FeedEvent
+  | ActionEvent
+  | DeathEvent
+  | SwapEvent
+  | QuoteEvent
+  | PracticeEvent
+  | GroupEvent
+  | FireEvent
+  | FeedEvent
+  | AxeEvent
+  | HutEvent
 
 /** Seconds spent on each kind of time, summed over the band. */
 export interface ActionSeconds {
@@ -440,6 +650,9 @@ export interface ActionSeconds {
   walk: number
   forage: number
   gather: number
+  /** Cutting logs; and fetching stones and making axes. */
+  cut: number
+  make: number
 }
 
 /** One day of the band. Time is in seconds, summed over every forager that acted. */
@@ -489,6 +702,30 @@ export interface DaySummary {
   campfireBurnedWood: number
   fireLitHours: number
   fireDarkHours: number
+  /** Logs cut, axes made (and of them for sale), sold and worn out during the day. */
+  logsCut: number
+  axesMade: number
+  axesMadeForSale: number
+  axesSold: number
+  axesWornOut: number
+  /** Living member-minutes, those with the member's hut whole, and minutes asleep in a whole hut. */
+  memberMinutes: number
+  hutWholeMinutes: number
+  hutSleepMinutes: number
+  /** Huts whole at the end of the day. */
+  hutsWhole: number
+  /**
+   * Every forager's seconds cutting and making, logs cut, axes made, sold and bought during the day; its craft for the
+   * day; and the logs in its hut at the end of it.
+   */
+  cutSecondsById: number[]
+  makeSecondsById: number[]
+  logsCutById: number[]
+  axesMadeById: number[]
+  axesSoldById: number[]
+  axesBoughtById: number[]
+  craftById: number[]
+  hutLogsById: number[]
 }
 
 export interface ValleyTotals {
@@ -506,6 +743,19 @@ export interface ValleyTotals {
   swappedKcal: number
   /** The minute of the run's first swap, if any. */
   firstSwapMinute: number | null
+  /** Logs on trees at minute 0, regrown, cut and rotted. */
+  initialLogs: number
+  regrownLogs: number
+  logsCut: number
+  rottedLogs: number
+  /** Stones on the ground at minute 0; stones and wood put into axes begun; axes made, worn out and sold. */
+  initialStones: number
+  stonesWorked: number
+  axeWood: number
+  axesMade: number
+  axesWornOut: number
+  axeSales: number
+  axeSalesKcal: number
 }
 
 export interface ValleyState {
@@ -516,7 +766,12 @@ export interface ValleyState {
   /** Every bush's berries and every tree's deadwood, by ID. */
   bushKcal: Int32Array
   treeWood: Int32Array
+  /** Every tree's logs and every stone spot's stones, by ID. */
+  treeLogs: Int32Array
+  stoneStock: Int32Array
   foragers: Forager[]
+  /** Every hut ever begun, by ID. */
+  huts: Hut[]
   /** Every group ever founded, by ID. */
   groups: Group[]
   totals: ValleyTotals
@@ -532,6 +787,9 @@ export interface ValleyState {
   /** The fires burned or out at the start of the last minute, and the wood put into them during it. */
   lastFires: FireEvent[]
   lastFeeds: FeedEvent[]
+  /** Logs cut, axes made and worn out, promises and sales, and huts weathered or abandoned in the last minute. */
+  lastAxeEvents: AxeEvent[]
+  lastHutEvents: HutEvent[]
   /** Recent events, one array per day, oldest first, at most `EVENT_HISTORY_DAYS` days. */
   eventDays: ValleyEvent[][]
   days: DaySummary[]

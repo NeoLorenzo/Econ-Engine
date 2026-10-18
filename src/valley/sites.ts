@@ -2,20 +2,28 @@ import { isDaylight, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
 import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
 
-// Thickets and stands as sites, which a forager spots from afar, checks up close, and walks to when it checks
-// what it knows or searches for food or wood.
+// Thickets, stands and outcrops as sites, which a forager spots from afar, checks up close, and walks to when it
+// checks what it knows or searches for food or wood.
 
-/** Sites are numbered thickets first, in layout order, then stands. */
-export const siteCount = (config: ValleyConfig) => config.thicketCount + config.standCount
+/** Sites are numbered thickets first, in layout order, then stands, then outcrops. */
+export const siteCount = (config: ValleyConfig) => config.thicketCount + config.standCount + config.outcropCount
 
-/** The good a site holds: berries in a thicket, deadwood in a stand. */
-export const siteGood = (config: ValleyConfig, site: number): Good => (site < config.thicketCount ? 'food' : 'wood')
+/** What a site holds: berries in a thicket, deadwood in a stand, stones at an outcrop. */
+export type SiteKind = Good | 'stone'
 
-export const siteCentre = (config: ValleyConfig, layout: ValleyLayout, site: number): Point =>
-  site < config.thicketCount ? layout.thickets[site]! : layout.stands[site - config.thicketCount]!
+export const siteGood = (config: ValleyConfig, site: number): SiteKind =>
+  site < config.thicketCount ? 'food' : site < config.thicketCount + config.standCount ? 'wood' : 'stone'
 
-export const siteRadius = (config: ValleyConfig, site: number) =>
-  site < config.thicketCount ? config.thicketRadiusCm : config.standRadiusCm
+export function siteCentre(config: ValleyConfig, layout: ValleyLayout, site: number): Point {
+  if (site < config.thicketCount) return layout.thickets[site]!
+  const stand = site - config.thicketCount
+  return stand < config.standCount ? layout.stands[stand]! : layout.outcrops[stand - config.standCount]!
+}
+
+export function siteRadius(config: ValleyConfig, site: number) {
+  const kind = siteGood(config, site)
+  return kind === 'food' ? config.thicketRadiusCm : kind === 'wood' ? config.standRadiusCm : config.outcropRadiusCm
+}
 
 /** Within this distance of a site's centre, every plant in it lies in close sight. */
 export const checkRadius = (config: ValleyConfig, site: number) => config.perceptionRadiusCm - siteRadius(config, site)

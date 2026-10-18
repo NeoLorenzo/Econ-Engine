@@ -118,19 +118,45 @@ describe('sight and loads', () => {
 
   it('refuses sites too wide to check', () => {
     const message =
-      'A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm and standRadiusCm'
+      'A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm, standRadiusCm and outcropRadiusCm'
     expect(errorsWith({ standRadiusCm: 2_500 })).toContain(message)
+    expect(errorsWith({ outcropRadiusCm: 2_500 })).toContain(message)
   })
 })
 
 describe('the shared fire', () => {
-  it('refuses switches that are not booleans, and a fire that burns nothing', () => {
-    expect(errorsWith({ sharedFire: 1 as unknown as boolean })).toContain('sharedFire must be true or false')
-    expect(errorsWith({ campfirePerMember: 'no' as unknown as boolean })).toContain(
-      'campfirePerMember must be true or false',
-    )
-    expect(errorsWith({ feedSpare: 0 as unknown as boolean })).toContain('feedSpare must be true or false')
+  it('refuses a fire that burns nothing', () => {
     expect(errorsWith({ campfireWoodPerHour: 0 })).toContain('campfireWoodPerHour must be positive')
     expect(errorsWith({ campfireWoodPerHour: 1.5 })).toContain('campfireWoodPerHour must be an integer')
+  })
+})
+
+describe('huts and axes', () => {
+  it('refuses switches that are not booleans', () => {
+    expect(errorsWith({ axeTrade: 1 as unknown as boolean })).toContain('axeTrade must be true or false')
+    expect(errorsWith({ craftPractice: 'no' as unknown as boolean })).toContain('craftPractice must be true or false')
+  })
+
+  it('refuses sizes and times that are not positive, and counts that are negative', () => {
+    for (const key of ['logKg', 'logChopMinutes', 'hutLogs', 'hutLogDays', 'axeHours', 'axeLogs'] as const)
+      expect(errorsWith({ [key]: 0 })).toContain(`${key} must be positive`)
+    for (const key of ['outcropCount', 'stonesPerOutcrop', 'stonesPerSpot', 'logsPerTree', 'axeWood'] as const)
+      expect(errorsWith({ [key]: -1 })).toContain(`${key} must not be negative`)
+  })
+
+  it('refuses craft out of order, and working that costs no more than resting', () => {
+    expect(errorsWith({ craftSkillMinPercent: 0 })).toContain(
+      'Craft must satisfy 1 ≤ craftSkillMinPercent ≤ craftSkillMaxPercent',
+    )
+    expect(errorsWith({ craftSkillMinPercent: 120, craftSkillMaxPercent: 110 })).toContain(
+      'Craft must satisfy 1 ≤ craftSkillMinPercent ≤ craftSkillMaxPercent',
+    )
+    expect(errorsWith({ forageCostKcalPerHour: 90 })).toContain(
+      'forageCostKcalPerHour must be more than restKcalPerHour',
+    )
+  })
+
+  it('refuses a log too heavy to carry', () => {
+    expect(errorsWith({ logKg: 10_000 })).toContain('A forager must be able to carry a log at 1 cm a second')
   })
 })

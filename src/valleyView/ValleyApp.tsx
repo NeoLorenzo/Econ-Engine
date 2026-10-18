@@ -29,8 +29,10 @@ import {
   groupColor,
   groupInspection,
   groupName,
+  hutInspection,
   ownTermsByDay,
   plantInspection,
+  stoneInspection,
   specializationPoints,
   stepFollowed,
   TERMS_COLORS,
@@ -53,8 +55,10 @@ type NumericSetup = Pick<
   | 'exploreAfterHours'
   | 'sightRadiusCm'
   | 'campfireWoodPerHour'
+  | 'craftSkillMinPercent'
+  | 'craftSkillMaxPercent'
 >
-type SwitchKey = 'scattered' | 'sharedFire' | 'campfirePerMember' | 'feedSpare'
+type SwitchKey = 'scattered' | 'axeTrade' | 'craftPractice'
 type Setup = NumericSetup & Pick<ValleyConfig, SwitchKey>
 
 /** A field is typed in its own unit: `unit` of the configuration's units make one of it. */
@@ -71,13 +75,14 @@ const SETUP_FIELDS: { key: keyof NumericSetup; label: string; unit?: number }[] 
   { key: 'exploreAfterHours', label: 'Check after, h' },
   { key: 'sightRadiusCm', label: 'Sight, m', unit: 100 },
   { key: 'campfireWoodPerHour', label: 'Group fire, kg/h' },
+  { key: 'craftSkillMinPercent', label: 'Craft from, %' },
+  { key: 'craftSkillMaxPercent', label: 'Craft to, %' },
 ]
 
 const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
   { key: 'scattered', label: 'Start scattered' },
-  { key: 'sharedFire', label: 'One fire for each group' },
-  { key: 'campfirePerMember', label: 'Fire burns for each member' },
-  { key: 'feedSpare', label: 'Spare wood goes in the fire' },
+  { key: 'axeTrade', label: 'Axes can be sold' },
+  { key: 'craftPractice', label: 'Craft grows with practice' },
 ]
 
 const DEFAULT_SETUP = Object.fromEntries(
@@ -326,7 +331,11 @@ export default function ValleyApp() {
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
   const plant =
-    selected && selected.kind !== 'group' ? plantInspection(state, selected.kind, selected.id, followed) : null
+    selected && (selected.kind === 'bush' || selected.kind === 'tree')
+      ? plantInspection(state, selected.kind, selected.id, followed)
+      : null
+  const stone = selected?.kind === 'stone' ? stoneInspection(state, selected.id, followed) : null
+  const hut = selected?.kind === 'hut' && state.huts[selected.id] ? hutInspection(state, selected.id) : null
   const group = selected?.kind === 'group' && state.groups[selected.id] ? groupInspection(pair, selected.id) : null
   const standing = state.groups.filter((made) => made.dissolvedMinute === null)
   const summary = foragerSummary(state, followed)
@@ -345,7 +354,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 8 · a shared fire</span>
+        <span className="life-title">Life 9 · huts and axes</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -493,8 +502,38 @@ export default function ValleyApp() {
           </dd>
           <dt>Knows</dt>
           <dd className="num">
-            {summary.sitesKnown} of {summary.sitesTotal} thickets and stands, {summary.sitesCheckedLately} checked in
-            the last {config.exploreAfterHours} h
+            {summary.sitesKnown} of {summary.sitesTotal} thickets, stands and outcrops, {summary.sitesCheckedLately}{' '}
+            checked in the last {config.exploreAfterHours} h
+          </dd>
+          <dt>Hut</dt>
+          <dd className="num">
+            {summary.hutLogs === null
+              ? summary.groupId === null
+                ? 'none: it builds once it has a group'
+                : 'not begun'
+              : `${summary.hutLogs} of ${config.hutLogs} logs${summary.hutWhole ? ', whole' : ''}`}
+            {summary.log > 0 && ' · carrying a log'}
+          </dd>
+          <dt>Axe</dt>
+          <dd className="num">
+            {summary.axe ?? 'none'}
+            {summary.spareAxe && ` · spare to sell: ${summary.spareAxe}`}
+            {summary.making &&
+              ` · making one ${summary.making.forSale ? 'to sell' : 'for itself'}, ${Math.round(summary.making.done * 100)}% done`}
+            {summary.promised && !summary.making && ' · has promised one'}
+            {summary.stone > 0 && ` · holds ${summary.stone} stone`}
+          </dd>
+          <dt>Craft</dt>
+          <dd className="num">
+            {summary.craft}% ({summary.makePercent}% practice from {summary.makeHours} h) · an axe costs it{' '}
+            {formatKcal(summary.ask)}, expects quality {summary.expectedQuality}
+          </dd>
+          <dt>Axes</dt>
+          <dd className="num">
+            made {summary.madeOwn + summary.madeForSale} ({summary.madeForSale} to sell), sold {summary.sold}, bought{' '}
+            {summary.bought}, worn out {summary.wornOut}
+            {summary.heardAsk &&
+              ` · heard ${summary.heardAsk.from} ${summary.heardAsk.ready ? 'sells' : 'will make'} one for ${formatKcal(summary.heardAsk.price)}`}
           </dd>
           <dt>Load</dt>
           <dd className="num">
@@ -589,6 +628,15 @@ export default function ValleyApp() {
             </dd>
             <dt>Last seen</dt>
             <dd>{plant.seen}</dd>
+            {plant.logs !== null && (
+              <>
+                <dt>Logs to cut</dt>
+                <dd className="num">
+                  {plant.logs} of {plant.logsCapacity}
+                  {plant.logs === 0 && ', a stump'}
+                </dd>
+              </>
+            )}
           </dl>
           <p className="life-note">
             {plant.remembered === null
@@ -597,6 +645,54 @@ export default function ValleyApp() {
                 ? 'Its memory is up to date.'
                 : `It knows only what it last saw, so it ${plant.difference > 0 ? 'underestimates' : 'overestimates'} this ${selected!.kind} by ${selected!.kind === 'bush' ? formatKcal(Math.abs(plant.difference)) : formatKg(Math.abs(plant.difference))}.`}
           </p>
+        </section>
+      )}
+
+      {stone && (
+        <section className="life-card life-inspector" aria-label={stone.name}>
+          <header>
+            <h2>{stone.name}</h2>
+            <button type="button" className="icon-button" aria-label="Close" onClick={() => setSelected(null)}>
+              <Icon name="close" />
+            </button>
+          </header>
+          <dl>
+            <dt>Stones</dt>
+            <dd className="num">
+              {stone.stones} of {stone.capacity}
+            </dd>
+            <dt>{name} remembers</dt>
+            <dd className="num">{stone.remembered === null ? 'nothing' : stone.remembered}</dd>
+            <dt>Last seen</dt>
+            <dd>{stone.seen}</dd>
+          </dl>
+          <p className="life-note">Each axe takes one stone. Stones never come back.</p>
+        </section>
+      )}
+
+      {hut && (
+        <section className="life-card life-inspector" aria-label={hut.name}>
+          <header>
+            <h2>{hut.name}</h2>
+            <button type="button" className="icon-button" aria-label="Close" onClick={() => setSelected(null)}>
+              <Icon name="close" />
+            </button>
+          </header>
+          <dl>
+            <dt>Logs</dt>
+            <dd className="num">
+              {hut.logs} of {hut.capacity}
+              {hut.whole ? ', whole' : ''}
+              {hut.abandoned ? ', left behind' : ''}
+            </dd>
+            <dt>Weathers</dt>
+            <dd className="num">
+              {hut.weathersInDays === null
+                ? 'nothing left to lose'
+                : `loses a log in ${hut.weathersInDays} day${hut.weathersInDays === 1 ? '' : 's'}`}
+            </dd>
+          </dl>
+          <p className="life-note">A whole hut keeps its builder warm at night even when the fire is out.</p>
         </section>
       )}
 
@@ -718,6 +814,48 @@ export default function ValleyApp() {
                 </tbody>
               </table>
               {group.contributionNote && <p className="life-note">{group.contributionNote}</p>}
+            </section>
+          )}
+          {group.axes.length > 0 && (
+            <section className="valley-contributions" aria-label="Axes">
+              <h3>Axes and huts</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Member</th>
+                    <th scope="col">Axes made, sold, bought</th>
+                    <th scope="col">Craft, hut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.axes.map((row) => (
+                    <tr key={row.id} className={row.member ? undefined : 'is-gone'}>
+                      <th scope="row">
+                        {row.name}
+                        {!row.alive ? ' · dead' : !row.member ? ' · left' : ''}
+                        <span className="valley-contribution-sub num">
+                          {row.axeQuality === null ? 'no axe' : `axe of quality ${row.axeQuality}`}
+                        </span>
+                      </th>
+                      <td className="num">
+                        {row.madeOwn + row.madeForSale} · {row.sold} · {row.bought}
+                        <span className="valley-contribution-sub">
+                          {row.sold || row.bought
+                            ? `got ${formatKcal(row.kcalReceived)}, paid ${formatKcal(row.kcalPaid)}`
+                            : 'no sales'}
+                        </span>
+                      </td>
+                      <td className="num">
+                        {row.craft}%
+                        <span className="valley-contribution-sub">
+                          {row.hutLogs} of {config.hutLogs} logs
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="life-note">{group.axesNote}</p>
               <p className="life-note">
                 Nobody gives food away, so food enters only as payment for wood in swaps. Warm is the time each has
                 slept by a group’s fire while it burned.
@@ -772,6 +910,17 @@ export default function ValleyApp() {
               />
               <TimeChart
                 data={days}
+                height={90}
+                format={(value) => String(Math.round(value))}
+                domain={[0, 'auto']}
+                series={[
+                  { key: 'axesMade', name: 'Axes made each day', color: palette.accent },
+                  { key: 'axesSold', name: 'Axes sold each day', color: palette.positive },
+                  { key: 'hutsWhole', name: 'Huts whole', color: palette.firmA, dashed: true },
+                ]}
+              />
+              <TimeChart
+                data={days}
                 height={110}
                 format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
                 series={[
@@ -820,9 +969,7 @@ export default function ValleyApp() {
             costs more, and they take a full load home before anything else. Those without a group look for company: two
             who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep around their
             flag and swap wood for food only with each other, telling each other their terms.{' '}
-            {setup.sharedFire
-              ? `Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night${setup.campfirePerMember ? ' for each member' : ''} and warming every member; members put in ${setup.feedSpare ? 'their spare wood, and ' : ''}wood from their stock when it runs low.`
-              : 'Each keeps its own fire.'}{' '}
+            {`Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs, cut from trees with an axe it makes from a stone and wood${setup.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${setup.craftPractice ? 'grows with practice' : 'stays fixed'}.`}{' '}
             They are born with skills{' '}
             {setup.skillMinPercent === setup.skillMaxPercent
               ? `of ${setup.skillMinPercent}%`

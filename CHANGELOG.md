@@ -2,6 +2,28 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE9-HutsAndAxes-044] - (2026-10-18)
+
+### Added
+
+- **Life 9: huts and axes.** Every member wants a hut of its own, 10 logs at its sleeping spot, and a whole hut keeps it warm at night even when the fire is out. Logs are cut from standing trees, which regrow a log every 30 days, and only with an axe. An axe is made at the hearth from a stone, picked up at one of 4 new rocky outcrops, and a kilogram of wood. Craft at making axes grows with practice: the more practised make axes faster and better, and better axes cut faster and last longer. Axes wear out, and huts lose a log every 10 days.
+- **Trading axes.** A member that needs an axe asks the members around it; the cheapest maker that would gain it one promises to make one, and sells it for food at the midpoint of what it costs the maker and what it is worth to the buyer.
+- **More trees:** 12 stands of 12 trees, against 8 of 8.
+- **The observer** shows trees shrinking to stumps, stone heaps, huts rising log by log, logs carried on the shoulder, axes swung at trees and axes being made. The HUD shows the followed person's hut, axe, craft and axe trades; the group card gains a table of axes and huts; stones and huts can be inspected; a chart shows axes made and sold and huts whole.
+- Two switches, `axeTrade` and `craftPractice`, and a range for born craft.
+
+### Changed
+
+- The Life workflow in `AGENTS.md` is lighter for the current feature-building phase: no throwaway prototypes, multi-seed sweeps or experiment tests unless the owner asks.
+
+### Removed
+
+- Life 8's experiments, their tests and `experiments.ts`, and the switches `sharedFire`, `campfirePerMember` and `feedSpare`, which only recreated Life 8's comparisons.
+
+### Validation
+
+- New fingerprints for Life 9; unit tests for huts, axes and trade.
+
 ## [CI-DeployAfterValidation-043] - (2026-10-17)
 
 ### Changed

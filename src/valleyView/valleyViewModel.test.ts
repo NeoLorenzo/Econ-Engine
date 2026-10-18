@@ -158,7 +158,7 @@ describe('groups and what a forager knows', () => {
     forager.siteKnown[3] = 1
     forager.siteKnown[35] = 1
     forager.siteChecked[3] = 590
-    expect(foragerSummary(state, 0)).toMatchObject({ sitesKnown: 2, sitesCheckedLately: 1, sitesTotal: 40 })
+    expect(foragerSummary(state, 0)).toMatchObject({ sitesKnown: 2, sitesCheckedLately: 1, sitesTotal: 48 })
     expect(siteRings(state, 0).map((ring) => [ring.site, ring.fresh])).toEqual([
       [3, true],
       [35, false],
