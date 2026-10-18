@@ -49,10 +49,20 @@ describe('layout', () => {
     expect(layout.trees.count).toBe(config.standCount * config.treesPerStand)
   })
 
-  it('puts the hearths on the spiral around the camp in a band that starts as one group', () => {
+  it('puts the hearths on a ring round the camp in a band that starts as one group', () => {
     const camp = generateLayout(resolveValleyConfig({ scattered: false }))
-    expect(camp.hearths[0]).toEqual({ x: camp.camp.x - 300, y: camp.camp.y - 300 })
-    expect(camp.hearths[3]).toEqual({ x: camp.camp.x + 300, y: camp.camp.y })
+    // The first ring holds eight huts 7 m from the fire, evenly round it.
+    expect(camp.hearths[0]).toEqual({ x: camp.camp.x - 494, y: camp.camp.y - 494 })
+    expect(camp.hearths[3]).toEqual({ x: camp.camp.x + 700, y: camp.camp.y })
+    for (const hearth of camp.hearths)
+      expect(Math.abs(Math.hypot(hearth.x - camp.camp.x, hearth.y - camp.camp.y) - 700)).toBeLessThan(2)
+  })
+
+  it('lists every tree, then every bush, as wood plants', () => {
+    expect(layout.woodPlants.count).toBe(layout.trees.count + layout.bushes.count)
+    expect(layout.woodPlants.x[3]).toBe(layout.trees.x[3])
+    expect(layout.woodPlants.y[layout.trees.count + 5]).toBe(layout.bushes.y[5])
+    expect(layout.woodPlants.site[layout.trees.count + 5]).toBe(layout.bushes.site[5])
   })
 
   it('scatters the starts apart, from a stream of their own, leaving the plants where a band around the camp has them', () => {
@@ -163,8 +173,8 @@ describe('regrowth and remainders', () => {
   })
 
   it('charges each second at its hourly cost', () => {
-    expect(minuteCost(config, { walk: 60, work: 0, stand: 0, sleep: 0 }, false)).toBe(60 * 300)
-    expect(minuteCost(config, { walk: 10, work: 20, stand: 30, sleep: 0 }, false)).toBe(10 * 300 + 20 * 300 + 30 * 90)
-    expect(minuteCost(config, { walk: 0, work: 0, stand: 0, sleep: 60 }, true)).toBe(60 * 150)
+    expect(minuteCost(config, { walk: 60, work: 0, stand: 0, sleep: 0 }, null)).toBe(60 * 300)
+    expect(minuteCost(config, { walk: 10, work: 20, stand: 30, sleep: 0 }, null)).toBe(10 * 300 + 20 * 300 + 30 * 90)
+    expect(minuteCost(config, { walk: 0, work: 0, stand: 0, sleep: 60 }, 'cold')).toBe(60 * 150)
   })
 })

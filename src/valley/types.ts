@@ -20,20 +20,26 @@ export interface ValleyConfig {
   bushCapacityKcal: number
   initialBushKcal: number
   bushRegrowthKcalPerDay: number
+  /** Sticks a bush holds, in kilograms, gathered by hand like a tree's branches. */
+  bushCapacityWood: number
+  initialBushWood: number
+  bushRegrowthWoodPerDay: number
   standCount: number
   treesPerStand: number
   standRadiusCm: number
   treeSpacingCm: number
-  /** A tree's deadwood, in kilograms. The tree itself stays standing. */
+  /** The branches a standing tree holds, in kilograms, snapped off by hand. A felled tree's branches do not regrow. */
   treeCapacityWood: number
   initialTreeWood: number
   treeRegrowthWoodPerDay: number
+  /** Branches a tree's crown brings down when it is felled, in kilograms. */
+  fellWood: number
   /** Site centres lie at least this far apart, this far from the valley's edges and this far from the camp. */
   siteSpacingCm: number
   siteMarginCm: number
   campClearingCm: number
-  /** Hearths lie on a square spiral around the camp's fire, this far apart. */
-  hearthSpacingCm: number
+  /** A group's huts stand on rings round its fire: ring `k` is `k · hutRingCm` from it and holds `8k` huts. */
+  hutRingCm: number
   walkCmPerSecond: number
   /** A forager works a plant only within this distance of it. */
   reachCm: number
@@ -46,8 +52,9 @@ export interface ValleyConfig {
   duskHour: number
   /** Berries picked in an hour at a skill of 100%. */
   forageKcalPerHour: number
-  /** Deadwood gathered in an hour at a skill of 100%. */
+  /** Wood, sticks or branches, gathered in an hour at a skill of 100%. */
   woodPerHour: number
+  /** An hour asleep in a whole hut by a lit fire, the warmest night. */
   sleepKcalPerHour: number
   restKcalPerHour: number
   /** The cost of picking and of gathering. */
@@ -63,7 +70,9 @@ export interface ValleyConfig {
   shelfLifeHours: number
   /** Wood burned for an hour of warm sleep. */
   fireWoodPerHour: number
-  /** An hour of sleep without a fire costs this instead of `sleepKcalPerHour`. */
+  /** An hour asleep by a lit fire without a hut, in a whole hut without a fire, and with neither. */
+  fireSleepKcalPerHour: number
+  hutSleepKcalPerHour: number
   coldSleepKcalPerHour: number
   /** A forager short of wood gathers until it holds this many nights' wood. */
   woodStockNights: number
@@ -102,9 +111,12 @@ export interface ValleyConfig {
   outcropRadiusCm: number
   stoneSpacingCm: number
   stonesPerSpot: number
-  /** Logs a standing tree holds, apart from its deadwood; a tree short of logs regrows one every this many days. */
+  /**
+   * Logs a standing tree holds. Cutting the first fells it whole, and the rest are cut from the trunk where it lies. A
+   * stump, with no logs or branches left, stands again whole at the first midnight `treeRegrowthDays` after it fell.
+   */
   logsPerTree: number
-  logRegrowthDays: number
+  treeRegrowthDays: number
   /** A log's weight, carried one at a time, and the minutes it takes to cut one with an axe of quality 100. */
   logKg: number
   logChopMinutes: number
@@ -154,12 +166,15 @@ export interface ValleyLayout {
   outcrops: Point[]
   bushes: Plants
   trees: Plants
+  /** Every plant that holds wood: the trees, by ID, then the bushes, wood plant `trees.count + b` being bush `b`. */
+  woodPlants: Plants
   /** Stone spots, by ID, each belonging to an outcrop. */
   stones: Plants
   /** Each forager's starting hearth, by forager ID. A forager's hearth moves when it joins a group. */
   hearths: Point[]
   bushIndex: PlantIndex
   treeIndex: PlantIndex
+  woodIndex: PlantIndex
   stoneIndex: PlantIndex
 }
 
@@ -171,7 +186,7 @@ export interface Group {
   flag: Point
   foundedMinute: number
   dissolvedMinute: number | null
-  /** Every forager that ever joined, in order of joining; slot `i` of the spiral around the flag went to `members[i]`. */
+  /** Every forager that ever joined, in order of joining; slot `i` of the rings round the flag went to `members[i]`. */
   members: number[]
   /** The wood in its fire, and whether the fire is lit this hour. */
   fireWood: number
@@ -285,9 +300,9 @@ export interface Forager {
   /** Wood gathered since it last stood at its hearth. */
   tripWood: number
   targetBushId: number | null
-  targetTreeId: number | null
+  targetWoodId: number | null
   bushMemory: PlantMemory
-  treeMemory: PlantMemory
+  woodMemory: PlantMemory
   /** The logs on each tree and the stones on each stone spot, as it last saw them from afar. */
   logMemory: PlantMemory
   stoneMemory: PlantMemory
@@ -327,7 +342,7 @@ export interface Forager {
   pickRemainder: number
   gatherRemainder: number
   costRemainder: number
-  /** The hour of its last fire decision, and whether that hour is warm. */
+  /** The hour of its last fire decision, and whether it has a fire of its own that hour. */
   fireHour: number
   warm: boolean
   /** The wood it has put into any group's fire, and the minutes it has slept warm by one. */
@@ -350,6 +365,9 @@ export interface Forager {
   /** For each site, the last minute it stood close enough to see every plant in it, or −1 if never. */
   siteChecked: Int32Array
 }
+
+/** How warm a forager sleeps: by a lit fire in its whole hut, by the fire alone, in its hut alone, or with neither. */
+export type Warmth = 'fire and hut' | 'fire' | 'hut' | 'cold'
 
 export type ForagerAction = 'sleep' | 'rest' | 'walk' | 'forage' | 'gather' | 'cut' | 'make'
 
@@ -400,7 +418,7 @@ export interface ActionEvent {
   /** The good it worked for or walked towards, and whether to swap it. */
   workedFor: Good | null
   forTrade: boolean
-  /** The plant it walked towards or worked, if any: a bush for food, a tree for wood. */
+  /** The plant it walked towards or worked, if any: a bush for food, a wood plant for wood. */
   targetId: number | null
   /** The plant it worked this minute, if any. */
   plantId: number | null
@@ -418,8 +436,10 @@ export interface ActionEvent {
   woodAfter: number
   tripWoodAfter: number
   burnedWood: number
-  /** Asleep in a cold hour this minute. */
+  /** Asleep with neither a lit fire nor a whole hut, when that costs more. */
   sleptCold: boolean
+  /** How warm it slept, or null if it did not sleep. */
+  warmth: Warmth | null
   /** Its group at the end of its turn. */
   groupId: number | null
   /** The place it walked towards to explore, search or seek company, if any. */
@@ -439,8 +459,9 @@ export interface ActionEvent {
   task: HutTask | null
   treeId: number | null
   stoneId: number | null
-  /** A log it cut, a stone it picked up, and a log it laid in its hut this minute. */
+  /** A log it cut and whether that cut felled the tree, a stone it picked up, and a log it laid in its hut this minute. */
   cutLog: boolean
+  felled: boolean
   tookStone: boolean
   laidLog: boolean
   /** Asleep in its whole hut. */
@@ -457,6 +478,8 @@ export interface CutEvent {
   quality: number
   axeLogsLeft: number
   treeLogsAfter: number
+  /** Whether this cut felled the tree, bringing its crown's branches down. */
+  felled: boolean
 }
 
 /** An axe finished. */
@@ -664,7 +687,7 @@ export interface DaySummary {
   alive: number
   deaths: number
   bushStockKcal: number
-  treeWood: number
+  woodStock: number
   endEnergyKcal: number[]
   spoiledKcal: number
   carriedKcal: number
@@ -743,6 +766,8 @@ export interface ValleyTotals {
   swappedKcal: number
   /** The minute of the run's first swap, if any. */
   firstSwapMinute: number | null
+  /** Branches brought down by felling trees. */
+  fellenWood: number
   /** Logs on trees at minute 0, regrown, cut and rotted. */
   initialLogs: number
   regrownLogs: number
@@ -763,11 +788,12 @@ export interface ValleyState {
   layout: ValleyLayout
   /** The next minute to run. Minute `m` is minute `m mod 1,440` of day `floor(m / 1,440)`. */
   minute: number
-  /** Every bush's berries and every tree's deadwood, by ID. */
+  /** Every bush's berries, and every wood plant's sticks or branches, by ID. */
   bushKcal: Int32Array
-  treeWood: Int32Array
-  /** Every tree's logs and every stone spot's stones, by ID. */
+  woodStock: Int32Array
+  /** Every tree's logs, the minute it was felled or −1 while it stands, and every stone spot's stones, by ID. */
   treeLogs: Int32Array
+  treeFelledMinute: Int32Array
   stoneStock: Int32Array
   foragers: Forager[]
   /** Every hut ever begun, by ID. */

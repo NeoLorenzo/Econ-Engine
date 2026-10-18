@@ -85,9 +85,12 @@ export function valleyTheory(config: ValleyConfig) {
     firstAxeHours: (config.axeHours * 100) / Math.floor((100 * config.practiceMinPercent) / 100),
     /** Hours of cutting for a hut's logs with an axe of quality `quality`. */
     hutCutHours: (quality: number) => (config.hutLogs * config.logChopMinutes * 100) / quality / 60,
-    /** Logs every tree holds when full, and the logs they regrow a day when short. */
+    /**
+     * Logs every tree holds standing, and the most they can regrow a day: every tree felled, cut up at once and grown
+     * back after `treeRegrowthDays`.
+     */
     logsOnOffer: config.standCount * config.treesPerStand * config.logsPerTree,
-    logsRegrownPerDay: (config.standCount * config.treesPerStand) / config.logRegrowthDays,
+    logsRegrownPerDay: (config.standCount * config.treesPerStand * config.logsPerTree) / config.treeRegrowthDays,
     /** Logs a whole hut loses to the weather each day, which its builder must replace. */
     hutLogsPerMemberDay: 1 / config.hutLogDays,
   }

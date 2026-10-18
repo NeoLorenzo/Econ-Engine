@@ -1,8 +1,9 @@
 import { MINUTES_PER_DAY, atHearth } from './forager'
 import type { AbandonEvent, Forager, Hut, ValleyState, WeatherEvent } from './types'
 
-// Life 9's huts: each member wants a whole hut of `hutLogs` logs at its hearth. Logs are laid one at a time by their
-// builder, and every hut loses a log to the weather every `hutLogDays` days. Trees regrow their logs slowly.
+// Life 9's huts: each member wants a whole hut of `hutLogs` logs at its hearth, its slot on the rings round its
+// group's fire. Logs are laid one at a time by their builder, and every hut loses a log to the weather every
+// `hutLogDays` days. A tree is felled whole, cut up where it lies, and grows back from its stump.
 
 /** A forager's hut, while it stands at its hearth. */
 export const hutOf = (state: Pick<ValleyState, 'huts'>, forager: Forager): Hut | null =>
@@ -72,15 +73,24 @@ export function weatherHuts(state: ValleyState, minute: number): WeatherEvent[] 
   return events
 }
 
-/** Midnight on every `logRegrowthDays`-th day: each tree short of logs regrows one. Returns the logs regrown. */
-export function regrowLogs(state: ValleyState, minute: number) {
-  const day = minute / MINUTES_PER_DAY
-  if (day % state.config.logRegrowthDays !== 0) return 0
+/** Whether a tree felled at `felledMinute` with `logs` left grows back at midnight `minute`. */
+export const regrowsAt = (config: ValleyState['config'], felledMinute: number, logs: number, minute: number) =>
+  felledMinute >= 0 && logs === 0 && minute - felledMinute >= config.treeRegrowthDays * MINUTES_PER_DAY
+
+/**
+ * Midnight: every felled tree with no logs left, felled at least `treeRegrowthDays` ago, stands again whole, with
+ * `logsPerTree` logs; branches still lying there become its crown's. Returns the logs regrown.
+ */
+export function regrowTrees(state: ValleyState, minute: number) {
   let regrown = 0
   for (let id = 0; id < state.treeLogs.length; id += 1) {
-    if (state.treeLogs[id]! >= state.config.logsPerTree) continue
-    state.treeLogs[id]! += 1
-    regrown += 1
+    if (!regrowsAt(state.config, state.treeFelledMinute[id]!, state.treeLogs[id]!, minute)) continue
+    state.treeLogs[id] = state.config.logsPerTree
+    state.treeFelledMinute[id] = -1
+    regrown += state.config.logsPerTree
   }
   return regrown
 }
+
+/** Whether a tree stands: it holds every log until it is felled. */
+export const treeStands = (state: Pick<ValleyState, 'treeFelledMinute'>, id: number) => state.treeFelledMinute[id]! < 0

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { askOf, axeLife, exchangeAxes, expectedQuality, logCut, makeSeconds, worthTo } from './axes'
-import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
+import { cloneValley, createValley, lastEventOf, regrowWood, stepValley } from './engine'
 import { ValleyChecker } from './invariants'
 import { drawSkills } from './layout'
+import { hearthAround } from './social'
 import { valleyTheory } from './theory'
+import { sleepCostOf } from './work'
 import type { Axe, Forager, ValleyConfig, ValleyState } from './types'
 
 const TEN_AM = 600
@@ -39,7 +41,7 @@ function giveStone(state: ValleyState, forager: Forager) {
   state.stoneStock[spot]! -= 1
 }
 
-/** Gives a forager a whole hut at its hearth, of logs taken from the valley's starting logs. */
+/** Gives a forager a whole hut at its hearth, of logs cut from trees felled at minute 0 out of the starting logs. */
 function giveHut(state: ValleyState, forager: Forager, logs = state.config.hutLogs) {
   state.huts.push({
     id: state.huts.length,
@@ -54,6 +56,7 @@ function giveHut(state: ValleyState, forager: Forager, logs = state.config.hutLo
   for (let id = 0, left = logs; left > 0; id += 1) {
     const taken = Math.min(left, state.treeLogs[id]!)
     state.treeLogs[id]! -= taken
+    state.treeFelledMinute[id] = 0
     state.totals.logsCut += taken
     left -= taken
   }
@@ -164,6 +167,39 @@ describe('cutting and building', () => {
     expect(lastEventOf(after, 0)).toMatchObject({ cutLog: true })
   })
 
+  it('fells a standing tree whole with its first log, bringing its branches down, and cuts the rest where it lies', () => {
+    const state = atTree(100, logCut(createValley().config) - 6_000)
+    const branches = state.woodStock[0]!
+    const felled = stepValley(state)
+    expect(felled.treeFelledMinute[0]).toBe(TEN_AM)
+    expect(felled.woodStock[0]).toBe(branches + felled.config.fellWood)
+    expect(felled.totals.fellenWood).toBe(felled.config.fellWood)
+    expect(felled.lastAxeEvents).toContainEqual(expect.objectContaining({ kind: 'cut', treeId: 0, felled: true }))
+    // The next log comes off the trunk where it lies, bringing nothing more down.
+    const next = cloneValley(felled)
+    const forager = next.foragers[0]!
+    forager.log = 0
+    next.treeLogs[1]! -= 1
+    next.treeFelledMinute[1] = 0
+    forager.chopRemainder = logCut(next.config) - 6_000
+    const after = stepValley(next)
+    expect(after.treeLogs[0]).toBe(1)
+    expect(after.treeFelledMinute[0]).toBe(TEN_AM)
+    expect(after.lastAxeEvents).toContainEqual(expect.objectContaining({ kind: 'cut', treeId: 0, felled: false }))
+  })
+
+  it('finishes a felled tree before felling a nearer one', () => {
+    const state = atTree(100, 0)
+    const forager = state.foragers[0]!
+    const { trees } = state.layout
+    // Tree 1 lies felled with logs left; tree 0, where the forager stands, still stands.
+    state.treeLogs[1]! -= 1
+    state.treeFelledMinute[1] = 0
+    forager.logMemory.stock.set(state.treeLogs)
+    expect(Math.hypot(trees.x[1]! - forager.x, trees.y[1]! - forager.y)).toBeGreaterThan(0)
+    expect(lastEventOf(stepValley(state), 0)).toMatchObject({ task: 'cut', treeId: 1 })
+  })
+
   it('throws away an axe with no logs left, losing the cut so far', () => {
     const after = stepValley(atTree(100, logCut(createValley().config) - 6_000, 1))
     expect(after.foragers[0]).toMatchObject({ log: 1, axe: null, chopRemainder: 0 })
@@ -207,14 +243,39 @@ describe('cutting and building', () => {
 })
 
 describe('huts', () => {
-  it('keeps a member asleep in its whole hut warm with the fire out, and leaves one without a hut cold', () => {
+  it('keeps a member asleep in its whole hut a little warm with the fire out, and leaves one without a hut cold', () => {
     const state = band(EIGHT_PM)
     giveHut(state, state.foragers[0]!)
     giveHut(state, state.foragers[1]!, 9)
     const after = stepValley(state)
-    expect(lastEventOf(after, 0)).toMatchObject({ inHut: true, sleptCold: false })
-    expect(lastEventOf(after, 1)).toMatchObject({ inHut: false, sleptCold: true })
+    expect(lastEventOf(after, 0)).toMatchObject({ inHut: true, sleptCold: false, warmth: 'hut' })
+    expect(lastEventOf(after, 1)).toMatchObject({ inHut: false, sleptCold: true, warmth: 'cold' })
     expect(after.foragers[0]!.hutSleepMinutes).toBe(1)
+  })
+
+  it('warms a member most in its whole hut by a lit fire', () => {
+    const state = band(EIGHT_PM)
+    giveHut(state, state.foragers[0]!)
+    state.groups[0]!.fireWood = 12
+    state.totals.initialWood += 12
+    const after = stepValley(state)
+    expect(lastEventOf(after, 0)).toMatchObject({ inHut: true, warmth: 'fire and hut' })
+    expect(lastEventOf(after, 1)).toMatchObject({ inHut: false, warmth: 'fire' })
+    const { config } = after
+    expect(sleepCostOf(config, 'fire and hut')).toBeLessThan(sleepCostOf(config, 'fire'))
+    expect(sleepCostOf(config, 'fire')).toBeLessThan(sleepCostOf(config, 'hut'))
+    expect(sleepCostOf(config, 'hut')).toBeLessThan(sleepCostOf(config, 'cold'))
+  })
+
+  it('puts the huts on rings round the fire: eight on the first, sixteen further out on the second', () => {
+    const { config } = createValley()
+    const flag = { x: 30_000, y: 30_000 }
+    const from = (slot: number) => {
+      const hut = hearthAround(config, flag, slot)
+      return Math.hypot(hut.x - flag.x, hut.y - flag.y)
+    }
+    for (let slot = 0; slot < 8; slot += 1) expect(Math.abs(from(slot) - config.hutRingCm)).toBeLessThan(2)
+    for (let slot = 8; slot < 24; slot += 1) expect(Math.abs(from(slot) - 2 * config.hutRingCm)).toBeLessThan(2)
   })
 
   it('leaves a member with a whole hut to explore or rest instead of building', () => {
@@ -244,13 +305,47 @@ describe('huts', () => {
     expect(after.lastHutEvents[0]).toMatchObject({ kind: 'abandon', hutId: 0, foragerId: 0, logs: 4 })
   })
 
-  it('regrows a log on each tree short of logs every 30 days', () => {
-    const state = band(30 * 1_440 - 1)
+  it('grows a stump back into a whole tree at the first midnight 60 days after it fell', () => {
+    const state = band(60 * 1_440 - 1)
     state.treeLogs[0] = 0
+    state.treeFelledMinute[0] = 0
     state.totals.logsCut += 3
+    // Tree 1 fell later and still lies with a log: neither grows back yet.
+    state.treeLogs[1] = 1
+    state.treeFelledMinute[1] = 10
+    state.totals.logsCut += 2
     const after = stepValley(stepValley(state))
-    expect(after.treeLogs[0]).toBe(1)
-    expect(after.totals.regrownLogs).toBe(1)
+    expect(after.treeLogs[0]).toBe(3)
+    expect(after.treeFelledMinute[0]).toBe(-1)
+    expect(after.treeLogs[1]).toBe(1)
+    expect(after.totals.regrownLogs).toBe(3)
+  })
+
+  it('gathers sticks from a bush as firewood', () => {
+    const state = cloneValley(createValley())
+    state.minute = TEN_AM
+    const forager = state.foragers[0]!
+    forager.x = state.layout.bushes.x[0]!
+    forager.y = state.layout.bushes.y[0]!
+    const after = stepValley(state)
+    expect(lastEventOf(after, 0)).toMatchObject({
+      reason: 'gathering',
+      workedFor: 'wood',
+      plantId: state.layout.trees.count,
+    })
+  })
+
+  it('regrows branches on standing trees only, and sticks on bushes', () => {
+    const state = cloneValley(createValley())
+    const trees = state.layout.trees.count
+    state.woodStock.fill(0)
+    state.treeFelledMinute[1] = 0
+    // Hour 23 is the hour each day's share of branches and of sticks falls in.
+    const regrown = regrowWood(state, 23)
+    expect(state.woodStock[0]).toBe(1)
+    expect(state.woodStock[1]).toBe(0)
+    expect(state.woodStock[trees]).toBe(1)
+    expect(regrown).toBe(trees - 1 + state.layout.bushes.count)
   })
 })
 
@@ -330,7 +425,7 @@ describe('theory', () => {
     expect(theory.axeAsk(50)).toBe(1_680)
     expect(theory.firstAxeHours).toBe(8)
     expect(theory.logsOnOffer).toBe(432)
-    expect(theory.logsRegrownPerDay).toBeCloseTo(4.8, 10)
+    expect(theory.logsRegrownPerDay).toBeCloseTo(7.2, 10)
     expect(theory.hutLogsPerMemberDay).toBeCloseTo(0.1, 10)
   })
 })
@@ -348,6 +443,10 @@ describe('the checker', () => {
     const state = band(EIGHT_PM)
     giveHut(state, state.foragers[0]!)
     expect(damaged(state, () => {})).toBe('')
+  })
+
+  it('catches a tree felled or stood up again without a record', () => {
+    expect(damaged(band(TEN_AM), (after) => (after.treeFelledMinute[0] = TEN_AM))).toMatch('without a record')
   })
 
   it('catches a log or stone lost or made from nothing', () => {

@@ -36,7 +36,11 @@ describe('valley configuration', () => {
     expect(errorsWith({ hungryBelowKcal: 18_000 })).toContain(
       'Thresholds must satisfy 0 < hungryBelowKcal < satiatedAtKcal ≤ reserveMaxKcal',
     )
-    expect(errorsWith({ coldSleepKcalPerHour: 50 })).toContain('coldSleepKcalPerHour must be at least sleepKcalPerHour')
+    const sleepOrder =
+      'Sleep must satisfy sleepKcalPerHour ≤ fireSleepKcalPerHour ≤ hutSleepKcalPerHour ≤ coldSleepKcalPerHour'
+    expect(errorsWith({ coldSleepKcalPerHour: 100 })).toContain(sleepOrder)
+    // A hut must not warm more than a fire.
+    expect(errorsWith({ hutSleepKcalPerHour: 70 })).toContain(sleepOrder)
   })
 
   it('refuses skill and practice ranges out of order, and rates that round to nothing', () => {
@@ -55,11 +59,11 @@ describe('valley configuration', () => {
     )
   })
 
-  it('refuses a band around the camp whose hearths would not fit in the camp’s clearing', () => {
+  it('refuses a band around the camp whose huts would not fit in the camp’s clearing', () => {
     expect(errorsWith({ scattered: false, bandSize: 200 })).toContain(
-      'The band’s hearths must fit inside the camp’s clearing',
+      'The band’s huts must fit inside the camp’s clearing',
     )
-    expect(errorsWith({ bandSize: 200 })).not.toContain('The band’s hearths must fit inside the camp’s clearing')
+    expect(errorsWith({ bandSize: 200 })).not.toContain('The band’s huts must fit inside the camp’s clearing')
   })
 
   it('refuses a band of one that starts as one group', () => {
@@ -138,10 +142,26 @@ describe('huts and axes', () => {
   })
 
   it('refuses sizes and times that are not positive, and counts that are negative', () => {
-    for (const key of ['logKg', 'logChopMinutes', 'hutLogs', 'hutLogDays', 'axeHours', 'axeLogs'] as const)
+    for (const key of [
+      'logKg',
+      'logChopMinutes',
+      'hutLogs',
+      'hutLogDays',
+      'axeHours',
+      'axeLogs',
+      'logsPerTree',
+      'treeRegrowthDays',
+      'hutRingCm',
+    ] as const)
       expect(errorsWith({ [key]: 0 })).toContain(`${key} must be positive`)
-    for (const key of ['outcropCount', 'stonesPerOutcrop', 'stonesPerSpot', 'logsPerTree', 'axeWood'] as const)
+    for (const key of ['outcropCount', 'stonesPerOutcrop', 'stonesPerSpot', 'axeWood', 'fellWood'] as const)
       expect(errorsWith({ [key]: -1 })).toContain(`${key} must not be negative`)
+    expect(errorsWith({ initialBushWood: 3 })).toContain('initialBushWood must be between 0 and bushCapacityWood')
+    // Bushes may hold no sticks at all, but sticks they hold must be worth a minute's gathering.
+    expect(errorsWith({ bushCapacityWood: 0, initialBushWood: 0 })).toEqual([])
+    expect(errorsWith({ woodPerHour: 200 })).toContain(
+      'A bush that holds sticks must hold a minute of gathering at the fastest rate',
+    )
   })
 
   it('refuses craft out of order, and working that costs no more than resting', () => {

@@ -1,12 +1,14 @@
-import type { ValleyConfig } from './types'
+import { isqrt } from './geometry'
+import type { Point, ValleyConfig } from './types'
 
 /**
  * The canonical Life 9 valley: 600 m square, with 32 thickets of 60 bushes, 12 stands of 12 trees and 4 outcrops of
- * stones, and a band of 8 born alike, who bring firewood home in loads of 30 kg, swap wood for food and get better at
- * what they practise. They start scattered and form groups when they meet. By day they see across the valley, check
- * the sites they know when idle, walk more slowly under a load, and take a full load home. Each group keeps one fire at
- * its flag, which warms every member and which members feed. Every member wants a hut of 10 logs, cut with an axe it
- * makes from a stone and a kilogram of wood, or buys from another member for food.
+ * stones, and a band of 8 born alike, who gather sticks from bushes and branches from trees, bring firewood home in
+ * loads of 30 kg, swap wood for food and get better at what they practise. They start scattered and form groups when
+ * they meet. By day they see across the valley, check the sites they know when idle, walk more slowly under a load,
+ * and take a full load home. Each group keeps one fire at its flag, which members feed, with their huts on a ring round
+ * it. Every member wants a hut of 10 logs, cut from felled trees with an axe it makes from a stone and a kilogram of
+ * wood, or buys from another member for food. A night by the fire in a whole hut is the warmest.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
@@ -18,6 +20,9 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   bushCapacityKcal: 400,
   initialBushKcal: 400,
   bushRegrowthKcalPerDay: 20,
+  bushCapacityWood: 2,
+  initialBushWood: 2,
+  bushRegrowthWoodPerDay: 1,
   standCount: 12,
   treesPerStand: 12,
   standRadiusCm: 1_500,
@@ -25,10 +30,11 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   treeCapacityWood: 25,
   initialTreeWood: 25,
   treeRegrowthWoodPerDay: 6,
+  fellWood: 10,
   siteSpacingCm: 5_000,
   siteMarginCm: 3_000,
   campClearingCm: 4_000,
-  hearthSpacingCm: 300,
+  hutRingCm: 700,
   walkCmPerSecond: 125,
   reachCm: 100,
   perceptionRadiusCm: 2_500,
@@ -48,6 +54,8 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   bandSize: 8,
   shelfLifeHours: 48,
   fireWoodPerHour: 1,
+  fireSleepKcalPerHour: 80,
+  hutSleepKcalPerHour: 120,
   coldSleepKcalPerHour: 150,
   woodStockNights: 2,
   woodLoad: 30,
@@ -73,7 +81,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   stoneSpacingCm: 300,
   stonesPerSpot: 5,
   logsPerTree: 3,
-  logRegrowthDays: 30,
+  treeRegrowthDays: 60,
   logKg: 20,
   logChopMinutes: 30,
   hutLogs: 10,
@@ -99,6 +107,25 @@ let spiral: [number, number][] = []
 
 /** Point `index` of the spiral, from 0. */
 export const spiralOffset = (index: number) => spiralPrefix(index + 1)[index]!
+
+/** The ring that slot `slot` round a flag lies on, from 1: the square spiral's ring. */
+export function ringOf(slot: number) {
+  const [dx, dy] = spiralOffset(slot)
+  return Math.max(Math.abs(dx), Math.abs(dy))
+}
+
+/**
+ * Slot `slot` round a flag, as an offset in whole centimetres: point `slot` of the square spiral, on ring `k`, moved
+ * along its direction from the flag onto the circle `k · hutRingCm` from it. Ring `k` holds `8k` huts, the first
+ * ring's evenly round the fire. Integer square roots keep it exact on every machine.
+ */
+export function ringOffset(config: Pick<ValleyConfig, 'hutRingCm'>, slot: number): Point {
+  const [dx, dy] = spiralOffset(slot)
+  const radius = ringOf(slot) * config.hutRingCm
+  // The length of (dx, dy) in ten-thousandths, rounded down.
+  const length = isqrt((dx * dx + dy * dy) * 100_000_000)
+  return { x: Math.trunc((dx * radius * 10_000) / length), y: Math.trunc((dy * radius * 10_000) / length) }
+}
 
 function spiralPrefix(count: number) {
   if (spiral.length < count) spiral = computeSpiral(Math.max(count, 2 * spiral.length, 64))
@@ -137,7 +164,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'treeCapacityWood',
     'siteSpacingCm',
     'campClearingCm',
-    'hearthSpacingCm',
+    'hutRingCm',
     'walkCmPerSecond',
     'reachCm',
     'perceptionRadiusCm',
@@ -158,7 +185,8 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'campfireWoodPerHour',
     'outcropRadiusCm',
     'stoneSpacingCm',
-    'logRegrowthDays',
+    'treeRegrowthDays',
+    'logsPerTree',
     'logKg',
     'logChopMinutes',
     'hutLogs',
@@ -169,9 +197,12 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
     'bushRegrowthKcalPerDay',
+    'bushCapacityWood',
+    'bushRegrowthWoodPerDay',
     'standCount',
     'treesPerStand',
     'treeRegrowthWoodPerDay',
+    'fellWood',
     'siteMarginCm',
     'sleepKcalPerHour',
     'restKcalPerHour',
@@ -183,7 +214,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'outcropCount',
     'stonesPerOutcrop',
     'stonesPerSpot',
-    'logsPerTree',
     'axeWood',
   ]
   for (const key of notNegative) if ((config[key] as number) < 0) errors.push(`${key} must not be negative`)
@@ -193,6 +223,8 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     errors.push('initialBushKcal must be between 0 and bushCapacityKcal')
   if (config.initialTreeWood < 0 || config.initialTreeWood > config.treeCapacityWood)
     errors.push('initialTreeWood must be between 0 and treeCapacityWood')
+  if (config.initialBushWood < 0 || config.initialBushWood > config.bushCapacityWood)
+    errors.push('initialBushWood must be between 0 and bushCapacityWood')
   if (config.dawnHour < 0 || config.dawnHour >= config.duskHour || config.duskHour > 24)
     errors.push('Hours must satisfy 0 ≤ dawnHour < duskHour ≤ 24')
   if (
@@ -203,8 +235,15 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     errors.push('Thresholds must satisfy 0 < hungryBelowKcal < satiatedAtKcal ≤ reserveMaxKcal')
   if (config.initialReserveKcal <= 0 || config.initialReserveKcal > config.reserveMaxKcal)
     errors.push('initialReserveKcal must be between 1 and reserveMaxKcal')
-  if (config.coldSleepKcalPerHour < config.sleepKcalPerHour)
-    errors.push('coldSleepKcalPerHour must be at least sleepKcalPerHour')
+  // A fire warms more than a hut, and both together most.
+  if (
+    config.fireSleepKcalPerHour < config.sleepKcalPerHour ||
+    config.hutSleepKcalPerHour < config.fireSleepKcalPerHour ||
+    config.coldSleepKcalPerHour < config.hutSleepKcalPerHour
+  )
+    errors.push(
+      'Sleep must satisfy sleepKcalPerHour ≤ fireSleepKcalPerHour ≤ hutSleepKcalPerHour ≤ coldSleepKcalPerHour',
+    )
   // An axe costs the extra energy of working instead of resting, which must be something.
   if (config.forageCostKcalPerHour <= config.restKcalPerHour)
     errors.push('forageCostKcalPerHour must be more than restKcalPerHour')
@@ -230,13 +269,14 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
       errors.push('A bush must hold a minute of picking at the fastest rate')
     if (Math.ceil(highest(config.woodPerHour) / 60) > config.treeCapacityWood)
       errors.push('A tree must hold a minute of gathering at the fastest rate')
+    if (config.bushCapacityWood > 0 && Math.ceil(highest(config.woodPerHour) / 60) > config.bushCapacityWood)
+      errors.push('A bush that holds sticks must hold a minute of gathering at the fastest rate')
   }
-  // A band that starts around the camp must have its hearths in the camp's clearing, clear of every plant.
+  // A band that starts around the camp must have its huts in the camp's clearing, clear of every plant.
   if (!config.scattered) {
-    const [outerX, outerY] = spiralOffsets(config.bandSize).at(-1)!
-    const outer = Math.max(Math.abs(outerX), Math.abs(outerY)) * config.hearthSpacingCm
+    const outer = ringOf(config.bandSize - 1) * config.hutRingCm
     const clear = config.campClearingCm - Math.max(config.thicketRadiusCm, config.standRadiusCm, config.outcropRadiusCm)
-    if (2 * outer * outer > clear * clear) errors.push('The band’s hearths must fit inside the camp’s clearing')
+    if (outer > clear) errors.push('The band’s huts must fit inside the camp’s clearing')
     if (config.bandSize < 2) errors.push('A band that starts as one group needs at least two foragers')
   }
   // Standing at a place's centre must show all of it, or exploring could never see it.

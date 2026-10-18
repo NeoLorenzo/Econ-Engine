@@ -6,6 +6,33 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE9-CampAndFirewood-045] - (2026-10-18)
+
+### Problem
+
+Watching Life 9 run, the owner found five things wrong. Deadwood lay beside a stump after its tree was cut. Members kept a hearth of their own after their group lit its shared fire. Huts stood too close together. A member asleep in its hut was not wholly inside it. And huts belonged round the fire, which should warm more than a hut. The owner also did not want deadwood at all: firewood should come from bushes and the branches of trees. They asked for these changes as Life 9.5, a revision of Life 9, without changing the ladder.
+
+### Decisions
+
+- **Sticks from bushes, branches from trees, more branches from felling.** All three firewood sources the owner chose. Trees then bushes form one list of wood plants, so gathering, memory and the checker treat them alike.
+- **A tree comes down whole.** The first log cut fells it and the rest are cut where it lies; a stump grows back after 60 days. A standing tree always holds every log, so a forager tells standing from felled by what it sees from afar, without new memory.
+- **Huts on rings round the fire,** 7 m out, 8 to a ring, placed by moving the square spiral's points onto circles with integer square roots, so every slot is exact on every machine.
+- **Four warmths:** fire and hut 60 kcal an hour, fire 80, hut 120, neither 150. The hut now saves food every night, not only on the 3% of night hours the fire is out.
+- **Members' own hearths were a drawing left over from before Life 8.** In the engine a member has burned no wood of its own since Life 8; only the observer still drew a fire ring at each member's sleeping spot. It now draws one only for a forager without a group.
+
+### What the implementation showed
+
+- In the first run of the new rules, felled crowns lay untouched beside their stumps, because foragers took sticks from nearer bushes. That looked like the deadwood the owner had objected to, so a forager gathering wood now clears a felled crown it knows first, as a member finishes a felled trunk before felling another. Over 20 days on the canonical seed, gathering from trees rose from about a fifth of the wood gathered to about three quarters, and most stumps are left bare.
+- Felling brings 10 kg of branches down, not the 20 first tried: with 20, crowns outlasted what the band burns.
+- Over 20 days on the canonical seed every forager lives, all 8 huts are whole, and 32 trees are felled for 95 logs. Night hours are spent mostly in a hut by the fire, some by the fire alone, and a few in a hut alone or cold.
+
+These are observations from single runs, not experiments.
+
+### Open questions
+
+- Fallen crowns still outlast the band's need for wood when many trees are felled at once; whether that matters can wait for experiments.
+- How much food a hut saves over a year, against the work of keeping it, is now a real question, added to the specification's questions for later.
+
 ## [LIFE9-HutsAndAxes-044] - (2026-10-18)
 
 ### Problem

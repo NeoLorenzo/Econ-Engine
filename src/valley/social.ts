@@ -1,4 +1,4 @@
-import { spiralOffset } from './config'
+import { ringOffset } from './config'
 import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
 import { chooseSite, siteCentre, sightOf } from './sites'
@@ -192,11 +192,11 @@ export function nearestOther(forager: Forager, foragers: readonly Forager[], rad
   return best
 }
 
-/** Slot `slot` of the square spiral around a flag, `hearthSpacingCm` apart, moved to the valley's edge if needed. */
+/** Slot `slot` of the rings round a flag, where a member's hut stands and it sleeps, moved to the valley's edge if needed. */
 export function hearthAround(config: ValleyConfig, flag: Point, slot: number): Point {
-  const [dx, dy] = spiralOffset(slot)
+  const offset = ringOffset(config, slot)
   const clamp = (value: number) => Math.max(0, Math.min(config.valleySizeCm, value))
-  return { x: clamp(flag.x + dx * config.hearthSpacingCm), y: clamp(flag.y + dy * config.hearthSpacingCm) }
+  return { x: clamp(flag.x + offset.x), y: clamp(flag.y + offset.y) }
 }
 
 /** A group just founded at `flag`, with no members yet and an empty, unlit fire. */

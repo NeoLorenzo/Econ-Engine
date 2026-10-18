@@ -1,10 +1,12 @@
-# [LIFE9-HutsAndAxes-044]
+# [LIFE9-CampAndFirewood-045]
 
 Life 9 is the bottom-up core described in the [merge document](MERGE.md#the-ladder), and the only version of it in the repository. Earlier steps built it one mechanism at a time and live on in git history; this document describes the whole simulation as it stands.
 
-A band of foragers lives in a small valley, simulated minute by minute in whole centimetres, kilocalories and kilograms. They pick berries bush by bush and gather deadwood under trees, eat, carry food that spoils, burn wood against cold nights, swap wood for food, and get better at what they practise. They start scattered and know only what they have seen. By day they see across the valley, and they check the thickets, stands and outcrops they know when their needs are met. A load slows them down, and they take a full load home before anything else. Those without a group look for company; two who meet found a group and plant a flag, and anyone who meets a member joins. Each group keeps one fire at its flag, which warms every member asleep around it.
+A band of foragers lives in a small valley, simulated minute by minute in whole centimetres, kilocalories and kilograms. They pick berries bush by bush, gather sticks from bushes and branches from trees, eat, carry food that spoils, burn wood against cold nights, swap wood for food, and get better at what they practise. They start scattered and know only what they have seen. By day they see across the valley, and they check the thickets, stands and outcrops they know when their needs are met. A load slows them down, and they take a full load home before anything else. Those without a group look for company; two who meet found a group and plant a flag, and anyone who meets a member joins. Each group keeps one fire at its flag, which warms every member asleep on the ring of huts round it.
 
-New in Life 9: every member wants a hut of its own. A hut is built of logs, and logs can only be cut from standing trees with an axe. Nobody wants an axe for itself; a member makes or buys one only because its hut needs logs. An axe is made at the hearth from a stone picked up at an outcrop and a kilogram of wood. A forager who has made more axes lately makes them faster and better, and better axes cut faster and last longer. Axes wear out, and huts weather, so the need for logs, and so for axes, never ends. Members may sell axes to each other for food.
+New in Life 9: every member wants a hut of its own. A hut is built of logs, and logs can only be cut from trees with an axe: the first cut fells a tree whole, and the rest of its logs are cut from the trunk where it lies. Nobody wants an axe for itself; a member makes or buys one only because its hut needs logs. An axe is made at the hearth from a stone picked up at an outcrop and a kilogram of wood. A forager who has made more axes lately makes them faster and better, and better axes cut faster and last longer. Axes wear out, and huts weather, so the need for logs, and so for axes, never ends. Members may sell axes to each other for food.
+
+Life 9.5 revises Life 9 without moving up the ladder, after the owner watched it run. There is no deadwood: firewood is sticks from bushes and branches from trees, and a felled tree's crown brings more branches down. A tree comes down whole and grows back from its stump. A group's huts stand on a ring round its fire, far enough apart to walk between, each facing the flames, and a member sleeps inside its hut. A hut keeps its sleeper a little warm, the fire more, and both together most. Only a forager without a group has a fire of its own.
 
 ## Question
 
@@ -20,12 +22,17 @@ Before the design was settled, a throwaway prototype showed that two rules are n
 
 | Decision | Choice | Reason |
 | --- | --- | --- |
-| The drive for shelter | Every member wants a **hut** at its hearth, whole. Wanting logs for it comes after hunger and wood for the fire, and before exploring, checking and rest. Foragers without a group build nothing: they seek company first, and joining a group moves their hearth. | The owner's rule: shelter is an inherent drive. A hearth is fixed only once a forager belongs to a group. |
-| What a hut does | A member asleep in its whole hut is warm even if the fire is out. | It gives the hut a real, measurable effect without making the shared fire pointless: fires are lit 97% of night hours, so the hut matters only on the nights the fire fails. |
+| The drive for shelter | Every member wants a **hut** at its hearth, whole. A member's hearth is its slot on the ring round its group's fire, where its hut stands and it sleeps; it has no fire of its own there. Wanting logs for it comes after hunger and wood for the fire, and before exploring, checking and rest. Foragers without a group build nothing: they seek company first, and joining a group moves their hearth. | The owner's rule: shelter is an inherent drive. A hearth is fixed only once a forager belongs to a group. |
+| Warmth | Four costs of an hour asleep: `sleepKcalPerHour`, 60, in a whole hut by a lit fire; `fireSleepKcalPerHour`, 80, by a lit fire without a hut; `hutSleepKcalPerHour`, 120, in a whole hut without a fire; `coldSleepKcalPerHour`, 150, with neither. A member's fire is its group's; a forager without a group burns its own, hut or not. | The owner's rule: a hut keeps warm a little, the fire more. In Life 9 a whole hut was as warm as the fire, and mattered only on the 3% of night hours the fire was out; now it saves food every night. |
+| Huts round the fire | Slot `i` round a flag is point `i` of the square spiral, on ring `k`, moved along its direction onto the circle `k · hutRingCm` from the flag, `hutRingCm` 700: the first ring holds 8 huts 7 m from the fire, evenly round it, the second 16 at 14 m. | The owner's rule: huts are built round the fire, because it warms more. Life 9's square spiral 3 m apart crowded the huts against each other. Integer square roots keep every slot exact on every machine. |
 | What a hut is made of | `hutLogs`, 10 logs, each carried home from a tree and laid at the hearth. A hut is whole when it holds 10. | The owner's rule: basic wooden huts. Ten logs is a few days' spare time for a first hut. |
 | Huts weather | Each hut loses a log every `hutLogDays`, 10 days; the log rots away. A hut short of a log is not whole until it is repaired. | Without weathering every hut is finished in the first week and nobody needs an axe again, so the question could only be asked in the first week. |
-| Logs come from standing trees | Each tree holds up to `logsPerTree`, 3 logs, and regrows one every `logRegrowthDays`, 30 days. A tree with no logs left is a stump. Its deadwood is separate and unchanged. | The owner's rule: trees must be cut down for wood to build. Deadwood under a tree is fallen branches, which a stump still has around it. |
+| Felling | A standing tree holds `logsPerTree`, 3 logs. The first log cut from it fells it whole: it lies where it fell, its crown's branches with `fellWood`, 10 kg, more brought down, and its other logs are cut from the trunk where it lies. A felled tree's branches do not regrow. | The owner's rule: a tree comes down whole in one go, then is broken down into logs and branches. In Life 9 a tree gave up its logs one by one while it stood. |
+| Stumps grow back | A felled tree with no logs left stands again whole, with every log, at the first midnight `treeRegrowthDays`, 60, after it fell. Branches still lying there become its new crown's. | Trees must come back or the valley runs out of logs. Keeping the leftover branches conserves wood without a rule for rotting. |
+| Firewood | No deadwood. Each bush holds up to `bushCapacityWood`, 2 kg, of sticks, regrowing `bushRegrowthWoodPerDay`, 1 kg; each standing tree up to `treeCapacityWood`, 25 kg, of branches, regrowing `treeRegrowthWoodPerDay`, 6 kg. Both are gathered by hand at `woodPerHour`. Trees and bushes together are the **wood plants**, and a thicket holds wood as well as berries. | The owner's rule: firewood comes from harvesting bushes and the branches of trees, not from dead wood on the ground. |
+| Clearing crowns first | A forager gathering wood takes from the nearest felled crown it knows with a minute's work, before any plant still growing. | Without it, felled crowns lay untouched beside their stumps while foragers took sticks from nearer bushes. It is the same rule as finishing a felled trunk before felling another tree. |
 | More trees | 12 stands of 12 trees, against 8 of 8. | The owner asked for more trees. The prototype's huts used about a tenth of the logs on offer at any time. |
+| Cutting | A member cuts at the nearest tree it knows lying felled with a log, and fells the nearest standing tree only when there is none it can reach in time. It tells them apart from afar: a standing tree holds every log. | One tree at a time is cut up before the next comes down. |
 | An axe is needed to cut a log | Without an axe, no log. Cutting a log takes `logChopMinutes`, 30 minutes, with an axe of quality 100, and proportionally longer with a worse one. | The owner's rule: the drive for tools comes from the need for wood. Requiring the axe keeps the choice that matters, making against buying, at the centre. |
 | Carrying a log | A log weighs `logKg`, 20 kg. A forager carries one at a time, takes it home before anything else, and walks more slowly under it. | Loads already slow walking. One log a trip makes the distance to the trees matter. |
 | Stones | **Outcrops** are a third kind of site, like thickets and stands: `outcropCount`, 4, each with `stonesPerOutcrop`, 12, stone spots holding `stonesPerSpot`, 5, stones. Stones never come back. | The owner asked for stone as a resource on the map, like trees and bushes. 240 stones are several times what 400 days use. |
@@ -49,9 +56,9 @@ The valley is a square `valleySizeCm` wide. Everything is drawn from the layout 
 2. **Bushes.** For each thicket in turn, bushes are drawn uniformly in the square around its centre and kept if they lie within `thicketRadiusCm` of it and at least `bushSpacingCm` from the thicket's earlier bushes, until it has `bushesPerThicket`. Bush IDs run from 0 across thickets in order.
 3. **Trees.** The same for each stand, with `standRadiusCm`, `treeSpacingCm` and `treesPerStand`.
 4. **Stones.** The same for each outcrop, with `outcropRadiusCm`, `stoneSpacingCm` and `stonesPerOutcrop`.
-5. **Starts.** With `scattered` on, each forager's start, which is its first hearth, is drawn from a start stream of its own, uniformly over the valley in forager ID order, rejecting a draw within `startSpacingCm` of an earlier start. With it off, the band starts as one group, its flag at the camp and its hearths on the square spiral round it.
+5. **Starts.** With `scattered` on, each forager's start, which is its first hearth, is drawn from a start stream of its own, uniformly over the valley in forager ID order, rejecting a draw within `startSpacingCm` of an earlier start. With it off, the band starts as one group, its flag at the camp and its hearths on the rings round it.
 
-A bush holds up to `bushCapacityKcal` of berries and a tree up to `treeCapacityWood` of deadwood; each regrows its share of a day's regrowth in the first minute of every hour, up to capacity. A tree also holds up to `logsPerTree` logs, and at midnight on every `logRegrowthDays`-th day each tree short of logs regrows one. A stone spot holds `stonesPerSpot` stones, which never regrow. `createValley` refuses a configuration whose layout or starts cannot be drawn in 10,000 draws.
+The wood plants are the trees, by ID, then the bushes: wood plant `treeCount + b` is bush `b`. A bush holds up to `bushCapacityKcal` of berries and `bushCapacityWood` of sticks, and a standing tree up to `treeCapacityWood` of branches; each regrows its share of a day's regrowth in the first minute of every hour, up to capacity, except a felled tree's branches, and a crown above capacity keeps what it has. A standing tree holds `logsPerTree` logs; it is felled by the first log cut from it, and the minute it fell is kept until it stands again. A stone spot holds `stonesPerSpot` stones, which never regrow. `createValley` refuses a configuration whose layout or starts cannot be drawn in 10,000 draws.
 
 **Places.** Place `p` covers column `p mod n` and row `floor(p / n)`, where `n = ceil(valleySizeCm / placeCm)`: a square `placeCm` wide, cut at the valley's edge. A place lies wholly within sight when all four of its corners do.
 
@@ -70,7 +77,7 @@ Every day of the starting log holds `3,600 · startPracticeHoursPerDay` seconds 
 | `carried` | Food it carries, as lots picked in one minute, oldest first; a lot picked `shelfLifeHours` ago spoils |
 | `wood`, `shortOfWood`, `tripWood` | Wood it holds, wood need with hysteresis, and wood gathered since it last stood at its hearth |
 | `log`, `stone` | Whether it carries a log, and the stones it holds |
-| `bushMemory`, `treeMemory` | For each plant, the stock it last saw there and the minute, or never |
+| `bushMemory`, `woodMemory` | For each bush, the berries it last saw there, and for each wood plant its sticks or branches, with the minute, or never |
 | `logMemory`, `stoneMemory` | For each tree, the logs it last saw on it, and for each stone spot its stones, with the minute, or never |
 | `placeSeen`, `siteKnown`, `siteChecked` | For each place, the first minute it lay wholly in sight; for each thicket, stand and outcrop, whether it has spotted it and the last minute it checked it |
 | `groupId`, `knownFlags`, `exploreTarget` | Its group, the flags it has seen and not since found gone, and the place it is walking to |
@@ -80,13 +87,13 @@ Every day of the starting log holds `3,600 · startPracticeHoursPerDay` seconds 
 | `making`, `chopRemainder` | An axe it is making, with the seconds worked and needed and whether it is for sale; the part of a log it has cut |
 | `promised` | Whether it has promised to make an axe for sale |
 | `heardTerms`, `heardAsk`, `trip` | The last terms for wood it heard; the best asking price for an axe it heard, the axe's quality, whether it is made yet, and the minute; and a trip to gather wood to sell |
-| remainders, `fireHour`, `warm` | Remainders in 3,600ths of picking, gathering and energy owed; its own fire's hour and warmth |
+| remainders, `fireHour`, `warm` | Remainders in 3,600ths of picking, gathering and energy owed; the hour of its last fire decision and whether a fire warms it that hour |
 | `fireGiven`, `warmByFireMinutes` | The wood it has put into any group's fire, and the minutes it has slept warm by one |
 | axe totals | Axes made, for itself and for sale, sold, bought and worn out; food received and paid for axes; logs cut; minutes asleep in its whole hut |
 
 A forager starts at its hearth with `initialReserveKcal`, nothing carried, no wood, no stone, log, axe or hut, and having seen nothing.
 
-A group has an ID from 0 in order of founding, a flag, the minute it was founded and dissolved, its members in order of joining (member `i` sleeps on slot `i` of the spiral round the flag, `hearthSpacingCm` apart), and its fire: `fireWood`, `fireLit`, the wood each member has `given`, and the wood burned and night hours lit and out.
+A group has an ID from 0 in order of founding, a flag, the minute it was founded and dissolved, its members in order of joining (member `i` sleeps in its hut on slot `i` of the rings round the flag), and its fire: `fireWood`, `fireLit`, the wood each member has `given`, and the wood burned and night hours lit and out.
 
 A hut stands where it was begun. If its builder's hearth moves, because it joins a group after the one it built with dissolved, the hut is abandoned where it stands and rots there; its logs are counted as abandoned.
 
@@ -94,13 +101,13 @@ A hut stands where it was begun. If its builder's hearth moves, because it joins
 
 Each minute runs these phases in order.
 
-0. **Practice and weathering.** In the first minute of every day after the first, each living forager enters yesterday's seconds in its log, drops the oldest day, and takes its rates and craft for the day. Every hut, standing or abandoned, whose day has come loses a log: forager `i`'s hut on days where `(day + i) mod hutLogDays = 0`. On every `logRegrowthDays`-th day each tree short of logs regrows one.
+0. **Practice and weathering.** In the first minute of every day after the first, each living forager enters yesterday's seconds in its log, drops the oldest day, and takes its rates and craft for the day. Every hut, standing or abandoned, whose day has come loses a log: forager `i`'s hut on days where `(day + i) mod hutLogDays = 0`. Every felled tree with no logs left that fell at least `treeRegrowthDays` ago stands again whole.
 1. **Regrowth.** In the first minute of every hour after minute 0.
 2. **Fires.** At the start of every hour: if it is night, each standing group's fire burns `campfireWoodPerHour` and is lit if it holds that much, and is out otherwise. By day every fire is unlit.
 3. **Turn order.** A seeded shuffle of the band, from a stream derived from the run seed and the minute.
 4. **Turns.** Each living forager in that order:
    1. **Spoilage** and **eating** from what it carries, oldest first, up to the room in its reserve.
-   2. **Observation.** It records the stock of every bush and the deadwood of every tree within close sight, `perceptionRadiusCm`. Its long sight is `sightRadiusCm` by day and close sight at night: within it, it spots every site, records the logs on every tree and the stones on every stone spot, which can be seen from afar, marks every place never seen before as seen, learns every standing flag and forgets every known flag whose spot holds none. It checks every site whose centre lies within `perceptionRadiusCm` less the site's radius.
+   2. **Observation.** It records the berries on every bush and the wood on every wood plant within close sight, `perceptionRadiusCm`. Its long sight is `sightRadiusCm` by day and close sight at night: within it, it spots every site, records the logs on every tree and the stones on every stone spot, which can be seen from afar, marks every place never seen before as seen, learns every standing flag and forgets every known flag whose spot holds none. It checks every site whose centre lies within `perceptionRadiusCm` less the site's radius.
    3. **Decision.** Hunger and wood need are updated; then the first rule that applies (see [Rules](#rules)). Its speed this minute is set by the load it carries as it sets out.
    4. **Action.** The minute's 60 seconds.
    5. **Meeting.** A forager without a group meets the nearest living forager within `talkRadiusCm`, if any: it joins a member's group, taking the next slot round its flag, or the two found a new group with the flag at their midpoint.
@@ -123,7 +130,7 @@ Let `D` be the daylight seconds left in the minute, 0 at night. A forager's spee
 | 5 | Not hungry, and carrying a full load | Walk home | `taking a load home` |
 | 6 | Neither hungry nor short of wood, and without a group | Walk towards the nearest forager it sees, or to its nearest known flag it can reach and return from before dusk, or explore | `seeking company`, or `waiting for company` at the flag |
 | 7 | A member neither hungry nor short of wood, making an axe | Walk home and work on it | `making an axe`, or `going home to make an axe` |
-| 8 | A member neither hungry nor short of wood, its hut not whole, and holding an axe (or a spare, which it takes up) | Cut a log at the nearest tree it knows holds one and can reach in time, walking to it first if needed | `cutting a log` or `seeking a tree` |
+| 8 | A member neither hungry nor short of wood, its hut not whole, and holding an axe (or a spare, which it takes up) | Cut a log at the nearest felled tree it knows holds one and can reach in time, else the nearest standing tree, walking to it first if needed | `cutting a log` or `seeking a tree` |
 | 9 | A member neither hungry nor short of wood, its hut not whole, holding no axe, and it has heard of an axe for sale worth more to it than the ask | If the axe is not made yet, wait at its hearth. Otherwise pick food until it carries the price at the midpoint, then wait at its hearth | `waiting for an axe being made`, `picking food to buy an axe`, `taking food home to buy an axe` or `waiting to buy an axe` |
 | 10 | A member neither hungry nor short of wood, whose hut is not whole and who holds no axe, or who has promised an axe | Make an axe: fetch a stone from the nearest stone spot it knows holds one and can reach in time, if it holds none; then, holding `axeWood`, begin at its hearth | `fetching a stone`, `picking up a stone`, `making an axe` |
 | 11 | Neither hungry nor short of wood, and somewhere to explore | Walk towards the nearest place never seen, or else to the nearest site not checked for `exploreAfterHours` | `exploring` or `checking` |
@@ -137,7 +144,7 @@ A rule from 7 to 10 that finds nothing it can reach in time, no tree with a log 
 
 **The choice of work.** A hungry forager works for food, unless terms it remembers make selling wood pay, when it gathers wood to sell enough for the food it lacks. A forager short of wood gathers wood, unless terms it remembers make buying pay, when it picks food to buy wood with, or waits if it already carries enough. A forager's own terms are its foraging rate over its wood rate.
 
-**The target plant.** It keeps its target unless it has just seen the plant holding less than a minute's work, `ceil(rate / 60)`, or can no longer reach it in time. Otherwise it chooses the nearest plant it remembers holding a minute's work, ties to the lowest ID; and, with nothing left to search, the one it saw longest ago.
+**The target plant.** It keeps its target unless it has just seen the plant holding less than a minute's work, `ceil(rate / 60)`, or can no longer reach it in time. Otherwise, working for wood, it chooses the nearest felled tree it saw from afar and remembers holding a minute's work of branches; then the nearest plant it remembers holding a minute's work, ties to the lowest ID; and, with nothing left to search, the one it saw longest ago. Searching for wood goes to thickets as well as stands, when bushes hold sticks.
 
 **Swaps.** Two members within talking distance swap when one has spare wood and the other wants wood, each at terms that pay it: the midpoint of their own terms, as whole kilocalories a kilogram. The amount is the least of the seller's spare wood, the buyer's wanted wood, what the buyer's carried food can pay for, and what the seller has room to eat. When nothing can change hands, they tell each other the terms, and every member within talking distance of a swap hears its terms.
 
@@ -154,9 +161,9 @@ A heard ask is remembered for `termsMemoryHours`, and replaced by a better one o
 
 A forager walks towards its hearth, a place or site, another forager, a stone spot, or a point `reachCm` short of its plant, at its speed, and arrives within the minute if it can. Having arrived at a plant holding a minute's work, it works the seconds left: its remainder for the task grows by its hourly rate times the seconds, and it takes the whole units. Picked food is eaten until the reserve is full and the rest carried; gathered wood adds to its wood and its trip.
 
-Cutting, it works the seconds left at the tree: its cut grows by the seconds times its axe's quality, and when it reaches `6,000 · logChopMinutes` a log comes off the tree, the rest carries over, it carries the log, and its axe has one log fewer left. An axe with none left is worn out and thrown away; the cut so far is lost. At a stone spot it takes one stone in the seconds left. Making, it puts its stone and `axeWood` into the axe when it begins, and works the seconds left at its hearth; when the seconds worked reach the seconds needed, the axe's quality is drawn from the axe stream for that forager and minute, uniformly from `floor(c / 2)` to `c`, and it becomes the member's axe, or its spare if made for sale, which ends its promise.
+Cutting, it works the seconds left at the tree: its cut grows by the seconds times its axe's quality, and when it reaches `6,000 · logChopMinutes` a log comes off the tree, the rest carries over, it carries the log, and its axe has one log fewer left. If the tree stood, it falls: `fellWood` is added to its branches. An axe with none left is worn out and thrown away; the cut so far is lost. At a stone spot it takes one stone in the seconds left. Making, it puts its stone and `axeWood` into the axe when it begins, and works the seconds left at its hearth; when the seconds worked reach the seconds needed, the axe's quality is drawn from the axe stream for that forager and minute, uniformly from `floor(c / 2)` to `c`, and it becomes the member's axe, or its spare if made for sale, which ends its promise.
 
-Otherwise it stands. Asleep, a member is warm if its group's fire is lit or it sleeps in its whole hut; a forager without a group burns `fireWoodPerHour` at the start of each hour it sleeps if it holds that much, and sleeps cold otherwise. Picking, gathering, cutting, fetching stones and making cost `forageCostKcalPerHour`, walking `travelKcalPerHour`, standing `restKcalPerHour`, and sleeping `sleepKcalPerHour`, or `coldSleepKcalPerHour` in a cold hour.
+Otherwise it stands. Asleep, a member is warmed by its group's fire if it is lit; a forager without a group burns `fireWoodPerHour` at the start of each hour it sleeps if it holds that much, and has no fire otherwise. Either sleeps in its hut if a whole one stands at its hearth. Picking, gathering, cutting, fetching stones and making cost `forageCostKcalPerHour`, walking `travelKcalPerHour`, standing `restKcalPerHour`, and sleeping the cost of its warmth: `sleepKcalPerHour` with fire and hut, `fireSleepKcalPerHour` with a fire alone, `hutSleepKcalPerHour` in a hut alone, and `coldSleepKcalPerHour` with neither.
 
 ## Defaults
 
@@ -165,12 +172,13 @@ Otherwise it stands. Asleep, a member is warm if its group's fire is lit or it s
 | `valleySizeCm` | 60,000 | `bandSize` | 8 |
 | `thicketCount`, `bushesPerThicket` | 32, 60 | `shelfLifeHours` | 48 |
 | `thicketRadiusCm`, `bushSpacingCm` | 1,200, 200 | `fireWoodPerHour`, `coldSleepKcalPerHour` | 1, 150 |
+| `bushCapacityWood`, `bushRegrowthWoodPerDay` | **2, 1** | `fireSleepKcalPerHour`, `hutSleepKcalPerHour` | **80, 120** |
 | `bushCapacityKcal`, `bushRegrowthKcalPerDay` | 400, 20 | `woodStockNights`, `woodLoad` | 2, 30 |
 | `standCount`, `treesPerStand` | **12, 12** | `skillMinPercent`, `skillMaxPercent` | 100, 100 |
 | `standRadiusCm`, `treeSpacingCm` | 1,500, 400 | `termsMemoryHours` | 24 |
-| `treeCapacityWood`, `treeRegrowthWoodPerDay` | 25, 6 | `practiceDays`, `practiceHalfHours` | 30, 60 |
+| `treeCapacityWood`, `treeRegrowthWoodPerDay`, `fellWood` | 25, 6, **10** | `practiceDays`, `practiceHalfHours` | 30, 60 |
 | `siteSpacingCm`, `siteMarginCm`, `campClearingCm` | 5,000, 3,000, 4,000 | `practiceMinPercent`, `practiceMaxPercent` | 50, 150 |
-| `hearthSpacingCm`, `walkCmPerSecond`, `reachCm` | 300, 125, 100 | `startPracticeHoursPerDay` | 2 |
+| `hutRingCm`, `walkCmPerSecond`, `reachCm` | **700**, 125, 100 | `startPracticeHoursPerDay` | 2 |
 | `perceptionRadiusCm`, `talkRadiusCm`, `sightRadiusCm` | 2,500, 2,000, 100,000 | `scattered` | true |
 | `dawnHour`, `duskHour` | 6, 18 | `startSpacingCm`, `placeCm` | 5,000, 3,000 |
 | `forageKcalPerHour`, `woodPerHour` | 1,200, 24 | `exploreAfterHours` | 24 |
@@ -178,28 +186,28 @@ Otherwise it stands. Asleep, a member is warm if its group's fire is lit or it s
 | `forageCostKcalPerHour`, `travelKcalPerHour` | 300, 300 | `campfireWoodPerHour` | 1 |
 | `reserveMaxKcal`, `initialReserveKcal` | 20,000, 16,000 | `hungryBelowKcal`, `satiatedAtKcal` | 14,000, 18,000 |
 | `outcropCount`, `stonesPerOutcrop` | 4, 12 | `outcropRadiusCm`, `stoneSpacingCm` | 1,000, 300 |
-| `stonesPerSpot` | 5 | `logsPerTree`, `logRegrowthDays` | 3, 30 |
+| `stonesPerSpot` | 5 | `logsPerTree`, `treeRegrowthDays` | 3, **60** |
 | `logKg`, `logChopMinutes` | 20, 30 | `hutLogs`, `hutLogDays` | 10, 10 |
 | `axeHours`, `axeLogs`, `axeWood` | 4, 40, 1 | `craftSkillMinPercent`, `craftSkillMaxPercent` | 100, 100 |
-| `axeTrade`, `craftPractice` | true, true | | |
+| `axeTrade`, `craftPractice` | true, true | `initialTreeWood`, `initialBushWood` | 25, 2 |
 
-`createValley` refuses a configuration with a value that is not an integer or a switch that is not a boolean; sizes, counts, rates and radii that are not positive, or amounts that are negative; a reach as long as close sight; starting stocks above capacity; hours, hunger thresholds or costs out of order, including working that costs no more than resting; skill, craft or practice ranges out of order, or rates that round to nothing or exceed what a plant holds in a minute; a log heavier than a forager can carry at walking speed 1; a band around the camp whose hearths would not fit in its clearing, or of fewer than two; a place too large to see whole from its centre; long sight shorter than close sight; and a site too wide to check from inside close sight.
+`createValley` refuses a configuration with a value that is not an integer or a switch that is not a boolean; sizes, counts, rates and radii that are not positive, or amounts that are negative; a reach as long as close sight; starting stocks above capacity; hours, hunger thresholds or costs out of order, including working that costs no more than resting and sleep costs out of the order fire and hut, fire, hut, neither; no logs on a tree; skill, craft or practice ranges out of order, or rates that round to nothing or exceed what a plant holds in a minute, a bush that holds sticks included; a log heavier than a forager can carry at walking speed 1; a band around the camp whose huts would not fit in its clearing, or of fewer than two; a place too large to see whole from its centre; long sight shorter than close sight; and a site too wide to check from inside close sight.
 
 ## Invariants
 
 Checked after every minute of every checked run, by `src/valley/invariants.ts`:
 
 - **Energy is conserved exactly.** Bush stock, reserves, carried food, food eaten and spoiled equal the food at minute 0 plus regrowth, through swaps of wood and sales of axes alike.
-- **Wood is conserved exactly.** Deadwood on trees, held by foragers and in fires, wood burned, and wood in axes made, equals the wood at minute 0 plus regrowth.
+- **Wood is conserved exactly.** Sticks on bushes and branches on trees, wood held by foragers and in fires, wood burned, and wood in axes made, equals the wood at minute 0 plus regrowth plus branches brought down by felling.
 - **Logs are conserved exactly.** Logs on trees, carried, in huts, rotted and abandoned equal the logs at minute 0 plus regrowth.
 - **Stones are conserved exactly.** Stones on the ground and held, plus axes ever made, equal the stones at minute 0; axes held, as axes or spares, plus axes worn out, equal axes ever made.
-- Every plant's and stone spot's stock is replayed from regrowth and recorded work.
+- Every plant's and stone spot's stock is replayed from regrowth and recorded work, and every tree's fall and regrowth: a tree falls only at its first cut, which finds it holding every log, and stands again only as a stump on its day.
 - One turn per living forager each minute; its seconds add up to 60; it moves no further than its walking seconds at the speed its recorded load allows, and its load is no more than the wood of its trip and its log.
 - Work only in daylight, on a plant within reach holding a minute's work, at a tree within reach holding a log, at a stone spot within reach holding a stone, or at its own hearth; memory of the plant or spot worked or targeted, and every hour of everything in view, matches what it saw.
 - Places first marked seen lie wholly within sight; every site within sight is known, and checked exactly when the forager stood close enough; a walk to a place or site aims at one worth it and ends no further from it.
 - A forager not hungry with a full load or carrying a log never idles, explores, checks, seeks company or makes axes, and only one with a log or a full load takes it home, towards the hearth it had while it acted.
 - Groups, replayed through each minute's foundings, joinings and dissolutions in turn order, as in Life 8; swaps, quotes, asks, promises and sales stay within a group.
-- Fires burn, warm and are fed as in Life 8; a member is warm asleep if and only if its fire is lit or it sleeps in its whole hut.
+- Fires burn and are fed as in Life 8; every sleeper's warmth names its hut exactly when it sleeps in a whole one, a member's names the fire exactly when its group's fire is lit, a forager that burned wood has its fire, and only a sleeper with neither sleeps cold.
 - A hut gains a log only from its builder standing at it carrying one, and loses one only on its day; a whole hut holds `hutLogs` logs.
 - An axe's quality lies between half its maker's craft and its craft when made; its logs left start at `max(1, floor(axeLogs · q / 100))` and fall by one with each log cut. Every sale is from a member holding a spare to a member that needs an axe and holds none, at a price between the seller's ask and the axe's worth to the buyer, and agrees on both sides.
 - Carried lots are whole, unspoiled and in order; practice logs, rates and craft follow from born skills and seconds worked, and change only at midnight; swaps pay both sides and agree on both sides.
@@ -212,7 +220,7 @@ Checked after every minute of every checked run, by `src/valley/invariants.ts`:
 - **What a first hut takes.** A first axe is made at half one's craft: 8 hours, of quality 25 to 50. Ten logs at quality 37 take about 13.5 hours of cutting, plus 10 trips to the trees under 20 kg, at 93 cm a second.
 - **What an axe costs.** At craft `c`, `840 · 100 / c` kilocalories: 1,680 at craft 50%, 840 at 100%, 560 at 150%. Between two equally able members an axe is worth exactly its ask, so neither gains by trading; trade needs a difference in craft.
 - **What huts need.** Each hut loses a log every 10 days: 0.1 logs a member-day. An axe of quality 45 lasts 18 logs, so once huts stand a member wears out an axe about every 180 days. First axes are worse and huts take 10 logs, so a band of 8 makes about 26 axes over 400 days.
-- **Logs on offer.** 144 trees hold 432 logs and regrow 4.8 a day, against 0.8 a day that 8 huts weather away.
+- **Logs on offer.** 144 standing trees hold 432 logs; felled and cut up at once, they could regrow at most 7.2 logs a day, against 0.8 a day that 8 huts weather away.
 - **Capacity.** The valley regrows 38,400 kcal a day; a forager needs about 2,500 kcal a day, so it feeds about 15.
 
 ## Questions for later
@@ -223,6 +231,7 @@ Experiments wait for a stable version of the Life engine, so this step has none.
 - Does trade follow born talent instead, when craft differs from birth (`craftSkillMinPercent` 50, `craftSkillMaxPercent` 150)?
 - What changes with `axeTrade` off, or `craftPractice` off?
 - How many can the valley feed with huts and axes to keep up?
+- How much food does a hut save a member over a year, against the work of keeping it whole?
 
 
 ## Ledger and metrics
@@ -232,12 +241,12 @@ Experiments wait for a stable version of the Life engine, so this step has none.
 
 ## Observer
 
-`life.html` is "Life 9 · huts and axes". It works like a strategy game that can be paused and sped up but not controlled.
+`life.html` is "Life 9.5 · huts round the fire". It works like a strategy game that can be paused and sped up but not controlled.
 
-- **The valley.** As in Life 8, with: trees that thin as their logs are cut and stand as stumps with none; outcrops of grey stones that shrink as they are taken; a hut at each member's hearth that rises log by log, a gap where a log has rotted; a forager carrying a log on its shoulder, swinging an axe at a tree, and kneeling at its hearth making an axe.
+- **The valley.** As in Life 8, with: standing trees whose crowns fill out with their branches; a felled tree lying where it fell beside its stump, its trunk shortening as logs are cut from it and its crown, flat on the ground at the far end, shrinking as its branches are gathered, until only the stump is left; outcrops of grey stones that shrink as they are taken; a hut at each member's slot on the ring round its group's fire, its length pointing at the flames, rising log by log, a gap where a log has rotted; a member asleep lying inside its hut, feet towards the fire, with its wood stacked beside the hut; a fire of its own, in a ring of stones, only for a forager without a group; a forager carrying a log on its shoulder, swinging an axe at a tree, and kneeling at its hearth making an axe. There is no deadwood anywhere.
 - **Following a forager.** The HUD shows, as well as Life 8's: its craft and practice at making axes, the axe it holds and its spare, each with quality and logs left and who made it, the axe it is making and how far along, any promise, the ask it last heard, its hut's logs, and the axes it has made, sold and bought.
 - **Selecting a group.** As in Life 8, and the group card gains a table of axes: one row per member, with axes made for itself and for sale, sold and bought, food received and paid, its craft, and the quality of its axe. A sentence names the member who has made the most axes for others, if anyone has.
-- **Inspecting** a tree shows its logs and deadwood; a stone spot its stones; a hut its logs and the day it next weathers.
+- **Inspecting** a bush shows its berries and sticks; a tree its branches, its logs, whether it stands, lies felled or is a stump, and when it grows back; a stone spot its stones; a hut its logs and the day it next weathers.
 - **History and setup.** As in Life 8, with charts of axes made, sold and worn out each day and of huts whole; the setup's numbers and the switches.
 
 ## Code layout
@@ -261,14 +270,15 @@ Nothing under `src/sim` changes, so MVP9 keeps its trajectory bit for bit.
 
 - Configuration validation, one case per rule.
 - The layout and its streams, including outcrops and stones, and that drawing craft leaves the other skills unchanged; a forager's minute, choosing a plant, eating, spoilage and swaps; places, meeting, founding, joining and dissolving; sight, sites, exploring and searching; loads, speed and taking a load or log home.
-- Fires and feeding as in Life 8; warmth in a whole hut with the fire out.
-- Huts: a log laid at the hearth only, whole at `hutLogs`, weathering on its day, abandonment when the hearth moves.
+- Fires and feeding as in Life 8; the four warmths, from a whole hut by a lit fire to neither, and what each costs.
+- Huts: on rings round the fire, 8 on the first and 16 on the second; a log laid at the hearth only, whole at `hutLogs`, weathering on its day, abandonment when the hearth moves.
+- Trees and firewood: the first cut fells a tree and brings its crown down, the rest are cut where it lies, a felled tree is finished before another is felled, a stump grows back on its day, branches regrow on standing trees only, and sticks are gathered from bushes.
 - Axes: making takes the seconds its craft gives and can be interrupted; quality within its range; cutting at the speed quality gives; wear and throwing away; a maker taking up its spare.
 - Trade: an ask heard and kept; a promise only from the cheapest maker that gains the asker; a sale only when both gain, paid in carried food within the seller's room; nothing sold, asked or promised with `axeTrade` off or outside a group.
 - Determinism and purity: `stepValley` never changes its input, and `n` steps equal one run of `n` minutes.
-- The invariants catch damage to each kind of record, including a log or stone lost or made from nothing, a hut that grows away from its builder, an axe of impossible quality, and a sale at a price outside the two sides' terms.
-- **Fingerprints.** Life 9 runs exactly as recorded: 30 days on three seeds for the canonical valley, a band that starts together, practice off, born talent, a band of 12 and unequal skills match recorded fingerprints of their daily summaries and totals.
-- Observer: drawing between minutes, plants, stumps, stones and huts, the camera, groups and what a forager knows, the axes table. The huts, logs carried and the axes table are checked in the browser, at desktop width and at 375 px.
+- The invariants catch damage to each kind of record, including a tree felled without a record, a warmth that does not match the fire, a log or stone lost or made from nothing, a hut that grows away from its builder, an axe of impossible quality, and a sale at a price outside the two sides' terms.
+- **Fingerprints.** Life 9.5 runs exactly as recorded: 30 days on three seeds for the canonical valley, a band that starts together, practice off, born talent, a band of 12 and unequal skills match recorded fingerprints of their daily summaries and totals.
+- Observer: drawing between minutes, plants, standing and felled trees, stones, huts turned to the fire, the camera, groups and what a forager knows, the axes table. The huts, sleepers in them, felled trees and logs carried are checked in the browser.
 
 ## Not in Life 9
 

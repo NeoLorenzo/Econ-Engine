@@ -2,14 +2,14 @@ import { askOf, axeLife, salePrice, worthTo } from './axes'
 import { feedAmount } from './fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, minuteOfWork, plantsInView, speedForLoad } from './forager'
 import { distance, distanceSq } from './geometry'
-import { weathersOn } from './huts'
+import { regrowsAt, weathersOn } from './huts'
 import { forEachPlantWithin } from './layout'
 import { craftOf, ratesOf } from './practice'
 import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
-import { siteCentre, siteGeometry, siteGood, siteWanted, sightOf } from './sites'
+import { siteCentre, siteGeometry, siteHolds, siteWanted, sightOf } from './sites'
 import { bothGain } from './trade'
-import { coldMatters, hourlyShare } from './work'
-import type { ActionReason, Axe, Hut, Point, ValleyState } from './types'
+import { coldMatters, hourlyShare, warmthOf } from './work'
+import type { ActionReason, Axe, CutEvent, Hut, Point, ValleyState } from './types'
 
 /** What a forager not hungry does when idle, which a full load must wait for. */
 const IDLE_REASONS = new Set<ActionReason>([
@@ -86,8 +86,9 @@ export class ValleyChecker {
   private startingGroups: number
   /** Each forager's turn in the minute being checked, by ID, or −1 if it took none. */
   private turnAt = new Int32Array(0)
-  /** Every tree's logs and every stone spot's stones, replayed from regrowth and recorded work. */
+  /** Every tree's logs and the minute it was felled, and every stone spot's stones, replayed from regrowth and work. */
   private treeLogs: Int32Array
+  private felled: Int32Array
   private stones: Int32Array
   /** Each forager's log, craft, axe and spare at the end of the minute before, and every hut. */
   private logBefore: number[]
@@ -98,7 +99,7 @@ export class ValleyChecker {
 
   constructor(state: ValleyState) {
     this.bushes = state.bushKcal.slice()
-    this.trees = state.treeWood.slice()
+    this.trees = state.woodStock.slice()
     this.bushTotal = sum(this.bushes)
     this.treeTotal = sum(this.trees)
     this.aliveBefore = state.foragers.map((forager) => forager.alive)
@@ -116,6 +117,7 @@ export class ValleyChecker {
     this.litNow = state.groups.map((group) => group.fireLit)
     this.startingGroups = state.minute === 0 ? state.groups.length : 0
     this.treeLogs = state.treeLogs.slice()
+    this.felled = state.treeFelledMinute.slice()
     this.stones = state.stoneStock.slice()
     this.logBefore = state.foragers.map((forager) => forager.log)
     this.craftBefore = state.foragers.map((forager) => forager.craft)
@@ -135,26 +137,36 @@ export class ValleyChecker {
     this.turnAt.fill(-1)
     for (const [index, event] of state.lastEvents.entries()) this.turnAt[event.foragerId] = index
 
+    // At midnight, a stump felled long enough ago stands again whole.
+    if (minute > 0 && minute % MINUTES_PER_DAY === 0)
+      for (let id = 0; id < this.treeLogs.length; id += 1)
+        if (regrowsAt(config, this.felled[id]!, this.treeLogs[id]!, minute)) {
+          this.treeLogs[id] = config.logsPerTree
+          this.felled[id] = -1
+        }
+
     if (minute > 0 && minute % 60 === 0) {
       const hour = (minute / 60) % 24
       const berries = hourlyShare(config.bushRegrowthKcalPerDay, hour)
-      const deadwood = hourlyShare(config.treeRegrowthWoodPerDay, hour)
+      const branches = hourlyShare(config.treeRegrowthWoodPerDay, hour)
+      const sticks = hourlyShare(config.bushRegrowthWoodPerDay, hour)
       for (let id = 0; id < this.bushes.length; id += 1) {
         const after = Math.min(config.bushCapacityKcal, this.bushes[id]! + berries)
         this.bushTotal += after - this.bushes[id]!
         this.bushes[id] = after
       }
+      // Wood plants: branches on standing trees, where a crown above capacity keeps what it has, then sticks on bushes.
+      const trees = layout.trees.count
       for (let id = 0; id < this.trees.length; id += 1) {
-        const after = Math.min(config.treeCapacityWood, this.trees[id]! + deadwood)
-        this.treeTotal += after - this.trees[id]!
+        const before = this.trees[id]!
+        let after = before
+        if (id >= trees) after = Math.min(config.bushCapacityWood, before + sticks)
+        else if (this.felled[id]! < 0 && before < config.treeCapacityWood)
+          after = Math.min(config.treeCapacityWood, before + branches)
+        this.treeTotal += after - before
         this.trees[id] = after
       }
     }
-
-    // Logs regrow at midnight on every `logRegrowthDays`-th day.
-    if (minute > 0 && minute % MINUTES_PER_DAY === 0 && (minute / MINUTES_PER_DAY) % config.logRegrowthDays === 0)
-      for (let id = 0; id < this.treeLogs.length; id += 1)
-        if (this.treeLogs[id]! < config.logsPerTree) this.treeLogs[id]! += 1
 
     // Whether each group's fire is lit this hour, decided at its start.
     if (minute % 60 === 0)
@@ -179,8 +191,8 @@ export class ValleyChecker {
     const daylight = isDaylight(config, minute)
     const reach2 = config.reachCm ** 2
     const hearthAtTurn = this.hearthsAtTurns(state)
-    const cuts = new Map<number, number>()
-    for (const made of state.lastAxeEvents) if (made.kind === 'cut') cuts.set(made.foragerId, made.treeId)
+    const cuts = new Map<number, CutEvent>()
+    for (const made of state.lastAxeEvents) if (made.kind === 'cut') cuts.set(made.foragerId, made)
     const sight = sightOf(config, minute)
     for (const event of state.lastEvents) {
       const forager = state.foragers[event.foragerId]!
@@ -217,9 +229,9 @@ export class ValleyChecker {
       } else if (logBefore && daylight && forager.alive && event.reason !== 'going home')
         fail(`forager ${forager.id} is ${event.reason} carrying a log`)
       const food = event.workedFor === 'food'
-      const plants = food ? layout.bushes : layout.trees
+      const plants = food ? layout.bushes : layout.woodPlants
       const stocks = food ? this.bushes : this.trees
-      const memory = food ? forager.bushMemory : forager.treeMemory
+      const memory = food ? forager.bushMemory : forager.woodMemory
       // What it remembers matches what it saw at the start of its turn, before its own work.
       const target = event.targetId
       if (
@@ -231,7 +243,7 @@ export class ValleyChecker {
       if (fullView) {
         for (const [kindPlants, kindIndex, kindStocks, kindMemory] of [
           [layout.bushes, layout.bushIndex, this.bushes, forager.bushMemory],
-          [layout.trees, layout.treeIndex, this.trees, forager.treeMemory],
+          [layout.woodPlants, layout.woodIndex, this.trees, forager.woodMemory],
         ] as const) {
           for (const id of plantsInView(config, kindIndex, kindPlants, from.x, from.y)) {
             if (kindMemory.seen[id] !== minute || kindMemory.stock[id] !== kindStocks[id])
@@ -252,7 +264,8 @@ export class ValleyChecker {
         if (event.workSeconds && !daylight) fail(`forager ${forager.id} worked at night`)
         if (event.plantId !== null || event.gatheredKcal || event.gatheredWood)
           fail(`forager ${forager.id} picked or gathered while working for its hut`)
-        const cutTree = cuts.get(forager.id)
+        const cut = cuts.get(forager.id)
+        const cutTree = cut?.treeId
         if (event.task === 'cut') {
           const id = event.treeId
           if (id === null) fail(`forager ${forager.id} cut no tree`)
@@ -267,7 +280,21 @@ export class ValleyChecker {
           }
           if (event.cutLog !== (cutTree !== undefined) || (cutTree !== undefined && cutTree !== id))
             fail(`forager ${forager.id}'s cut does not match its record`)
-          if (cutTree !== undefined) this.treeLogs[cutTree]! -= 1
+          if (cut) {
+            // The first log cut from a standing tree fells it, bringing its crown's branches down.
+            const standing = this.felled[cut.treeId]! < 0
+            if (cut.felled !== standing || event.felled !== cut.felled)
+              fail(`forager ${forager.id}'s cut felled a tree that was down, or left one standing`)
+            if (standing && this.treeLogs[cut.treeId] !== config.logsPerTree)
+              fail(`tree ${cut.treeId} stood without every log`)
+            if (standing) {
+              this.felled[cut.treeId] = minute
+              this.trees[cut.treeId]! += config.fellWood
+              this.treeTotal += config.fellWood
+              touchedTrees.push(cut.treeId)
+            }
+            this.treeLogs[cut.treeId]! -= 1
+          } else if (event.felled) fail(`forager ${forager.id} felled a tree without cutting a log`)
         } else if (cutTree !== undefined || event.cutLog) fail(`forager ${forager.id} cut a log without cutting`)
         if (event.task === 'stone') {
           const id = event.stoneId
@@ -284,7 +311,7 @@ export class ValleyChecker {
           const home = hearthAtTurn[forager.id]!
           if (position.x !== home.x || position.y !== home.y) fail(`forager ${forager.id} made an axe away from home`)
         }
-      } else if (event.cutLog || event.tookStone || cuts.has(forager.id))
+      } else if (event.cutLog || event.felled || event.tookStone || cuts.has(forager.id))
         fail(`forager ${forager.id} cut a log or took a stone without working for its hut`)
       else if (event.workSeconds) {
         if (!daylight) fail(`forager ${forager.id} worked at night`)
@@ -325,7 +352,14 @@ export class ValleyChecker {
         const whole = hut !== undefined && hut.logs - (event.laidLog ? 1 : 0) >= config.hutLogs
         if (event.inHut !== whole)
           fail(`forager ${forager.id} slept in a hut that is not whole, or outside a whole one`)
-      } else if (event.inHut) fail(`forager ${forager.id} is in its hut awake`)
+        // How warm it slept names its hut, and it slept cold only with neither fire nor hut.
+        if (event.warmth === null || (event.warmth === 'fire and hut' || event.warmth === 'hut') !== event.inHut)
+          fail(`forager ${forager.id}'s warmth does not match its hut`)
+        if (event.sleptCold !== (event.warmth === 'cold' && coldMatters(config)))
+          fail(`forager ${forager.id} slept cold at another warmth`)
+        if (event.burnedWood && event.warmth !== 'fire' && event.warmth !== 'fire and hut')
+          fail(`forager ${forager.id} burned wood and slept without its fire`)
+      } else if (event.inHut || event.warmth !== null) fail(`forager ${forager.id} is in its hut, or warm, awake`)
       if (!daylight && forager.alive && event.reason !== 'going home' && event.reason !== 'night')
         fail(`forager ${forager.id} is up at night`)
       if (event.fireGroupId !== null) {
@@ -336,13 +370,12 @@ export class ValleyChecker {
         if (this.groupBefore[forager.id] !== event.fireGroupId && forager.groupId !== event.fireGroupId)
           fail(`forager ${forager.id} slept by another group's fire`)
         if (event.burnedWood) fail(`forager ${forager.id} burned its own wood beside its group's fire`)
-        if (coldMatters(config) && event.sleptCold === ((this.litNow[event.fireGroupId] ?? false) || event.inHut))
+        if (event.warmth !== warmthOf(this.litNow[event.fireGroupId] ?? false, event.inHut))
           fail(`forager ${forager.id}'s warmth does not match its group's fire and its hut`)
       } else if (event.sleepSeconds && this.groupBefore[forager.id] !== null) {
         if (this.groupBefore[forager.id] === forager.groupId)
           fail(`forager ${forager.id} slept by its own fire while in a group`)
-      } else if (event.inHut && (event.burnedWood || event.sleptCold))
-        fail(`forager ${forager.id} burned wood or slept cold in its whole hut`)
+      }
       if (event.burnedWood) {
         const hour = Math.floor(minute / 60)
         if (!event.sleepSeconds) fail(`forager ${forager.id} burned wood awake`)
@@ -357,21 +390,23 @@ export class ValleyChecker {
         if (before <= 0 || before >= config.woodLoad) fail(`forager ${forager.id} filled a load it was not carrying`)
       }
     }
-    for (let id = 0; id < this.treeLogs.length; id += 1)
+    for (let id = 0; id < this.treeLogs.length; id += 1) {
       if (state.treeLogs[id] !== this.treeLogs[id])
         fail(`tree ${id} holds ${state.treeLogs[id]} logs, not ${this.treeLogs[id]}`)
+      if (state.treeFelledMinute[id] !== this.felled[id]) fail(`tree ${id} fell or stood again without a record`)
+    }
     for (let id = 0; id < this.stones.length; id += 1)
       if (state.stoneStock[id] !== this.stones[id]) fail(`stone spot ${id} holds the wrong stones`)
     for (const id of touchedBushes)
       if (state.bushKcal[id] !== this.bushes[id]) fail(`bush ${id} holds ${state.bushKcal[id]}, not ${this.bushes[id]}`)
     // Work only ever takes, and regrowth stops at capacity, so every stock the replay holds stays in range.
     for (const id of touchedTrees)
-      if (state.treeWood[id] !== this.trees[id]) fail(`tree ${id} holds ${state.treeWood[id]}, not ${this.trees[id]}`)
+      if (state.woodStock[id] !== this.trees[id]) fail(`tree ${id} holds ${state.woodStock[id]}, not ${this.trees[id]}`)
     if (minute % 60 === 0) {
       for (let id = 0; id < this.bushes.length; id += 1)
         if (state.bushKcal[id] !== this.bushes[id]) fail(`bush ${id} changed without a record`)
       for (let id = 0; id < this.trees.length; id += 1)
-        if (state.treeWood[id] !== this.trees[id]) fail(`tree ${id} changed without a record`)
+        if (state.woodStock[id] !== this.trees[id]) fail(`tree ${id} changed without a record`)
     }
 
     // One pass over the band sums what the balances need.
@@ -398,7 +433,7 @@ export class ValleyChecker {
     for (const group of state.groups) fireWood += group.fireWood
     if (
       this.treeTotal + wood + fireWood + totals.burnedWood + totals.axeWood !==
-      totals.initialWood + totals.regrownWood
+      totals.initialWood + totals.regrownWood + totals.fellenWood
     )
       fail('wood is not conserved')
     this.checkLogsAndAxes(state, minute, midnight, fail)
@@ -712,7 +747,7 @@ export class ValleyChecker {
         fail(`forager ${forager.id}'s count of places seen is wrong`)
       for (const [plants, memory] of [
         [layout.bushes, forager.bushMemory],
-        [layout.trees, forager.treeMemory],
+        [layout.woodPlants, forager.woodMemory],
       ] as const)
         for (let id = 0; id < plants.count; id += 1) {
           const seen = memory.seen[id]!
@@ -773,7 +808,7 @@ export class ValleyChecker {
       fail(`forager ${forager.id} walked to a site ${event.reason}`)
     if (!siteWanted(config, forager, event.siteId, minute, why))
       fail(`forager ${forager.id} walked to a site it did not need to ${why}`)
-    if (why === 'search' && siteGood(config, event.siteId) !== event.workedFor)
+    if (why === 'search' && (event.workedFor === null || !siteHolds(config, event.siteId, event.workedFor)))
       fail(`forager ${forager.id} searched a site of the wrong kind`)
     const centre = siteCentre(config, layout, event.siteId)
     const startSq = distanceSq(from.x, from.y, centre.x, centre.y)
