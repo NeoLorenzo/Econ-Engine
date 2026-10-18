@@ -1,0 +1,166 @@
+# Calibration of the Life core
+
+This document compares every physical parameter of the Life core with real-world measurements, records the sources, and proposes realistic values. Nothing in it is implemented yet; the next Life specification will apply it. It follows [design rule 15](../SIMULATION_DESIGN_RULES.md#15-do-not-calibrate-by-aesthetics): parameters come from documented measurements, not from how the run looks.
+
+Each real-world figure is marked by how far it can be trusted:
+
+- **Measured:** the source reports the number.
+- **Derived:** computed here from a measured number; the working is shown.
+- **Estimate:** no source was found, so the figure is reasoned and needs a source before it is final.
+
+The reference body is a 60 kg adult, as in the current `bodyKg`. One MET is taken as 1 kcal per kilogram per hour, so 60 kcal an hour for this body.
+
+## The headline
+
+The current valley gives far more than any real land would.
+
+- **Berries.** Each bush regrows 20 kcal a day all year, about 15 kg of berries a year. A wild blueberry bush gives 1 to 2 kg a year, in one season of a few weeks. The thickets produce about **19,000 kg a hectare a year**: more than a commercial blueberry farm, and 300 to 900 times a good wild bilberry forest.
+- **Firewood.** A bush regrows 1 kg of sticks a day, 365 kg a year, and a tree 6 kg of branches a day, about 2,200 kg a year. A whole 15 cm tree weighs about 85 kg.
+- **Trees** grow back from the stump in 60 days. A pole 14 cm thick takes **15 to 25 years** to grow.
+- **Huts** lose a log every 10 days, so a whole hut rots away in 230 days. Untreated poles last a few years.
+
+The numbers for people are mostly close to real ones: body, sleep, rest, walking speed, picking rate, and the time to cut a log with a stone axe. Four are off: the body's energy reserve is too small, carrying a load slows a walker far too much while costing nothing extra, cold nights cost too much, and firewood is gathered too fast.
+
+With realistic production, the valley's 36 hectares of berries would feed one or two people a year, not eight. Realistic numbers alone therefore create the scarcity the engine lacks. They also mean the band would starve unless the valley grows, its diet widens, or seasons and storage arrive. See [What realistic numbers imply](#what-realistic-numbers-imply).
+
+## Food
+
+| Parameter | Now | Real world | Trust | Proposal |
+| --- | --- | --- | --- | --- |
+| `berryKcalPerKg` | 500 | Raw blueberries 570 to 640 kcal per kg [1] | Measured | **600** |
+| Yield of a bush | `bushRegrowthKcalPerDay` 20, about 15 kg a year, all year | Wild lowbush blueberry clones 0.2 to 4.8 kg a bush a year, averaging 1.1 to 2.2 kg by year [2]; cultivated highbush 2.3 to 4.5 kg [3] | Measured | **About 1.5 kg a year (900 kcal), ripening over a season of 4 to 8 weeks** |
+| Yield of land | About 19,000 kg a hectare a year in the thickets | Bilberry forest 4 to 65 kg a hectare a year [4]; an exceptional huckleberry field in an exceptional year about 630 kg a hectare (112 US gallons an acre [5], at an estimated 0.6 kg a litre) | Measured, then derived | Follows from the bush yield |
+| `bushCapacityKcal` | 400 (0.8 kg ripe at once) | At the peak of the season, most of a bush's 1 to 2 kg is ripe at once [2] | Derived | **900** (1.5 kg) in season |
+| `forageKcalPerHour` | 1,200 | An experienced picker in the best huckleberry patch picks about 1 US gallon an hour [6], about 2.3 kg or 1,400 kcal | Derived | **1,200 to 1,400 at a full bush.** Picking should slow as a bush empties, since a sparse bush takes longer per berry |
+| `shelfLifeHours` | 48 | Fresh berries keep 2 to 4 days unrefrigerated | Estimate | **Keep 48 to 72** |
+
+## The body
+
+| Parameter | Now | Real world | Trust | Proposal |
+| --- | --- | --- | --- | --- |
+| `bodyKg` | 60 | Hadza adults weigh about 43 to 51 kg [7] | Measured | **Keep 60**, a lean modern adult |
+| `walkCmPerSecond` | 125 | Self-chosen walking speed 1.32 m/s [8] | Measured | **Keep 125**, allowing for rough ground |
+| `sleepKcalPerHour` | 60 | Basal metabolism of a 60 kg adult man is about 1,600 kcal a day, 66 kcal an hour (FAO/WHO/UNU: 15.3 × 60 + 679) [9] | Derived | **Keep 60 to 65** |
+| `restKcalPerHour` | 90 | Standing at rest is about 1.5 × body mass in watts [10], 77 kcal an hour; sitting and light tasks 1.3 to 1.5 MET | Derived | **Keep 80 to 90** |
+| `forageCostKcalPerHour` | 300 (all work) | Picking fruit 3.0 to 3.5 MET [11], 180 to 210 kcal an hour; chopping wood 6 MET [11], 360 kcal an hour | Measured | **Split by task:** picking 200, gathering sticks 250 (estimate), chopping 360, making an axe 150 (estimate, seated grinding) |
+| Daily total | Not yet measured from a run | Hadza men use about 2,600 kcal a day, women 1,900 [7] | Measured | A check on the whole budget, not a parameter |
+| `reserveMaxKcal`, `initialReserveKcal` | 20,000, 16,000: a forager starves in about a week | A lean 60 kg adult holds about 9 kg of fat, about 70,000 kcal at 7,700 kcal a kilogram; people survive one to two months without food [12] | Derived | **Reserve of about 70,000 to 80,000**, so scarcity shows as weight lost over weeks before death |
+| `hungryBelowKcal`, `satiatedAtKcal` | 14,000, 18,000 | People feel hungry daily, long before their fat runs low | Estimate | **Hunger set by a day's shortfall below the full reserve**, not by a fixed fraction of a small one |
+
+## Carrying loads
+
+Now a load slows the walker and costs nothing extra: speed falls to `bodyKg / (bodyKg + L)`, so a 30 kg load slows a 60 kg forager by a third, and walking costs 300 kcal an hour whatever the load.
+
+Real people barely slow down. In a 2022 study, walkers carrying 20% of their body mass kept the same pace, and at 40% slowed by only 3% [8]. The load costs energy instead. The Pandolf equation [10] gives the metabolic rate `M` in watts for body mass `W`, load `L`, speed `V` in m/s and terrain factor `η` (1.2 for light brush):
+
+`M = 1.5 W + 2.0 (W + L) (L / W)² + η (W + L) (1.5 V²)`
+
+For a 60 kg forager at 1.25 m/s in light brush, converted at 0.86 kcal per watt-hour:
+
+| Load | Now: speed, cost | Pandolf: speed, cost |
+| --- | --- | --- |
+| None | 125 cm/s, 300 kcal/h | 125 cm/s, **223 kcal/h** |
+| 20 kg log | 93 cm/s, 300 kcal/h | about 125 cm/s, **286 kcal/h** |
+| 30 kg of wood | 83 cm/s, 300 kcal/h | about 122 cm/s, **334 kcal/h** |
+
+**Proposal:** walking costs follow Pandolf, computed in integers, and speed falls only slightly, about 3% at 40% of body mass. A load then costs food, not time. Pandolf is known to underpredict somewhat for heavy loads [10], so these costs are on the low side.
+
+## Warmth at night
+
+| Parameter | Now | Real world | Trust | Proposal |
+| --- | --- | --- | --- | --- |
+| `coldSleepKcalPerHour` | 150, 2.5 times sleeping metabolism | Australian Aboriginal men sleeping without fire at 0 to 5 °C kept their metabolism near resting; unacclimatised men shivered and raised it [13]; Arctic Indian men's oxygen use rose about 30% overnight in moderate cold [13] | Measured, qualitative | **About 80 to 100** in a cool climate. Much more only in freezing weather, which needs seasons |
+| `hutSleepKcalPerHour`, `fireSleepKcalPerHour` | 120, 80 | Between cold sleep and sleeping metabolism | Estimate | **Scale them to the new cold cost**, keeping the order: fire and hut, fire, hut, neither |
+
+How much cold costs depends on the climate. The owner chose a cool northern climate: see [Decisions](#decisions).
+
+## Wood and trees
+
+| Parameter | Now | Real world | Trust | Proposal |
+| --- | --- | --- | --- | --- |
+| `logKg` | 20 | A pole 14 cm thick and 2.4 m long is 0.037 m³. Seasoned birch is about 700 kg/m³ [14], so 26 kg; freshly cut wood is roughly half water, about 35 kg | Derived | **About 35 kg freshly cut**, drying towards 25 kg |
+| Tree size | 3 logs and 25 kg of branches, about 85 kg | Trees 14 to 20 cm thick are what the felling experiments cut [15] | Derived | **Keep** |
+| `treeRegrowthDays` | 60 | Coppiced hazel gives thin poles in 7 to 10 years, and oak and ash poles in 20 to 25 [16] | Measured | **About 20 years** (7,300 days) for a 14 cm pole, from the stump or from seed |
+| `treeRegrowthWoodPerDay` | 6 kg a day, about 2,200 kg a year | A tree of about 85 kg grows a few kilograms of wood a year | Estimate | **About 5 kg a year**, and a living tree drops only part of that as dead branches |
+| `bushRegrowthWoodPerDay` | 1 kg a day, 365 kg a year | A berry bush grows well under 1 kg of wood a year | Estimate | **About 0.2 kg a year** |
+| `woodPerHour` | 24 kg | Women in Ciskei gathered a 24 kg headload in a little over two hours [17], so about 10 to 12 kg an hour including walking | Derived | **About 15 kg an hour** of actual gathering |
+| `woodLoad` | 30 kg | Headloads of 24 kg [17] and 33 kg [18] | Measured | **Keep 30** |
+| `campfireWoodPerHour`, `fireWoodPerHour` | 1 kg, 12 kg a night | A three-stone fire burns roughly 0.4 to 0.75 kg an hour (the abstract's units are unclear) [19]; a fireplace at least 3.3 kg an hour [20]; households use about 9 kg a day [18] | Measured | **Keep 1** |
+
+Most real firewood is dead wood: branches a tree has shed and trees that have died. Living plants cannot regrow kilograms of sticks a day. Under the owner's rule of firewood from living plants only, a realistic valley could not keep a fire burning. See [Decisions](#decisions).
+
+## Felling and cutting logs with a stone axe
+
+| Parameter | Now | Real world | Trust | Proposal |
+| --- | --- | --- | --- | --- |
+| `logChopMinutes` | 30 a log, the first felling the tree | With polished stone axes, a 20 cm willow fell in 30 to 60 minutes and a 20 cm ash in 60 to 90 [15]. In Denmark three men felled more than 100 small birches in 4 hours [21], about 7 minutes per tree per man. The work grows with the cut's area, so a 14 cm trunk takes about half as long as a 20 cm one | Measured, then derived | **About 20 to 30 minutes to fell, and 15 to 25 for each cross-cut**, so 30 a log on average is close |
+| Felling cost | 300 kcal an hour | Chopping wood 6 MET [11] | Measured | **360 kcal an hour** |
+
+## Making an axe
+
+There are two kinds of stone axe.
+
+- **A flaked axe** is knapped from a flint nodule. An experienced knapper makes a hand-axe in about 20 minutes, by a widely quoted but unchecked figure [22].
+- **A ground axe** is roughed out by flaking, then ground smooth. Grinding a flint axe takes about 60 hours [23]. A good handle also needs a long period of scraping and drying [15].
+
+In the Scandinavian experiments, ground axes lasted much longer than flaked ones [23].
+
+| Parameter | Now | Real world | Trust | Proposal |
+| --- | --- | --- | --- | --- |
+| `axeHours` | 4 | Flaked: under an hour. Ground: tens of hours of grinding, plus the handle | Measured, roughly | **Flaked, 1 hour; or ground, 40 to 60 hours** |
+| `axeLogs` | 40 | A ground axe outlasts a flaked one many times over [23]; no count per log was found | Estimate | **Flaked, about 10 logs; ground, a few hundred, with resharpening** |
+| `axeWood` | 1 kg | A haft of about 0.5 to 1 kg of seasoned wood | Estimate | **Keep 1** |
+
+## Huts
+
+| Parameter | Now | Real world | Trust | Proposal |
+| --- | --- | --- | --- | --- |
+| `hutLogs` | 23 | Set by the hut plan in update 046 | Derived | **Keep 23** |
+| `hutLogDays` | 10: a whole hut rots in 230 days | Mud huts last 1 to 2 years [24]; untreated poles in the ground last a few years | Measured roughly, plus estimate | **About 60 days a log**, so a hut lasts about 4 years, with the poles in the ground going first |
+
+## What realistic numbers imply
+
+These are worked out from the proposals above, not from runs.
+
+- **Food.** 1,920 bushes at 1.5 kg a year give about 2,900 kg, or 1.7 million kcal a year. Eight people need about 8 million. Berries would feed one or two people, and only for a few weeks of the year. Foragers live at about 0.1 to 1 person a square kilometre; the valley is 0.36 km².
+- **Firewood.** Trees and bushes would grow about 1,100 kg of wood a year, and one group's fire burns about 4,400. Fire would draw down the valley's wood.
+- **Logs.** 144 trees regrowing in 20 years give about 22 logs a year. Eight huts take 184 logs to build and about 46 a year to repair. The stands would be cleared within a few years.
+- **Time.** A day's food would take most of the daylight to gather in season, and could not be had at all out of season.
+
+So realism gives the pressures the engine lacks: food and wood that run short, land that matters, and work worth sharing out. It would also starve the band unless something else changes at the same time.
+
+## Decisions
+
+The owner decided on 2026-10-19:
+
+1. **The valley is in temperate northern Europe in the Mesolithic:** bilberry, hazel, birch and flint, with a real winter.
+2. **Every realistic number applies at once, to the current valley.** The band is not rescued by a larger valley or new foods; it shrinks to what the valley can feed.
+3. **Dead branches fall from trees at a realistic rate** and are firewood, alongside sticks from bushes and the crowns of felled trees. This replaces the Life 9.5 rule of firewood from living plants only.
+4. **Axes are ground stone axes:** 40 to 60 hours to make, lasting a few hundred logs.
+
+## Sources
+
+1. USDA FoodData Central, "Blueberries, raw" (FDC 171711, 2263889, 2709275), 57 to 64 kcal per 100 g. https://fdc.nal.usda.gov/ (via https://getfoodfacts.com/food/blueberries-raw-171711)
+2. Yields of wild lowbush blueberry clones in Latvia, 2015 to 2019. Estonian University of Life Sciences, *Agronomy Research*. https://agronomy.emu.ee/tag/one-berry-weigth
+3. Iowa State University Extension, "What kind of yield can I expect from blueberries?" https://yardandgarden.extension.iastate.edu/faq/what-kind-yield-can-i-expect-blueberries
+4. Raatikainen, M., and Raatikainen, T. (1983), and Raatikainen et al. (1984), bilberry yields in central Finland, cited in *Silva Fennica*. https://silvafennica.fi/article/5180
+5. Minore, D. (1972). *The wild huckleberries of Oregon and Washington: a dwindling resource*. USDA Forest Service Research Paper PNW-143. https://research.fs.usda.gov/treesearch/26265
+6. Stark, N., and Baker, S. (1992), cited in Barney, D. L. (2003). Prospects for domesticating western huckleberries. https://wildhuckleberry.com/wp-content/uploads/2020/05/Barney-2003-Prospects-for-Domesticating-Western-Huckleberries.pdf
+7. Pontzer, H., et al. (2012). Hunter-gatherer energetics and human obesity. *PLoS ONE*, 7(7), e40503. https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0040503
+8. Middleton, K. J., et al. (2022). Mechanical differences between men and women during overground load carriage at self-selected walking speeds. *IJERPH*, 19(7), 3927. https://pmc.ncbi.nlm.nih.gov/articles/PMC8997774/
+9. FAO/WHO/UNU (1985). *Energy and protein requirements*. WHO Technical Report Series 724.
+10. Pandolf, K. B., Givoni, B., and Goldman, R. F. (1977). Predicting energy expenditure with loads while standing or walking very slowly. *Journal of Applied Physiology*, 43(4), 577–581. Summary and terrain factors: https://en.wikipedia.org/wiki/Pandolf_equation
+11. Ainsworth, B. E., et al. *Compendium of Physical Activities*. https://pacompendium.com/
+12. Rough survival times without food: https://www.medicinenet.com/how_long_does_it_take_to_die_if_you_dont_eat/article.htm. The fat store is derived from about 15% body fat at 7,700 kcal a kilogram.
+13. Scholander, P. F., et al. (1958), and Hammel, H. T. (1959), on Australian Aboriginal men sleeping in the cold, reviewed in Leppäluoto, J., and Hassi, J.; and the overnight response of Arctic Indian men. https://pmc.ncbi.nlm.nih.gov/articles/PMC1359946, https://openpolar.no/Record/ftdtic:AD0261234/Details
+14. Engineering ToolBox, "Wood species: moisture content and weight". https://www.engineeringtoolbox.com/weigt-wood-d_821.html
+15. French Ministry of Culture, *Palafittes*: "Felling trees" with polished stone axes in antler sleeves. https://archeologie.culture.gouv.fr/palafittes/en/felling-trees
+16. *Conservation Handbooks*, coppice species and growth. https://conservationhandbooks.com/?p=379
+17. Fuelwood headloads in Ciskei, South Africa (1990). Southern Cross University. https://researchportal.scu.edu.au/esploro/outputs/doctoral/What-is-free-about-fuelwood-A/991012821125202368
+18. Headloads in Uttarakhand, India, and household use in Malawi. https://krishi.icar.gov.in/jspui/handle/123456789/39131?mode=full, https://microdata.fao.org/index.php/catalog/1910/variable/V99
+19. Characterization of conventional cooking stoves in south-eastern Nigeria. *CIGR Journal*. https://cigrjournal.org/index.php/Ejounral/article/view/3037
+20. Sacramento Metropolitan Air Quality Management District, Rule 417 comments. https://www.airquality.org/ProgramCoordination/Documents/Rule417%20WrittenComments%20102606%20Item21.pdf
+21. Iversen, J. (1956). Forest clearance in the Stone Age. *Scientific American*, 194; and Steensberg, A. (1979). *Draved*. Summary: https://bactra.org/reviews/natures-keepers/stone-axes.html
+22. Miles, D. *The Tale of the Axe*, as quoted at https://www.greaterwrong.com/posts/bkjqfhKd8ZWHK9XqF/should-you-make-stone-tools/comment/TsYzcSL3oFfPtnqzJ. Unverified.
+23. "Testing times: examining insights from experimental archaeology". *The Past*. https://the-past.com/feature/testing-times-examining-insights-from-experimental-archaeology
+24. "African round hut". Wikipedia. https://en.wikipedia.org/wiki/African_round_hut

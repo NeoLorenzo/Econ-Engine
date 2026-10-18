@@ -91,15 +91,16 @@ describe('the layout', () => {
 })
 
 describe('making an axe', () => {
-  it('takes four hours at craft 100% and costs the extra energy of working', () => {
+  it('takes fifty hours at craft 100% and costs the extra energy of making', () => {
     const { config } = createValley()
-    expect(makeSeconds(config, 100)).toBe(14_400)
-    expect(makeSeconds(config, 50)).toBe(28_800)
-    expect(askOf(config, 50)).toBe(1_680)
-    expect(askOf(config, 100)).toBe(840)
+    expect(makeSeconds(config, 100)).toBe(180_000)
+    expect(makeSeconds(config, 50)).toBe(360_000)
+    expect(askOf(config, 50)).toBe(6_000)
+    expect(askOf(config, 100)).toBe(3_000)
     expect(expectedQuality(50)).toBe(37)
-    expect(axeLife(config, 45)).toBe(18)
-    expect(axeLife(config, 1)).toBe(1)
+    expect(axeLife(config, 45)).toBe(90)
+    expect(axeLife(config, 1)).toBe(2)
+    expect(axeLife({ ...config, axeLogs: 40 }, 1)).toBe(1)
   })
 
   it('fetches a stone first, when a member with no need has no axe for its hut', () => {
@@ -114,13 +115,13 @@ describe('making an axe', () => {
     const forager = after.foragers[0]!
     expect(lastEventOf(after, 0)).toMatchObject({ reason: 'making an axe', task: 'make', workSeconds: 60 })
     // Its stone and a kilogram of wood went into the axe; the fire, empty by day, took 12 kg of the rest.
-    expect(forager).toMatchObject({ stone: 0, wood: 11, making: { worked: 60, needed: 28_800, forSale: false } })
+    expect(forager).toMatchObject({ stone: 0, wood: 11, making: { worked: 60, needed: 360_000, forSale: false } })
     expect(after.totals).toMatchObject({ stonesWorked: 1, axeWood: 1 })
   })
 
   it('keeps its work when interrupted, and finishes an axe of quality between half its craft and its craft', () => {
     const state = band(TEN_AM)
-    state.foragers[0]!.making = { worked: 28_800 - 30, needed: 28_800, forSale: false }
+    state.foragers[0]!.making = { worked: 360_000 - 30, needed: 360_000, forSale: false }
     state.totals.stonesWorked += 1
     state.totals.axeWood += 1
     state.totals.initialWood += 1
@@ -162,7 +163,7 @@ describe('cutting and building', () => {
 
   it('takes a log off when the cut is done, and wears its axe by one log', () => {
     const after = stepValley(atTree(100, logCut(createValley().config) - 6_000))
-    expect(after.foragers[0]).toMatchObject({ log: 1, chopRemainder: 0, axe: { logsLeft: 39 } })
+    expect(after.foragers[0]).toMatchObject({ log: 1, chopRemainder: 0, axe: { logsLeft: 199 } })
     expect(after.treeLogs[0]).toBe(2)
     expect(lastEventOf(after, 0)).toMatchObject({ cutLog: true })
   })
@@ -285,7 +286,7 @@ describe('huts', () => {
   })
 
   it('weathers each hut by a log on its day', () => {
-    const state = band(10 * 1_440)
+    const state = band(60 * 1_440)
     giveHut(state, state.foragers[0]!)
     giveHut(state, state.foragers[3]!)
     const after = stepValley(state)
@@ -293,7 +294,7 @@ describe('huts', () => {
     expect(after.huts[0]!.logs).toBe(whole - 1)
     expect(after.huts[1]!.logs).toBe(whole)
     expect(after.totals.rottedLogs).toBe(1)
-    expect(after.lastHutEvents).toEqual([{ kind: 'weather', minute: 10 * 1_440, hutId: 0, logsAfter: whole - 1 }])
+    expect(after.lastHutEvents).toEqual([{ kind: 'weather', minute: 60 * 1_440, hutId: 0, logsAfter: whole - 1 }])
   })
 
   it('leaves a hut behind when its builder’s hearth moves', () => {
@@ -306,8 +307,8 @@ describe('huts', () => {
     expect(after.lastHutEvents[0]).toMatchObject({ kind: 'abandon', hutId: 0, foragerId: 0, logs: 4 })
   })
 
-  it('grows a stump back into a whole tree at the first midnight 60 days after it fell', () => {
-    const state = band(60 * 1_440 - 1)
+  it('grows a stump back into a whole tree at the first midnight 20 years after it fell', () => {
+    const state = band(7_300 * 1_440 - 1)
     state.treeLogs[0] = 0
     state.treeFelledMinute[0] = 0
     state.totals.logsCut += 3
@@ -336,17 +337,20 @@ describe('huts', () => {
     })
   })
 
-  it('regrows branches on standing trees only, and sticks on bushes', () => {
+  it('drops dead branches under standing trees only, and grows sticks on bushes', () => {
     const state = cloneValley(createValley())
     const trees = state.layout.trees.count
     state.woodStock.fill(0)
     state.treeFelledMinute[1] = 0
-    // Hour 23 is the hour each day's share of branches and of sticks falls in.
-    const regrown = regrowWood(state, 23)
+    // 5 kg a year falls a kilogram at a time, the first in hour 1,751; the first of a bush's 2 kg a decade in hour 43,799.
+    expect(regrowWood(state, 1_750)).toBe(0)
+    expect(regrowWood(state, 1_751)).toBe(trees - 1)
     expect(state.woodStock[0]).toBe(1)
     expect(state.woodStock[1]).toBe(0)
+    expect(state.woodStock[trees]).toBe(0)
+    expect(regrowWood(state, 43_799)).toBe(trees - 1 + state.layout.bushes.count)
+    expect(state.woodStock[0]).toBe(2)
     expect(state.woodStock[trees]).toBe(1)
-    expect(regrown).toBe(trees - 1 + state.layout.bushes.count)
   })
 })
 
@@ -362,8 +366,8 @@ describe('trading axes', () => {
 
   it('values an axe at its own cost, scaled by quality over what it would make', () => {
     const state = night()
-    expect(worthTo(state.config, state.foragers[0]!, 37)).toBe(1_680)
-    expect(worthTo(state.config, state.foragers[0]!, 50)).toBe(2_270)
+    expect(worthTo(state.config, state.foragers[0]!, 37)).toBe(6_000)
+    expect(worthTo(state.config, state.foragers[0]!, 50)).toBe(8_108)
   })
 
   it('draws a promise from the cheapest maker that would gain the asker one', () => {
@@ -373,7 +377,7 @@ describe('trading axes', () => {
       minute: EIGHT_PM,
       promiserId: 1,
       askerId: expect.any(Number) as number,
-      ask: 840,
+      ask: 3_000,
       quality: 75,
     })
     expect(after.foragers[1]!.promised).toBe(true)
@@ -389,14 +393,16 @@ describe('trading axes', () => {
     giveStone(state, state.foragers[2]!)
     state.foragers[2]!.stone -= 1
     for (const forager of state.foragers) if (forager.id !== 1) forager.axe = null
-    // A full reserve, so it keeps the food it carries.
-    state.totals.initialKcal += 2_000 + state.config.reserveMaxKcal - state.foragers[0]!.energyKcal
+    // A full reserve, so it keeps the food it carries; and a seller with room to eat the price.
+    state.totals.initialKcal += 6_000 + state.config.reserveMaxKcal - state.foragers[0]!.energyKcal
     state.foragers[0]!.energyKcal = state.config.reserveMaxKcal
-    state.foragers[0]!.carried = [{ kcal: 2_000, harvestTick: EIGHT_PM - 60 }]
+    state.foragers[0]!.carried = [{ kcal: 6_000, harvestTick: EIGHT_PM - 60 }]
+    state.totals.initialKcal -= maker.energyKcal - 60_000
+    maker.energyKcal = 60_000
     const after = stepValley(state)
     const sale = after.lastAxeEvents.find((made) => made.kind === 'sale')
-    expect(sale).toMatchObject({ sellerId: 1, ask: 840 })
-    expect(sale!.kind === 'sale' && sale!.price).toBe(Math.floor((840 + (sale as { worth: number }).worth) / 2))
+    expect(sale).toMatchObject({ sellerId: 1, ask: 3_000 })
+    expect(sale!.kind === 'sale' && sale!.price).toBe(Math.floor((3_000 + (sale as { worth: number }).worth) / 2))
     expect(after.foragers[1]!.spareAxe).toBeNull()
   })
 
@@ -410,7 +416,7 @@ describe('trading axes', () => {
     state.foragers[2]!.stone -= 1
     const after = stepValley(state)
     expect(after.lastAxeEvents.some((made) => made.kind === 'sale')).toBe(false)
-    expect(after.foragers[0]!.heardAsk).toMatchObject({ sellerId: 1, ready: true, price: 840 })
+    expect(after.foragers[0]!.heardAsk).toMatchObject({ sellerId: 1, ready: true, price: 3_000 })
   })
 
   it('asks, promises and sells nothing with trade off or outside a group', () => {
@@ -421,13 +427,16 @@ describe('trading axes', () => {
 })
 
 describe('theory', () => {
-  it('prices an axe at the extra energy of working', () => {
+  it('prices an axe at the extra energy of making', () => {
     const theory = valleyTheory(createValley().config)
-    expect(theory.axeAsk(50)).toBe(1_680)
-    expect(theory.firstAxeHours).toBe(8)
+    expect(theory.axeAsk(50)).toBe(6_000)
+    expect(theory.firstAxeHours).toBe(100)
     expect(theory.logsOnOffer).toBe(432)
-    expect(theory.logsRegrownPerDay).toBeCloseTo(7.2, 10)
-    expect(theory.hutLogsPerMemberDay).toBeCloseTo(0.1, 10)
+    expect(theory.logsRegrownPerDay).toBeCloseTo(432 / 7_300, 10)
+    expect(theory.hutLogsPerMemberDay).toBeCloseTo(1 / 60, 10)
+    expect(theory.woodOnOffer).toBe(7_440)
+    expect(theory.woodRegrownPerYear).toBeCloseTo(1_104, 10)
+    expect(theory.yearlyRegrowthKcal).toBe(1_728_000)
   })
 })
 
@@ -465,7 +474,7 @@ describe('the checker', () => {
 
   it('catches an axe of impossible quality', () => {
     const state = band(TEN_AM)
-    state.foragers[0]!.making = { worked: 28_800 - 30, needed: 28_800, forSale: false }
+    state.foragers[0]!.making = { worked: 360_000 - 30, needed: 360_000, forSale: false }
     state.totals.stonesWorked += 1
     state.totals.axeWood += 1
     state.totals.initialWood += 1

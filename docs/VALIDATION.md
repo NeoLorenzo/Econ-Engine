@@ -104,16 +104,17 @@ No existing simulation test needed a new expected value: they assert behaviour r
 
 The eight-seed MVP8/MVP9 comparison is in [MVP9_SPEC.md](MVP9_SPEC.md#mvp8-and-mvp9-compared). The fast-mode browser check passed with a pause latency of 256 ms. In the browser, the 40×40 town, plot buildings, the overlay and scenery, clicking a plot, Locate, the 2D market map and the 375px layout were checked with no console errors.
 
-# Life 9.5
+# Life 9.6
 
-Life 9.5, a revision of Life 9, is the only Life step in the repository. Runtime invariants, checked after every minute of every checked run, by `src/valley/invariants.ts`:
+Life 9.6, a revision of Life 9 with every physical number from the [calibration document](CALIBRATION.md), is the only Life step in the repository. Runtime invariants, checked after every minute of every checked run, by `src/valley/invariants.ts`:
 
-- energy, wood (sticks, branches, branches brought down by felling and wood in axes), logs and stones are conserved exactly, and every plant, tree and stone spot is replayed from regrowth and recorded work, every tree's fall and regrowth included;
+- energy, wood (sticks, dead branches, branches brought down by felling and wood in axes), logs and stones are conserved exactly, and every plant, tree and stone spot is replayed from regrowth and recorded work, every tree's fall and regrowth included;
+- every second charged its cost: its task, its warmth asleep, or the Pandolf rate for its load and speed;
 - turns, seconds, speeds under a load (berries, firewood and a log), work only in daylight on something within reach, and memory matching what was seen, near or far;
 - groups, fires and gifts, as in Life 8, and every sleeper's warmth: its hut exactly when it sleeps in a whole one, a member's group's fire exactly when it is lit, and cold only with neither;
 - huts change only by their builder laying a log at its hearth, by weather on their day, or by being left behind;
 - an axe's quality lies between half its maker's craft and its craft; it loses one log per cut; every promise and sale stays within a group, and every sale is at the midpoint of the seller's ask and the axe's worth to the buyer, both of which it exceeds or meets.
 
-Unit tests cover configuration, the layout and its streams, making, felling, cutting, wear, stumps, sticks and branches, huts on their rings, warmth, weathering, abandonment, asking, promising and selling, and the checker catching damaged records. `fingerprints.test.ts` checks that Life 9.5 runs exactly as recorded over 30 days on three seeds for six configurations. Experiments are left for a later, stable version of the Life engine; the specification lists the [questions for later](LIFE9_SPEC.md#questions-for-later).
+Unit tests cover configuration, the layout and its streams, yearly and decade regrowth, the Pandolf rate and task costs, making, felling, cutting, wear, stumps, sticks and branches, huts on their rings, warmth, weathering, abandonment, asking, promising and selling, and the checker catching damaged records. `fingerprints.test.ts` checks that Life 9.6 runs exactly as recorded over 30 days on three seeds for six configurations. Experiments are left for a later, stable version of the Life engine; the specification lists the [questions for later](LIFE9_SPEC.md#questions-for-later).
 
 Before Life 9 was implemented, a quick prototype over 32 seeds and 400 days found that axes are sold in nearly every run once a maker can promise one and an axe is priced at the extra energy of making it; that in a band that starts as one group a single member makes about three times an even share of the axes; and that with practice switched off, no axe is ever sold.

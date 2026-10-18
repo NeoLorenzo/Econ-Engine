@@ -81,9 +81,9 @@ The draw sequence is therefore: one orientation draw per non-square plot, one po
 
 The 3D world draws each firm and Government across its plot: `buildingScale` stretches the building model to the plot, less a 0.1-tile inset, and raises it with the square root of the plot's area. The camera's default distance, zoom-out limit, fog and far plane scale with the grid, and Locate stays further out for bigger plots.
 
-## Life 9.5: the valley core
+## Life 9.6: the valley core
 
-`src/valley/` is the Life core, a simulation independent of `src/sim/`, specified by the [Life 9 specification](LIFE9_SPEC.md), revised as Life 9.5. Earlier steps live only in git history. The valley core imports only the random-number functions from `src/sim/rng.ts`; nothing in `src/sim/` depends on it, so MVP9 is unchanged.
+`src/valley/` is the Life core, a simulation independent of `src/sim/`, specified by the [Life 9 specification](LIFE9_SPEC.md), revised as Life 9.6, with every physical number from the [calibration document](CALIBRATION.md). Earlier steps live only in git history. The valley core imports only the random-number functions from `src/sim/rng.ts`; nothing in `src/sim/` depends on it, so MVP9 is unchanged.
 
 - `types.ts` and `config.ts` define the configuration, its defaults and validation. Lengths are whole centimetres, food whole kilocalories, wood whole kilograms, and logs, stones and axes whole counts. Three switches remain: `scattered`, `axeTrade` and `craftPractice`.
 - `layout.ts` draws site centres (thickets, stands, then outcrops), each site's bushes, trees or stone spots, scattered starts, born skills and born craft, each from a stream of its own, and the axe stream that draws an axe's quality. It lists the wood plants, the trees then the bushes, with an index of their own. `config.ts` places the slots on the rings round a flag.
@@ -91,9 +91,9 @@ The 3D world draws each firm and Government across its plot: `buildingScale` str
 - `trade.ts` and `fire.ts` hold wood need, swaps and the shared fire, as in Life 8, without its counterfactual switches.
 - `huts.ts` holds huts: a log laid by its builder at its hearth, weathering at midnight, abandonment when a hearth moves, and stumps growing back into trees.
 - `axes.ts` holds axes: the plan for a member's hut work (rules 7 to 10), making at the hearth, felling and cutting, wear, and the exchange of asks, promises and sales.
-- `work.ts` holds the cost of a minute, sleep at its warmth included. `engine.ts` runs one minute, as in the specification, and the hourly regrowth of sticks and branches.
-- `invariants.ts` is a checker run after every minute of every checked run: exact energy, wood, logs and stones, and every hut, axe, cut, promise and sale against its rules. `theory.ts` holds simple predictions.
+- `work.ts` holds the cost of a minute, each task at its own cost and sleep at its warmth, and the hourly share of a yearly or decade amount. `forager.ts` holds speed under a load and the Pandolf cost of walking. `engine.ts` runs one minute, as in the specification, and the hourly regrowth of berries, sticks and dead branches.
+- `invariants.ts` is a checker run after every minute of every checked run: exact energy, wood, logs and stones, the cost charged for every second, and every hut, axe, cut, promise and sale against its rules. `theory.ts` holds simple predictions.
 
-Tests are unit tests (`config`, `layout`, `engine`, `social`, `sites`, `carrying`, `fire`, `huts`) and `fingerprints.test.ts`, which checks that Life 9.5 runs exactly as recorded over 30 days on three seeds for six configurations. There are no experiment tests in this phase. In CI the test files are dealt to three parallel jobs by their cost (`CostSequencer` and `TEST_SECONDS` in `vite.config.ts`).
+Tests are unit tests (`config`, `layout`, `engine`, `social`, `sites`, `carrying`, `fire`, `huts`) and `fingerprints.test.ts`, which checks that Life 9.6 runs exactly as recorded over 30 days on three seeds for six configurations. There are no experiment tests in this phase. In CI the test files are dealt to three parallel jobs by their cost (`CostSequencer` and `TEST_SECONDS` in `vite.config.ts`).
 
 `src/valleyView/` is the observer: `valleyViewModel.ts` turns states into what is drawn and shown, `hutPlan.ts` is the plan every hut is built to, log by log, `valleyScene.ts` draws the valley in three.js (felled trees lying beside their stumps as they are cut up, stone heaps, A-frame huts on the ring round each fire that rise log by log with their builders asleep inside, a log on the shoulder and an axe in the hand), and `ValleyApp.tsx` is the page.

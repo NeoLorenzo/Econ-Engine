@@ -31,7 +31,7 @@ describe('a forager’s minute', () => {
       forager.wood = 30
       forager.tripWood = 5
       forager.shortOfWood = false
-      forager.energyKcal = 17_000
+      forager.energyKcal = 67_000
       forager.hungry = false
     })
     const event = lastEventOf(stepValley(state), 0)!
@@ -44,7 +44,7 @@ describe('a forager’s minute', () => {
     const state = valleyAt(TEN_AM, (forager, valley) => {
       placeBeside(forager, valley.layout.trees.x[0]!, valley.layout.trees.y[0]!, 50)
       forager.tripWood = 5
-      forager.energyKcal = 13_000
+      forager.energyKcal = 63_000
     })
     expect(lastEventOf(stepValley(state), 0)!.workedFor).toBe('food')
   })
@@ -59,7 +59,7 @@ describe('a forager’s minute', () => {
   it('walks to a bush and picks it in the same minute', () => {
     const state = valleyAt(TEN_AM, (forager, valley) => {
       placeBeside(forager, valley.layout.bushes.x[0]!, valley.layout.bushes.y[0]!, 300)
-      forager.energyKcal = 13_000
+      forager.energyKcal = 63_000
       forager.hungry = true
       // Only bush 0 holds berries, so it is the one worth walking to.
       valley.bushKcal.fill(0)
@@ -133,8 +133,8 @@ describe('exchange', () => {
   const pair = (apart: number) => {
     const state = valleyAt(TEN_AM)
     const [seller, buyer] = state.foragers as [Forager, Forager]
-    Object.assign(seller, { x: 10_000, y: 10_000, forageRate: 1_000, woodRate: 30, wood: 40, energyKcal: 15_000 })
-    Object.assign(buyer, { x: 10_000 + apart, y: 10_000, forageRate: 1_400, woodRate: 14, wood: 0, energyKcal: 19_000 })
+    Object.assign(seller, { x: 10_000, y: 10_000, forageRate: 1_000, woodRate: 30, wood: 40, energyKcal: 65_000 })
+    Object.assign(buyer, { x: 10_000 + apart, y: 10_000, forageRate: 1_400, woodRate: 14, wood: 0, energyKcal: 69_000 })
     buyer.carried = [{ kcal: 2_000, harvestTick: TEN_AM }]
     return { state, seller, buyer }
   }

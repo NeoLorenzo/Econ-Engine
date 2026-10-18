@@ -1,6 +1,14 @@
 import { askOf, axeLife, salePrice, worthTo } from './axes'
 import { feedAmount } from './fire'
-import { MINUTES_PER_DAY, isDaylight, loadKg, minuteOfWork, plantsInView, speedForLoad } from './forager'
+import {
+  MINUTES_PER_DAY,
+  isDaylight,
+  loadKg,
+  minuteOfWork,
+  plantsInView,
+  speedForLoad,
+  walkCostForLoad,
+} from './forager'
 import { distance, distanceSq } from './geometry'
 import { regrowsAt, weathersOn } from './huts'
 import { forEachPlantWithin } from './layout'
@@ -8,7 +16,7 @@ import { craftOf, ratesOf } from './practice'
 import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
 import { siteCentre, siteGeometry, siteHolds, siteWanted, sightOf } from './sites'
 import { bothGain } from './trade'
-import { coldMatters, hourlyShare, warmthOf } from './work'
+import { coldMatters, minuteCost, regrowthOf, warmthOf, workCostOf } from './work'
 import type { ActionReason, Axe, CutEvent, Hut, Point, ValleyState } from './types'
 
 /** What a forager not hungry does when idle, which a full load must wait for. */
@@ -76,6 +84,8 @@ export class ValleyChecker {
   private hearthBefore: Point[]
   /** Each forager's trip wood, places seen and sites known at the end of the minute before. */
   private tripWoodBefore: number[]
+  /** Each forager's remainder of energy owed, in 3,600ths, at the end of the minute before. */
+  private costRemainderBefore: number[]
   private placesSeenBefore: number[]
   private siteKnownBefore: Uint8Array[]
   /** Each group's fire wood at the end of the minute before, each forager's gifts to fires, and each fire's hour. */
@@ -110,6 +120,7 @@ export class ValleyChecker {
     this.groupBefore = state.foragers.map((forager) => forager.groupId)
     this.hearthBefore = state.foragers.map((forager) => forager.hearth)
     this.tripWoodBefore = state.foragers.map((forager) => forager.tripWood)
+    this.costRemainderBefore = state.foragers.map((forager) => forager.costRemainder)
     this.placesSeenBefore = state.foragers.map((forager) => forager.placesSeen)
     this.siteKnownBefore = state.foragers.map((forager) => forager.siteKnown.slice())
     this.fireWoodBefore = state.groups.map((group) => group.fireWood)
@@ -146,10 +157,7 @@ export class ValleyChecker {
         }
 
     if (minute > 0 && minute % 60 === 0) {
-      const hour = (minute / 60) % 24
-      const berries = hourlyShare(config.bushRegrowthKcalPerDay, hour)
-      const branches = hourlyShare(config.treeRegrowthWoodPerDay, hour)
-      const sticks = hourlyShare(config.bushRegrowthWoodPerDay, hour)
+      const { berries, branches, sticks } = regrowthOf(config, minute / 60)
       for (let id = 0; id < this.bushes.length; id += 1) {
         const after = Math.min(config.bushCapacityKcal, this.bushes[id]! + berries)
         this.bushTotal += after - this.bushes[id]!
@@ -211,6 +219,20 @@ export class ValleyChecker {
         fail(`forager ${forager.id} walks at a speed its load does not allow`)
       if (distance(from.x, from.y, position.x, position.y) > event.walkSeconds * event.speedCmPerSecond)
         fail(`forager ${forager.id} moved further than it walked`)
+      // Every second is charged its cost: walking the Pandolf rate for its load, work its task's, sleep its warmth's.
+      const seconds = {
+        walk: event.walkSeconds,
+        work: event.workSeconds,
+        stand: event.standSeconds,
+        sleep: event.sleepSeconds,
+      }
+      const walkCost = walkCostForLoad(config, kg, event.speedCmPerSecond)
+      const owed =
+        this.costRemainderBefore[forager.id]! +
+        minuteCost(config, seconds, event.warmth, walkCost, workCostOf(config, event.workedFor, event.task))
+      const due = Math.floor(owed / 3_600)
+      if (forager.costRemainder !== owed - 3_600 * due || (forager.alive && event.spentKcal !== due))
+        fail(`forager ${forager.id} paid ${event.spentKcal} kcal for a minute that cost ${due}`)
       // Not hungry, a forager with a full load takes it home before anything else; and only then does it say so.
       const fullLoad = config.woodLoad > 0 && tripWood >= config.woodLoad
       if (event.reason === 'taking a load home') {
@@ -549,6 +571,7 @@ export class ValleyChecker {
     this.groupBefore = state.foragers.map((forager) => forager.groupId)
     this.hearthBefore = state.foragers.map((forager) => forager.hearth)
     this.tripWoodBefore = state.foragers.map((forager) => forager.tripWood)
+    this.costRemainderBefore = state.foragers.map((forager) => forager.costRemainder)
     this.placesSeenBefore = state.foragers.map((forager) => forager.placesSeen)
     for (const forager of state.foragers) this.siteKnownBefore[forager.id]!.set(forager.siteKnown)
     this.fireWoodBefore = state.groups.map((group) => group.fireWood)
@@ -850,6 +873,8 @@ export class ValleyChecker {
     }
     // The minute's foundings, joinings and dissolutions, replayed in order from each forager's group the minute before.
     const current = [...this.groupBefore]
+    // Foragers who joined or founded a group this minute, whose hearth moved to its slot even if it dissolved again.
+    const joined = new Set<number>()
     for (const made of state.lastGroupEvents) {
       if (made.kind === 'dissolve') {
         if (made.survivorId !== null) {
@@ -866,6 +891,8 @@ export class ValleyChecker {
         fail(`forager ${id} did not meet the nearest forager within talking distance`)
       if (current[id] !== null) fail(`forager ${id} joined a group though it had one`)
       current[id] = made.groupId
+      joined.add(id)
+      if (made.kind === 'found') joined.add(met)
       if (made.kind === 'found') {
         const other = standing(met, index)!
         const flag = { x: Math.floor((at.x + other.x) / 2), y: Math.floor((at.y + other.y) / 2) }
@@ -888,7 +915,7 @@ export class ValleyChecker {
           if (forager.hearth.x !== hearth.x || forager.hearth.y !== hearth.y)
             fail(`forager ${forager.id}'s hearth is not its slot around the flag`)
         }
-      } else if (before === null && forager.hearth !== this.hearthBefore[forager.id])
+      } else if (before === null && !joined.has(forager.id) && forager.hearth !== this.hearthBefore[forager.id])
         fail(`forager ${forager.id} moved its hearth without joining a group`)
     }
     for (const group of state.groups) {

@@ -141,6 +141,8 @@ const CROWN_CONES: [number, number, number][] = [
   [6.2, 2.4, 5.2],
   [8.8, 1.7, 4],
 ]
+/** Dead branches drawn under a standing tree when its share is full. */
+const DEADWOOD_STICKS = 6
 /** How far a sleeper's feet lie from its hut's middle, towards the door. */
 const SLEEPER_FEET = 0.95
 
@@ -178,6 +180,7 @@ interface TreeDrawn {
   felled: boolean
   trunk: number
   crown: number
+  deadwood: number
 }
 
 /**
@@ -269,6 +272,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const crownGeometry = new THREE.ConeGeometry(1, 1, 8)
   const crownMaterial = new THREE.MeshStandardMaterial({ color: CROWN, roughness: 0.85, flatShading: true })
   const firewoodMaterial = new THREE.MeshStandardMaterial({ color: FIREWOOD, roughness: 0.95, flatShading: true })
+  const deadwoodGeometry = new THREE.CylinderGeometry(0.035, 0.045, 1, 5)
   const stoneGeometry = new THREE.DodecahedronGeometry(0.12, 0)
   const stoneMaterial = new THREE.MeshStandardMaterial({ color: STONE, roughness: 1, flatShading: true })
   const emberMaterial = new THREE.MeshStandardMaterial({ color: EMBER, roughness: 1, flatShading: true })
@@ -334,6 +338,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const matrix = new THREE.Matrix4()
   const scale = new THREE.Vector3()
   const quaternion = new THREE.Quaternion()
+  const euler = new THREE.Euler()
   const position = new THREE.Vector3()
   const yAxis = new THREE.Vector3(0, 1, 0)
   const fallAlong = new THREE.Vector3()
@@ -347,6 +352,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let trunks: InstancedMesh | null = null
   let crowns: InstancedMesh | null = null
   let stumps: InstancedMesh | null = null
+  let deadwood: InstancedMesh | null = null
   let rocks: InstancedMesh | null = null
   let hutModels: HutModel[] = []
   const hutGroup = new THREE.Group()
@@ -811,12 +817,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       knowledgeTexture = null
       knowledgeKey = ''
     }
-    for (const mesh of [leaves, berryMesh, trunks, crowns, stumps, rocks]) {
+    for (const mesh of [leaves, berryMesh, trunks, crowns, stumps, deadwood, rocks]) {
       if (!mesh) continue
       mesh.dispose()
       world.remove(mesh)
     }
-    leaves = berryMesh = trunks = crowns = stumps = rocks = null
+    leaves = berryMesh = trunks = crowns = stumps = deadwood = rocks = null
     for (const mesh of [ground, outside]) {
       if (!mesh) continue
       mesh.geometry.dispose()
@@ -849,7 +855,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   /**
-   * Draws a tree. Standing, its crown fills out with its branches. Felled, it lies on the ground where it fell, beside
+   * Draws a tree. Standing, its crown is whole, with dead branches beneath it as many as its share of wood. Felled, it lies on the ground where it fell, beside
    * a stump: its trunk shortens from the butt as logs are cut from it, and its crown lies at the far end, shrinking as
    * its branches are gathered, until only the stump is left.
    */
@@ -867,6 +873,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           .setPosition(x, 0, z),
       )
       stumps!.setMatrixAt(tree, matrix.makeScale(1e-5, 1e-5, 1e-5).setPosition(x, 0, z))
+      placeDeadwood(tree, x, z, look.turn, size, shape.deadwood)
       for (const [cone, [coneHeight, radius, tall]] of CROWN_CONES.entries()) {
         const r = radius * size * shape.crown
         crowns!.setMatrixAt(
@@ -886,6 +893,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     fallAlong.set(dx, 0, dz)
     fallAcross.set(-dz, 0, dx)
     stumps!.setMatrixAt(tree, matrix.makeScale(size * 1.15, 0.4, size * 1.15).setPosition(x, 0, z))
+    placeDeadwood(tree, x, z, look.turn, size, 0)
     // The trunk lies out from the stump and shortens from its far end as logs are cut from it.
     const length = Math.max(1e-5, TRUNK_HEIGHT * size * shape.trunk)
     const thick = shape.trunk > 0 ? size : 1e-5
@@ -907,6 +915,25 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           .scale(scale.set(r, Math.max(1e-5, tall * size * shape.crown), r * 0.4))
           .setPosition(x + dx * out, r * 0.4, z + dz * out),
       )
+    }
+  }
+
+  /** Lays the dead branches under a standing tree on the ground round its trunk, `fill` of them shown. */
+  function placeDeadwood(tree: number, x: number, z: number, turn: number, size: number, fill: number) {
+    const shown = Math.round(fill * DEADWOOD_STICKS)
+    for (let stick = 0; stick < DEADWOOD_STICKS; stick += 1) {
+      const index = tree * DEADWOOD_STICKS + stick
+      if (stick >= shown) {
+        deadwood!.setMatrixAt(index, matrix.makeScale(1e-5, 1e-5, 1e-5).setPosition(x, 0, z))
+        continue
+      }
+      const around = turn + stick * 1.05 + 0.3
+      const out = (0.75 + 0.3 * (stick % 3)) * size
+      // Lying flat, at an angle of its own to the trunk.
+      quaternion.setFromEuler(euler.set(Math.PI / 2, around + 0.9 + 0.4 * stick, 0, 'YXZ'))
+      position.set(x + Math.cos(around) * out, 0.05, z + Math.sin(around) * out)
+      scale.set(1, (0.7 + 0.12 * (stick % 4)) * size, 1)
+      deadwood!.setMatrixAt(index, matrix.compose(position, quaternion, scale))
     }
   }
 
@@ -997,7 +1024,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.count)
     crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, trees.count * CROWN_CONES.length)
     stumps = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.count)
-    treeDrawn = Array.from({ length: trees.count }, () => ({ felled: false, trunk: 1, crown: 1 }))
+    deadwood = new THREE.InstancedMesh(deadwoodGeometry, firewoodMaterial, trees.count * DEADWOOD_STICKS)
+    treeDrawn = Array.from({ length: trees.count }, () => ({ felled: false, trunk: 1, crown: 1, deadwood: 1 }))
     for (let tree = 0; tree < trees.count; tree += 1) placeTree(tree, treeDrawn[tree]!)
     // Stone spots: a heap of grey stones each.
     const { stones } = state.layout
@@ -1008,7 +1036,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     bushFill = new Float32Array(bushes.count).fill(-1)
     const ripe = fillInTurn(1, 1, BERRIES_PER_BUSH)
     for (let bush = 0; bush < bushes.count; bush += 1) placeBerries(bush, ripe)
-    for (const mesh of [leaves, berryMesh, trunks, crowns, stumps, rocks]) {
+    for (const mesh of [leaves, berryMesh, trunks, crowns, stumps, deadwood, rocks]) {
       mesh.castShadow = true
       mesh.receiveShadow = mesh === leaves || mesh === rocks
       mesh.instanceMatrix.needsUpdate = true
@@ -1231,7 +1259,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       if (
         shape.felled === drawnBefore.felled &&
         shape.trunk === drawnBefore.trunk &&
-        Math.abs(shape.crown - drawnBefore.crown) < 0.002
+        Math.abs(shape.crown - drawnBefore.crown) < 0.002 &&
+        Math.round(shape.deadwood * DEADWOOD_STICKS) === Math.round(drawnBefore.deadwood * DEADWOOD_STICKS)
       )
         continue
       treeDrawn[tree] = shape
@@ -1242,6 +1271,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       trunks!.instanceMatrix.needsUpdate = true
       crowns!.instanceMatrix.needsUpdate = true
       stumps!.instanceMatrix.needsUpdate = true
+      deadwood!.instanceMatrix.needsUpdate = true
     }
     let rocksChanged = false
     for (let spot = 0; spot < layout.stones.count; spot += 1) {
@@ -1553,6 +1583,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     if (object === trunks) return { kind: 'tree', id: instance }
     if (object === crowns) return { kind: 'tree', id: Math.floor(instance / CROWN_CONES.length) }
     if (object === stumps) return { kind: 'tree', id: instance }
+    if (object === deadwood) return { kind: 'tree', id: Math.floor(instance / DEADWOOD_STICKS) }
     if (object === rocks) return { kind: 'stone', id: Math.floor(instance / config!.stonesPerSpot) }
     return null
   }
@@ -1614,7 +1645,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
-    const plants = [leaves, berryMesh, trunks, crowns, stumps, rocks].filter((mesh) => mesh !== null)
+    const plants = [leaves, berryMesh, trunks, crowns, stumps, deadwood, rocks].filter((mesh) => mesh !== null)
     const shown = (object: { visible: boolean; parent: unknown } | null): boolean =>
       !object || (object.visible && shown(object.parent as typeof object))
     const hit = raycaster
@@ -1702,6 +1733,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         crownGeometry,
         crownMaterial,
         firewoodMaterial,
+        deadwoodGeometry,
         stoneGeometry,
         stoneMaterial,
         emberMaterial,

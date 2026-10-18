@@ -8,6 +8,7 @@ import {
   campfireAt,
   clearView,
   contributionNote,
+  daysOfFoodLeft,
   groupContributions,
   hearthAt,
   pinPlacement,
@@ -36,7 +37,7 @@ function pairBesideBush(): DisplayPair {
   const forager = state.foragers[0]!
   forager.x = state.layout.bushes.x[0]! - 300
   forager.y = state.layout.bushes.y[0]!
-  forager.energyKcal = 13_000
+  forager.energyKcal = 63_000
   forager.hungry = true
   state.bushKcal.fill(0)
   state.bushKcal[0] = 400
@@ -112,11 +113,26 @@ describe('plants and the camera', () => {
   })
 })
 
+describe('days of food left', () => {
+  it('divides the reserve by what it lost a day over the last days, and says nothing while it holds steady', () => {
+    const state = cloneValley(createValley())
+    expect(daysOfFoodLeft(state, 0)).toBeNull()
+    const end = (kcal: number) => ({ endEnergyKcal: state.foragers.map(() => kcal) }) as ValleyState['days'][number]
+    state.days = [end(66_000), end(64_000), end(62_000)]
+    state.foragers[0]!.energyKcal = 62_000
+    expect(daysOfFoodLeft(state, 0)).toBeCloseTo(31, 10)
+    state.days = [end(60_000), end(62_000)]
+    expect(daysOfFoodLeft(state, 0)).toBeNull()
+  })
+})
+
 describe('trees and huts', () => {
-  it('draws a standing tree upright, and a felled one lying, shorter for each log cut and its crown thinning', () => {
+  it('draws a standing tree upright over its dead branches, and a felled one lying, shorter for each log cut', () => {
     const state = cloneValley(createValley())
     const standing = treeShape({ previous: state, next: state, alpha: 1 }, 0)
-    expect(standing).toMatchObject({ felled: false, trunk: 1, crown: 1 })
+    expect(standing).toMatchObject({ felled: false, trunk: 1, crown: 1, deadwood: 1 })
+    state.woodStock[0] = 5
+    expect(treeShape({ previous: state, next: state, alpha: 1 }, 0).deadwood).toBeCloseTo(5 / 25, 10)
     state.treeFelledMinute[0] = 0
     state.treeLogs[0] = 1
     state.woodStock[0] = 15
@@ -124,6 +140,7 @@ describe('trees and huts', () => {
     expect(felled.felled).toBe(true)
     expect(felled.trunk).toBeCloseTo(1 / 3, 10)
     expect(felled.crown).toBeCloseTo(15 / 35, 10)
+    expect(felled.deadwood).toBe(0)
   })
 
   it('turns a member’s hut, and the member asleep in it, towards its group’s fire', () => {
@@ -181,7 +198,7 @@ describe('groups and what a forager knows', () => {
     const forager = state.foragers[0]!
     forager.tripWood = 30
     forager.wood = 30
-    expect(foragerSummary(state, 0)).toMatchObject({ loadKg: 30, speedKmh: 2.988, sitesKnown: 0 })
+    expect(foragerSummary(state, 0)).toMatchObject({ loadKg: 30, speedKmh: 4.32, sitesKnown: 0 })
     forager.siteKnown[3] = 1
     forager.siteKnown[35] = 1
     forager.siteChecked[3] = 590
