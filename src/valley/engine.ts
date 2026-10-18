@@ -1,3 +1,4 @@
+import { beginAxe, cutAt, exchangeAxes, planHut, workAxe } from './axes'
 import { carriedKcal, spoil } from './food'
 import { resolveValleyConfig } from './config'
 import {
@@ -15,13 +16,15 @@ import {
   mustGoHome,
   nextHungry,
   observe,
+  observeFar,
   plantsInViewOf,
   speedForLoad,
 } from './forager'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { burnFires, feedFire, sleepsByGroupFire } from './fire'
-import { drawSkills, generateLayout, layoutError, turnOrder } from './layout'
-import { noTaskSeconds, practiceDay, ratesOf, startingLog } from './practice'
+import { hutWhole, layLog, leaveHutIfMoved, regrowLogs, wantsLogs, weatherHuts } from './huts'
+import { drawCraftSkills, drawSkills, generateLayout, layoutError, turnOrder } from './layout'
+import { craftOf, noTaskSeconds, practiceDay, ratesOf, startingLog } from './practice'
 import {
   choosePlace,
   dissolveIfAlone,
@@ -33,12 +36,13 @@ import {
   placeCount,
   startingGroups,
 } from './social'
-import { chooseSite, observeSites, siteCentre, siteCount, sitesCheckedSince, sitesKnown } from './sites'
+import { chooseSite, observeSites, sightOf, siteCentre, siteCount, sitesCheckedSince, sitesKnown } from './sites'
 import { nextShortOfWood, swap, woodMatters } from './trade'
 import { coldMatters, hourlyShare, minuteCost, tendFire, workSeconds, type MinuteSeconds } from './work'
 import type {
   ActionEvent,
   ActionReason,
+  AxeEvent,
   DaySummary,
   DeathEvent,
   FeedEvent,
@@ -48,6 +52,8 @@ import type {
   ForagerAction,
   Good,
   GroupEvent,
+  HutEvent,
+  HutTask,
   PracticeEvent,
   QuoteEvent,
   SwapEvent,
@@ -75,11 +81,21 @@ function groupCounts(state: Pick<ValleyState, 'foragers' | 'groups'>) {
   }
 }
 
-function emptyDay(day: number, state: Pick<ValleyState, 'foragers' | 'bushKcal' | 'treeWood' | 'groups'>): DaySummary {
+/** Living members with a hut whole at their hearth. */
+const hutsWholeNow = (state: Pick<ValleyState, 'foragers' | 'huts' | 'config'>) =>
+  state.foragers.filter((forager) => forager.alive && forager.groupId !== null && hutWhole(state, forager)).length
+
+const hutLogsById = (state: Pick<ValleyState, 'foragers' | 'huts'>) =>
+  state.foragers.map((forager) => (forager.hutId === null ? 0 : state.huts[forager.hutId]!.logs))
+
+function emptyDay(
+  day: number,
+  state: Pick<ValleyState, 'foragers' | 'bushKcal' | 'treeWood' | 'groups' | 'huts' | 'config'>,
+): DaySummary {
   const { foragers } = state
   return {
     day,
-    seconds: { sleep: 0, rest: 0, walk: 0, forage: 0, gather: 0 },
+    seconds: { sleep: 0, rest: 0, walk: 0, forage: 0, gather: 0, cut: 0, make: 0 },
     gatheredKcal: 0,
     spentKcal: 0,
     alive: foragers.filter((forager) => forager.alive).length,
@@ -115,6 +131,23 @@ function emptyDay(day: number, state: Pick<ValleyState, 'foragers' | 'bushKcal' 
     campfireBurnedWood: 0,
     fireLitHours: 0,
     fireDarkHours: 0,
+    logsCut: 0,
+    axesMade: 0,
+    axesMadeForSale: 0,
+    axesSold: 0,
+    axesWornOut: 0,
+    memberMinutes: 0,
+    hutWholeMinutes: 0,
+    hutSleepMinutes: 0,
+    hutsWhole: hutsWholeNow(state),
+    cutSecondsById: zeros(foragers.length),
+    makeSecondsById: zeros(foragers.length),
+    logsCutById: zeros(foragers.length),
+    axesMadeById: zeros(foragers.length),
+    axesSoldById: zeros(foragers.length),
+    axesBoughtById: zeros(foragers.length),
+    craftById: foragers.map((forager) => forager.craft),
+    hutLogsById: hutLogsById(state),
   }
 }
 
@@ -126,7 +159,10 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const layout = generateLayout(config)
   const bushKcal = new Int32Array(layout.bushes.count).fill(config.initialBushKcal)
   const treeWood = new Int32Array(layout.trees.count).fill(config.initialTreeWood)
+  const treeLogs = new Int32Array(layout.trees.count).fill(config.logsPerTree)
+  const stoneStock = new Int32Array(layout.stones.count).fill(config.stonesPerSpot)
   const skills = drawSkills(config)
+  const craftSkills = drawCraftSkills(config)
   const places = placeCount(config)
   const unknown = (stocks: Int32Array) => ({
     stock: new Int32Array(stocks.length),
@@ -153,6 +189,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       // A forager has seen nothing yet, and sees what is around it in its first turn.
       bushMemory: unknown(bushKcal),
       treeMemory: unknown(treeWood),
+      logMemory: unknown(treeLogs),
+      stoneMemory: unknown(stoneStock),
       groupId: null,
       joinedMinute: null,
       placeSeen: new Int32Array(places).fill(-1),
@@ -163,6 +201,28 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       siteChecked: new Int32Array(siteCount(config)).fill(-1),
       ...born,
       ...ratesOf(config, born.foragingSkill, born.woodSkill, practiceLog),
+      craftSkill: craftSkills[id]!,
+      craft: craftOf(config, craftSkills[id]!, practiceLog),
+      log: 0,
+      stone: 0,
+      hutId: null,
+      axe: null,
+      spareAxe: null,
+      making: null,
+      chopRemainder: 0,
+      promised: false,
+      heardAsk: null,
+      axeTotals: {
+        madeOwn: 0,
+        madeForSale: 0,
+        sold: 0,
+        bought: 0,
+        wornOut: 0,
+        kcalReceived: 0,
+        kcalPaid: 0,
+        logsCut: 0,
+      },
+      hutSleepMinutes: 0,
       practiceLog,
       secondsToday: noTaskSeconds(),
       loggedSeconds: noTaskSeconds(),
@@ -180,15 +240,18 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     }
   })
   const groups = startingGroups(config, layout, foragers)
-  const partial = { foragers, bushKcal, treeWood, groups }
+  const partial = { foragers, bushKcal, treeWood, groups, huts: [], config }
   return {
     config,
     layout,
     minute: 0,
     bushKcal,
     treeWood,
+    treeLogs,
+    stoneStock,
     foragers,
     groups,
+    huts: [],
     totals: {
       initialKcal: sum(bushKcal) + foragers.reduce((total, forager) => total + forager.energyKcal, 0),
       regrownKcal: 0,
@@ -202,6 +265,17 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       swappedWood: 0,
       swappedKcal: 0,
       firstSwapMinute: null,
+      initialLogs: sum(treeLogs),
+      regrownLogs: 0,
+      logsCut: 0,
+      rottedLogs: 0,
+      initialStones: sum(stoneStock),
+      stonesWorked: 0,
+      axeWood: 0,
+      axesMade: 0,
+      axesWornOut: 0,
+      axeSales: 0,
+      axeSalesKcal: 0,
     },
     lastEvents: [],
     lastSwaps: [],
@@ -211,6 +285,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     lastGroupEvents: [],
     lastFires: [],
     lastFeeds: [],
+    lastAxeEvents: [],
+    lastHutEvents: [],
     eventDays: [[]],
     days: [],
     today: emptyDay(0, partial),
@@ -222,7 +298,14 @@ const cloneForager = (forager: Forager): Forager => ({
   carried: [...forager.carried],
   bushMemory: { stock: forager.bushMemory.stock.slice(), seen: forager.bushMemory.seen.slice() },
   treeMemory: { stock: forager.treeMemory.stock.slice(), seen: forager.treeMemory.seen.slice() },
-  practiceLog: { forage: [...forager.practiceLog.forage], gather: [...forager.practiceLog.gather] },
+  logMemory: { stock: forager.logMemory.stock.slice(), seen: forager.logMemory.seen.slice() },
+  stoneMemory: { stock: forager.stoneMemory.stock.slice(), seen: forager.stoneMemory.seen.slice() },
+  practiceLog: {
+    forage: [...forager.practiceLog.forage],
+    gather: [...forager.practiceLog.gather],
+    make: [...forager.practiceLog.make],
+  },
+  axeTotals: { ...forager.axeTotals },
   secondsToday: { ...forager.secondsToday },
   loggedSeconds: { ...forager.loggedSeconds },
   secondsWorked: { ...forager.secondsWorked },
@@ -248,6 +331,14 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   sitesKnownById: [...day.sitesKnownById],
   sitesCheckedById: [...day.sitesCheckedById],
   fireGivenById: [...day.fireGivenById],
+  cutSecondsById: [...day.cutSecondsById],
+  makeSecondsById: [...day.makeSecondsById],
+  logsCutById: [...day.logsCutById],
+  axesMadeById: [...day.axesMadeById],
+  axesSoldById: [...day.axesSoldById],
+  axesBoughtById: [...day.axesBoughtById],
+  craftById: [...day.craftById],
+  hutLogsById: [...day.hutLogsById],
 })
 
 /** A copy that shares nothing mutable with `state`. The layout and finished days never change, so they are shared. */
@@ -256,8 +347,11 @@ export function cloneValley(state: ValleyState): ValleyState {
     ...state,
     bushKcal: state.bushKcal.slice(),
     treeWood: state.treeWood.slice(),
+    treeLogs: state.treeLogs.slice(),
+    stoneStock: state.stoneStock.slice(),
     foragers: state.foragers.map(cloneForager),
     groups: state.groups.map((group) => ({ ...group })),
+    huts: [...state.huts],
     totals: { ...state.totals },
     days: [...state.days],
     eventDays: state.eventDays.map((day, index) => (index === state.eventDays.length - 1 ? [...day] : day)),
@@ -271,6 +365,8 @@ interface TurnResult {
   quotes: QuoteEvent[]
   met: GroupEvent | null
   fed: FeedEvent | null
+  axeEvents: AxeEvent[]
+  hutEvents: HutEvent[]
 }
 
 /**
@@ -291,7 +387,13 @@ export function eatCarried(lots: FoodLot[], room: number) {
   return { rest: index ? lots.slice(index) : lots, takenKcal }
 }
 
-const actionOf = (seconds: MinuteSeconds, good: Good | null, sleeping: boolean): ForagerAction => {
+const actionOf = (
+  seconds: MinuteSeconds,
+  good: Good | null,
+  task: HutTask | null,
+  sleeping: boolean,
+): ForagerAction => {
+  if (seconds.work && task) return task === 'cut' ? 'cut' : 'make'
   if (seconds.work) return good === 'food' ? 'forage' : 'gather'
   if (seconds.walk) return 'walk'
   return sleeping ? 'sleep' : 'rest'
@@ -321,14 +423,41 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     state.treeWood,
     minute,
   )
+  const far = sightOf(config, minute)
+  observeFar(
+    config,
+    forager.logMemory,
+    layout.treeIndex,
+    layout.trees,
+    state.treeLogs,
+    forager.x,
+    forager.y,
+    far,
+    minute,
+  )
+  observeFar(
+    config,
+    forager.stoneMemory,
+    layout.stoneIndex,
+    layout.stones,
+    state.stoneStock,
+    forager.x,
+    forager.y,
+    far,
+    minute,
+  )
   observePlaces(config, forager, minute)
   observeFlags(config, forager, state.groups, minute)
   observeSites(config, layout, forager, minute)
   forager.hungry = nextHungry(config, forager.energyKcal, forager.hungry)
   forager.shortOfWood = nextShortOfWood(config, forager.wood, forager.shortOfWood)
+  const hutEvents: HutEvent[] = []
+  const axeEvents: AxeEvent[] = []
+  const abandoned = leaveHutIfMoved(state, forager, minute)
+  if (abandoned) hutEvents.push(abandoned)
   // What it carries as it sets out decides how fast it walks this minute.
   const load = loadOf(forager)
-  const speed = speedForLoad(config, loadKg(config, load.wood, load.berriesKcal))
+  const speed = speedForLoad(config, loadKg(config, load.wood, load.berriesKcal, load.log))
 
   const from = { x: forager.x, y: forager.y }
   const seconds: MinuteSeconds = { walk: 0, work: 0, stand: 0, sleep: 0 }
@@ -345,6 +474,12 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   let sleeping = false
   let sleptCold = false
   let fireGroupId: number | null = null
+  let task: HutTask | null = null
+  let treeId: number | null = null
+  let stoneId: number | null = null
+  let cutLog = false
+  let tookStone = false
+  let inHut = false
   const stride = 60 * speed
 
   /** Walks towards a point for up to the whole minute, at its speed; returns the seconds left after arriving. */
@@ -357,6 +492,18 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     return 60 - seconds.walk
   }
 
+  /** Walks to the point `reachCm` short of a plant or stone spot on the straight line from here, if not within reach. */
+  const approach = (px: number, py: number) => {
+    if (distanceSq(forager.x, forager.y, px, py) <= config.reachCm ** 2) return 60
+    // Dividing by the distance rounded up keeps the point within reach.
+    const d = distanceUp(forager.x, forager.y, px, py)
+    return walkTo(
+      px - Math.trunc(((px - forager.x) * config.reachCm) / d),
+      py - Math.trunc(((py - forager.y) * config.reachCm) / d),
+    )
+  }
+  const withinReach = (px: number, py: number) => distanceSq(forager.x, forager.y, px, py) <= config.reachCm ** 2
+
   if (mustGoHome(config, forager, minute)) {
     forager.trip = null
     reason = 'going home'
@@ -365,14 +512,24 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     forager.trip = null
     reason = 'night'
     sleeping = true
-    if (sleepsByGroupFire(config, forager)) {
-      // A member sleeps by its group's fire, warm if it is lit this hour, and burns no wood of its own.
+    inHut = atHearth(forager) && hutWhole(state, forager)
+    if (inHut) forager.hutSleepMinutes += 1
+    if (sleepsByGroupFire(forager)) {
+      // A member sleeps by its group's fire, warm if it is lit this hour or it sleeps in its whole hut, and burns no
+      // wood of its own.
       fireGroupId = forager.groupId
-      forager.warm = state.groups[fireGroupId!]!.fireLit
-      if (forager.warm) forager.warmByFireMinutes += 1
-    } else burnedWood = tendFire(config, forager, minute)
+      const lit = state.groups[fireGroupId!]!.fireLit
+      if (lit) forager.warmByFireMinutes += 1
+      forager.warm = lit || inHut
+    } else if (inHut) forager.warm = true
+    else burnedWood = tendFire(config, forager, minute)
     sleptCold = !forager.warm && coldMatters(config)
     seconds.sleep = 60
+  } else if (forager.log) {
+    // Rule 3: it takes a log home before anything else.
+    forager.trip = null
+    reason = 'taking a log home'
+    seconds.stand = walkTo(forager.hearth.x, forager.hearth.y)
   } else if (!forager.hungry && carryingFullLoad(config, forager)) {
     // Rule 4: not hungry, it takes a full load home and sets it down before anything else.
     forager.trip = null
@@ -380,9 +537,81 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     seconds.stand = walkTo(forager.hearth.x, forager.hearth.y)
   } else {
     const filling = !forager.hungry && fillingLoad(config, forager)
-    const work = chooseWork(config, forager, minute)
-    const goal = work === null ? idleGoal(state, forager, minute) : null
-    if (goal) {
+    let work = chooseWork(config, forager, minute)
+    const member = forager.groupId !== null
+    // Rule 8: a member whose hut needs logs and who holds no axe takes up its spare.
+    if (work === null && member && wantsLogs(state, forager) && !forager.axe && forager.spareAxe) {
+      forager.axe = forager.spareAxe
+      forager.spareAxe = null
+    }
+    // Rules 7 to 10, the hut, come after a member's needs and before exploring.
+    const plan = work === null && member ? planHut(state, forager, minute, speed) : null
+    const buying = plan?.kind === 'buy food'
+    if (buying) work = { good: 'food', forTrade: true, trip: null }
+    const goal = work === null && plan === null ? idleGoal(state, forager, minute) : null
+    if (plan && !buying) {
+      forager.trip = null
+      if (plan.kind === 'make') {
+        task = 'make'
+        const left = walkTo(forager.hearth.x, forager.hearth.y)
+        reason = 'going home to make an axe'
+        if (left > 0 && atHearth(forager)) {
+          if (!forager.making && forager.stone >= 1 && forager.wood >= config.axeWood) beginAxe(state, forager)
+          if (forager.making) {
+            const done = workAxe(state, forager, left, minute)
+            seconds.work = done.worked
+            seconds.stand = left - done.worked
+            if (done.made) axeEvents.push(done.made)
+            reason = 'making an axe'
+          } else seconds.stand = left
+        } else seconds.stand = left
+      } else if (plan.kind === 'cut') {
+        task = 'cut'
+        treeId = plan.treeId
+        const tx = layout.trees.x[treeId]!
+        const ty = layout.trees.y[treeId]!
+        const left = approach(tx, ty)
+        if (left > 0 && withinReach(tx, ty) && state.treeLogs[treeId]! > 0) {
+          seconds.work = left
+          const done = cutAt(state, forager, treeId, left, minute)
+          if (done.cut) {
+            cutLog = true
+            axeEvents.push(done.cut)
+          }
+          if (done.worn) axeEvents.push(done.worn)
+          reason = 'cutting a log'
+        } else {
+          seconds.stand = left
+          reason = 'seeking a tree'
+        }
+      } else if (plan.kind === 'stone') {
+        task = 'stone'
+        stoneId = plan.stoneId
+        const sx = layout.stones.x[stoneId]!
+        const sy = layout.stones.y[stoneId]!
+        const left = approach(sx, sy)
+        if (left > 0 && withinReach(sx, sy) && state.stoneStock[stoneId]! > 0) {
+          seconds.work = left
+          state.stoneStock[stoneId]! -= 1
+          forager.stone += 1
+          tookStone = true
+          reason = 'picking up a stone'
+        } else {
+          seconds.stand = left
+          reason = 'fetching a stone'
+        }
+      } else {
+        // Waiting at its hearth for an axe being made, or with the food to buy one.
+        const made = plan.kind === 'await sale'
+        if (atHearth(forager)) {
+          seconds.stand = 60
+          reason = made ? 'waiting to buy an axe' : 'waiting for an axe being made'
+        } else {
+          seconds.stand = walkTo(forager.hearth.x, forager.hearth.y)
+          reason = made ? 'taking food home to buy an axe' : 'going home to wait for an axe'
+        }
+      }
+    } else if (goal) {
       // Rules 5 and 6: seeking company, exploring or checking.
       forager.trip = null
       reason = goal.reason
@@ -428,15 +657,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
         targetId = chosen
         const px = plants.x[chosen]!
         const py = plants.y[chosen]!
-        let left = 60
-        if (distanceSq(forager.x, forager.y, px, py) > config.reachCm ** 2) {
-          // The point `reachCm` short of the plant on the straight line from here. Dividing by the distance rounded up
-          // keeps it within reach.
-          const d = distanceUp(forager.x, forager.y, px, py)
-          const x = px - Math.trunc(((px - forager.x) * config.reachCm) / d)
-          const y = py - Math.trunc(((py - forager.y) * config.reachCm) / d)
-          left = walkTo(x, y)
-        }
+        const left = approach(px, py)
         const stock = food ? state.bushKcal : state.treeWood
         const rate = food ? forager.forageRate : forager.woodRate
         if (left > 0 && stock[chosen]! >= minuteOfWork(rate)) {
@@ -466,6 +687,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
           }
         } else seconds.stand = left
         if (filling) reason = 'filling a load'
+        else if (buying) reason = 'picking food to buy an axe'
         else if (seconds.work) reason = food ? 'foraging' : 'gathering'
         else reason = food ? 'seeking food' : 'seeking wood'
       }
@@ -475,11 +697,16 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   const met = meet(state, forager, minute)
 
   const traded = swap(config, forager, state.foragers, minute)
+  axeEvents.push(...exchangeAxes(state, forager, minute))
   // Having swapped, a member at its hearth feeds its group's fire.
   const fed =
-    sleepsByGroupFire(config, forager) && atHearth(forager)
+    sleepsByGroupFire(forager) && atHearth(forager)
       ? feedFire(state, state.groups[forager.groupId!]!, forager, minute)
       : null
+  // Then it lays any log it carries in its hut, which stays where it was begun if its hearth has moved.
+  const moved = leaveHutIfMoved(state, forager, minute)
+  if (moved) hutEvents.push(moved)
+  const laidLog = layLog(state, forager, minute)
   const eatenAgain = eatCarried(forager.carried, config.reserveMaxKcal - forager.energyKcal)
   forager.energyKcal += eatenAgain.takenKcal
   forager.carried = eatenAgain.rest
@@ -497,7 +724,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     kind: 'action',
     foragerId: forager.id,
     minute,
-    action: actionOf(seconds, good, sleeping),
+    action: actionOf(seconds, good, task, sleeping),
     reason,
     from,
     position: { x: forager.x, y: forager.y },
@@ -527,8 +754,16 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     loadBerriesKcal: load.berriesKcal,
     speedCmPerSecond: speed,
     fireGroupId,
+    loadLog: load.log,
+    task,
+    treeId,
+    stoneId,
+    cutLog,
+    tookStone,
+    laidLog,
+    inHut,
   }
-  return { event, swaps: traded.swaps, quotes: traded.quotes, met, fed }
+  return { event, swaps: traded.swaps, quotes: traded.quotes, met, fed, axeEvents, hutEvents }
 }
 
 /**
@@ -539,8 +774,13 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
 function advance(state: ValleyState, recordEvents = true) {
   const { config, minute } = state
   const lastPractice: PracticeEvent[] = []
-  if (minute > 0 && minute % MINUTES_PER_DAY === 0)
+  const lastHutEvents: HutEvent[] = []
+  const lastAxeEvents: AxeEvent[] = []
+  if (minute > 0 && minute % MINUTES_PER_DAY === 0) {
     for (const forager of state.foragers) if (forager.alive) lastPractice.push(practiceDay(config, forager, minute))
+    lastHutEvents.push(...weatherHuts(state, minute))
+    state.totals.regrownLogs += regrowLogs(state, minute)
+  }
   let regrownKcal = 0
   let regrownWood = 0
   if (minute > 0 && minute % 60 === 0) {
@@ -566,7 +806,7 @@ function advance(state: ValleyState, recordEvents = true) {
   }
 
   // The fires burn, or go out, at the start of every hour, before anyone acts.
-  const lastFires: FireEvent[] = config.sharedFire && minute % 60 === 0 ? burnFires(state, minute) : []
+  const lastFires: FireEvent[] = minute % 60 === 0 ? burnFires(state, minute) : []
   const lastFeeds: FeedEvent[] = []
   const lastEvents: ActionEvent[] = []
   const lastSwaps: SwapEvent[] = []
@@ -574,7 +814,7 @@ function advance(state: ValleyState, recordEvents = true) {
   const lastDeaths: DeathEvent[] = []
   const lastGroupEvents: GroupEvent[] = []
   // Experiments keep no event history, so they build none.
-  const newEvents: ValleyEvent[] = recordEvents ? [...lastPractice, ...lastFires] : []
+  const newEvents: ValleyEvent[] = recordEvents ? [...lastPractice, ...lastHutEvents, ...lastFires] : []
   const today = state.today
   for (const fire of lastFires) {
     today.burnedWood += fire.burned
@@ -597,6 +837,30 @@ function advance(state: ValleyState, recordEvents = true) {
       if (recordEvents) newEvents.push(turn.fed)
       today.fireGivenById[id]! += turn.fed.wood
     }
+    if (turn.axeEvents.length) {
+      lastAxeEvents.push(...turn.axeEvents)
+      if (recordEvents) newEvents.push(...turn.axeEvents)
+      for (const made of turn.axeEvents) {
+        if (made.kind === 'cut') {
+          today.logsCut += 1
+          today.logsCutById[made.foragerId]! += 1
+        } else if (made.kind === 'made') {
+          today.axesMade += 1
+          if (made.forSale) today.axesMadeForSale += 1
+          today.axesMadeById[made.foragerId]! += 1
+        } else if (made.kind === 'worn') today.axesWornOut += 1
+        else if (made.kind === 'sale') {
+          today.axesSold += 1
+          today.axesSoldById[made.sellerId]! += 1
+          today.axesBoughtById[made.buyerId]! += 1
+        }
+      }
+    }
+    if (turn.hutEvents.length) {
+      lastHutEvents.push(...turn.hutEvents)
+      if (recordEvents) newEvents.push(...turn.hutEvents)
+    }
+    if (event.inHut) today.hutSleepMinutes += 1
     if (turn.met) {
       lastGroupEvents.push(turn.met)
       if (recordEvents) newEvents.push(turn.met)
@@ -607,10 +871,19 @@ function advance(state: ValleyState, recordEvents = true) {
     time.walk += event.walkSeconds
     time.sleep += event.sleepSeconds
     time.rest += event.standSeconds
-    if (event.workedFor === 'food') time.forage += event.workSeconds
-    else time.gather += event.workSeconds
-    if (event.workedFor === 'food') today.forageSecondsById[id]! += event.workSeconds
-    else today.gatherSecondsById[id]! += event.workSeconds
+    if (event.task === 'cut') {
+      time.cut += event.workSeconds
+      today.cutSecondsById[id]! += event.workSeconds
+    } else if (event.task) {
+      time.make += event.workSeconds
+      today.makeSecondsById[id]! += event.workSeconds
+    } else if (event.workedFor === 'food') {
+      time.forage += event.workSeconds
+      today.forageSecondsById[id]! += event.workSeconds
+    } else {
+      time.gather += event.workSeconds
+      today.gatherSecondsById[id]! += event.workSeconds
+    }
     today.walkSecondsById[id]! += event.walkSeconds
     if (loadKg(config, event.loadWood, event.loadBerriesKcal) > 0) today.loadedWalkSecondsById[id]! += event.walkSeconds
     today.gatheredWoodById[id]! += event.gatheredWood
@@ -654,6 +927,12 @@ function advance(state: ValleyState, recordEvents = true) {
   if (lastPractice.length) {
     today.forageRates = state.foragers.map((forager) => forager.forageRate)
     today.woodRates = state.foragers.map((forager) => forager.woodRate)
+    today.craftById = state.foragers.map((forager) => forager.craft)
+  }
+  for (const forager of state.foragers) {
+    if (!forager.alive || forager.groupId === null) continue
+    today.memberMinutes += 1
+    if (hutWhole(state, forager)) today.hutWholeMinutes += 1
   }
 
   state.lastEvents = lastEvents
@@ -664,6 +943,8 @@ function advance(state: ValleyState, recordEvents = true) {
   state.lastGroupEvents = lastGroupEvents
   state.lastFires = lastFires
   state.lastFeeds = lastFeeds
+  state.lastAxeEvents = lastAxeEvents
+  state.lastHutEvents = lastHutEvents
   for (const event of newEvents) state.eventDays[state.eventDays.length - 1]!.push(event)
 
   const next = minute + 1
@@ -676,6 +957,8 @@ function advance(state: ValleyState, recordEvents = true) {
     today.placesSeenById = state.foragers.map((forager) => forager.placesSeen)
     today.sitesKnownById = state.foragers.map(sitesKnown)
     today.sitesCheckedById = state.foragers.map((forager) => sitesCheckedSince(forager, today.day * MINUTES_PER_DAY))
+    today.hutsWhole = hutsWholeNow(state)
+    today.hutLogsById = hutLogsById(state)
     state.days.push(today)
     state.today = emptyDay(today.day + 1, state)
     state.eventDays.push([])

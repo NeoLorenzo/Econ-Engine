@@ -1,3 +1,4 @@
+import { askOf } from './axes'
 import { speedForLoad } from './forager'
 import { placeCount } from './social'
 import { siteCount } from './sites'
@@ -78,5 +79,16 @@ export function valleyTheory(config: ValleyConfig) {
     campfireWoodPerMember: (n: number) => (night * config.campfireWoodPerHour) / n,
     /** Hours of gathering a day for a member of a group of `n` at rate `w`, its share of the fire's night. */
     campfireGatherHoursPerDay: (n: number, w: number) => (night * config.campfireWoodPerHour) / n / w,
+    /** What an axe costs to make at craft `craft`: its hours times the extra energy of working, `840 · 100 / craft`. */
+    axeAsk: (craft: number) => askOf(config, craft),
+    /** A first axe is made at half one's born craft: `2 · axeHours` hours at craft 100%. */
+    firstAxeHours: (config.axeHours * 100) / Math.floor((100 * config.practiceMinPercent) / 100),
+    /** Hours of cutting for a hut's logs with an axe of quality `quality`. */
+    hutCutHours: (quality: number) => (config.hutLogs * config.logChopMinutes * 100) / quality / 60,
+    /** Logs every tree holds when full, and the logs they regrow a day when short. */
+    logsOnOffer: config.standCount * config.treesPerStand * config.logsPerTree,
+    logsRegrownPerDay: (config.standCount * config.treesPerStand) / config.logRegrowthDays,
+    /** Logs a whole hut loses to the weather each day, which its builder must replace. */
+    hutLogsPerMemberDay: 1 / config.hutLogDays,
   }
 }

@@ -34,11 +34,13 @@ describe('sight', () => {
   const state = valleyAt(TEN_AM)
   const { config, layout } = state
 
-  it('numbers thickets first, then stands', () => {
-    expect(siteCount(config)).toBe(40)
+  it('numbers thickets first, then stands, then outcrops', () => {
+    expect(siteCount(config)).toBe(48)
     expect(siteGood(config, 0)).toBe('food')
     expect(siteGood(config, 32)).toBe('wood')
     expect(siteCentre(config, layout, 32)).toEqual(layout.stands[0])
+    expect(siteGood(config, 44)).toBe('stone')
+    expect(siteCentre(config, layout, 44)).toEqual(layout.outcrops[0])
   })
 
   it('sees across the valley by day and only close by at night', () => {

@@ -1,9 +1,11 @@
+import { askOf, expectedQuality, usableAsk } from '../valley/axes'
 import { carriedKcal } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { spiralOffsets } from '../valley/config'
 import { lastEventOf } from '../valley/engine'
 import { campfireBurn } from '../valley/fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
+import { hutOf, hutWhole, weathersOn } from '../valley/huts'
 import { practicePercents } from '../valley/practice'
 import { siteCentre, siteCount, siteRadius, sitesKnown } from '../valley/sites'
 import { livingMembers, placeCount, placesPerSide } from '../valley/social'
@@ -75,7 +77,7 @@ export const toMetres = (config: ValleyConfig, x: number, y: number) => ({
   z: (y - config.valleySizeCm / 2) / 100,
 })
 
-export type Gesture = 'walk' | 'pick' | 'gather' | 'stand' | 'sleep' | 'dead'
+export type Gesture = 'walk' | 'pick' | 'gather' | 'chop' | 'make' | 'stand' | 'sleep' | 'dead'
 
 export interface ForagerPose {
   /** Its position in valley centimetres. */
@@ -119,19 +121,47 @@ export function foragerPose(pair: DisplayPair, foragerId: number, interpolate = 
       lying,
     }
   }
-  const plants = event.workedFor === 'food' ? next.layout.bushes : next.layout.trees
+  const { layout } = next
+  const plants = event.workedFor === 'food' ? layout.bushes : layout.trees
+  const toward = (xs: Int32Array, ys: Int32Array, id: number | null) =>
+    id === null ? null : headingOf(xs[id]! - position.x, ys[id]! - position.y)
   const facing =
-    event.plantId === null
-      ? null
-      : headingOf(plants.x[event.plantId]! - position.x, plants.y[event.plantId]! - position.y)
+    event.task === 'cut'
+      ? toward(layout.trees.x, layout.trees.y, event.treeId)
+      : event.task === 'stone'
+        ? toward(layout.stones.x, layout.stones.y, event.stoneId)
+        : toward(plants.x, plants.y, event.plantId)
   const gesture: Gesture = event.workSeconds
-    ? event.workedFor === 'food'
-      ? 'pick'
-      : 'gather'
+    ? event.task === 'cut'
+      ? 'chop'
+      : event.task === 'make'
+        ? 'make'
+        : event.task === 'stone' || event.workedFor === 'wood'
+          ? 'gather'
+          : 'pick'
     : event.action === 'sleep'
       ? 'sleep'
       : 'stand'
   return { x: position.x, y: position.y, heading: facing, gesture, lying }
+}
+
+/**
+ * Whether a forager carries a log on its shoulder in the minute being drawn: one it set out with, until it lays it in
+ * its hut at the end of its walk home, or one it cut this minute, once it is cut.
+ */
+export function carriesLog(pair: DisplayPair, foragerId: number, interpolate = true) {
+  const event = currentEvent(pair, foragerId)
+  if (!event) return pair.next.foragers[foragerId]!.log > 0
+  const seconds = (interpolate ? pair.alpha : 1) * 60
+  if (event.cutLog) return seconds >= 60 - event.workSeconds / 4
+  if (!event.loadLog) return false
+  return !event.laidLog || seconds < event.walkSeconds
+}
+
+/** Whether a forager holds an axe in the minute being drawn. */
+export const holdsAxe = (pair: DisplayPair, foragerId: number) => {
+  const event = currentEvent(pair, foragerId)
+  return pair.next.foragers[foragerId]!.axe !== null || event?.task === 'cut'
 }
 
 /** A plant's stock, part of the way through the minute. */
@@ -140,6 +170,13 @@ export function displayedStock(pair: DisplayPair, kind: 'bush' | 'tree', id: num
   const after = kind === 'bush' ? pair.next.bushKcal[id]! : pair.next.treeWood[id]!
   return interpolate ? lerp(before, after, pair.alpha) : after
 }
+
+/**
+ * How tall a tree stands for the logs it holds: whole when full, lower as logs are cut, and a stump with none, drawn
+ * as a share of its full height. A log comes off at the end of the minute it is cut.
+ */
+export const treeStanding = (logs: number, logsPerTree: number) =>
+  logs <= 0 ? 0 : 0.55 + (0.45 * logs) / Math.max(1, logsPerTree)
 
 /**
  * Shares `amount` out among `count` parts one after another, each from 0 (empty) to 1 (full). The fills add up to the
@@ -219,9 +256,17 @@ export function fireSaving(config: ValleyConfig) {
 /** People count bushes, trees and foragers from 1. */
 export const bushName = (state: ValleyState, id: number) => `a bush in thicket ${state.layout.bushes.site[id]! + 1}`
 export const treeName = (state: ValleyState, id: number) => `a tree in stand ${state.layout.trees.site[id]! + 1}`
-/** A site by name, as bushes and trees name theirs: thickets and stands each counted from 1. */
-export const siteName = (config: ValleyConfig, site: number) =>
-  site < config.thicketCount ? `thicket ${site + 1}` : `stand ${site - config.thicketCount + 1}`
+export const stoneName = (state: ValleyState, id: number) => `outcrop ${state.layout.stones.site[id]! + 1}`
+/** A site by name, as bushes and trees name theirs: thickets, stands and outcrops each counted from 1. */
+export function siteName(config: ValleyConfig, site: number) {
+  if (site < config.thicketCount) return `thicket ${site + 1}`
+  const stand = site - config.thicketCount
+  return stand < config.standCount ? `stand ${stand + 1}` : `outcrop ${stand - config.standCount + 1}`
+}
+
+/** An axe in a phrase: its quality, the logs it has left, and who made it. */
+export const axePhrase = (axe: { quality: number; logsLeft: number; makerId: number }, holderId: number) =>
+  `quality ${axe.quality}, ${axe.logsLeft} log${axe.logsLeft === 1 ? '' : 's'} left, made by ${axe.makerId === holderId ? 'itself' : foragerName(axe.makerId)}`
 
 /** Groups are named by letter in order of founding: A to Z, then A2 to Z2, and so on. */
 export const groupName = (id: number) =>
@@ -240,14 +285,38 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   const toSwap = event.forTrade ? ' to swap' : ''
   if (event.reason === 'going home') return 'Walking home to its hearth'
   if (event.reason === 'taking a load home') return `Taking ${event.loadWood} kg of firewood home`
+  if (event.reason === 'taking a log home')
+    return event.laidLog ? 'Laying a log in its hut' : 'Carrying a log home for its hut'
   if (event.action === 'sleep') {
     if (event.energyAfterKcal === 0) return 'Starved in its sleep'
+    if (event.inHut) return 'Sleeping in its hut'
     if (event.fireGroupId !== null)
       return event.sleptCold ? 'Sleeping cold: its group’s fire is out' : 'Sleeping warm by its group’s fire'
     if (event.sleptCold) return 'Sleeping cold, with no wood to burn'
     return woodMatters(state.config) ? 'Sleeping warm by its fire' : 'Sleeping through the night'
   }
   if (event.reason === 'satiated') return 'Resting, well fed'
+  if (event.reason === 'cutting a log')
+    return event.cutLog
+      ? `Cutting a log from ${treeName(state, event.treeId!)}`
+      : `Swinging its axe at ${treeName(state, event.treeId!)}`
+  if (event.reason === 'seeking a tree') return 'Walking to a tree to cut a log for its hut'
+  if (event.reason === 'fetching a stone')
+    return `Walking to ${stoneName(state, event.stoneId!)} for a stone to make an axe`
+  if (event.reason === 'picking up a stone') return `Picking up a stone at ${stoneName(state, event.stoneId!)}`
+  if (event.reason === 'making an axe') {
+    const forager = state.foragers[foragerId]!
+    const making = forager.making
+    const forSale = making ? making.forSale : forager.spareAxe !== null && forager.axe === null
+    return `Making an axe${forSale ? ' to sell' : ' for itself'}`
+  }
+  if (event.reason === 'going home to make an axe') return 'Walking home to make an axe'
+  if (event.reason === 'waiting for an axe being made') return 'Waiting for an axe someone promised to make'
+  if (event.reason === 'going home to wait for an axe') return 'Walking home to wait for a promised axe'
+  if (event.reason === 'picking food to buy an axe')
+    return event.workSeconds ? `Picking berries to buy an axe` : 'Looking for berries to buy an axe'
+  if (event.reason === 'taking food home to buy an axe') return 'Taking food home to buy an axe'
+  if (event.reason === 'waiting to buy an axe') return 'Waiting at home with food to buy an axe'
   if (event.reason === 'exploring') {
     if (event.action !== 'walk') return 'Looking around'
     return 'Exploring ground it has never seen'
@@ -310,14 +379,52 @@ export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: n
     remembered: memory.seen[id]! < 0 ? null : memory.stock[id]!,
     seen: seenLabel(state, memory.seen[id]!),
     difference: stock - memory.stock[id]!,
+    /** A tree's logs, and what the followed forager last saw of them. */
+    logs: kind === 'tree' ? state.treeLogs[id]! : null,
+    logsCapacity: state.config.logsPerTree,
+    logsRemembered: kind === 'tree' && forager.logMemory.seen[id]! >= 0 ? forager.logMemory.stock[id]! : null,
   }
 }
+
+/** What the inspector shows for a stone spot: its stones beside what the followed forager last saw. */
+export function stoneInspection(state: ValleyState, id: number, foragerId: number) {
+  const forager = state.foragers[foragerId]!
+  const seen = forager.stoneMemory.seen[id]!
+  return {
+    name: `Stones at ${stoneName(state, id)}`,
+    stones: state.stoneStock[id]!,
+    capacity: state.config.stonesPerSpot,
+    remembered: seen < 0 ? null : forager.stoneMemory.stock[id]!,
+    seen: seenLabel(state, seen),
+  }
+}
+
+/** What the inspector shows for a hut: whose it is, its logs, and when it next loses one to the weather. */
+export function hutInspection(state: ValleyState, hutId: number) {
+  const hut = state.huts[hutId]!
+  const day = Math.floor(state.minute / MINUTES_PER_DAY)
+  let next = day + 1
+  while (!weathersOn(state, hut, next)) next += 1
+  return {
+    name: `${foragerName(hut.builderId)}’s hut`,
+    logs: hut.logs,
+    capacity: state.config.hutLogs,
+    whole: hut.logs >= state.config.hutLogs,
+    abandoned: hut.abandonedMinute !== null,
+    /** Days until it next loses a log, if it has one to lose. */
+    weathersInDays: hut.logs > 0 ? next - day : null,
+  }
+}
+
+/** A hut's logs, as drawn: a log appears when its builder lays it, at the end of its walk home. */
+export const displayedHutLogs = (pair: DisplayPair, hutId: number) =>
+  pair.next.huts[hutId]?.logs ?? pair.previous.huts[hutId]?.logs ?? 0
 
 /** What a group's fire holds and whether it burns, or null without shared fires or once the group has dissolved. */
 export function campfireOf(state: ValleyState, groupId: number) {
   const group = state.groups[groupId]!
-  if (!state.config.sharedFire || group.dissolvedMinute !== null) return null
-  const burn = campfireBurn(state, group)
+  if (group.dissolvedMinute !== null) return null
+  const burn = campfireBurn(state.config)
   return {
     wood: group.fireWood,
     lit: group.fireLit,
@@ -400,9 +507,60 @@ export function contributionNote(contributions: readonly Contribution[]) {
   return `${lead} ${nothing.join(', ')} ${nothing.length === 1 ? 'has' : 'have'} given nothing.`
 }
 
+export interface AxeRow {
+  id: number
+  name: string
+  color: string
+  member: boolean
+  alive: boolean
+  madeOwn: number
+  madeForSale: number
+  sold: number
+  bought: number
+  kcalReceived: number
+  kcalPaid: number
+  craft: number
+  /** The quality of the axe it holds, or null. */
+  axeQuality: number | null
+  hutLogs: number
+}
+
+/** Each forager that ever joined a group: the axes it has made, sold and bought, its craft and its axe. */
+export function groupAxes(state: ValleyState, groupId: number): AxeRow[] {
+  return state.groups[groupId]!.members.map((id) => {
+    const forager = state.foragers[id]!
+    const hut = hutOf(state, forager)
+    return {
+      id,
+      name: foragerName(id),
+      color: foragerColor(state.config, forager),
+      member: forager.alive && forager.groupId === groupId,
+      alive: forager.alive,
+      madeOwn: forager.axeTotals.madeOwn,
+      madeForSale: forager.axeTotals.madeForSale,
+      sold: forager.axeTotals.sold,
+      bought: forager.axeTotals.bought,
+      kcalReceived: forager.axeTotals.kcalReceived,
+      kcalPaid: forager.axeTotals.kcalPaid,
+      craft: forager.craft,
+      axeQuality: forager.axe?.quality ?? null,
+      hutLogs: hut?.logs ?? 0,
+    }
+  })
+}
+
+/** One sentence on who makes the group's axes for others, if anyone has sold one. */
+export function axesNote(rows: readonly AxeRow[]) {
+  const sold = sum(rows.map((row) => row.sold))
+  if (!sold) return 'No one has sold an axe yet: everyone has made their own.'
+  const top = rows.reduce((best, row) => (row.sold > best.sold ? row : best))
+  const buyers = rows.filter((row) => row.bought > 0).length
+  return `${top.name} has made the most axes for others, ${top.sold} of the ${sold} sold, to ${buyers} buyer${buyers === 1 ? '' : 's'}.`
+}
+
 /**
  * What the group card shows: when the group was founded, each living member with what it is doing and carrying, the
- * wood and food its members hold, the swaps among them over the last day, and its fire.
+ * wood and food its members hold, the swaps among them over the last day, its fire, and its axes.
  */
 export function groupInspection(pair: DisplayPair, groupId: number) {
   const state = pair.next
@@ -415,7 +573,7 @@ export function groupInspection(pair: DisplayPair, groupId: number) {
       name: foragerName(id),
       color: foragerColor(state.config, state.foragers[id]!),
       activity: describeActivity(pair, id),
-      loadKg: loadKg(state.config, load.wood, load.berriesKcal),
+      loadKg: loadKg(state.config, load.wood, load.berriesKcal, load.log),
     }
   })
   const since = state.minute - MINUTES_PER_DAY
@@ -425,7 +583,8 @@ export function groupInspection(pair: DisplayPair, groupId: number) {
     for (const made of day)
       if (made.kind === 'swap' && made.minute >= since && inGroup.has(made.sellerId) && inGroup.has(made.buyerId))
         swaps += 1
-  const contributions = state.config.sharedFire ? groupContributions(state, groupId) : []
+  const contributions = groupContributions(state, groupId)
+  const axes = groupAxes(state, groupId)
   return {
     name: groupName(groupId),
     color: groupColor(groupId),
@@ -443,6 +602,9 @@ export function groupInspection(pair: DisplayPair, groupId: number) {
     darkHours: group.darkHours,
     contributions,
     contributionNote: contributions.length ? contributionNote(contributions) : null,
+    axes,
+    axesNote: axesNote(axes),
+    hutsWhole: living.filter((id) => hutWhole(state, state.foragers[id]!)).length,
   }
 }
 
@@ -499,7 +661,9 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
   const yesterday = state.days.at(-1)
   const oldest = forager.carried[0]
   const load = loadOf(forager)
-  const kg = loadKg(config, load.wood, load.berriesKcal)
+  const kg = loadKg(config, load.wood, load.berriesKcal, load.log)
+  const hut = hutOf(state, forager)
+  const ask = usableAsk(state, forager, state.minute) ?? forager.heardAsk
   return {
     forageRate: forager.forageRate,
     woodRate: forager.woodRate,
@@ -546,6 +710,29 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     /** The wood it has put into fires, and its group's fire, if it sleeps by one. */
     fireGiven: forager.fireGiven,
     groupFire: forager.groupId === null ? null : campfireOf(state, forager.groupId),
+    /** Its craft, practice at making axes and the hours behind it, and what an axe costs it and is worth to it. */
+    craft: forager.craft,
+    craftSkill: forager.craftSkill,
+    makePercent: percent.make,
+    makeHours: Math.round(sum(forager.practiceLog.make) / 3_600),
+    ask: askOf(config, forager.craft),
+    expectedQuality: expectedQuality(forager.craft),
+    axe: forager.axe ? axePhrase(forager.axe, foragerId) : null,
+    spareAxe: forager.spareAxe ? axePhrase(forager.spareAxe, foragerId) : null,
+    /** How far along an axe in the making is, 0–1, and whether it is for sale. */
+    making: forager.making
+      ? { done: forager.making.worked / forager.making.needed, forSale: forager.making.forSale }
+      : null,
+    promised: forager.promised,
+    heardAsk:
+      ask && state.minute - 1 - ask.minute <= 60 * config.termsMemoryHours
+        ? { ...ask, from: foragerName(ask.sellerId), minutesAgo: Math.max(0, state.minute - 1 - ask.minute) }
+        : null,
+    hutLogs: hut?.logs ?? null,
+    hutWhole: hutWhole(state, forager),
+    log: forager.log,
+    stone: forager.stone,
+    ...forager.axeTotals,
   }
 }
 
@@ -587,6 +774,10 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
     stock: day.bushStockKcal / state.layout.bushes.count,
     groups: day.groupsStanding,
     loners: day.loners,
+    axesMade: day.axesMade,
+    axesSold: day.axesSold,
+    axesWornOut: day.axesWornOut,
+    hutsWhole: day.hutsWhole,
   }))
 
 /**

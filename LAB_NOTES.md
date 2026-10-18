@@ -6,6 +6,42 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE9-HutsAndAxes-044] - (2026-10-18)
+
+### Problem
+
+The ladder's step 9 adds tools and shelter and asks whether tools concentrate in the hands of those who make them, and whether making them becomes a trade. The owner set the rules: shelter is an inherent drive, basic wooden huts to start; tools are only instrumental, wanted because building needs logs and logs need an axe; axe making is a skill that grows with practice, so the skilled make axes faster and better, and better axes cut faster and last longer; axes wear out; and members may trade them. The owner also asked for stone as a resource on the map, and for more trees.
+
+### Decisions
+
+- **An axe is needed to cut a log.** That keeps the choice that matters, making against buying, at the centre.
+- **Huts weather** a log every 10 days, or every hut is finished in the first week and nobody needs an axe again.
+- **A whole hut keeps its sleeper warm** with the fire out: a real, small effect that leaves the shared fire meaningful.
+- **An axe is priced at the extra energy of making it,** `forageCostKcalPerHour − restKcalPerHour` for its hours, about 1,700 kcal for a first-time maker. Priced at hours of picking forgone, it cost about 10,000 kcal, more fresh food than any buyer could carry.
+- **A maker can promise an axe** to a member that asks. Without it, an asker started its own axe in the same minute a maker offered one, and almost no axe was sold.
+- **Quality** is drawn uniformly from half the maker's craft to its craft, from a stream of its own.
+- **Stones and logs are seen from afar** by long sight, like sites; berries and deadwood still only up close.
+
+### What the prototype found
+
+Before implementing, a throwaway prototype on 32 seeds over 400 days, confirmed by the implementation:
+
+- With trade, axes are sold in 31 of 32 scattered runs and every run of a band that starts together; 22% and 45% of axes are bought.
+- **Among equals, practice makes a toolmaker.** In a band that starts as one group, the leading maker makes 2.9 times an even share of the axes and sells 58% of those sold, against 1.2 times without trade. With practice fixed, no axe is ever sold: two equally able makers gain nothing by trading.
+- **Talent spreads the trade.** With born craft from 50% to 150%, the gifted half sells about three quarters of the axes sold and the least gifted buys the most, but the leading maker's share falls to 1.5 to 1.9 times an even share, because several gifted members are cheap enough to sell.
+- Huts are first finished on day 2 or 3 and are whole 96% of the time; bands of 8 and 12 stay intact over 400 days.
+
+These are prototype-level observations, not experiments with tests.
+
+### Process
+
+Partway through, the owner asked to stop the experimenting: in this phase the aim is to get features out, and experiments belong to a later, stable version of the Life engine. The experiment tests written for this step were removed, and the workflow in `AGENTS.md` now skips prototypes, sweeps and experiment tests unless asked.
+
+### Open questions
+
+- The questions for later in the specification: concentration through practice, talent, and the effect of each switch, measured properly.
+- Huts crowd each other at 3 m hearth spacing; a larger spacing may suit a future step with bigger shelters.
+
 ## [CI-DeployAfterValidation-043] - (2026-10-17)
 
 ### Problem

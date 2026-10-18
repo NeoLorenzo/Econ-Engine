@@ -53,11 +53,6 @@ describe('a shared fire', () => {
     expect(stepValley(fed).lastFires[0]).toMatchObject({ lit: true, burned: 1, fireWoodAfter: 2 })
   })
 
-  it('burns a kilogram for every living member with `campfirePerMember`', () => {
-    const after = stepValley(together(DUSK, 10, 0, { campfirePerMember: true }))
-    expect(after.lastFires[0]).toMatchObject({ lit: true, burned: 8, fireWoodAfter: 2 })
-  })
-
   it('saves wood: 12 kg a night for the whole group, 1.5 kg a member in a group of 8', () => {
     const theory = valleyTheory(createValley().config)
     expect(theory.campfireNightWood).toBe(12)
@@ -88,16 +83,6 @@ describe('warmth', () => {
     const event = lastEventOf(stepValley(state), 0)!
     expect(event).toMatchObject({ reason: 'night', fireGroupId: null, burnedWood: 1, sleptCold: false })
   })
-
-  it('keeps every forager at its own fire with the shared fire off', () => {
-    const state = cloneValley(createValley({ scattered: false, sharedFire: false }))
-    state.minute = EIGHT_PM
-    state.foragers[0]!.wood = 5
-    state.totals.initialWood += 5
-    const after = stepValley(state)
-    expect(after.lastFires).toEqual([])
-    expect(lastEventOf(after, 0)).toMatchObject({ fireGroupId: null, burnedWood: 1, sleptCold: false })
-  })
 })
 
 describe('feeding', () => {
@@ -115,11 +100,6 @@ describe('feeding', () => {
     expect(feedAmount(config, 30, 0, 1, EIGHT_PM + 1)).toEqual({ wood: 9, spareWood: 6, low: true })
     expect(feedAmount(config, 4, 0, 1, EIGHT_PM + 1)).toEqual({ wood: 4, spareWood: 0, low: true })
     expect(feedAmount(config, 20, 20, 1, TEN_AM)).toEqual({ wood: 0, spareWood: 0, low: false })
-    expect(feedAmount({ ...config, feedSpare: false }, 40, 20, 1, EIGHT_PM + 1)).toEqual({
-      wood: 0,
-      spareWood: 0,
-      low: false,
-    })
   })
 
   it('puts a member’s wood into its group’s fire at its hearth, and records who gave it', () => {

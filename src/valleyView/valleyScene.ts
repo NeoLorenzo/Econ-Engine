@@ -10,6 +10,7 @@ import type {
   Sprite,
 } from 'three'
 import { isDaylight } from '../valley/forager'
+import { siteCount } from '../valley/sites'
 import { livingMembers, placesPerSide } from '../valley/social'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
@@ -23,12 +24,14 @@ import {
   baseRadiusCm,
   bundleScale,
   campfireAt,
+  carriesLog,
   clampDistance,
   clampTarget,
   currentEvent,
   currentSwaps,
   daylightAt,
   displayMinutes,
+  displayedHutLogs,
   displayedLoad,
   displayedStock,
   fillInTurn,
@@ -38,6 +41,7 @@ import {
   groupFrame,
   groupName,
   hearthAt,
+  holdsAxe,
   knowledgeShades,
   parcelScale,
   pinPlacement,
@@ -46,6 +50,7 @@ import {
   siteRings,
   sunAt,
   toMetres,
+  treeStanding,
   type DisplayPair,
   type ForagerPose,
 } from './valleyViewModel'
@@ -70,6 +75,9 @@ const ASH = 0x9a9590
 const BUNDLE = 0xb07a45
 const DEAD = 0x6b6b66
 const SKIN = 0xc79a74
+const HUT_LOG = 0x7a5536
+const ROCK = 0x8c877c
+const AXE_HEAD = 0x55524c
 /** Points along each swap's arc. */
 const ARC_POINTS = 24
 /** Grid lines every this many metres, so distances can be judged at any zoom. */
@@ -84,9 +92,12 @@ const FADED_OPACITY = 0.25
 /** Where a flag's pole stands beside its group's fire, in metres from the flag's point. */
 const POLE_OFFSET = { x: -1.1, z: -0.7 }
 
-/** What a click picked out: a bush or tree to inspect, a group by its flag, base or badge, or a forager to follow. */
+/**
+ * What a click picked out: a bush, tree, stone spot or hut to inspect, a group by its flag, base or badge, or a forager
+ * to follow.
+ */
 export type ValleyPick = ValleySelection | { kind: 'forager'; id: number }
-export type ValleyPlant = { kind: 'bush' | 'tree'; id: number }
+export type ValleyPlant = { kind: 'bush' | 'tree' | 'stone' | 'hut'; id: number }
 /** A plant, or a group by its ID. */
 export type ValleySelection = ValleyPlant | { kind: 'group'; id: number }
 
@@ -144,7 +155,16 @@ interface Figure {
   sashMaterial: MeshStandardMaterial
   bundle: Group
   parcel: Mesh
+  /** A log on its shoulder, and an axe in its right hand. */
+  shoulderLog: Mesh
+  axe: Group
   heading: number
+}
+
+/** A hut: an A-frame of logs, each shown once laid. */
+interface HutModel {
+  group: Group
+  logs: Mesh[]
 }
 
 interface Hearth {
@@ -255,6 +275,16 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const bundleLogGeometry = new THREE.CylinderGeometry(0.045, 0.045, 0.75, 6)
   const bundleMaterial = new THREE.MeshStandardMaterial({ color: BUNDLE, roughness: 0.9, flatShading: true })
   const parcelGeometry = new THREE.DodecahedronGeometry(0.12, 0)
+  const hutLogGeometry = new THREE.CylinderGeometry(0.1, 0.1, 2.1, 7)
+  hutLogGeometry.rotateZ(Math.PI / 2)
+  const hutLogMaterial = new THREE.MeshStandardMaterial({ color: HUT_LOG, roughness: 0.95, flatShading: true })
+  const shoulderLogGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 7)
+  shoulderLogGeometry.rotateZ(Math.PI / 2)
+  const rockGeometry = new THREE.DodecahedronGeometry(0.28, 0)
+  const rockMaterial = new THREE.MeshStandardMaterial({ color: ROCK, roughness: 1, flatShading: true })
+  const axeHandleGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.55, 5)
+  const axeHeadGeometry = new THREE.BoxGeometry(0.16, 0.08, 0.05)
+  const axeHeadMaterial = new THREE.MeshStandardMaterial({ color: AXE_HEAD, roughness: 0.8, flatShading: true })
   const poleGeometry = new THREE.CylinderGeometry(0.035, 0.045, 2.6, 6)
   poleGeometry.translate(0, 1.3, 0)
   const poleMaterial = new THREE.MeshStandardMaterial({ color: POLE, roughness: 0.9, flatShading: true })
@@ -284,6 +314,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let trunks: InstancedMesh | null = null
   let crowns: InstancedMesh | null = null
   let logs: InstancedMesh | null = null
+  let rocks: InstancedMesh | null = null
+  let hutModels: HutModel[] = []
+  const hutGroup = new THREE.Group()
+  scene.add(hutGroup)
   let hearths: Hearth[] = []
   let flags: Flag[] = []
   const flagGroup = new THREE.Group()
@@ -292,6 +326,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   /** The fill last drawn for each bush and tree, so only plants that changed are redrawn. */
   let bushFill = new Float32Array(0)
   let treeFill = new Float32Array(0)
+  /** How tall each tree was last drawn for its logs, and the stones last drawn on each stone spot. */
+  let treeStand = new Float32Array(0)
+  let rockFill = new Int32Array(0)
   const band = new THREE.Group()
   scene.add(band)
 
@@ -474,12 +511,25 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     bundle.position.set(0, 0.45, -0.24)
     const parcel = new THREE.Mesh(parcelGeometry, bundleMaterial)
     parcel.position.set(0.24, 0.05, 0.05)
+    // A log across the shoulders, and an axe held in the right hand.
+    const shoulderLog = new THREE.Mesh(shoulderLogGeometry, hutLogMaterial)
+    shoulderLog.position.set(0, 0.68, -0.08)
+    shoulderLog.rotation.y = 0.25
+    shoulderLog.castShadow = true
+    const axe = new THREE.Group()
+    const handle = new THREE.Mesh(axeHandleGeometry, bundleMaterial)
+    const blade = new THREE.Mesh(axeHeadGeometry, axeHeadMaterial)
+    blade.position.set(0.06, -0.24, 0)
+    axe.add(handle, blade)
+    axe.position.set(0, -0.6, 0.05)
+    axe.rotation.x = Math.PI / 2
+    arms[1].add(axe)
     // A sash in its group's colour, from one shoulder down to the other hip.
     const sash = new THREE.Mesh(sashGeometry, sashMaterial)
     sash.position.set(0, 0.36, 0)
     sash.castShadow = true
-    for (const part of [chest, head, parcel, sash, ...bundle.children]) part.userData.foragerId = id
-    torso.add(chest, head, bundle, parcel, sash)
+    for (const part of [chest, head, parcel, sash, shoulderLog, ...bundle.children]) part.userData.foragerId = id
+    torso.add(chest, head, bundle, parcel, sash, shoulderLog)
     hips.add(torso)
     body.add(hips)
     root.add(body)
@@ -498,8 +548,34 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       sashMaterial,
       bundle,
       parcel,
+      shoulderLog,
+      axe,
       heading: 0,
     }
+  }
+
+  /**
+   * A hut at its builder's sleeping spot: an A-frame about 1.5 m tall and 2.1 m long, its logs laid in rows up both
+   * sides in the order they were laid, the first at the foot of the left side.
+   */
+  function makeHut(id: number, x: number, z: number, logCount: number): HutModel {
+    const group = new THREE.Group()
+    const hutLogs = Array.from({ length: logCount }, (_, index) => {
+      const side = index % 2 === 0 ? -1 : 1
+      const row = Math.floor(index / 2)
+      const rows = Math.max(1, Math.ceil(logCount / 2))
+      const log = new THREE.Mesh(hutLogGeometry, hutLogMaterial)
+      const rise = row / rows
+      log.position.set(0, 0.1 + rise * 1.35, side * (0.8 - rise * 0.7))
+      log.castShadow = true
+      log.receiveShadow = true
+      log.userData.hutId = id
+      group.add(log)
+      return log
+    })
+    group.position.set(x, 0, z)
+    hutGroup.add(group)
+    return { group, logs: hutLogs }
   }
 
   /** A round badge in a group's colour with its letter, dark or light to stand out on the colour. */
@@ -673,6 +749,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       flagGroup.remove(flag.group)
     }
     flags = []
+    for (const hut of hutModels) hutGroup.remove(hut.group)
+    hutModels = []
     for (const ring of siteLoops) world.remove(ring)
     siteLoops = []
     if (knowledge) {
@@ -684,12 +762,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       knowledgeTexture = null
       knowledgeKey = ''
     }
-    for (const mesh of [leaves, berryMesh, trunks, crowns, logs]) {
+    for (const mesh of [leaves, berryMesh, trunks, crowns, logs, rocks]) {
       if (!mesh) continue
       mesh.dispose()
       world.remove(mesh)
     }
-    leaves = berryMesh = trunks = crowns = logs = null
+    leaves = berryMesh = trunks = crowns = logs = rocks = null
     for (const mesh of [ground, outside]) {
       if (!mesh) continue
       mesh.geometry.dispose()
@@ -736,6 +814,56 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           position.set(x + Math.cos(angle) * 1.1, 0.06 + (slot % 2) * 0.1, z + Math.sin(angle) * 1.1),
           quaternion,
           scale.set(length, fill > 0 ? 1 : 1e-5, fill > 0 ? 1 : 1e-5),
+        ),
+      )
+    }
+  }
+
+  /** Stands a tree as tall as its logs allow: a stump without its crown when it has none. */
+  function placeTree(tree: number, standing: number) {
+    const { x, z } = at(layout!.trees.x[tree]!, layout!.trees.y[tree]!)
+    const look = plantLook('tree', tree)
+    const height = standing > 0 ? standing : 0.09
+    trunks!.setMatrixAt(
+      tree,
+      matrix
+        .makeRotationY(look.turn)
+        .scale(
+          scale.set(
+            look.size * (standing > 0 ? 1 : 1.3),
+            TRUNK_HEIGHT * look.size * height,
+            look.size * (standing > 0 ? 1 : 1.3),
+          ),
+        )
+        .setPosition(x, 0, z),
+    )
+    for (const [cone, [coneHeight, radius, tall]] of CROWN_CONES.entries()) {
+      const grown = standing > 0 ? standing : 1e-5
+      crowns!.setMatrixAt(
+        tree * CROWN_CONES.length + cone,
+        matrix
+          .makeRotationY(look.turn)
+          .scale(scale.set(radius * look.size * grown, tall * look.size * grown, radius * look.size * grown))
+          .setPosition(x, coneHeight * look.size * standing, z),
+      )
+    }
+  }
+
+  /** Lays a stone spot's stones in a little heap, each shown while it is there. */
+  function placeRocks(spot: number, stones: number) {
+    const { x, z } = at(layout!.stones.x[spot]!, layout!.stones.y[spot]!)
+    const per = config!.stonesPerSpot
+    for (let slot = 0; slot < per; slot += 1) {
+      const angle = spot * 1.7 + slot * 2.4
+      const out = slot === 0 ? 0 : 0.35
+      const size = slot < stones ? 0.8 + ((spot * 7 + slot * 3) % 5) * 0.1 : 1e-5
+      quaternion.setFromAxisAngle(yAxis, angle)
+      rocks!.setMatrixAt(
+        spot * per + slot,
+        matrix.compose(
+          position.set(x + Math.cos(angle) * out, 0.12 + (slot === 0 ? 0.1 : 0), z + Math.sin(angle) * out),
+          quaternion,
+          scale.set(size, size * 0.75, size),
         ),
       )
     }
@@ -807,25 +935,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.count)
     crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, trees.count * CROWN_CONES.length)
     logs = new THREE.InstancedMesh(logGeometry, deadwoodMaterial, trees.count * LOGS_PER_PILE)
-    for (let tree = 0; tree < trees.count; tree += 1) {
-      const { x, z } = at(trees.x[tree]!, trees.y[tree]!)
-      const look = plantLook('tree', tree)
-      trunks.setMatrixAt(
-        tree,
-        matrix
-          .makeRotationY(look.turn)
-          .scale(scale.set(look.size, TRUNK_HEIGHT * look.size, look.size))
-          .setPosition(x, 0, z),
-      )
-      for (const [cone, [height, radius, tall]] of CROWN_CONES.entries())
-        crowns.setMatrixAt(
-          tree * CROWN_CONES.length + cone,
-          matrix
-            .makeRotationY(look.turn)
-            .scale(scale.set(radius * look.size, tall * look.size, radius * look.size))
-            .setPosition(x, height * look.size, z),
-        )
-    }
+    for (let tree = 0; tree < trees.count; tree += 1) placeTree(tree, 1)
+    treeStand = new Float32Array(trees.count).fill(1)
+    // Stone spots: a heap of grey stones each.
+    const { stones } = state.layout
+    rocks = new THREE.InstancedMesh(rockGeometry, rockMaterial, Math.max(1, stones.count * state.config.stonesPerSpot))
+    rockFill = new Int32Array(stones.count).fill(state.config.stonesPerSpot)
+    for (let spot = 0; spot < stones.count; spot += 1) placeRocks(spot, state.config.stonesPerSpot)
     // Bounds are taken with every berry ripe and every pile whole, the largest the plants can be.
     bushFill = new Float32Array(bushes.count).fill(-1)
     treeFill = new Float32Array(trees.count).fill(-1)
@@ -833,9 +949,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     for (let bush = 0; bush < bushes.count; bush += 1) placeBerries(bush, ripe)
     const whole = fillInTurn(1, 1, LOGS_PER_PILE)
     for (let tree = 0; tree < trees.count; tree += 1) placeLogs(tree, whole)
-    for (const mesh of [leaves, berryMesh, trunks, crowns, logs]) {
+    for (const mesh of [leaves, berryMesh, trunks, crowns, logs, rocks]) {
       mesh.castShadow = true
-      mesh.receiveShadow = mesh === leaves
+      mesh.receiveShadow = mesh === leaves || mesh === rocks
       mesh.instanceMatrix.needsUpdate = true
       mesh.computeBoundingSphere()
       world.add(mesh)
@@ -868,7 +984,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     controls.pitch = 0.9
     perception.scale.setScalar(state.config.perceptionRadiusCm / 100)
     sight.scale.setScalar(state.config.sightRadiusCm / 100)
-    siteLoops = Array.from({ length: state.config.thicketCount + state.config.standCount }, () => {
+    siteLoops = Array.from({ length: siteCount(state.config) }, () => {
       const ring = new THREE.LineLoop(circleGeometry, staleSiteMaterial)
       ring.visible = false
       world.add(ring)
@@ -955,11 +1071,24 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     } else if (pose.gesture === 'gather') {
       bend = 0.95 + 0.1 * Math.sin(phase * 3)
       reach = -0.6 + 0.35 * Math.sin(phase * 4)
+    } else if (pose.gesture === 'chop') {
+      // Both hands swing the axe from over the shoulder down into the trunk.
+      bend = 0.15 + 0.15 * Math.max(0, Math.sin(phase * 6))
+      reach = -1.6 + 1.3 * Math.sin(phase * 6)
+    } else if (pose.gesture === 'make') {
+      // Kneeling over its work, knocking the stone into shape.
+      bend = 0.7
+      reach = -0.9 + 0.25 * Math.sin(phase * 9)
     }
-    figure.legs[0].rotation.x = legSwing
-    figure.legs[1].rotation.x = -legSwing
+    const kneel = pose.gesture === 'make'
+    figure.legs[0].rotation.x = kneel ? -1.4 : legSwing
+    figure.legs[1].rotation.x = kneel ? -0.2 : -legSwing
+    figure.hips.position.y = kneel ? 0.55 : 0.92
     figure.torso.rotation.x = bend
-    if (pose.gesture === 'pick' || pose.gesture === 'gather') {
+    if (pose.gesture === 'chop' || pose.gesture === 'make') {
+      figure.arms[0].rotation.x = reach
+      figure.arms[1].rotation.x = reach
+    } else if (pose.gesture === 'pick' || pose.gesture === 'gather') {
       figure.arms[0].rotation.x = reach
       figure.arms[1].rotation.x = pose.gesture === 'pick' ? -0.3 : reach * 0.8
     } else {
@@ -1044,6 +1173,37 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       logsChanged = true
     }
     if (logsChanged) logs!.instanceMatrix.needsUpdate = true
+    // Trees stand as tall as their logs allow, and stone spots show the stones left on them.
+    let treesChanged = false
+    for (let tree = 0; tree < layout.trees.count; tree += 1) {
+      const standing = treeStanding(state.treeLogs[tree]!, config.logsPerTree)
+      if (standing === treeStand[tree]) continue
+      treeStand[tree] = standing
+      placeTree(tree, standing)
+      treesChanged = true
+    }
+    if (treesChanged) {
+      trunks!.instanceMatrix.needsUpdate = true
+      crowns!.instanceMatrix.needsUpdate = true
+    }
+    let rocksChanged = false
+    for (let spot = 0; spot < layout.stones.count; spot += 1) {
+      const stones = state.stoneStock[spot]!
+      if (stones === rockFill[spot]) continue
+      rockFill[spot] = stones
+      placeRocks(spot, stones)
+      rocksChanged = true
+    }
+    if (rocksChanged) rocks!.instanceMatrix.needsUpdate = true
+    // Huts, each made the first time it is drawn, show the logs laid in them.
+    for (const hut of state.huts) {
+      if (!hutModels[hut.id]) {
+        const spot = at(hut.x, hut.y)
+        hutModels[hut.id] = makeHut(hut.id, spot.x, spot.z, config.hutLogs)
+      }
+      const shown = displayedHutLogs(pair, hut.id)
+      for (const [index, log] of hutModels[hut.id]!.logs.entries()) log.visible = index < shown
+    }
 
     // Flags stand while their groups do; a flag is made the first time its group is drawn.
     for (const group of state.groups) {
@@ -1141,6 +1301,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const parcel = parcelScale(load.carriedKcal)
       figure.parcel.visible = parcel > 0
       figure.parcel.scale.setScalar(Math.max(parcel, 0.01))
+      figure.shoulderLog.visible = forager.alive && carriesLog(pair, id, interpolate)
+      figure.axe.visible = forager.alive && holdsAxe(pair, id) && pose.lying < 0.5
       const hearth = hearths[id]
       if (hearth) {
         if (hearth.x !== forager.hearth.x || hearth.y !== forager.hearth.y)
@@ -1270,12 +1432,30 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       if (chosen.kind === 'group') {
         const flag = state.groups[chosen.id]!.flag
         spot = at(flag.x, flag.y)
+      } else if (chosen.kind === 'hut') {
+        const hut = state.huts[chosen.id]
+        if (!hut) {
+          ring.visible = false
+          return
+        }
+        spot = at(hut.x, hut.y)
       } else {
-        const plants = chosen.kind === 'bush' ? layout!.bushes : layout!.trees
+        const plants =
+          chosen.kind === 'bush' ? layout!.bushes : chosen.kind === 'stone' ? layout!.stones : layout!.trees
         spot = at(plants.x[chosen.id]!, plants.y[chosen.id]!)
       }
       ring.position.set(spot.x, ring === selectRing ? 0.04 : 0.035, spot.z)
-      ring.scale.setScalar(chosen.kind === 'bush' ? 1.1 : chosen.kind === 'group' ? 0.7 : 1.8)
+      ring.scale.setScalar(
+        chosen.kind === 'bush'
+          ? 1.1
+          : chosen.kind === 'group'
+            ? 0.7
+            : chosen.kind === 'hut'
+              ? 2
+              : chosen.kind === 'stone'
+                ? 0.9
+                : 1.8,
+      )
     }
     ringAt(targetRing, targetPlant)
     ringAt(selectRing, options.selected)
@@ -1290,6 +1470,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     if (object === trunks) return { kind: 'tree', id: instance }
     if (object === crowns) return { kind: 'tree', id: Math.floor(instance / CROWN_CONES.length) }
     if (object === logs) return { kind: 'tree', id: Math.floor(instance / LOGS_PER_PILE) }
+    if (object === rocks) return { kind: 'stone', id: Math.floor(instance / config!.stonesPerSpot) }
     return null
   }
 
@@ -1350,18 +1531,23 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
-    const plants = [leaves, berryMesh, trunks, crowns, logs].filter((mesh) => mesh !== null)
+    const plants = [leaves, berryMesh, trunks, crowns, logs, rocks].filter((mesh) => mesh !== null)
     const shown = (object: { visible: boolean; parent: unknown } | null): boolean =>
       !object || (object.visible && shown(object.parent as typeof object))
-    const hit = raycaster.intersectObjects([band, flagGroup, ...plants], true).find((found) => shown(found.object))
+    const hit = raycaster
+      .intersectObjects([band, flagGroup, hutGroup, ...plants], true)
+      .find((found) => shown(found.object))
     const foragerId = hit?.object.userData.foragerId as number | undefined
     const groupId = hit?.object.userData.groupId as number | undefined
+    const hutId = hit?.object.userData.hutId as number | undefined
     callbacks.onPick(
       foragerId !== undefined
         ? { kind: 'forager', id: foragerId }
         : groupId !== undefined
           ? { kind: 'group', id: groupId }
-          : plantOf(hit?.object, hit?.instanceId),
+          : hutId !== undefined
+            ? { kind: 'hut', id: hutId }
+            : plantOf(hit?.object, hit?.instanceId),
     )
   }
   const onWheel = (event: WheelEvent) => {
@@ -1453,6 +1639,14 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         clothGeometry,
         discGeometry,
         sashGeometry,
+        hutLogGeometry,
+        hutLogMaterial,
+        shoulderLogGeometry,
+        rockGeometry,
+        rockMaterial,
+        axeHandleGeometry,
+        axeHeadGeometry,
+        axeHeadMaterial,
         circleGeometry,
         swapMaterial,
         freshSiteMaterial,

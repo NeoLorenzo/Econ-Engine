@@ -1,12 +1,15 @@
+import { askOf, axeLife, salePrice, worthTo } from './axes'
 import { feedAmount } from './fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, minuteOfWork, plantsInView, speedForLoad } from './forager'
 import { distance, distanceSq } from './geometry'
-import { ratesOf } from './practice'
+import { weathersOn } from './huts'
+import { forEachPlantWithin } from './layout'
+import { craftOf, ratesOf } from './practice'
 import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
 import { siteCentre, siteGeometry, siteGood, siteWanted, sightOf } from './sites'
 import { bothGain } from './trade'
 import { coldMatters, hourlyShare } from './work'
-import type { ActionReason, Point, ValleyState } from './types'
+import type { ActionReason, Axe, Hut, Point, ValleyState } from './types'
 
 /** What a forager not hungry does when idle, which a full load must wait for. */
 const IDLE_REASONS = new Set<ActionReason>([
@@ -17,6 +20,31 @@ const IDLE_REASONS = new Set<ActionReason>([
   'satiated',
   'waiting to swap',
 ])
+
+/** Work for a hut, which a forager carrying a log, or not hungry with a full load, must leave until it is home. */
+const HUT_REASONS = new Set<ActionReason>([
+  'making an axe',
+  'going home to make an axe',
+  'cutting a log',
+  'seeking a tree',
+  'waiting for an axe being made',
+  'going home to wait for an axe',
+  'picking food to buy an axe',
+  'taking food home to buy an axe',
+  'waiting to buy an axe',
+  'fetching a stone',
+  'picking up a stone',
+])
+
+const sameAxe = (a: Axe | null, b: Axe | null) =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    a.id === b.id &&
+    a.quality === b.quality &&
+    a.logsLeft === b.logsLeft &&
+    a.makerId === b.makerId &&
+    a.madeMinute === b.madeMinute)
 
 const inRemainderRange = (remainder: number) => Number.isInteger(remainder) && remainder >= 0 && remainder < 3_600
 
@@ -58,6 +86,15 @@ export class ValleyChecker {
   private startingGroups: number
   /** Each forager's turn in the minute being checked, by ID, or −1 if it took none. */
   private turnAt = new Int32Array(0)
+  /** Every tree's logs and every stone spot's stones, replayed from regrowth and recorded work. */
+  private treeLogs: Int32Array
+  private stones: Int32Array
+  /** Each forager's log, craft, axe and spare at the end of the minute before, and every hut. */
+  private logBefore: number[]
+  private craftBefore: number[]
+  private axeBefore: (Axe | null)[]
+  private spareBefore: (Axe | null)[]
+  private hutsBefore: Hut[]
 
   constructor(state: ValleyState) {
     this.bushes = state.bushKcal.slice()
@@ -78,6 +115,13 @@ export class ValleyChecker {
     this.givenBefore = state.foragers.map((forager) => forager.fireGiven)
     this.litNow = state.groups.map((group) => group.fireLit)
     this.startingGroups = state.minute === 0 ? state.groups.length : 0
+    this.treeLogs = state.treeLogs.slice()
+    this.stones = state.stoneStock.slice()
+    this.logBefore = state.foragers.map((forager) => forager.log)
+    this.craftBefore = state.foragers.map((forager) => forager.craft)
+    this.axeBefore = state.foragers.map((forager) => forager.axe)
+    this.spareBefore = state.foragers.map((forager) => forager.spareAxe)
+    this.hutsBefore = [...state.huts]
   }
 
   /** Every invariant the minute just run breaks; an empty list means it is sound. */
@@ -107,6 +151,11 @@ export class ValleyChecker {
       }
     }
 
+    // Logs regrow at midnight on every `logRegrowthDays`-th day.
+    if (minute > 0 && minute % MINUTES_PER_DAY === 0 && (minute / MINUTES_PER_DAY) % config.logRegrowthDays === 0)
+      for (let id = 0; id < this.treeLogs.length; id += 1)
+        if (this.treeLogs[id]! < config.logsPerTree) this.treeLogs[id]! += 1
+
     // Whether each group's fire is lit this hour, decided at its start.
     if (minute % 60 === 0)
       this.litNow = state.groups.map((group) => state.lastFires.find((fire) => fire.groupId === group.id)?.lit ?? false)
@@ -130,6 +179,9 @@ export class ValleyChecker {
     const daylight = isDaylight(config, minute)
     const reach2 = config.reachCm ** 2
     const hearthAtTurn = this.hearthsAtTurns(state)
+    const cuts = new Map<number, number>()
+    for (const made of state.lastAxeEvents) if (made.kind === 'cut') cuts.set(made.foragerId, made.treeId)
+    const sight = sightOf(config, minute)
     for (const event of state.lastEvents) {
       const forager = state.foragers[event.foragerId]!
       const { from, position } = event
@@ -139,9 +191,11 @@ export class ValleyChecker {
         fail(`forager ${forager.id} left the valley`)
       // It walks at the speed its load allows as it sets out, and its load is no more than the wood of its trip.
       const tripWood = this.tripWoodBefore[forager.id]!
-      if (event.loadWood < 0 || event.loadWood > tripWood || event.loadBerriesKcal < 0)
+      const logBefore = this.logBefore[forager.id]!
+      if (event.loadWood < 0 || event.loadWood > tripWood || event.loadBerriesKcal < 0 || event.loadLog !== logBefore)
         fail(`forager ${forager.id} carries a load it did not have`)
-      if (event.speedCmPerSecond !== speedForLoad(config, loadKg(config, event.loadWood, event.loadBerriesKcal)))
+      const kg = loadKg(config, event.loadWood, event.loadBerriesKcal, event.loadLog)
+      if (event.speedCmPerSecond !== speedForLoad(config, kg))
         fail(`forager ${forager.id} walks at a speed its load does not allow`)
       if (distance(from.x, from.y, position.x, position.y) > event.walkSeconds * event.speedCmPerSecond)
         fail(`forager ${forager.id} moved further than it walked`)
@@ -152,8 +206,16 @@ export class ValleyChecker {
         const home = hearthAtTurn[forager.id]!
         const hearthSq = (point: Point) => distanceSq(point.x, point.y, home.x, home.y)
         if (hearthSq(position) > hearthSq(from)) fail(`forager ${forager.id} walked away from home with its load`)
-      } else if (fullLoad && IDLE_REASONS.has(event.reason))
+      } else if (fullLoad && !forager.hungry && (IDLE_REASONS.has(event.reason) || HUT_REASONS.has(event.reason)))
         fail(`forager ${forager.id} is ${event.reason} with a full load`)
+      // A forager carrying a log takes it home before anything else.
+      if (event.reason === 'taking a log home') {
+        if (!logBefore) fail(`forager ${forager.id} took home a log it was not carrying`)
+        const home = hearthAtTurn[forager.id]!
+        const hearthSq = (point: Point) => distanceSq(point.x, point.y, home.x, home.y)
+        if (hearthSq(event.position) > hearthSq(from)) fail(`forager ${forager.id} walked away from home with its log`)
+      } else if (logBefore && daylight && forager.alive && event.reason !== 'going home')
+        fail(`forager ${forager.id} is ${event.reason} carrying a log`)
       const food = event.workedFor === 'food'
       const plants = food ? layout.bushes : layout.trees
       const stocks = food ? this.bushes : this.trees
@@ -176,8 +238,55 @@ export class ValleyChecker {
               fail(`forager ${forager.id}'s memory of a plant in view does not match what it saw`)
           }
         }
+        // Logs and stones are seen as far as long sight.
+        for (const [kindPlants, kindIndex, kindStocks, kindMemory] of [
+          [layout.trees, layout.treeIndex, this.treeLogs, forager.logMemory],
+          [layout.stones, layout.stoneIndex, this.stones, forager.stoneMemory],
+        ] as const)
+          forEachPlantWithin(kindIndex, kindPlants, from.x, from.y, sight, (id) => {
+            if (kindMemory.seen[id] !== minute || kindMemory.stock[id] !== kindStocks[id])
+              fail(`forager ${forager.id}'s memory of logs or stones in sight does not match what it saw`)
+          })
       }
-      if (event.workSeconds) {
+      if (event.task) {
+        if (event.workSeconds && !daylight) fail(`forager ${forager.id} worked at night`)
+        if (event.plantId !== null || event.gatheredKcal || event.gatheredWood)
+          fail(`forager ${forager.id} picked or gathered while working for its hut`)
+        const cutTree = cuts.get(forager.id)
+        if (event.task === 'cut') {
+          const id = event.treeId
+          if (id === null) fail(`forager ${forager.id} cut no tree`)
+          else if (event.workSeconds) {
+            if ((layout.trees.x[id]! - position.x) ** 2 + (layout.trees.y[id]! - position.y) ** 2 > reach2)
+              fail(`forager ${forager.id} cut a tree out of reach`)
+            if (this.treeLogs[id]! < 1) fail(`forager ${forager.id} cut at a tree with no logs`)
+            // It may have bought its axe at an earlier turn of the minute.
+            const bought = state.lastAxeEvents.some((made) => made.kind === 'sale' && made.buyerId === forager.id)
+            if (!this.axeBefore[forager.id] && !this.spareBefore[forager.id] && !bought)
+              fail(`forager ${forager.id} cut without an axe`)
+          }
+          if (event.cutLog !== (cutTree !== undefined) || (cutTree !== undefined && cutTree !== id))
+            fail(`forager ${forager.id}'s cut does not match its record`)
+          if (cutTree !== undefined) this.treeLogs[cutTree]! -= 1
+        } else if (cutTree !== undefined || event.cutLog) fail(`forager ${forager.id} cut a log without cutting`)
+        if (event.task === 'stone') {
+          const id = event.stoneId
+          if (id === null) fail(`forager ${forager.id} fetched no stone`)
+          else if (event.tookStone) {
+            if ((layout.stones.x[id]! - position.x) ** 2 + (layout.stones.y[id]! - position.y) ** 2 > reach2)
+              fail(`forager ${forager.id} picked up a stone out of reach`)
+            if (this.stones[id]! < 1) fail(`forager ${forager.id} picked up a stone that was not there`)
+            this.stones[id]! -= 1
+          }
+          if (event.tookStone !== event.workSeconds > 0) fail(`forager ${forager.id} worked at stones without one`)
+        } else if (event.tookStone) fail(`forager ${forager.id} picked up a stone without fetching one`)
+        if (event.task === 'make' && event.workSeconds) {
+          const home = hearthAtTurn[forager.id]!
+          if (position.x !== home.x || position.y !== home.y) fail(`forager ${forager.id} made an axe away from home`)
+        }
+      } else if (event.cutLog || event.tookStone || cuts.has(forager.id))
+        fail(`forager ${forager.id} cut a log or took a stone without working for its hut`)
+      else if (event.workSeconds) {
         if (!daylight) fail(`forager ${forager.id} worked at night`)
         if (event.plantId === null) fail(`forager ${forager.id} worked no plant`)
         else {
@@ -204,22 +313,36 @@ export class ValleyChecker {
       if (event.sleepSeconds) {
         if (daylight) fail(`forager ${forager.id} slept in daylight`)
         if (from.x !== hearth.x || from.y !== hearth.y) fail(`forager ${forager.id} slept away from its hearth`)
-      }
+        // Asleep in its hut exactly when the hut at its hearth holds every log. A forager met later in the minute by
+        // one that founds a group with it leaves its hut behind after its turn.
+        const hut = state.huts.find(
+          (made) =>
+            made.builderId === forager.id &&
+            made.x === hearth.x &&
+            made.y === hearth.y &&
+            (made.abandonedMinute === null || made.abandonedMinute === minute),
+        )
+        const whole = hut !== undefined && hut.logs - (event.laidLog ? 1 : 0) >= config.hutLogs
+        if (event.inHut !== whole)
+          fail(`forager ${forager.id} slept in a hut that is not whole, or outside a whole one`)
+      } else if (event.inHut) fail(`forager ${forager.id} is in its hut awake`)
       if (!daylight && forager.alive && event.reason !== 'going home' && event.reason !== 'night')
         fail(`forager ${forager.id} is up at night`)
       if (event.fireGroupId !== null) {
-        // A member asleep by its group's fire burns no wood of its own, and is warm exactly when the fire is lit.
-        if (!config.sharedFire || !event.sleepSeconds)
-          fail(`forager ${forager.id} slept by a group's fire it could not`)
+        // A member asleep by its group's fire burns no wood of its own, and is warm exactly when the fire is lit or it
+        // sleeps in its whole hut.
+        if (!event.sleepSeconds) fail(`forager ${forager.id} slept by a group's fire it could not`)
         // It may have been met by a founder at an earlier turn of the minute, or joined at its own.
         if (this.groupBefore[forager.id] !== event.fireGroupId && forager.groupId !== event.fireGroupId)
           fail(`forager ${forager.id} slept by another group's fire`)
         if (event.burnedWood) fail(`forager ${forager.id} burned its own wood beside its group's fire`)
-        if (coldMatters(config) && event.sleptCold === (this.litNow[event.fireGroupId] ?? false))
-          fail(`forager ${forager.id}'s warmth does not match its group's fire`)
-      } else if (config.sharedFire && event.sleepSeconds && this.groupBefore[forager.id] !== null)
+        if (coldMatters(config) && event.sleptCold === ((this.litNow[event.fireGroupId] ?? false) || event.inHut))
+          fail(`forager ${forager.id}'s warmth does not match its group's fire and its hut`)
+      } else if (event.sleepSeconds && this.groupBefore[forager.id] !== null) {
         if (this.groupBefore[forager.id] === forager.groupId)
           fail(`forager ${forager.id} slept by its own fire while in a group`)
+      } else if (event.inHut && (event.burnedWood || event.sleptCold))
+        fail(`forager ${forager.id} burned wood or slept cold in its whole hut`)
       if (event.burnedWood) {
         const hour = Math.floor(minute / 60)
         if (!event.sleepSeconds) fail(`forager ${forager.id} burned wood awake`)
@@ -234,6 +357,11 @@ export class ValleyChecker {
         if (before <= 0 || before >= config.woodLoad) fail(`forager ${forager.id} filled a load it was not carrying`)
       }
     }
+    for (let id = 0; id < this.treeLogs.length; id += 1)
+      if (state.treeLogs[id] !== this.treeLogs[id])
+        fail(`tree ${id} holds ${state.treeLogs[id]} logs, not ${this.treeLogs[id]}`)
+    for (let id = 0; id < this.stones.length; id += 1)
+      if (state.stoneStock[id] !== this.stones[id]) fail(`stone spot ${id} holds the wrong stones`)
     for (const id of touchedBushes)
       if (state.bushKcal[id] !== this.bushes[id]) fail(`bush ${id} holds ${state.bushKcal[id]}, not ${this.bushes[id]}`)
     // Work only ever takes, and regrowth stops at capacity, so every stock the replay holds stays in range.
@@ -268,8 +396,12 @@ export class ValleyChecker {
       fail(`energy is not conserved: ${held} held, ${totals.initialKcal + totals.regrownKcal} supplied`)
     let fireWood = 0
     for (const group of state.groups) fireWood += group.fireWood
-    if (this.treeTotal + wood + fireWood + totals.burnedWood !== totals.initialWood + totals.regrownWood)
+    if (
+      this.treeTotal + wood + fireWood + totals.burnedWood + totals.axeWood !==
+      totals.initialWood + totals.regrownWood
+    )
       fail('wood is not conserved')
+    this.checkLogsAndAxes(state, minute, midnight, fail)
     if (
       woodSold !== totals.swappedWood ||
       woodBought !== totals.swappedWood ||
@@ -342,21 +474,30 @@ export class ValleyChecker {
         fail(`forager ${forager.id}'s practice lost or invented seconds at foraging`)
       if (forager.loggedSeconds.gather + today.gather !== forager.secondsWorked.gather)
         fail(`forager ${forager.id}'s practice lost or invented seconds at gathering`)
+      if (forager.loggedSeconds.make + today.make !== forager.secondsWorked.make)
+        fail(`forager ${forager.id}'s practice lost or invented seconds at making axes`)
       // Logs and rates change only at midnight: they are checked in full then, and for change every other minute.
       const rates = this.rates[forager.id]!
       if (midnight || minute === 0) {
-        if (log.forage.length !== config.practiceDays || log.gather.length !== config.practiceDays)
+        if (
+          log.forage.length !== config.practiceDays ||
+          log.gather.length !== config.practiceDays ||
+          log.make.length !== config.practiceDays
+        )
           fail(`forager ${forager.id}'s practice log has the wrong length`)
-        for (const seconds of [...log.forage, ...log.gather])
+        for (const seconds of [...log.forage, ...log.gather, ...log.make])
           if (!Number.isInteger(seconds) || seconds < 0 || seconds > 86_400)
             fail(`forager ${forager.id}'s practice log is out of range`)
         if (forager.alive) {
           const expected = ratesOf(config, forager.foragingSkill, forager.woodSkill, log)
           if (expected.forageRate !== forager.forageRate || expected.woodRate !== forager.woodRate)
             fail(`forager ${forager.id}'s rates do not follow from its skills and practice`)
+          if (forager.craft !== craftOf(config, forager.craftSkill, log))
+            fail(`forager ${forager.id}'s craft does not follow from its skill and practice`)
         }
       } else if (forager.forageRate !== rates[0] || forager.woodRate !== rates[1])
         fail(`forager ${forager.id}'s rates changed mid-day`)
+      else if (forager.craft !== this.craftBefore[forager.id]) fail(`forager ${forager.id}'s craft changed mid-day`)
       rates[0] = forager.forageRate
       rates[1] = forager.woodRate
     }
@@ -377,7 +518,148 @@ export class ValleyChecker {
     for (const forager of state.foragers) this.siteKnownBefore[forager.id]!.set(forager.siteKnown)
     this.fireWoodBefore = state.groups.map((group) => group.fireWood)
     this.givenBefore = state.foragers.map((forager) => forager.fireGiven)
+    this.logBefore = state.foragers.map((forager) => forager.log)
+    this.craftBefore = state.foragers.map((forager) => forager.craft)
+    this.axeBefore = state.foragers.map((forager) => forager.axe)
+    this.spareBefore = state.foragers.map((forager) => forager.spareAxe)
+    this.hutsBefore = [...state.huts]
     return violations
+  }
+
+  /**
+   * Logs, stones, huts and axes: each is conserved; a hut changes only by its builder laying a log at it, by weather on
+   * its day, or by being left behind; and every axe made, cut with, worn out, promised and sold follows its rules.
+   */
+  private checkLogsAndAxes(state: ValleyState, minute: number, midnight: boolean, fail: (message: string) => void) {
+    const { config, totals } = state
+    let onTrees = 0
+    for (const logs of state.treeLogs) onTrees += logs
+    let onGround = 0
+    for (const stones of state.stoneStock) onGround += stones
+    let carriedLogs = 0
+    let heldStones = 0
+    let axesHeld = 0
+    let making = 0
+    for (const forager of state.foragers) {
+      if (forager.log !== 0 && forager.log !== 1) fail(`forager ${forager.id} carries ${forager.log} logs`)
+      if (forager.stone < 0) fail(`forager ${forager.id} holds ${forager.stone} stones`)
+      carriedLogs += forager.log
+      heldStones += forager.stone
+      axesHeld += (forager.axe ? 1 : 0) + (forager.spareAxe ? 1 : 0)
+      if (forager.making) making += 1
+    }
+    let inHuts = 0
+    for (const hut of state.huts) inHuts += hut.logs
+    if (onTrees + carriedLogs + inHuts + totals.rottedLogs !== totals.initialLogs + totals.regrownLogs)
+      fail('logs are not conserved')
+    if (onTrees !== totals.initialLogs + totals.regrownLogs - totals.logsCut) fail('logs cut do not add up')
+    if (onGround + heldStones + totals.stonesWorked !== totals.initialStones) fail('stones are not conserved')
+    if (totals.stonesWorked !== totals.axesMade + making) fail('stones worked do not match axes made and begun')
+    if (axesHeld + totals.axesWornOut !== totals.axesMade) fail('axes are not conserved')
+    if (totals.axeWood !== totals.stonesWorked * config.axeWood) fail('wood in axes does not match axes begun')
+
+    // Huts: replayed from the minute before through weather, laying and abandonment.
+    const huts = [...this.hutsBefore]
+    const day = minute / MINUTES_PER_DAY
+    for (const made of state.lastHutEvents) {
+      if (made.kind === 'weather') {
+        const hut = huts[made.hutId]!
+        if (!midnight || !weathersOn(state, hut, day)) fail(`hut ${made.hutId} weathered out of its day`)
+        huts[made.hutId] = { ...hut, logs: hut.logs - 1 }
+        if (made.logsAfter !== hut.logs - 1) fail(`hut ${made.hutId} weathered the wrong amount`)
+      } else {
+        const hut = huts[made.hutId]
+        if (!hut || hut.builderId !== made.foragerId || hut.abandonedMinute !== null)
+          fail(`hut ${made.hutId} was left behind by someone else`)
+        else huts[made.hutId] = { ...hut, abandonedMinute: minute }
+      }
+    }
+    if (midnight)
+      for (const hut of this.hutsBefore)
+        if (hut.logs > 0 && weathersOn(state, hut, day) && !state.lastHutEvents.some((made) => made.hutId === hut.id))
+          fail(`hut ${hut.id} did not weather on its day`)
+    for (const event of state.lastEvents) {
+      if (!event.laidLog) continue
+      const forager = state.foragers[event.foragerId]!
+      if (!this.logBefore[forager.id] && !event.cutLog) fail(`forager ${forager.id} laid a log it did not carry`)
+      const id = forager.hutId
+      if (id === null) {
+        fail(`forager ${forager.id} laid a log in no hut`)
+        continue
+      }
+      const hut = huts[id] ?? {
+        id,
+        builderId: forager.id,
+        x: event.position.x,
+        y: event.position.y,
+        logs: 0,
+        begunMinute: minute,
+        abandonedMinute: null,
+      }
+      if (hut.builderId !== forager.id || hut.x !== event.position.x || hut.y !== event.position.y)
+        fail(`forager ${forager.id} laid a log away from its own hut`)
+      if (event.position.x !== forager.hearth.x || event.position.y !== forager.hearth.y)
+        fail(`forager ${forager.id} laid a log away from its hearth`)
+      huts[id] = { ...hut, logs: hut.logs + 1 }
+    }
+    if (huts.length !== state.huts.length) fail('a hut appeared or vanished without a record')
+    for (const hut of state.huts) {
+      const replayed = huts[hut.id]
+      if (!replayed || replayed.logs !== hut.logs || replayed.abandonedMinute !== hut.abandonedMinute)
+        fail(`hut ${hut.id} changed without a record`)
+      if (hut.logs < 0 || hut.logs > config.hutLogs) fail(`hut ${hut.id} holds ${hut.logs} logs`)
+    }
+
+    // Axes: made at the quality its maker's craft allows, worn by one log at each cut, and sold on the terms of both.
+    const madeNow = new Set<number>()
+    let nextId = totals.axesMade - state.lastAxeEvents.filter((made) => made.kind === 'made').length
+    for (const made of state.lastAxeEvents) {
+      if (made.kind === 'made') {
+        const { axe } = made
+        const craft = state.foragers[made.foragerId]!.craft
+        if (axe.id !== nextId++) fail(`axe ${axe.id} is out of order`)
+        if (made.craft !== craft || axe.quality < Math.max(1, Math.floor(craft / 2)) || axe.quality > craft)
+          fail(`axe ${axe.id}'s quality is out of its maker's range`)
+        if (
+          axe.logsLeft !== axeLife(config, axe.quality) ||
+          axe.makerId !== made.foragerId ||
+          axe.madeMinute !== minute
+        )
+          fail(`axe ${axe.id} was made wrong`)
+        madeNow.add(axe.id)
+      } else if (made.kind === 'cut') {
+        if (made.axeLogsLeft < 0 || made.treeLogsAfter < 0) fail(`a cut left a negative count`)
+      } else if (made.kind === 'sale') {
+        const seller = state.foragers[made.sellerId]!
+        const buyer = state.foragers[made.buyerId]!
+        const shares =
+          (this.groupBefore[seller.id] ?? -1) === this.groupBefore[buyer.id] || seller.groupId === buyer.groupId
+        if (!shares || seller.groupId === null) fail('an axe was sold across groups')
+        if (made.ask !== askOf(config, seller.craft) || made.worth !== worthTo(config, buyer, made.axe.quality))
+          fail('a sale is not at the two sides’ terms')
+        if (made.worth <= made.ask || made.price !== salePrice(made.ask, made.worth))
+          fail('a sale did not pay both sides')
+        const fromSpare = sameAxe(this.spareBefore[seller.id] ?? null, made.axe) || madeNow.has(made.axe.id)
+        if (!fromSpare) fail(`forager ${seller.id} sold an axe it did not hold as a spare`)
+        if (this.axeBefore[buyer.id] && !madeNow.has(made.axe.id) && this.axeBefore[buyer.id]!.logsLeft > 0)
+          if (sameAxe(buyer.axe, this.axeBefore[buyer.id]!)) fail(`forager ${buyer.id} bought an axe it did not take`)
+      } else if (made.kind === 'promise') {
+        const promiser = state.foragers[made.promiserId]!
+        if (promiser.groupId === null || promiser.groupId !== state.foragers[made.askerId]!.groupId)
+          if ((this.groupBefore[made.promiserId] ?? -1) !== this.groupBefore[made.askerId])
+            fail('a promise crossed groups')
+      }
+    }
+    // An axe a forager keeps changes only by cutting with it.
+    for (const forager of state.foragers) {
+      const before = this.axeBefore[forager.id]
+      const axe = forager.axe
+      if (!before || !axe || before.id !== axe.id) continue
+      const cut = state.lastAxeEvents.find((made) => made.kind === 'cut' && made.foragerId === forager.id)
+      const expected = cut ? before.logsLeft - 1 : before.logsLeft
+      if (axe.logsLeft !== expected || axe.quality !== before.quality)
+        fail(`forager ${forager.id}'s axe changed by itself`)
+    }
   }
 
   /**
@@ -597,22 +879,16 @@ export class ValleyChecker {
    */
   private checkFires(state: ValleyState, minute: number, fail: (message: string) => void) {
     const { config } = state
-    if (!config.sharedFire) {
-      if (state.lastFires.length || state.lastFeeds.length) fail('fires burned or were fed with the shared fire off')
-      if (state.groups.some((group) => group.fireWood || group.fireLit)) fail('a group keeps a fire with it off')
-      return
-    }
     const fireWood = state.groups.map((_, id) => this.fireWoodBefore[id] ?? 0)
     const hourStart = minute % 60 === 0
     const night = !isDaylight(config, minute)
     const burned = new Set<number>()
     for (const fire of state.lastFires) {
-      const group = state.groups[fire.groupId]!
       if (!hourStart || !night) fail(`group ${fire.groupId}'s fire burned outside the start of a night hour`)
       if (burned.has(fire.groupId)) fail(`group ${fire.groupId}'s fire burned twice`)
       burned.add(fire.groupId)
       const before = fireWood[fire.groupId]!
-      const burn = this.burnAtStart(state, group)
+      const burn = config.campfireWoodPerHour
       if (fire.lit !== before >= burn || fire.burned !== (fire.lit ? burn : 0))
         fail(`group ${fire.groupId}'s fire burned the wrong amount`)
       fireWood[fire.groupId] = before - fire.burned
@@ -640,12 +916,8 @@ export class ValleyChecker {
           fail(`forager ${feed.foragerId} fed a fire away from its hearth`)
       }
       if (feed.fireWoodBefore !== fireWood[feed.groupId]) fail(`group ${feed.groupId}'s fire held other wood when fed`)
-      // A fire burns its rate, or with `campfirePerMember` its rate for each of its living members at the time.
-      const rate = config.campfireWoodPerHour
-      const burnOk = config.campfirePerMember
-        ? feed.burnPerHour % rate === 0 && feed.burnPerHour >= rate && feed.burnPerHour <= rate * group.members.length
-        : feed.burnPerHour === rate
-      if (!burnOk) fail(`group ${feed.groupId}'s fire burns the wrong amount an hour`)
+      if (feed.burnPerHour !== config.campfireWoodPerHour)
+        fail(`group ${feed.groupId}'s fire burns the wrong amount an hour`)
       const amount = feedAmount(config, feed.woodBefore, feed.fireWoodBefore, feed.burnPerHour, minute)
       const right =
         feed.wood >= 1 &&
@@ -673,13 +945,6 @@ export class ValleyChecker {
     }
     for (const forager of state.foragers)
       if (forager.fireGiven !== given[forager.id]) fail(`forager ${forager.id}'s gifts to fires do not add up`)
-  }
-
-  /** What a group's fire burns at the start of the minute, counting its living members as they were then. */
-  private burnAtStart(state: ValleyState, group: ValleyState['groups'][number]) {
-    if (!state.config.campfirePerMember) return state.config.campfireWoodPerHour
-    const living = group.members.filter((id) => this.aliveBefore[id] && this.groupBefore[id] === group.id).length
-    return state.config.campfireWoodPerHour * living
   }
 
   /** Checks the minute just run and throws on the first violations found. */

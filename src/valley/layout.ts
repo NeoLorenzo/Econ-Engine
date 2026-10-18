@@ -7,6 +7,8 @@ const LAYOUT_STREAM_SALT = 0x5641_4c4c
 const SKILL_STREAM_SALT = 0x534b_494c
 const TURN_ORDER_STREAM_SALT = 0x5455_524e
 const START_STREAM_SALT = 0x5354_5254
+const CRAFT_STREAM_SALT = 0x4352_4146
+const AXE_STREAM_SALT = 0x4158_4553
 
 /** A site or plant that has not found a place after this many draws makes the layout impossible. */
 export const PLACEMENT_DRAWS = 10_000
@@ -17,6 +19,12 @@ export const deriveLayoutSeed = (seed: number) =>
 export const deriveStartSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ START_STREAM_SALT) >>> 0))
 
 export const deriveSkillSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ SKILL_STREAM_SALT) >>> 0))
+
+export const deriveCraftSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ CRAFT_STREAM_SALT) >>> 0))
+
+/** The axe stream for one forager and minute, which draws the quality of an axe it finishes then. */
+export const deriveAxeSeed = (seed: number, minute: number, foragerId: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ AXE_STREAM_SALT ^ mixSeed(minute * 1_024 + foragerId)) >>> 0))
 
 /** The turn order of minute `minute`, from a stream of its own, so any minute's order stands alone. */
 export const deriveTurnOrderSeed = (seed: number, minute: number) =>
@@ -57,6 +65,19 @@ export function drawSkills(config: ValleyConfig): { foragingSkill: number; woodS
       foragingSkill: config.skillMinPercent + forage.value,
       woodSkill: config.skillMinPercent + wood.value,
     })
+  }
+  return skills
+}
+
+/** Every forager's born craft skill, by ID, from a stream of its own so the other skills are drawn as before. */
+export function drawCraftSkills(config: ValleyConfig): number[] {
+  const span = config.craftSkillMaxPercent - config.craftSkillMinPercent + 1
+  let state = deriveCraftSeed(config.seed)
+  const skills = []
+  for (let id = 0; id < config.bandSize; id += 1) {
+    const draw = randomInt(state, span)
+    state = draw.state
+    skills.push(config.craftSkillMinPercent + draw.value)
   }
   return skills
 }
@@ -134,9 +155,9 @@ export function buildIndex(plants: Plants, cellCm: number, valleySizeCm: number)
 }
 
 /**
- * The valley's layout: site centres, then each thicket's bushes and each stand's trees, then the starting hearths:
- * scattered, or on a spiral around the camp for a band that starts as one group. Throws if a site, plant or start
- * cannot be placed.
+ * The valley's layout: site centres, then each thicket's bushes, each stand's trees and each outcrop's stone spots,
+ * then the starting hearths: scattered, or on a spiral around the camp for a band that starts as one group. Throws if
+ * a site, plant, stone spot or start cannot be placed.
  */
 export function generateLayout(config: ValleyConfig): ValleyLayout {
   const draws = new Draws(deriveLayoutSeed(config.seed))
@@ -145,7 +166,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const centres: Point[] = []
   const span = size - 2 * config.siteMarginCm + 1
   let failed = 0
-  while (centres.length < config.thicketCount + config.standCount) {
+  while (centres.length < config.thicketCount + config.standCount + config.outcropCount) {
     const x = config.siteMarginCm + draws.int(span)
     const y = config.siteMarginCm + draws.int(span)
     const fits =
@@ -154,10 +175,12 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
     if (fits) {
       centres.push({ x, y })
       failed = 0
-    } else if ((failed += 1) >= PLACEMENT_DRAWS) throw new LayoutError('The thickets and stands cannot all be placed')
+    } else if ((failed += 1) >= PLACEMENT_DRAWS)
+      throw new LayoutError('The thickets, stands and outcrops cannot all be placed')
   }
   const thickets = centres.slice(0, config.thicketCount)
-  const stands = centres.slice(config.thicketCount)
+  const stands = centres.slice(config.thicketCount, config.thicketCount + config.standCount)
+  const outcrops = centres.slice(config.thicketCount + config.standCount)
   const bushSites = thickets.map((centre, id) =>
     scatter(
       draws,
@@ -171,8 +194,19 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const treeSites = stands.map((centre, id) =>
     scatter(draws, config.treesPerStand, centre, config.standRadiusCm, config.treeSpacingCm, `Stand ${id}'s trees`),
   )
+  const stoneSites = outcrops.map((centre, id) =>
+    scatter(
+      draws,
+      config.stonesPerOutcrop,
+      centre,
+      config.outcropRadiusCm,
+      config.stoneSpacingCm,
+      `Outcrop ${id}'s stones`,
+    ),
+  )
   const bushes = plantsOf(bushSites)
   const trees = plantsOf(treeSites)
+  const stones = plantsOf(stoneSites)
   const hearths = config.scattered
     ? drawStarts(config)
     : spiralOffsets(config.bandSize).map(([x, y]) => ({
@@ -183,11 +217,14 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
     camp,
     thickets,
     stands,
+    outcrops,
     bushes,
     trees,
+    stones,
     hearths,
     bushIndex: buildIndex(bushes, config.perceptionRadiusCm, size),
     treeIndex: buildIndex(trees, config.perceptionRadiusCm, size),
+    stoneIndex: buildIndex(stones, config.perceptionRadiusCm, size),
   }
 }
 
