@@ -25,6 +25,9 @@ const CONFIGS: Record<string, Partial<ValleyConfig>> = {
   flat: FLAT_LAND,
 }
 
+/** A checked 30-day run takes up to a minute on a fast machine, and longer on CI's. */
+const FINGERPRINT_TIMEOUT_MS = 300_000
+
 const RECORDED = [
   { config: 'canonical', seed: 20260813, days: '35d07f45:53675', totals: '1120b933:446' },
   { config: 'canonical', seed: 1, days: 'd0daf3d5:53473', totals: '4522dd7d:446' },
@@ -53,13 +56,17 @@ const RECORDED = [
 export function checkFingerprints(configs: readonly string[]) {
   describe('Life 10 runs exactly as recorded', () => {
     for (const recorded of RECORDED.filter((row) => configs.includes(row.config))) {
-      it(`for the ${recorded.config} land on seed ${recorded.seed}`, () => {
-        const start = createValley({ ...CONFIGS[recorded.config], seed: recorded.seed })
-        const checker = new ValleyChecker(start)
-        const end = runValley(start, 30 * 1_440, { recordEvents: false, onMinute: (state) => checker.assert(state) })
-        expect(fingerprintOf(end.days)).toBe(recorded.days)
-        expect(fingerprintOf(end.totals)).toBe(recorded.totals)
-      })
+      it(
+        `for the ${recorded.config} land on seed ${recorded.seed}`,
+        () => {
+          const start = createValley({ ...CONFIGS[recorded.config], seed: recorded.seed })
+          const checker = new ValleyChecker(start)
+          const end = runValley(start, 30 * 1_440, { recordEvents: false, onMinute: (state) => checker.assert(state) })
+          expect(fingerprintOf(end.days)).toBe(recorded.days)
+          expect(fingerprintOf(end.totals)).toBe(recorded.totals)
+        },
+        FINGERPRINT_TIMEOUT_MS,
+      )
     }
   })
 }
