@@ -1,3 +1,4 @@
+import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
 import { askOf, axeLife, exchangeAxes, expectedQuality, logCut, makeSeconds, worthTo } from './axes'
 import { cloneValley, createValley, lastEventOf, regrowWood, stepValley } from './engine'
@@ -16,7 +17,7 @@ const EIGHT_PM = 20 * 60
  * that it has no need and turns to its hut. The wood added goes into the valley's starting totals.
  */
 function band(minute: number, overrides: Partial<ValleyConfig> = {}) {
-  const state = cloneValley(createValley({ scattered: false, ...overrides }))
+  const state = cloneValley(createValley({ ...FLAT_LAND, scattered: false, ...overrides }))
   state.minute = minute
   for (const forager of state.foragers) {
     forager.wood = 24
@@ -64,7 +65,7 @@ function giveHut(state: ValleyState, forager: Forager, logs = state.config.hutLo
 
 describe('the layout', () => {
   it('draws outcrops of stone spots, each within its outcrop', () => {
-    const { config, layout, stoneStock } = createValley()
+    const { config, layout, stoneStock } = createValley(FLAT_LAND)
     expect(layout.outcrops).toHaveLength(config.outcropCount)
     expect(layout.stones.count).toBe(config.outcropCount * config.stonesPerOutcrop)
     for (let id = 0; id < layout.stones.count; id += 1) {
@@ -77,22 +78,29 @@ describe('the layout', () => {
   })
 
   it('draws craft from a stream of its own, leaving the other skills as they were', () => {
-    const born = createValley({ craftSkillMinPercent: 50, craftSkillMaxPercent: 150, skillMinPercent: 90 })
+    const born = createValley({
+      ...FLAT_LAND,
+      craftSkillMinPercent: 50,
+      craftSkillMaxPercent: 150,
+      skillMinPercent: 90,
+    })
     expect(drawSkills(born.config)).toEqual(drawSkills({ ...born.config, craftSkillMinPercent: 100 }))
     expect(new Set(born.foragers.map((forager) => forager.craftSkill)).size).toBeGreaterThan(1)
   })
 
   it('gives each tree its logs and starts craft at half for those who have never made an axe', () => {
-    const state = createValley()
+    const state = createValley(FLAT_LAND)
     expect([...state.treeLogs].every((logs) => logs === state.config.logsPerTree)).toBe(true)
     expect(state.foragers.every((forager) => forager.craft === 50)).toBe(true)
-    expect(createValley({ craftPractice: false }).foragers.every((forager) => forager.craft === 100)).toBe(true)
+    expect(
+      createValley({ ...FLAT_LAND, craftPractice: false }).foragers.every((forager) => forager.craft === 100),
+    ).toBe(true)
   })
 })
 
 describe('making an axe', () => {
   it('takes fifty hours at craft 100% and costs the extra energy of making', () => {
-    const { config } = createValley()
+    const { config } = createValley(FLAT_LAND)
     expect(makeSeconds(config, 100)).toBe(180_000)
     expect(makeSeconds(config, 50)).toBe(360_000)
     expect(askOf(config, 50)).toBe(6_000)
@@ -162,14 +170,14 @@ describe('cutting and building', () => {
   })
 
   it('takes a log off when the cut is done, and wears its axe by one log', () => {
-    const after = stepValley(atTree(100, logCut(createValley().config) - 6_000))
+    const after = stepValley(atTree(100, logCut(createValley(FLAT_LAND).config) - 6_000))
     expect(after.foragers[0]).toMatchObject({ log: 1, chopRemainder: 0, axe: { logsLeft: 199 } })
     expect(after.treeLogs[0]).toBe(2)
     expect(lastEventOf(after, 0)).toMatchObject({ cutLog: true })
   })
 
   it('fells a standing tree whole with its first log, bringing its branches down, and cuts the rest where it lies', () => {
-    const state = atTree(100, logCut(createValley().config) - 6_000)
+    const state = atTree(100, logCut(createValley(FLAT_LAND).config) - 6_000)
     const branches = state.woodStock[0]!
     const felled = stepValley(state)
     expect(felled.treeFelledMinute[0]).toBe(TEN_AM)
@@ -202,7 +210,7 @@ describe('cutting and building', () => {
   })
 
   it('throws away an axe with no logs left, losing the cut so far', () => {
-    const after = stepValley(atTree(100, logCut(createValley().config) - 6_000, 1))
+    const after = stepValley(atTree(100, logCut(createValley(FLAT_LAND).config) - 6_000, 1))
     expect(after.foragers[0]).toMatchObject({ log: 1, axe: null, chopRemainder: 0 })
     expect(after.lastAxeEvents).toContainEqual(expect.objectContaining({ kind: 'worn', foragerId: 0 }))
   })
@@ -269,7 +277,7 @@ describe('huts', () => {
   })
 
   it('puts the huts on rings round the fire: eight on the first, sixteen further out on the second', () => {
-    const { config } = createValley()
+    const { config } = createValley(FLAT_LAND)
     const flag = { x: 30_000, y: 30_000 }
     const from = (slot: number) => {
       const hut = hearthAround(config, flag, slot)
@@ -324,7 +332,7 @@ describe('huts', () => {
   })
 
   it('gathers sticks from a bush as firewood', () => {
-    const state = cloneValley(createValley())
+    const state = cloneValley(createValley(FLAT_LAND))
     state.minute = TEN_AM
     const forager = state.foragers[0]!
     forager.x = state.layout.bushes.x[0]!
@@ -338,7 +346,7 @@ describe('huts', () => {
   })
 
   it('drops dead branches under standing trees only, and grows sticks on bushes', () => {
-    const state = cloneValley(createValley())
+    const state = cloneValley(createValley(FLAT_LAND))
     const trees = state.layout.trees.count
     state.woodStock.fill(0)
     state.treeFelledMinute[1] = 0
@@ -421,14 +429,14 @@ describe('trading axes', () => {
 
   it('asks, promises and sells nothing with trade off or outside a group', () => {
     expect(stepValley(night({ axeTrade: false })).lastAxeEvents).toEqual([])
-    const scattered = cloneValley(createValley())
+    const scattered = cloneValley(createValley(FLAT_LAND))
     expect(exchangeAxes(scattered, scattered.foragers[0]!, 0)).toEqual([])
   })
 })
 
 describe('theory', () => {
   it('prices an axe at the extra energy of making', () => {
-    const theory = valleyTheory(createValley().config)
+    const theory = valleyTheory(createValley(FLAT_LAND).config)
     expect(theory.axeAsk(50)).toBe(6_000)
     expect(theory.firstAxeHours).toBe(100)
     expect(theory.logsOnOffer).toBe(432)
@@ -439,7 +447,7 @@ describe('theory', () => {
   })
 
   it('feeds about seven from berries, nuts and the lake at its most productive', () => {
-    const theory = valleyTheory(createValley().config)
+    const theory = valleyTheory(createValley(FLAT_LAND).config)
     expect(theory.yearlyBerriesKcal).toBe(1_728_000)
     expect(theory.yearlyNutsKcal).toBe(4_800_000)
     expect(theory.yearlyFishKcal).toBe(180_000)

@@ -12,7 +12,8 @@ import {
 import { shorePoint } from './lake'
 import { siteCentre, siteCount, siteKind, type SiteKind } from './sites'
 import { distance, distanceSq, walkSeconds } from './geometry'
-import { forEachPlantWithin, nearestPlant } from './layout'
+import { forEachPlantWithin, forEachRingOutwards, nearestPlant } from './layout'
+import { heightAt, terrainOf } from './terrain'
 import { SECONDS_PER_HOUR } from './practice'
 import { buyingPays, knownTerms, sellingPays, spareWood, wantedWood } from './trade'
 import type {
@@ -83,29 +84,16 @@ export const speedForLoad = (config: ValleyConfig, kg: number) =>
     ),
   )
 
-const walkCosts = new WeakMap<ValleyConfig, Map<number, number>>()
-
 /**
- * What an hour of walking under a load of `kg` at `speed` centimetres a second costs, in whole kilocalories rounded
- * down: the Pandolf equation (Pandolf, Givoni and Goldman, 1977) for body mass `W`, load `L`, speed `V` in m/s and
- * terrain factor `η` = `walkTerrainPercent` / 100, `M = 1.5 W + 2 (W + L) (L / W)² + η (W + L) · 1.5 V²` watts, at
- * 0.86 kcal a watt-hour. It is computed exactly over a common denominator, so it is the same on every machine.
+ * A forager's estimate of a walk, by Naismith's rule: the seconds to walk the straight distance at `speed` on the flat,
+ * plus `climbSecondsPerMetre` for every metre its end lies above its start, rounded up.
  */
-export function walkCostForLoad(config: ValleyConfig, kg: number, speed: number) {
-  let costs = walkCosts.get(config)
-  if (!costs) walkCosts.set(config, (costs = new Map()))
-  const key = kg * 1_000_000 + speed
-  const known = costs.get(key)
-  if (known !== undefined) return known
-  const W = BigInt(config.bodyKg)
-  const L = BigInt(kg)
-  const v = BigInt(speed)
-  const T = BigInt(config.walkTerrainPercent)
-  // M · 2,000,000 · W², with V = v / 100 and η = T / 100.
-  const numerator = 3n * W * 1_000_000n * W * W + 4_000_000n * (W + L) * L * L + 3n * T * (W + L) * v * v * W * W
-  const cost = Number((86n * numerator) / (100n * 2_000_000n * W * W))
-  costs.set(key, cost)
-  return cost
+export function estimateWalk(config: ValleyConfig, ax: number, ay: number, bx: number, by: number, speed: number) {
+  const flat = walkSeconds(distance(ax, ay, bx, by), speed)
+  if (!config.climbSecondsPerMetre) return flat
+  const terrain = terrainOf(config)
+  const climb = heightAt(terrain, bx, by) - heightAt(terrain, ax, ay)
+  return climb > 0 ? flat + Math.ceil((config.climbSecondsPerMetre * climb) / 100) : flat
 }
 
 /** A forager's walking speed for what it carries now. */
@@ -245,8 +233,8 @@ export function reachableInTime(
   daylightLeft: number,
   speed = walkSpeed(config, forager),
 ) {
-  const there = walkSeconds(distance(forager.x, forager.y, px, py), speed)
-  const home = walkSeconds(distance(px, py, forager.hearth.x, forager.hearth.y), speed)
+  const there = estimateWalk(config, forager.x, forager.y, px, py, speed)
+  const home = estimateWalk(config, px, py, forager.hearth.x, forager.hearth.y, speed)
   return there + 60 + home <= daylightLeft
 }
 
@@ -259,8 +247,8 @@ export function reachableAndBack(
   minute: number,
   speed = walkSpeed(config, forager),
 ) {
-  const there = walkSeconds(distance(forager.x, forager.y, x, y), speed)
-  const home = walkSeconds(distance(x, y, forager.hearth.x, forager.hearth.y), speed)
+  const there = estimateWalk(config, forager.x, forager.y, x, y, speed)
+  const home = estimateWalk(config, x, y, forager.hearth.x, forager.hearth.y, speed)
   return there + home <= daylightSecondsLeft(config, minute)
 }
 
@@ -269,8 +257,12 @@ export function mustGoHome(config: ValleyConfig, forager: Forager, minute: numbe
   if (atHearth(forager)) return false
   const left = daylightSecondsLeft(config, minute)
   if (!left) return true
-  const home = walkSeconds(
-    distance(forager.x, forager.y, forager.hearth.x, forager.hearth.y),
+  const home = estimateWalk(
+    config,
+    forager.x,
+    forager.y,
+    forager.hearth.x,
+    forager.hearth.y,
     walkSpeed(config, forager),
   )
   return home >= left
@@ -292,7 +284,6 @@ export function choosePlant(
 ): number | null {
   if (good === 'food') return chooseFood(config, layout, forager, minute, fallback)
   const plants = layout.woodPlants
-  const index = layout.woodIndex
   const memory = forager.woodMemory
   const threshold = minuteOfWork(forager.woodRate)
   const left = daylightSecondsLeft(config, minute)
@@ -303,8 +294,9 @@ export function choosePlant(
     return target
   // It clears the crown of a felled tree before it takes from a plant still growing: a tree it saw from afar holding
   // fewer than every log is down, and trees come first among wood plants.
+  const range = left * speed
   const fallen = nearestPlant(
-    layout.treeIndex,
+    layout.treeChunks,
     layout.trees,
     forager.x,
     forager.y,
@@ -313,37 +305,49 @@ export function choosePlant(
       forager.logMemory.stock[id]! < config.logsPerTree &&
       memory.stock[id]! >= threshold &&
       reachable(id),
+    range,
   )
   if (fallen !== null) return fallen
   const nearest = nearestPlant(
-    index,
+    layout.woodChunks,
     plants,
     forager.x,
     forager.y,
     (id) => memory.stock[id]! >= threshold && reachable(id),
+    range,
   )
   if (nearest !== null || !fallback) return nearest
-  return seenLongestAgo(config, forager, plants, memory, minute)
+  return seenLongestAgo(config, forager, plants, layout.woodChunks, memory, minute)
 }
 
-/** With nothing left to search, the plant of a kind it saw longest ago that it can reach in time, nearest first. */
-function seenLongestAgo(config: ValleyConfig, forager: Forager, plants: Plants, memory: PlantMemory, minute: number) {
+/**
+ * With nothing left to search, the plant of a kind it saw longest ago that it can reach in time, nearest first, ties to
+ * the lowest ID. Only plants within the walk the daylight left allows can be reached, so only their chunks are searched.
+ */
+function seenLongestAgo(
+  config: ValleyConfig,
+  forager: Forager,
+  plants: Plants,
+  chunks: PlantIndex,
+  memory: PlantMemory,
+  minute: number,
+) {
   const left = daylightSecondsLeft(config, minute)
   const speed = walkSpeed(config, forager)
   const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)
   let chosen: number | null = null
   let chosenSeen = Infinity
   let chosenSq = Infinity
-  for (let id = 0; id < plants.count; id += 1) {
+  forEachPlantWithin(chunks, plants, forager.x, forager.y, left * speed, (id) => {
     const seen = memory.seen[id]!
-    if (seen < 0 || seen === minute || seen > chosenSeen) continue
+    if (seen < 0 || seen === minute || seen > chosenSeen) return
     const sq = distanceSq(plants.x[id]!, plants.y[id]!, forager.x, forager.y)
-    if (seen === chosenSeen && sq >= chosenSq) continue
-    if (!reachable(id)) continue
+    if (seen === chosenSeen && (sq > chosenSq || (sq === chosenSq && id > chosen!))) return
+    if (!reachable(id)) return
     chosen = id
     chosenSeen = seen
     chosenSq = sq
-  }
+  })
   return chosen
 }
 
@@ -408,12 +412,12 @@ export function foodGoal(
   if (target !== null && (target !== LAKE_ID || forager.lakeKnown) && worth(target) && reachable(target))
     return { source: target }
   const plants = layout.foodPlants
-  let best: FoodGoal | null = null
+  let best = null as FoodGoal | null
   let bestRate = 0
   let bestTime = 1
   /** Food for the time is `3,600 · rate / time`; comparing by multiplying across keeps it exact. Ties keep the first. */
   const consider = (goal: FoodGoal, point: Point, rate: number) => {
-    const time = walkSeconds(distance(forager.x, forager.y, point.x, point.y), speed) + SECONDS_PER_HOUR
+    const time = estimateWalk(config, forager.x, forager.y, point.x, point.y, speed) + SECONDS_PER_HOUR
     if (best !== null && rate * bestTime <= bestRate * time) return
     if (!reachableInTime(config, forager, point.x, point.y, left, speed)) return
     best = goal
@@ -421,9 +425,12 @@ export function foodGoal(
     bestTime = time
   }
   // In the order of ties: every bush, then every hazel, by ID; a thicket and a hazel thicket never checked; the lake.
+  // Plants are searched chunk by chunk outwards, and among them the lowest ID wins a tie, as a search by ID would find.
   const fullBerries = fullRateOf(forager, 'berries')
   const fullNuts = fullRateOf(forager, 'nuts')
-  for (let id = 0; id < plants.count; id += 1) {
+  const topRate = Math.max(fullBerries, fullNuts)
+  let bestPlant = -1
+  const considerPlant = (id: number) => {
     const berries = id < layout.bushes.count
     const rate = rateAtStock(
       config,
@@ -431,8 +438,33 @@ export function foodGoal(
       berries ? 'berries' : 'nuts',
       forager.foodMemory.stock[id]!,
     )
-    if (worthWorking(config, rate)) consider({ source: id }, { x: plants.x[id]!, y: plants.y[id]! }, rate)
+    if (!worthWorking(config, rate)) return
+    const x = plants.x[id]!
+    const y = plants.y[id]!
+    const time = estimateWalk(config, forager.x, forager.y, x, y, speed) + SECONDS_PER_HOUR
+    if (best !== null) {
+      const ours = rate * bestTime
+      const theirs = bestRate * time
+      if (ours < theirs || (ours === theirs && id > bestPlant)) return
+    }
+    if (!reachableInTime(config, forager, x, y, left, speed)) return
+    best = { source: id }
+    bestPlant = id
+    bestRate = rate
+    bestTime = time
   }
+  // Nothing further than it can walk in the daylight left can be reached in time; and once even its best rate over the
+  // walk to a ring is worse than the best found, nothing in that ring or beyond can win or tie.
+  forEachRingOutwards(
+    layout.foodChunks,
+    forager.x,
+    forager.y,
+    (floor) => {
+      if (floor > left * speed) return false
+      return best === null || topRate * bestTime >= bestRate * (Math.ceil(floor / speed) + SECONDS_PER_HOUR)
+    },
+    considerPlant,
+  )
   for (const [kind, food] of [
     ['thicket', 'berries'],
     ['hazel', 'nuts'],
@@ -443,7 +475,7 @@ export function foodGoal(
   if (forager.lakeKnown && worth(LAKE_ID))
     consider({ source: LAKE_ID }, shorePoint(forager), expectedRate(config, layout, forager, LAKE_ID))
   if (best !== null || !fallback) return best
-  const longAgo = seenLongestAgo(config, forager, plants, forager.foodMemory, minute)
+  const longAgo = seenLongestAgo(config, forager, plants, layout.foodChunks, forager.foodMemory, minute)
   return longAgo === null ? null : { source: longAgo }
 }
 
@@ -474,11 +506,17 @@ function uncheckedSite(
 }
 
 /** The reason recorded when no plant of the good can be reached: too late in the day, or nothing worth the walk. */
-export function idleReason(config: ValleyConfig, forager: Forager, plants: Plants, minute: number): ActionReason {
+export function idleReason(
+  config: ValleyConfig,
+  forager: Forager,
+  plants: Plants,
+  chunks: PlantIndex,
+  minute: number,
+): ActionReason {
   if (!plants.count) return 'waiting for regrowth'
   const left = daylightSecondsLeft(config, minute)
   const speed = walkSpeed(config, forager)
-  for (let id = 0; id < plants.count; id += 1)
-    if (reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)) return 'waiting for regrowth'
-  return 'too late to set out'
+  const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)
+  const some = nearestPlant(chunks, plants, forager.x, forager.y, reachable, left * speed)
+  return some === null ? 'too late to set out' : 'waiting for regrowth'
 }

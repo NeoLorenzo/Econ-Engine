@@ -1,3 +1,4 @@
+import { LandMap } from './LandMap'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { SpecializationChart } from './SpecializationChart'
 import { TimeChart } from '../ui/charts'
@@ -145,6 +146,7 @@ export default function ValleyApp() {
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
   const [followedId, setFollowedId] = useState(0)
   const [following, setFollowing] = useState(true)
+  const [mapView, setMapView] = useState<ReturnType<ValleyScene['view']> | null>(null)
   const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP)
   const [draft, setDraft] = useState<Record<keyof NumericSetup, string>>(() => stringify(DEFAULT_SETUP))
   const [switches, setSwitches] = useState<Pick<Setup, SwitchKey>>(
@@ -233,6 +235,7 @@ export default function ValleyApp() {
             lastHud = now
             clearRef.current = measureClear(mount)
             setSnapshot(snap(pairRef.current, followedRef.current, speed.interpolate))
+            setMapView(scene.view())
           }
           frame = requestAnimationFrame(loop)
         }
@@ -358,7 +361,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 9.7 · hazel and a lake</span>
+        <span className="life-title">Life 10 · terrain</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -505,7 +508,7 @@ export default function ValleyApp() {
           </dd>
           <dt>Has seen</dt>
           <dd className="num">
-            {summary.seenShare === 1 ? 'the whole valley' : `${Math.round(summary.seenShare * 100)}% of the valley`}
+            {summary.seenShare === 1 ? 'the whole land' : `${Math.round(summary.seenShare * 100)}% of the land`}
           </dd>
           <dt>Knows</dt>
           <dd className="num">
@@ -544,7 +547,15 @@ export default function ValleyApp() {
           </dd>
           <dt>Load</dt>
           <dd className="num">
-            {summary.loadKg ? formatKg(summary.loadKg) : 'none'} · walks at {summary.speedKmh.toFixed(1)} km/h
+            {summary.loadKg ? formatKg(summary.loadKg) : 'none'} · walks at {summary.speedKmh.toFixed(1)} km/h on the
+            flat
+          </dd>
+          <dt>Ground</dt>
+          <dd className="num">
+            {summary.ground}, {summary.heightM.toFixed(1)} m above the lake
+            {summary.walk &&
+              ` · walking ${summary.walk.gradePercent > 0 ? 'up' : summary.walk.gradePercent < 0 ? 'down' : 'on'} a ${Math.abs(summary.walk.gradePercent)}% slope at ${summary.walk.speedKmh.toFixed(1)} km/h`}
+            {` · climbed ${Math.round(summary.climbedTodayM)} m today`}
           </dd>
           <dt>Skills</dt>
           <dd className="num">
@@ -934,6 +945,16 @@ export default function ValleyApp() {
         </section>
       )}
 
+      <LandMap
+        state={snapshot.pair.next}
+        view={mapView}
+        onPick={(x, y) => {
+          followingRef.current = false
+          setFollowing(false)
+          sceneRef.current?.lookAt(x, y)
+        }}
+      />
+
       <section className="life-card life-history" aria-label="History">
         <details open={historyOpen} onToggle={(toggle) => setHistoryOpen(toggle.currentTarget.open)}>
           <summary>History and setup</summary>
@@ -1046,10 +1067,13 @@ export default function ValleyApp() {
             </p>
           )}
           <p className="life-note">
-            Running seed {setup.seed}: {setup.bandSize} foragers in a valley {config.valleySizeCm / 100} m across,{' '}
+            Running seed {setup.seed}: {setup.bandSize} foragers on a stretch of glacial land{' '}
+            {config.valleySizeCm / 100} m across, with low hills, hummocks and hollows up to{' '}
+            {(config.reliefCm + config.hummockCm) / 100} m high, sloping down to a lake,{' '}
             {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
-            knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, and berries and firewood up
-            close. When their needs are met they explore ground they have never seen, then check the thickets and stands
+            knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, but not through hills, and
+            berries and firewood up close. Slopes slow them and cost them energy, and wet or sandy ground is harder
+            going. When their needs are met they explore ground they have never seen, then check the thickets and stands
             they have not checked for {formatHours(setup.exploreAfterHours)}. A load costs them energy and slows them a
             little, and they take a full load home before anything else. Those without a group look for company: two who
             meet found a group and plant its flag, and anyone who meets a member joins. Members sleep on a ring round

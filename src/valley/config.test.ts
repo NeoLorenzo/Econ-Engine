@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { VALLEY_DEFAULT_CONFIG, spiralOffsets, valleyConfigErrors } from './config'
+import { FLAT_LAND, VALLEY_DEFAULT_CONFIG, spiralOffsets, valleyConfigErrors } from './config'
 import { createValley } from './engine'
 import type { ValleyConfig } from './types'
 
@@ -20,8 +20,23 @@ describe('valley configuration', () => {
     expect(errorsWith({ thicketCount: 0 })).toContain('thicketCount must be positive')
     expect(errorsWith({ woodLoad: -1 })).toContain('woodLoad must not be negative')
     expect(errorsWith({ loadSlowdownPerMille: -1 })).toContain('loadSlowdownPerMille must not be negative')
-    expect(errorsWith({ walkTerrainPercent: 0 })).toContain('walkTerrainPercent must be positive')
-    expect(errorsWith({ walkTerrainPercent: 90 })).toContain('walkTerrainPercent must be at least 100')
+    expect(errorsWith({ wetTerrainPercent: 90 })).toContain('wetTerrainPercent must be at least 100')
+    expect(errorsWith({ kettleCount: -1 })).toContain('kettleCount must not be negative')
+    expect(errorsWith({ terrainCellCm: 0 })).toContain('terrainCellCm must be positive')
+  })
+
+  it('refuses a terrain that does not fit its lattice or its land', () => {
+    expect(errorsWith({ terrainCellCm: 700 })).toContain(
+      'The land must be a whole number of terrain cells: valleySizeCm divisible by terrainCellCm',
+    )
+    expect(errorsWith({ hummockWavelengthCm: 20_100 })).toContain(
+      'hummockWavelengthCm must be a whole number of terrain cells',
+    )
+    expect(errorsWith({ kettleMinRadiusCm: 7_000 })).toContain('kettleMinRadiusCm must not exceed kettleMaxRadiusCm')
+    expect(errorsWith({ kettleDepthPerMille: 1_001 })).toContain('kettleDepthPerMille must be at most 1,000')
+    expect(errorsWith({ shoreRampCm: 500_000 })).toContain('shoreRampCm must not exceed the land’s width')
+    expect(errorsWith({ sightStepCm: 4_000 })).toContain('sightStepCm must not exceed placeCm')
+    expect(errorsWith({ startAreaCm: 500_000 })).toContain('startAreaCm must not exceed the land’s width')
   })
 
   it('refuses a reach as long as sight', () => {
@@ -107,8 +122,17 @@ describe('valley configuration', () => {
   })
 
   it('refuses a layout that cannot be drawn, or starts that cannot be placed', () => {
-    expect(() => createValley({ valleySizeCm: 20_000, thicketCount: 40 })).toThrow('cannot all be placed')
-    expect(() => createValley({ bandSize: 200 })).toThrow('The foragers’ starts cannot all be placed')
+    expect(() =>
+      createValley({
+        ...FLAT_LAND,
+        valleySizeCm: 20_000,
+        shoreRampCm: 20_000,
+        startAreaCm: 20_000,
+        reliefWavelengthCm: 20_000,
+        thicketCount: 40,
+      }),
+    ).toThrow('cannot all be placed')
+    expect(() => createValley({ ...FLAT_LAND, bandSize: 200 })).toThrow('The foragers’ starts cannot all be placed')
   })
 
   it('lays hearths on a square spiral, ring by ring', () => {

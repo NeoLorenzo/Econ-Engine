@@ -1,10 +1,11 @@
+import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
 import { resolveValleyConfig } from './config'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { drawStarts, forEachPlantWithin, generateLayout, nearestPlant } from './layout'
 import { HOURS_PER_DECADE, HOURS_PER_YEAR, hourlyShare, minuteCost, regrowthOf, workCostOf, workSeconds } from './work'
 
-const config = resolveValleyConfig()
+const config = resolveValleyConfig(FLAT_LAND)
 const layout = generateLayout(config)
 
 describe('layout', () => {
@@ -12,7 +13,7 @@ describe('layout', () => {
     const again = generateLayout(config)
     expect(Array.from(again.bushes.x)).toEqual(Array.from(layout.bushes.x))
     expect(Array.from(again.trees.y)).toEqual(Array.from(layout.trees.y))
-    const other = generateLayout(resolveValleyConfig({ seed: 1 }))
+    const other = generateLayout(resolveValleyConfig({ ...FLAT_LAND, seed: 1 }))
     expect(Array.from(other.bushes.x)).not.toEqual(Array.from(layout.bushes.x))
   })
 
@@ -50,7 +51,7 @@ describe('layout', () => {
   })
 
   it('puts the hearths on a ring round the camp in a band that starts as one group', () => {
-    const camp = generateLayout(resolveValleyConfig({ scattered: false }))
+    const camp = generateLayout(resolveValleyConfig({ ...FLAT_LAND, scattered: false }))
     // The first ring holds eight huts 7 m from the fire, evenly round it.
     expect(camp.hearths[0]).toEqual({ x: camp.camp.x - 494, y: camp.camp.y - 494 })
     expect(camp.hearths[3]).toEqual({ x: camp.camp.x + 700, y: camp.camp.y })
@@ -73,10 +74,10 @@ describe('layout', () => {
       for (const other of layout.hearths.slice(0, index))
         expect(distanceSq(start.x, start.y, other.x, other.y)).toBeGreaterThanOrEqual(config.startSpacingCm ** 2)
     }
-    const camp = generateLayout(resolveValleyConfig({ scattered: false }))
+    const camp = generateLayout(resolveValleyConfig({ ...FLAT_LAND, scattered: false }))
     expect(Array.from(camp.bushes.x)).toEqual(Array.from(layout.bushes.x))
     expect(Array.from(camp.trees.y)).toEqual(Array.from(layout.trees.y))
-    expect(drawStarts(resolveValleyConfig({ seed: 1 }))).not.toEqual(layout.hearths)
+    expect(drawStarts(resolveValleyConfig({ ...FLAT_LAND, seed: 1 }))).not.toEqual(layout.hearths)
   })
 
   it('finds the plants within a radius, as a search of every plant would', () => {

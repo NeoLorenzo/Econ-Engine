@@ -1,8 +1,10 @@
+import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
 import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
 import { ValleyChecker } from './invariants'
-import { chooseSite, observeSites, siteCentre, siteCount, siteHolds, siteKind, sightOf, siteWanted } from './sites'
-import { choosePlace, idleGoal, observePlaces, placeCount, placeWanted } from './social'
+import { observeAround } from './sight'
+import { chooseSite, siteCentre, siteCount, siteHolds, siteKind, sightOf, siteWanted } from './sites'
+import { choosePlace, idleGoal, placeCount, placeWanted } from './social'
 import type { Forager, ValleyState } from './types'
 
 const TEN_AM = 600
@@ -10,7 +12,7 @@ const NIGHT = 1_200
 
 /** A copy of the canonical valley at minute `minute`, changed by `change`. */
 function valleyAt(minute: number, change: (state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley())
+  const state = cloneValley(createValley(FLAT_LAND))
   state.minute = minute
   change(state)
   return state
@@ -48,39 +50,42 @@ describe('sight', () => {
     expect(siteHolds(config, 0, 'wood') && !siteHolds(config, 32, 'wood')).toBe(true)
   })
 
-  it('sees across the valley by day and only close by at night', () => {
+  it('sees across the flat valley by day and only close by at night', () => {
     expect(sightOf(config, TEN_AM)).toBe(100_000)
     expect(sightOf(config, NIGHT)).toBe(2_500)
     const day = state.foragers[0]!
     put(day, config.valleySizeCm / 2, config.valleySizeCm / 2)
-    observeSites(config, layout, day, TEN_AM)
+    observeAround(state, day, TEN_AM)
     expect([...day.siteKnown].every((known) => known === 1)).toBe(true)
-    const night = valleyAt(NIGHT).foragers[0]!
+    const nightState = valleyAt(NIGHT)
+    const night = nightState.foragers[0]!
     const thicket = layout.thickets[0]!
     put(night, thicket.x + 2_500, thicket.y)
-    observeSites(config, layout, night, NIGHT)
+    observeAround(nightState, night, NIGHT)
     expect(night.siteKnown[0]).toBe(1)
     expect(night.siteKnown.reduce((a, b) => a + b, 0)).toBe(1)
   })
 
   it('checks a site only from close enough to see every plant in it', () => {
-    const forager = valleyAt(TEN_AM).foragers[0]!
+    const valley = valleyAt(TEN_AM)
+    const forager = valley.foragers[0]!
     const thicket = layout.thickets[0]!
     // Close sight is 25 m and a thicket 12 m in radius, so it is checked from within 13 m of its centre.
     put(forager, thicket.x + 1_301, thicket.y)
-    observeSites(config, layout, forager, TEN_AM)
+    observeAround(valley, forager, TEN_AM)
     expect(forager.siteChecked[0]).toBe(-1)
     put(forager, thicket.x + 1_300, thicket.y)
-    observeSites(config, layout, forager, TEN_AM)
+    observeAround(valley, forager, TEN_AM)
     expect(forager.siteChecked[0]).toBe(TEN_AM)
   })
 
   it('marks every place within sight seen, and keeps the minute it first saw it', () => {
-    const forager = valleyAt(TEN_AM).foragers[0]!
+    const valley = valleyAt(TEN_AM)
+    const forager = valley.foragers[0]!
     put(forager, 30_000, 30_000)
-    observePlaces(config, forager, TEN_AM)
+    observeAround(valley, forager, TEN_AM)
     expect(forager.placesSeen).toBe(placeCount(config))
-    observePlaces(config, forager, TEN_AM + 1)
+    observeAround(valley, forager, TEN_AM + 1)
     expect(forager.placeSeen[0]).toBe(TEN_AM)
     // Seen ground never needs exploring again.
     expect(placeWanted(forager, 0)).toBe(false)

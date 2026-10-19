@@ -1,6 +1,8 @@
+import { FLAT_LAND } from './config'
+import { walkCost } from './terrain'
 import { describe, expect, it } from 'vitest'
 import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
-import { loadKg, loadOf, mustGoHome, reachableInTime, speedForLoad, walkCostForLoad, walkSpeed } from './forager'
+import { loadKg, loadOf, mustGoHome, reachableInTime, speedForLoad, walkSpeed } from './forager'
 import { distance } from './geometry'
 import { ValleyChecker } from './invariants'
 import { valleyTheory } from './theory'
@@ -11,7 +13,7 @@ const TEN_AM = 600
 
 /** A copy of the canonical valley at minute `minute`, with forager 0 changed by `change`. */
 function valleyAt(minute: number, change: (forager: Forager, state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley())
+  const state = cloneValley(createValley(FLAT_LAND))
   state.minute = minute
   change(state.foragers[0]!, state)
   return state
@@ -32,7 +34,7 @@ const withFullLoad = (forager: Forager, state: ValleyState) => {
 }
 
 describe('a load', () => {
-  const { config } = createValley()
+  const { config } = createValley(FLAT_LAND)
 
   it('is the wood of the trip, no more than it holds, and its berries at 600 kcal a kilogram', () => {
     const forager = valleyAt(TEN_AM).foragers[0]!
@@ -59,11 +61,11 @@ describe('a load', () => {
   })
 
   it('costs energy by the Pandolf equation: 222 kcal an hour unloaded, 316 under 30 kg and 341 under a log', () => {
-    expect(walkCostForLoad(config, 0, 125)).toBe(222)
-    expect(walkCostForLoad(config, 30, 120)).toBe(316)
-    expect(walkCostForLoad(config, 35, 119)).toBe(341)
+    expect(walkCost(config, 0, 125, 0, 120)).toBe(222)
+    expect(walkCost(config, 30, 120, 0, 120)).toBe(316)
+    expect(walkCost(config, 35, 119, 0, 120)).toBe(341)
     // On a road, η = 1, walking costs less.
-    expect(walkCostForLoad({ ...config, walkTerrainPercent: 100 }, 0, 125)).toBe(198)
+    expect(walkCost(config, 0, 125, 0, 100)).toBe(198)
     const theory = valleyTheory(config)
     expect(theory.walkCost(30)).toBe(316)
     expect(theory.loadedWalkSeconds(15_000, 30)).toBe(125)
@@ -169,7 +171,8 @@ describe('the checker', () => {
   })
 
   it('catches a walk faster than the load allows', () => {
-    expect(damaged((after) => (own(after).speedCmPerSecond = 125))).toMatch('a speed its load does not allow')
+    expect(damaged((after) => (own(after).loadSpeedCmPerSecond = 125))).toMatch('a speed its load does not allow')
+    expect(damaged((after) => (own(after).speedCmPerSecond += 1))).toMatch('a grade or speed the land does not give')
     expect(
       damaged((after) => {
         const event = own(after)

@@ -1,3 +1,4 @@
+import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
 import { lakeCapacityKcal } from './config'
 import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
@@ -11,7 +12,7 @@ const TEN_AM = 600
 
 /** The band as one group around the camp at ten in the morning, forager 0 hungry and changed by `change`. */
 function hungryAt(change: (forager: Forager, state: ValleyState) => void) {
-  const state = cloneValley(createValley({ scattered: false }))
+  const state = cloneValley(createValley({ ...FLAT_LAND, scattered: false }))
   state.minute = TEN_AM
   const forager = state.foragers[0]!
   forager.energyKcal = 60_000
@@ -34,7 +35,7 @@ const onTheShore = () =>
   })
 
 describe('the lake', () => {
-  const { config } = createValley()
+  const { config } = createValley(FLAT_LAND)
   const capacity = lakeCapacityKcal(config)
 
   it('holds 30 hectares of fish at 100 kg a hectare and 600 kcal a kilogram', () => {
@@ -65,7 +66,7 @@ describe('the lake', () => {
 
 describe('food that comes more slowly as a source thins', () => {
   it('gives a rate in proportion to what is left', () => {
-    const { config } = createValley()
+    const { config } = createValley(FLAT_LAND)
     expect(rateAtStock(config, 1_200, 'berries', 52)).toBe(1_200)
     expect(rateAtStock(config, 1_200, 'berries', 26)).toBe(600)
     expect(rateAtStock(config, 3_500, 'nuts', 1_875)).toBe(3_500)
@@ -112,7 +113,7 @@ describe('food that comes more slowly as a source thins', () => {
 
 describe('carried food', () => {
   it('spoils by its own shelf life: fish in a day, berries in two, nuts in half a year', () => {
-    const { config } = createValley()
+    const { config } = createValley(FLAT_LAND)
     const lots = [
       { food: 'nuts' as const, kcal: 100, harvestTick: 0 },
       { food: 'fish' as const, kcal: 50, harvestTick: 0 },

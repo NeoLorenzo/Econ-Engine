@@ -1,3 +1,4 @@
+import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
 import { LAKE_ID, takeOldest } from './food'
 import { lakeCapacityKcal } from './config'
@@ -10,7 +11,7 @@ import type { Forager, ValleyState } from './types'
 
 /** A copy of the valley with the band as one group around the camp at minute `minute`, forager 0 changed by `change`. */
 function valleyAt(minute: number, change: (forager: Forager, state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley({ scattered: false }))
+  const state = cloneValley(createValley({ ...FLAT_LAND, scattered: false }))
   state.minute = minute
   change(state.foragers[0]!, state)
   return state
@@ -78,7 +79,7 @@ describe('a forager’s minute', () => {
 
   it('sleeps at its own hearth at night without a group, warm while it has wood and cold without', () => {
     const alone = (wood: number) => {
-      const state = cloneValley(createValley())
+      const state = cloneValley(createValley(FLAT_LAND))
       state.minute = NIGHT
       state.foragers[0]!.wood = wood
       return lastEventOf(stepValley(state), 0)!
@@ -218,15 +219,15 @@ describe('the engine', () => {
     })
 
   it('is deterministic, and running n minutes equals n single steps', () => {
-    const start = createValley()
+    const start = createValley(FLAT_LAND)
     let stepped = start
     for (let minute = 0; minute < 1_600; minute += 1) stepped = stepValley(stepped)
     expect(fingerprint(runValley(start, 1_600))).toBe(fingerprint(stepped))
-    expect(fingerprint(runValley(createValley(), 1_600))).toBe(fingerprint(stepped))
+    expect(fingerprint(runValley(createValley(FLAT_LAND), 1_600))).toBe(fingerprint(stepped))
   })
 
   it('never changes the state it is given', () => {
-    const start = runValley(createValley(), 700)
+    const start = runValley(createValley(FLAT_LAND), 700)
     const before = fingerprint(start)
     stepValley(start)
     runValley(start, 100)
@@ -234,7 +235,7 @@ describe('the engine', () => {
   })
 
   it('keeps every invariant through two days, and the checker catches what breaks them', () => {
-    const start = createValley()
+    const start = createValley(FLAT_LAND)
     const checker = new ValleyChecker(start)
     const ran = runValley(start, 2 * 1_440, { onMinute: (state) => checker.assert(state) })
     expect(ran.minute).toBe(2_880)
@@ -245,7 +246,7 @@ describe('the engine', () => {
       damage: (state: ValleyState) => void,
       ready: (state: ValleyState) => boolean = () => true,
     ) => {
-      const base = createValley()
+      const base = createValley(FLAT_LAND)
       const check = new ValleyChecker(base)
       let after = stepValley(runValley(base, minutes, { onMinute: (state) => check.assert(state) }))
       while (!ready(after)) {

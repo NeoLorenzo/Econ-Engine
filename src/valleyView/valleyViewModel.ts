@@ -9,6 +9,7 @@ import { hutOf, hutWhole, weathersOn } from '../valley/huts'
 import { practicePercents } from '../valley/practice'
 import { siteCentre, siteCount, siteKindOf, siteRadius, sitesKnown } from '../valley/sites'
 import { livingMembers, placeCount, placesPerSide } from '../valley/social'
+import { GROUND_NAMES, cellOf, heightAt } from '../valley/terrain'
 import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
 import type { ActionEvent, Group, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
 import { foragerColor, foragerName, formatHours } from './display'
@@ -823,6 +824,16 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     /** What it carries, in kilograms, and how fast that lets it walk, in km/h. */
     loadKg: kg,
     speedKmh: (speedForLoad(config, kg) * 36) / 1_000,
+    /** The ground it stands on, its height above the lake in metres, its last minute's walk, and its climb today. */
+    ground: GROUND_NAMES[state.layout.ground[cellOf(state.layout.terrain, forager.x, forager.y)]!]!,
+    heightM: heightAt(state.layout.terrain, forager.x, forager.y) / 100,
+    walk: (() => {
+      const event = state.lastEvents.find((made) => made.foragerId === foragerId)
+      return event && event.walkSeconds
+        ? { gradePercent: event.gradePercent, speedKmh: (event.speedCmPerSecond * 36) / 1_000 }
+        : null
+    })(),
+    climbedTodayM: state.today.climbedCmById[foragerId]! / 100,
     sitesKnown: sitesKnown(forager),
     sitesTotal: siteCount(config),
     /** Sites it has checked within `exploreAfterHours`. */
@@ -1021,7 +1032,7 @@ export const arcPoint = (from: { x: number; z: number }, to: { x: number; z: num
 })
 
 /** The RTS camera's limits: from the whole valley down to about five metres across. */
-export const CAMERA_LIMITS = { nearest: 4, farthest: 900, lowestPitch: 0.25, highestPitch: 1.45 }
+export const CAMERA_LIMITS = { nearest: 4, farthest: 5_000, lowestPitch: 0.25, highestPitch: 1.45 }
 
 /**
  * How far the camera tilts down from its pitch towards eye level close in: 0.6 radians at the nearest, nothing from 60 m

@@ -21,50 +21,49 @@ The old ladder asked an economic question at each step. Its next steps were stor
 - **Checked against the real world.** A specification opens with what the step makes realistic and the real measurements it is checked against, in place of the old step's economic question. Validation compares the simulation with those measurements.
 - **The design rules hold.** Determinism, integer quantities, invariants checked every tick, one named stream for every random draw, and agents, animals included, that know only what they have perceived or remember.
 - **Features before experiments.** The Life core stays in its feature-building phase: experiments wait for a later, stable version, and each specification lists its questions for later.
-- **Speed is a feature.** A run of five years is about 2.6 million minutes, over a large landscape with many animals. Speed is built first, and every later step must keep a year's run fast.
+- **Speed is a feature.** A run of five years is about 2.6 million minutes, over a large landscape with many animals. Speed arrives with the larger land in step 10, and every later step must keep a year's run fast.
 
 ## The steps
 
-Life 9.7 is the starting point. Steps 0 to 9 are recorded in the [merge document](MERGE.md#the-ladder), git history, the changelog and the lab notes.
+Life 9.7 is the starting point. Steps 0 to 9 are recorded in the [merge document](MERGE.md#the-ladder), git history, the changelog and the lab notes. On 2026-10-19 the owner merged the first two steps, scale and terrain, into one, step 10, so that the land grows and gains its relief together; the later steps moved up by one.
 
 ### The world
 
 | Step | Adds | Checked against |
 | --- | --- | --- |
-| 10. Scale | A landscape that can span kilometres, held in chunks so that each agent looks only at what is near it; a faster minute. The valley and its behaviour stay the same. Settles how plants are represented across a large landscape (see [Open decisions](#open-decisions)). | A pure speed-up: the fingerprints stay identical. A year of the Life 9.7 valley runs in minutes. |
-| 11. Terrain | A generated landscape a few kilometres across, shaped like glacial terrain: hills, hollows and slopes, and ground of soil, sand, rock and wet ground. Slopes cost energy and slow walking; hills block sight. | The relief of southern Scandinavia. Walking costs by the grade term of the Pandolf equation. |
-| 12. Water | Rivers that run downhill and lakes in hollows, in place of the lake on the valley's edge, with fish in both. Thirst: every body needs to drink. | River and lake sizes in that landscape. Human daily water needs. |
-| 13. Seasons and weather | Day length by latitude; temperature through the year and the day; rain, snow and frost. Plants fruit in their seasons, bilberries in late summer and hazelnuts in autumn, so food must last the winter. | Climate reconstructions for the Mesolithic. Fruiting calendars. |
-| 14. Vegetation | Woodland that grows where ground, water and climate allow: birch, pine, hazel, oak, lime, and alder by water. Clearings, regrowth and seeds that spread. | Pollen records of Mesolithic woodland. Growth and regrowth rates. |
-| 15. Plant-eaters | Red deer, roe deer, wild boar, elk and aurochs, each an agent with a body, hunger, thirst, senses and memory, living in herds, breeding in their season and dying. Boar compete with people for hazelnuts. | Population densities, herd sizes, home ranges and breeding calendars. |
-| 16. Predators | Wolf packs, brown bears and lynx, which hunt the plant-eaters and hold territories. People perceive danger and flee, as in Life Engine. | Predator densities, pack sizes and kill rates. |
-| 17. People in the living world | People hunt and fish in that world, butcher what they kill, keep its meat, which spoils, and its hides, and run from predators. Brings the spear and the bow ahead of the general recipes of step 20. | Mesolithic hunting returns, and diets from bones and isotopes. |
+| 10. Terrain and scale | A generated landscape a few kilometres across, shaped like glacial terrain: hills, hollows and slopes, and ground of soil, sand, rock and wet ground. Slopes cost energy and slow walking; hills block sight. The land is held in chunks so that each agent looks only at what is near it, and the minute is made faster to match. Settles how plants are represented across a large landscape (see [Open decisions](#open-decisions)). | The relief of the young moraine landscapes of southern Scandinavia and northern Germany. Walking speed on slopes by Tobler's hiking function, and its cost by the Pandolf equation with its grade term and terrain factors. A year of the larger land runs in minutes. |
+| 11. Water | Rivers that run downhill and lakes in hollows, in place of the lake on the valley's edge, with fish in both. Thirst: every body needs to drink. | River and lake sizes in that landscape. Human daily water needs. |
+| 12. Seasons and weather | Day length by latitude; temperature through the year and the day; rain, snow and frost. Plants fruit in their seasons, bilberries in late summer and hazelnuts in autumn, so food must last the winter. | Climate reconstructions for the Mesolithic. Fruiting calendars. |
+| 13. Vegetation | Woodland that grows where ground, water and climate allow: birch, pine, hazel, oak, lime, and alder by water. Clearings, regrowth and seeds that spread. | Pollen records of Mesolithic woodland. Growth and regrowth rates. |
+| 14. Plant-eaters | Red deer, roe deer, wild boar, elk and aurochs, each an agent with a body, hunger, thirst, senses and memory, living in herds, breeding in their season and dying. Boar compete with people for hazelnuts. | Population densities, herd sizes, home ranges and breeding calendars. |
+| 15. Predators | Wolf packs, brown bears and lynx, which hunt the plant-eaters and hold territories. People perceive danger and flee, as in Life Engine. | Predator densities, pack sizes and kill rates. |
+| 16. People in the living world | People hunt and fish in that world, butcher what they kill, keep its meat, which spoils, and its hides, and run from predators. Brings the spear and the bow ahead of the general recipes of step 19. | Mesolithic hunting returns, and diets from bones and isotopes. |
 
 ### The body
 
 | Step | Adds | Checked against |
 | --- | --- | --- |
-| 18. Heat and tiredness | The temperature of the body by day as well as by night: hot and cold, shade, wind and wet, as in Life Engine's thermal comfort. Sleep driven by tiredness instead of the clock, with naps and the short nights of summer. | Human heat balance; sleep research. |
-| 19. Health | Injuries from falls and animals, and wounds that heal or fester. Illness from bad water or spoiled meat. Fitness that rises and falls with food and rest. | Healing times and illness rates; Mesolithic skeletons. |
+| 17. Heat and tiredness | The temperature of the body by day as well as by night: hot and cold, shade, wind and wet, as in Life Engine's thermal comfort. Sleep driven by tiredness instead of the clock, with naps and the short nights of summer. | Human heat balance; sleep research. |
+| 18. Health | Injuries from falls and animals, and wounds that heal or fester. Illness from bad water or spoiled meat. Fitness that rises and falls with food and rest. | Healing times and illness rates; Mesolithic skeletons. |
 
 ### Making things
 
 | Step | Adds | Checked against |
 | --- | --- | --- |
-| 20. Materials and recipes | Recipes as data, in place of the two built into Life 9. Materials broken down, as in Life Engine's conversions: flint knapped into blades, wood split, hides scraped, bark and sinew made into cord. A kit of tools. | Experimental archaeology: times and yields of knapping, scraping and cord-making. |
-| 21. Fire and cooking | Fires lit, not only fed. Cooking, which gives more energy from food. Roasting nuts, and smoking and drying meat and fish, so food keeps through winter. | The energy gain from cooking; how long preserved food keeps. |
-| 22. Clothing and shelter | Hide clothing that changes how cold a body gets; better and seasonal shelters; stores and pits for food. | The insulation of hide and fur; Mesolithic dwellings. |
+| 19. Materials and recipes | Recipes as data, in place of the two built into Life 9. Materials broken down, as in Life Engine's conversions: flint knapped into blades, wood split, hides scraped, bark and sinew made into cord. A kit of tools. | Experimental archaeology: times and yields of knapping, scraping and cord-making. |
+| 20. Fire and cooking | Fires lit, not only fed. Cooking, which gives more energy from food. Roasting nuts, and smoking and drying meat and fish, so food keeps through winter. | The energy gain from cooking; how long preserved food keeps. |
+| 21. Clothing and shelter | Hide clothing that changes how cold a body gets; better and seasonal shelters; stores and pits for food. | The insulation of hide and fur; Mesolithic dwellings. |
 
 ### People together
 
 | Step | Adds | Checked against |
 | --- | --- | --- |
-| 23. Families | Pairing, pregnancy and birth, and children who must be fed and carried until they can forage. | Forager birth spacing, child growth and child survival. |
-| 24. Ageing and death | Bodies that age and weaken, and death from old age; children growing up within a run. | Forager life tables. |
-| 25. Learning from others | Teaching and copying skills, and telling others where food and danger are. | Studies of how forager children learn. |
-| 26. Moving through the year | Bands that move camp with the seasons, and several bands in one landscape that meet. | Mesolithic seasonal rounds. |
+| 22. Families | Pairing, pregnancy and birth, and children who must be fed and carried until they can forage. | Forager birth spacing, child growth and child survival. |
+| 23. Ageing and death | Bodies that age and weaken, and death from old age; children growing up within a run. | Forager life tables. |
+| 24. Learning from others | Teaching and copying skills, and telling others where food and danger are. | Studies of how forager children learn. |
+| 25. Moving through the year | Bands that move camp with the seasons, and several bands in one landscape that meet. | Mesolithic seasonal rounds. |
 
-The order follows what each area needs. The world gives the body its cold, water, food and danger; a realistic body gives making things its purpose, since cold calls for clothing and winter for food that keeps; and families need fed, healthy, sheltered adults to raise children through a winter. Thirst arrives with water at step 12, not with the body, because water means something only once someone must drink it.
+The order follows what each area needs. The world gives the body its cold, water, food and danger; a realistic body gives making things its purpose, since cold calls for clothing and winter for food that keeps; and families need fed, healthy, sheltered adults to raise children through a winter. Thirst arrives with water at step 11, not with the body, because water means something only once someone must drink it.
 
 ## What we watch for
 
@@ -80,6 +79,6 @@ Life 9's questions for later, on whether axe making concentrates with practice o
 
 ## Open decisions
 
-- **How plants are represented.** A landscape tens of kilometres across holds millions of trees, too many to simulate one by one. The recommendation is to keep plants individual where people or animals use them and count them in stands elsewhere. Step 10 settles it.
-- **Generations.** Runs of several years show children born and growing, but not generations. Whether runs grow longer is left for after step 26.
+- **How plants are represented.** A landscape tens of kilometres across holds millions of trees, too many to simulate one by one. Step 10 settles it for now: its land holds about 85,000 plants, few enough to keep every one individual. When vegetation arrives at step 13 and woodland covers the land, the recommendation is to keep plants individual where people or animals use them and count them in stands elsewhere.
+- **Generations.** Runs of several years show children born and growing, but not generations. Whether runs grow longer is left for after step 25.
 - **The art.** Which of Life Engine's low-poly models, of trees, rocks, people and now animals, are converted to glTF for the observer, as the merge document left open.
