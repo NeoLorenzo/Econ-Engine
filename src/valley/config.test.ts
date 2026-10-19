@@ -46,18 +46,37 @@ describe('valley configuration', () => {
   })
 
   it('refuses skill and practice ranges out of order, and rates that round to nothing', () => {
-    expect(errorsWith({ skillMinPercent: 120 })).toContain('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
+    expect(errorsWith({ skillMinPercent: 130 })).toContain('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
     expect(errorsWith({ practiceMinPercent: 0 })).toContain(
       'Practice must satisfy 1 ≤ practiceMinPercent ≤ practiceMaxPercent',
     )
     expect(errorsWith({ woodPerHour: 1, practiceMinPercent: 10 })).toContain(
-      'The lowest picking and gathering rates must be at least 1',
+      'The lowest gathering rate must be at least 1',
     )
   })
 
+  it('refuses a food that would not be worth working even full, to the slowest forager', () => {
+    // At 75% skill and 50% practice, 600 kcal of fish an hour is 225, just more than the 200 an hour costs.
+    expect(errorsWith({})).toEqual([])
+    expect(errorsWith({ fishKcalPerHour: 530 })).toContain(
+      'fishKcalPerHour at the lowest skill and practice must be more than pickKcalPerHour',
+    )
+    expect(errorsWith({ nutKcalPerHour: 500 })).toContain(
+      'nutKcalPerHour at the lowest skill and practice must be more than pickKcalPerHour',
+    )
+  })
+
+  it('refuses hazels that start above capacity, and a lake too large to count its growth exactly', () => {
+    expect(errorsWith({ initialHazelKcal: 2_000 })).toContain(
+      'initialHazelKcal must be between 0 and hazelCapacityKcal',
+    )
+    expect(errorsWith({ lakeHectares: 3_000 })).toContain('The lake is too large for its growth to be counted exactly')
+    expect(errorsWith({ lakeHectares: 0 })).toContain('lakeHectares must be positive')
+  })
+
   it('refuses plants that cannot hold a minute of work at the fastest rate', () => {
-    expect(errorsWith({ bushCapacityKcal: 20, initialBushKcal: 20 })).toContain(
-      'A bush must hold a minute of picking at the fastest rate',
+    expect(errorsWith({ treeCapacityWood: 1, initialTreeWood: 1, woodPerHour: 60 })).toContain(
+      'A tree must hold a minute of gathering at the fastest rate',
     )
   })
 
@@ -123,9 +142,9 @@ describe('sight and loads', () => {
   })
 
   it('refuses sites too wide to check', () => {
-    const message =
-      'A site must fit in close sight to be checked: perceptionRadiusCm > thicketRadiusCm, standRadiusCm and outcropRadiusCm'
+    const message = 'A site must fit in close sight to be checked: perceptionRadiusCm > every site radius'
     expect(errorsWith({ standRadiusCm: 2_500 })).toContain(message)
+    expect(errorsWith({ hazelThicketRadiusCm: 2_500 })).toContain(message)
     expect(errorsWith({ outcropRadiusCm: 2_500 })).toContain(message)
   })
 })

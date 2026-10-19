@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
 import { ValleyChecker } from './invariants'
-import { chooseSite, observeSites, siteCentre, siteCount, siteGood, sightOf, siteWanted } from './sites'
+import { chooseSite, observeSites, siteCentre, siteCount, siteHolds, siteKind, sightOf, siteWanted } from './sites'
 import { choosePlace, idleGoal, observePlaces, placeCount, placeWanted } from './social'
 import type { Forager, ValleyState } from './types'
 
@@ -34,20 +34,25 @@ describe('sight', () => {
   const state = valleyAt(TEN_AM)
   const { config, layout } = state
 
-  it('numbers thickets first, then stands, then outcrops', () => {
-    expect(siteCount(config)).toBe(48)
-    expect(siteGood(config, 0)).toBe('food')
-    expect(siteGood(config, 32)).toBe('wood')
-    expect(siteCentre(config, layout, 32)).toEqual(layout.stands[0])
-    expect(siteGood(config, 44)).toBe('stone')
-    expect(siteCentre(config, layout, 44)).toEqual(layout.outcrops[0])
+  it('numbers thickets first, then hazel thickets, then stands, then outcrops', () => {
+    expect(siteCount(config)).toBe(80)
+    expect(siteKind(config, 0)).toBe('thicket')
+    expect(siteKind(config, 32)).toBe('hazel')
+    expect(siteCentre(config, layout, 32)).toEqual(layout.hazelThickets[0])
+    expect(siteKind(config, 64)).toBe('stand')
+    expect(siteCentre(config, layout, 64)).toEqual(layout.stands[0])
+    expect(siteKind(config, 76)).toBe('outcrop')
+    expect(siteCentre(config, layout, 76)).toEqual(layout.outcrops[0])
+    // Food is searched for in both kinds of thicket, and wood in stands and in berry thickets whose bushes hold sticks.
+    expect(siteHolds(config, 32, 'food') && siteHolds(config, 0, 'food') && !siteHolds(config, 64, 'food')).toBe(true)
+    expect(siteHolds(config, 0, 'wood') && !siteHolds(config, 32, 'wood')).toBe(true)
   })
 
   it('sees across the valley by day and only close by at night', () => {
     expect(sightOf(config, TEN_AM)).toBe(100_000)
     expect(sightOf(config, NIGHT)).toBe(2_500)
     const day = state.foragers[0]!
-    put(day, 0, 0)
+    put(day, config.valleySizeCm / 2, config.valleySizeCm / 2)
     observeSites(config, layout, day, TEN_AM)
     expect([...day.siteKnown].every((known) => known === 1)).toBe(true)
     const night = valleyAt(NIGHT).foragers[0]!
@@ -146,7 +151,7 @@ describe('searching', () => {
       forager.siteChecked.fill(5)
       forager.siteChecked[7] = -1
       // A stand never checked is no use to a forager looking for food.
-      forager.siteChecked[33] = -1
+      forager.siteChecked[65] = -1
     })
     const searching = lastEventOf(stepValley(state), 0)!
     expect(searching).toMatchObject({ reason: 'searching', siteId: 7, placeId: null, workedFor: 'food' })
@@ -154,9 +159,12 @@ describe('searching', () => {
 
     // Every thicket checked, it searches the places it has never seen; with none left, it goes back to the bushes.
     state.foragers[0]!.siteChecked[7] = 5
-    state.foragers[0]!.bushMemory.seen.fill(5)
-    state.foragers[0]!.bushMemory.stock.fill(0)
-    state.foragers[0]!.bushMemory.seen[1_000] = 1
+    state.foragers[0]!.foodMemory.seen.fill(5)
+    state.foragers[0]!.foodMemory.stock.fill(0)
+    state.foragers[0]!.foodMemory.seen[1_000] = 1
+    // It has fished the lake and found it empty.
+    state.foragers[0]!.lakeKnown = true
+    state.foragers[0]!.lakeStock = 0
     const ground = lastEventOf(stepValley(state), 0)!
     expect(ground.reason).toBe('seeking food')
     expect(ground.targetId).toBe(1_000)

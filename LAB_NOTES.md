@@ -6,6 +6,39 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE9-HazelAndLake-048] - (2026-10-19)
+
+### Problem
+
+In Life 9.6 every forager starved within a few days of each other, about four weeks in. Two things caused it. The valley held only berries, about 1.7 million kcal a year against the band's 7 million or more, and no real Mesolithic band lived on berries. And everyone ran down together: born alike and eating from the same bushes, all eight reached zero at once, and the last bushes held less than the minute of picking the rules required before anyone could start. The owner asked to make the valley more realistic rather than change the numbers for people, and to fix the deaths all at once.
+
+### Decisions
+
+The owner chose hazel thickets and a fishing lake with realistic numbers, and approved the spec. Within it:
+
+- **Hazelnuts as the staple.** Mesolithic sites such as Staosnaig and Duvensee hold roasted hazelnut shells by the tens of thousands. Wild hazel yields about 400 kg a hectare; 40 hazels on a thicket 20 m across give 477 kg a hectare, the top of the wild range. Gathering and cracking were set at about 1.4 kg an hour, from orchard hand-collection rates of 4.5 to 8 kg an hour less the time to crack them: an estimate.
+- **The lake as a reserve, not a staple.** Northern lakes yield 0.2 to 43 kg of fish a hectare a year, so a 30 hectare lake gives at most 180,000 kcal a year. Its fish grow by the logistic rule, the standard model of a fish stock, so the band can fish it down. It lies beyond the north edge so that no straight walk crosses water.
+- **A larger valley,** 800 m across, because 32 hazel thickets do not fit among the other sites in 600 m. The valley feeds about seven, a little less than the band.
+- **Food comes more slowly as a source thins,** in proportion to what is left, and a source is worked while an hour there brings more than it costs. This replaces the minute's-worth floor, so thin sources can still be worked.
+- **Born foraging skill from 75% to 125%.** Individual return rates differ widely among real foragers, and the difference decides who eats when food is short.
+
+### What the implementation showed
+
+- The first version weighed only the nearest bush and the nearest hazel worth working against the lake. Because a forager knows the lake from sight and expects it full, it fished rather than search hazel thickets it could see, and fished the lake to a third in 110 days. A thicket it has spotted and never checked is now expected full too, as the lake is.
+- It still fished beside full hazels, because the nearest hazel worth working was usually a picked-over one. The choice now weighs every bush and hazel it remembers. This is cheap because it is made only when a forager needs a new source.
+- With both corrections, on the canonical seed over a year: everyone lives on hazelnuts alone for about six months, as their rate of 3,500 kcal an hour predicts. Berries come in at about day 180, as the hazels fall below a fifth of full, and fish at about day 200. The lake is fished down to about a third by day 365. Nobody dies in the first year. By its end the members' reserves range from about 17,000 to 65,000 kcal, so hunger has started to sort the band rather than strike it all at once.
+- The checker found nothing wrong in 365 checked days.
+
+These are observations from single runs, not experiments.
+
+### Open questions
+
+- Who survives a long shortage, and whether the band settles at the seven the valley feeds.
+- Whether the band fishes the lake out, and whether it recovers.
+- Seasons: nuts ripen in autumn, hazel has mast years, fish run; food that keeps then needs storing, which is step 10.
+- Hazel is the best source of sticks in a real Mesolithic wood; whether hazels should give wood.
+- The rate of gathering and cracking hazelnuts, and the fish stock of a Mesolithic lake, are estimates that need better sources.
+
 ## [LIFE9-Calibrated-047] - (2026-10-19)
 
 ### Problem

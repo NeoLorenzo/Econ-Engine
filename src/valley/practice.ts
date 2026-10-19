@@ -27,11 +27,17 @@ export function practicePercents(config: ValleyConfig, log: PracticeLog) {
 export const craftOf = (config: ValleyConfig, craftSkill: number, log: PracticeLog) =>
   Math.max(1, Math.floor((craftSkill * practicePercents(config, log).make) / 100))
 
-/** Hourly rates: the base rate times born skill times practice, rounded down. */
+/**
+ * Hourly rates at full sources: the base rate times born skill times practice, rounded down. One foraging skill and
+ * one practice serve berries, nuts and fish.
+ */
 export function ratesOf(config: ValleyConfig, foragingSkill: number, woodSkill: number, log: PracticeLog) {
   const percent = practicePercents(config, log)
+  const forage = (base: number) => Math.floor((base * foragingSkill * percent.forage) / 10_000)
   return {
-    forageRate: Math.floor((config.forageKcalPerHour * foragingSkill * percent.forage) / 10_000),
+    forageRate: forage(config.berryKcalPerHour),
+    nutRate: forage(config.nutKcalPerHour),
+    fishRate: forage(config.fishKcalPerHour),
     woodRate: Math.floor((config.woodPerHour * woodSkill * percent.gather) / 10_000),
   }
 }
@@ -75,6 +81,8 @@ export function practiceDay(config: ValleyConfig, forager: Forager, minute: numb
   }
   forager.practiceLog = practiceLog
   forager.forageRate = rates.forageRate
+  forager.nutRate = rates.nutRate
+  forager.fishRate = rates.fishRate
   forager.woodRate = rates.woodRate
   forager.craft = craft
   forager.secondsToday = noTaskSeconds()

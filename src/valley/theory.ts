@@ -1,4 +1,5 @@
 import { askOf } from './axes'
+import { lakeCapacityKcal } from './config'
 import { speedForLoad, walkCostForLoad } from './forager'
 import { placeCount } from './social'
 import { siteCount } from './sites'
@@ -27,8 +28,18 @@ export function valleyTheory(config: ValleyConfig) {
   /** The food a forager eats in a day at rate `g`, which is its daily need. */
   const dailyNeedKcal = (g: number, gatherHours: number, walkHours: number) =>
     g * forageHoursPerDay(g, gatherHours, walkHours)
-  const yearlyRegrowthKcal = config.thicketCount * config.bushesPerThicket * config.bushRegrowthKcalPerYear
+  const yearlyBerriesKcal = config.thicketCount * config.bushesPerThicket * config.bushRegrowthKcalPerYear
+  const yearlyNutsKcal = config.hazelThicketCount * config.hazelsPerThicket * config.hazelRegrowthKcalPerYear
+  /** The lake's fish grow fastest at half its stock: `lakeGrowthPercentPerYear / 400` of a full lake a year. */
+  const yearlyFishKcal = (lakeCapacityKcal(config) * config.lakeGrowthPercentPerYear) / 400
+  /** What the valley can give every year: berries, nuts, and the lake's fish held at its most productive stock. */
+  const yearlyRegrowthKcal = yearlyBerriesKcal + yearlyNutsKcal + yearlyFishKcal
   const dailyRegrowthKcal = yearlyRegrowthKcal / 365
+  /**
+   * Below these shares of its capacity a source is no longer worth working to a forager of full rate `full`: an hour
+   * there brings no more than it costs.
+   */
+  const worthWorkingBelow = (full: number) => config.pickKcalPerHour / full
   /** Wood gathered for one's own fires a day: a night's wood at rate `w`. */
   const gatherHoursPerDay = (w: number) => nightWood(config) / w
   /** The most spare wood a forager can hold after a trip for itself: `max(0, nightWood − 1 + woodLoad − woodTarget)`. */
@@ -56,8 +67,17 @@ export function valleyTheory(config: ValleyConfig) {
     forageHoursPerDay,
     dailyNeedKcal,
     gatherHoursPerDay,
+    yearlyBerriesKcal,
+    yearlyNutsKcal,
+    yearlyFishKcal,
     yearlyRegrowthKcal,
     dailyRegrowthKcal,
+    worthWorkingBelow,
+    /** Food the valley starts with: berries on the bushes, nuts on the hazels and fish in the lake. */
+    initialFoodKcal:
+      config.thicketCount * config.bushesPerThicket * config.initialBushKcal +
+      config.hazelThicketCount * config.hazelsPerThicket * config.initialHazelKcal +
+      lakeCapacityKcal(config),
     /** How many foragers the valley could feed if each needed `need` kilocalories a day. */
     carryingCapacity: (need: number) => dailyRegrowthKcal / need,
     nightWood: nightWood(config),

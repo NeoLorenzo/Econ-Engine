@@ -126,6 +126,8 @@ The [step 9 specification](LIFE9_SPEC.md) settled step 9. The owner set its rule
 
 Life 9.6, on 2026-10-19, set every physical number from real measurements, recorded in the [calibration document](CALIBRATION.md). The owner found that the valley gave no reason to store, claim land or trade, and realistic numbers make food, wood and logs scarce. Seasons, and food that keeps, are what the calibration points to next.
 
+Life 9.7, also on 2026-10-19, adds hazel thickets and a lake, after every forager starved in Life 9.6's valley of berries alone. The owner chose to change the land rather than the numbers for people. Food comes more slowly as a source thins, and foragers are born with different foraging skill, so a shortage sorts the band instead of killing it at once.
+
 From step 9 on, the owner set the Life core in a feature-building phase: experiments wait for a later, stable version, and each step's specification lists its questions for later.
 
 ## References

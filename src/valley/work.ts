@@ -14,9 +14,10 @@ export function hourlyShare(amount: number, hour: number, periodHours: number) {
   return Math.floor((amount * (h + 1)) / periodHours) - Math.floor((amount * h) / periodHours)
 }
 
-/** The hour's regrowth of berries on a bush, of dead branches under a standing tree, and of sticks on a bush. */
+/** The hour's regrowth of berries on a bush, nuts on a hazel, dead branches under a standing tree, and sticks on a bush. */
 export const regrowthOf = (config: ValleyConfig, hour: number) => ({
   berries: hourlyShare(config.bushRegrowthKcalPerYear, hour, HOURS_PER_YEAR),
+  nuts: hourlyShare(config.hazelRegrowthKcalPerYear, hour, HOURS_PER_YEAR),
   branches: hourlyShare(config.treeDeadfallWoodPerYear, hour, HOURS_PER_YEAR),
   sticks: hourlyShare(config.bushRegrowthWoodPerDecade, hour, HOURS_PER_DECADE),
 })

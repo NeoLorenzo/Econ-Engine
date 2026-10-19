@@ -1,6 +1,7 @@
 import { beginAxe, cutAt, exchangeAxes, planHut, workAxe } from './axes'
-import { carriedKcal, spoil } from './food'
-import { resolveValleyConfig } from './config'
+import { LAKE_ID, carriedKcal, foodOfSource, fullRateOf, rateAtStock, spoil, worthWorking } from './food'
+import { lakeCapacityKcal, resolveValleyConfig } from './config'
+import { lakeGrowth, seesShore } from './lake'
 import {
   MINUTES_PER_DAY,
   atHearth,
@@ -8,6 +9,7 @@ import {
   choosePlant,
   chooseWork,
   fillingLoad,
+  foodGoal,
   idleReason,
   isDaylight,
   loadKg,
@@ -18,6 +20,7 @@ import {
   observe,
   observeFar,
   plantsInViewOf,
+  sourcePoint,
   speedForLoad,
   walkCostForLoad,
 } from './forager'
@@ -57,6 +60,7 @@ import type {
   DeathEvent,
   FeedEvent,
   FireEvent,
+  FoodKind,
   FoodLot,
   Forager,
   ForagerAction,
@@ -76,11 +80,17 @@ import type {
 /** The observer shows the last 3 days of events; experiments read daily summaries instead. */
 export const EVENT_HISTORY_DAYS = 3
 
-const sum = (values: Int32Array) => {
+const sum = (values: Int32Array, from = 0, to = values.length) => {
   let total = 0
-  for (const value of values) total += value
+  for (let id = from; id < to; id += 1) total += values[id]!
   return total
 }
+
+/** Berries on every bush and nuts on every hazel: bushes come first among food plants. */
+const foodStocks = (state: Pick<ValleyState, 'foodStock' | 'layout'>) => ({
+  bushStockKcal: sum(state.foodStock, 0, state.layout.bushes.count),
+  hazelStockKcal: sum(state.foodStock, state.layout.bushes.count),
+})
 
 const zeros = (n: number) => Array.from({ length: n }, () => 0)
 
@@ -101,7 +111,10 @@ const hutLogsById = (state: Pick<ValleyState, 'foragers' | 'huts'>) =>
 
 function emptyDay(
   day: number,
-  state: Pick<ValleyState, 'foragers' | 'bushKcal' | 'woodStock' | 'groups' | 'huts' | 'config'>,
+  state: Pick<
+    ValleyState,
+    'foragers' | 'foodStock' | 'layout' | 'lakeKcal' | 'woodStock' | 'groups' | 'huts' | 'config'
+  >,
 ): DaySummary {
   const { foragers } = state
   return {
@@ -111,7 +124,11 @@ function emptyDay(
     spentKcal: 0,
     alive: foragers.filter((forager) => forager.alive).length,
     deaths: 0,
-    bushStockKcal: sum(state.bushKcal),
+    ...foodStocks(state),
+    lakeKcal: state.lakeKcal,
+    gatheredBerriesKcal: 0,
+    gatheredNutsKcal: 0,
+    gatheredFishKcal: 0,
     woodStock: sum(state.woodStock),
     endEnergyKcal: foragers.map((forager) => forager.energyKcal),
     spoiledKcal: 0,
@@ -168,7 +185,11 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const unplaceable = layoutError(config)
   if (unplaceable) throw new Error(`Invalid valley configuration: ${unplaceable}`)
   const layout = generateLayout(config)
-  const bushKcal = new Int32Array(layout.bushes.count).fill(config.initialBushKcal)
+  // Food plants are the bushes, holding berries, then the hazels, holding nuts.
+  const foodStock = new Int32Array(layout.foodPlants.count)
+    .fill(config.initialBushKcal, 0, layout.bushes.count)
+    .fill(config.initialHazelKcal, layout.bushes.count)
+  const lakeKcal = lakeCapacityKcal(config)
   // Wood plants are the trees, holding branches, then the bushes, holding sticks.
   const woodStock = new Int32Array(layout.woodPlants.count)
     .fill(config.initialTreeWood, 0, layout.trees.count)
@@ -199,11 +220,14 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       wood: 0,
       shortOfWood: woodMatters(config),
       tripWood: 0,
-      targetBushId: null,
+      targetFoodId: null,
       targetWoodId: null,
       // A forager has seen nothing yet, and sees what is around it in its first turn.
-      bushMemory: unknown(bushKcal),
+      foodMemory: unknown(foodStock),
       woodMemory: unknown(woodStock),
+      lakeKnown: false,
+      lakeStock: -1,
+      lakeFishedMinute: -1,
       logMemory: unknown(treeLogs),
       stoneMemory: unknown(stoneStock),
       groupId: null,
@@ -255,13 +279,15 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     }
   })
   const groups = startingGroups(config, layout, foragers)
-  const partial = { foragers, bushKcal, woodStock, groups, huts: [], config }
+  const partial = { foragers, foodStock, layout, lakeKcal, woodStock, groups, huts: [], config }
   return {
     config,
     layout,
     minute: 0,
-    bushKcal,
+    foodStock,
     woodStock,
+    lakeKcal,
+    lakeGrowthRemainder: 0,
     treeLogs,
     treeFelledMinute,
     stoneStock,
@@ -269,8 +295,9 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     groups,
     huts: [],
     totals: {
-      initialKcal: sum(bushKcal) + foragers.reduce((total, forager) => total + forager.energyKcal, 0),
+      initialKcal: sum(foodStock) + lakeKcal + foragers.reduce((total, forager) => total + forager.energyKcal, 0),
       regrownKcal: 0,
+      lakeGrownKcal: 0,
       metabolizedKcal: 0,
       gatheredKcal: 0,
       spoiledKcal: 0,
@@ -313,7 +340,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
 const cloneForager = (forager: Forager): Forager => ({
   ...forager,
   carried: [...forager.carried],
-  bushMemory: { stock: forager.bushMemory.stock.slice(), seen: forager.bushMemory.seen.slice() },
+  foodMemory: { stock: forager.foodMemory.stock.slice(), seen: forager.foodMemory.seen.slice() },
   woodMemory: { stock: forager.woodMemory.stock.slice(), seen: forager.woodMemory.seen.slice() },
   logMemory: { stock: forager.logMemory.stock.slice(), seen: forager.logMemory.seen.slice() },
   stoneMemory: { stock: forager.stoneMemory.stock.slice(), seen: forager.stoneMemory.seen.slice() },
@@ -362,7 +389,7 @@ const cloneDay = (day: DaySummary): DaySummary => ({
 export function cloneValley(state: ValleyState): ValleyState {
   return {
     ...state,
-    bushKcal: state.bushKcal.slice(),
+    foodStock: state.foodStock.slice(),
     woodStock: state.woodStock.slice(),
     treeLogs: state.treeLogs.slice(),
     treeFelledMinute: state.treeFelledMinute.slice(),
@@ -399,7 +426,7 @@ export function eatCarried(lots: FoodLot[], room: number) {
   if (index < lots.length && takenKcal < room) {
     const lot = lots[index]!
     const rest = lots.slice(index)
-    rest[0] = { kcal: lot.kcal - (room - takenKcal), harvestTick: lot.harvestTick }
+    rest[0] = { food: lot.food, kcal: lot.kcal - (room - takenKcal), harvestTick: lot.harvestTick }
     return { rest, takenKcal: room }
   }
   return { rest: index ? lots.slice(index) : lots, takenKcal }
@@ -420,19 +447,14 @@ const actionOf = (
 /** One forager's minute, changing the working copies in `state` in place. */
 function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnResult {
   const { config, layout } = state
-  // Lots are kept oldest first, so nothing spoils while the oldest is still fresh.
-  const oldest = forager.carried[0]
-  const fresh = !oldest || config.shelfLifeHours === 0 || oldest.harvestTick > minute - 60 * config.shelfLifeHours
-  const spoiled = fresh
-    ? { lots: forager.carried, spoiledKcal: 0 }
-    : spoil(forager.carried, minute, 60 * config.shelfLifeHours)
+  const spoiled = spoil(config, forager.carried, minute)
   const eaten = eatCarried(spoiled.lots, config.reserveMaxKcal - forager.energyKcal)
   forager.energyKcal += eaten.takenKcal
   forager.carried = eaten.rest
   observe(
-    forager.bushMemory,
-    plantsInViewOf(config, forager.bushMemory, layout.bushIndex, layout.bushes, forager.x, forager.y),
-    state.bushKcal,
+    forager.foodMemory,
+    plantsInViewOf(config, forager.foodMemory, layout.foodIndex, layout.foodPlants, forager.x, forager.y),
+    state.foodStock,
     minute,
   )
   observe(
@@ -442,6 +464,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     minute,
   )
   const far = sightOf(config, minute)
+  if (seesShore(forager.y, far)) forager.lakeKnown = true
   observeFar(
     config,
     forager.logMemory,
@@ -475,7 +498,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   if (abandoned) hutEvents.push(abandoned)
   // What it carries as it sets out decides how fast it walks this minute.
   const load = loadOf(forager)
-  const kg = loadKg(config, load.wood, load.berriesKcal, load.log)
+  const kg = loadKg(config, load)
   const speed = speedForLoad(config, kg)
 
   const from = { x: forager.x, y: forager.y }
@@ -485,6 +508,8 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   let forTrade = false
   let targetId: number | null = null
   let plantId: number | null = null
+  let food: FoodKind | null = null
+  let sourceStockBefore = 0
   let placeId: number | null = null
   let siteId: number | null = null
   let gatheredKcal = 0
@@ -649,19 +674,22 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
       forager.trip = work.trip
       good = work.good
       forTrade = work.forTrade
-      const food = good === 'food'
-      const plants = food ? layout.bushes : layout.woodPlants
-      // Rule 9: remembering no plant worth a minute's work, it searches a site of the good it has never checked, then
-      // ground it has never seen, before it revisits.
-      let chosen = choosePlant(config, layout, forager, good, minute, false)
-      const siteSearch = chosen === null ? chooseSite(config, layout, forager, minute, 'search', good) : null
+      const forFood = good === 'food'
+      const plants = forFood ? layout.foodPlants : layout.woodPlants
+      // Working for food, a thicket it has spotted and never checked competes with the sources it remembers. Rule 14:
+      // remembering no source worth working, it searches a site of the good it has never checked, then ground it has
+      // never seen, before it revisits.
+      const foodTarget = forFood ? foodGoal(config, layout, forager, minute, false) : null
+      let chosen = forFood ? (foodTarget?.source ?? null) : choosePlant(config, layout, forager, good, minute, false)
+      const siteSearch =
+        foodTarget?.site ?? (chosen === null ? chooseSite(config, layout, forager, minute, 'search', good) : null)
       const search =
         chosen === null && siteSearch === null && forager.placesSeen < placeCount(config)
           ? choosePlace(config, forager, minute)
           : null
       if (chosen === null && search === null && siteSearch === null)
         chosen = choosePlant(config, layout, forager, good, minute)
-      if (food) forager.targetBushId = chosen
+      if (forFood) forager.targetFoodId = chosen
       else forager.targetWoodId = chosen
       if (siteSearch !== null) {
         const centre = siteCentre(config, layout, siteSearch)
@@ -676,43 +704,61 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
       } else if (chosen === null) {
         reason = idleReason(config, forager, plants, minute)
         seconds.stand = 60
+      } else if (forFood) {
+        targetId = chosen
+        food = foodOfSource(layout, chosen)
+        const point = sourcePoint(layout, forager, chosen)
+        const left = approach(point.x, point.y)
+        const lake = chosen === LAKE_ID
+        sourceStockBefore = lake ? state.lakeKcal : state.foodStock[chosen]!
+        // Food comes more slowly as a source thins: the rate is set by the stock as it begins.
+        const rate = rateAtStock(config, fullRateOf(forager, food), food, sourceStockBefore)
+        // A fisher learns the lake by fishing it: at the shore it finds the stock, worth working or not.
+        if (lake && left > 0) {
+          forager.lakeStock = sourceStockBefore
+          forager.lakeFishedMinute = minute
+        }
+        if (left > 0 && worthWorking(config, rate)) {
+          seconds.work = left
+          plantId = chosen
+          const due = workSeconds(forager.pickRemainder, rate, left)
+          forager.pickRemainder = due.remainder
+          // It may take the very last of a source, and never more than it holds.
+          gatheredKcal = Math.min(due.units, sourceStockBefore)
+          if (lake) state.lakeKcal -= gatheredKcal
+          else state.foodStock[chosen]! -= gatheredKcal
+          const eat = Math.min(gatheredKcal, config.reserveMaxKcal - forager.energyKcal)
+          forager.energyKcal += eat
+          if (gatheredKcal > eat)
+            // Taken this minute, it is the newest lot, so it goes last, as `addLots` would put it.
+            forager.carried = [...forager.carried, { food, kcal: gatheredKcal - eat, harvestTick: minute }]
+          forager.secondsToday.forage += left
+          forager.secondsWorked.forage += left
+        } else seconds.stand = left
+        if (buying) reason = 'picking food to buy an axe'
+        else if (!seconds.work) reason = 'seeking food'
+        else reason = food === 'berries' ? 'foraging' : food === 'nuts' ? 'gathering nuts' : 'fishing'
       } else {
         targetId = chosen
         const px = plants.x[chosen]!
         const py = plants.y[chosen]!
         const left = approach(px, py)
-        const stock = food ? state.bushKcal : state.woodStock
-        const rate = food ? forager.forageRate : forager.woodRate
-        if (left > 0 && stock[chosen]! >= minuteOfWork(rate)) {
+        const rate = forager.woodRate
+        if (left > 0 && state.woodStock[chosen]! >= minuteOfWork(rate)) {
           seconds.work = left
           plantId = chosen
-          if (food) {
-            const due = workSeconds(forager.pickRemainder, rate, left)
-            forager.pickRemainder = due.remainder
-            gatheredKcal = due.units
-            stock[chosen]! -= due.units
-            const eat = Math.min(due.units, config.reserveMaxKcal - forager.energyKcal)
-            forager.energyKcal += eat
-            if (due.units > eat)
-              // Picked this minute, it is the newest lot, so it goes last, as `addLots` would put it.
-              forager.carried = [...forager.carried, { kcal: due.units - eat, harvestTick: minute }]
-            forager.secondsToday.forage += left
-            forager.secondsWorked.forage += left
-          } else {
-            const due = workSeconds(forager.gatherRemainder, rate, left)
-            forager.gatherRemainder = due.remainder
-            gatheredWood = due.units
-            stock[chosen]! -= due.units
-            forager.wood += due.units
-            forager.tripWood += due.units
-            forager.secondsToday.gather += left
-            forager.secondsWorked.gather += left
-          }
+          const due = workSeconds(forager.gatherRemainder, rate, left)
+          forager.gatherRemainder = due.remainder
+          gatheredWood = due.units
+          state.woodStock[chosen]! -= due.units
+          forager.wood += due.units
+          forager.tripWood += due.units
+          forager.secondsToday.gather += left
+          forager.secondsWorked.gather += left
         } else seconds.stand = left
         if (filling) reason = 'filling a load'
-        else if (buying) reason = 'picking food to buy an axe'
-        else if (seconds.work) reason = food ? 'foraging' : 'gathering'
-        else reason = food ? 'seeking food' : 'seeking wood'
+        else if (seconds.work) reason = 'gathering'
+        else reason = 'seeking wood'
       }
     }
   }
@@ -757,6 +803,8 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     forTrade,
     targetId,
     plantId,
+    food,
+    sourceStockBefore,
     walkSeconds: seconds.walk,
     workSeconds: seconds.work,
     standSeconds: seconds.stand,
@@ -778,6 +826,8 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     siteId,
     loadWood: load.wood,
     loadBerriesKcal: load.berriesKcal,
+    loadNutsKcal: load.nutsKcal,
+    loadFishKcal: load.fishKcal,
     speedCmPerSecond: speed,
     fireGroupId,
     loadLog: load.log,
@@ -791,6 +841,29 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     inHut,
   }
   return { event, swaps: traded.swaps, quotes: traded.quotes, met, fed, axeEvents, hutEvents }
+}
+
+/**
+ * Hour `hour`'s regrowth of food, with hours counted from minute 0: berries on every bush and nuts on every hazel,
+ * each up to its capacity. Returns the food regrown.
+ */
+export function regrowFood(state: Pick<ValleyState, 'config' | 'foodStock' | 'layout'>, hour: number) {
+  const { config, foodStock } = state
+  const bushes = state.layout.bushes.count
+  const { berries, nuts } = regrowthOf(config, hour)
+  let regrown = 0
+  const grow = (from: number, to: number, amount: number, capacity: number) => {
+    if (!amount) return
+    for (let id = from; id < to; id += 1) {
+      const before = foodStock[id]!
+      const after = Math.min(capacity, before + amount)
+      foodStock[id] = after
+      regrown += after - before
+    }
+  }
+  grow(0, bushes, berries, config.bushCapacityKcal)
+  grow(bushes, foodStock.length, nuts, config.hazelCapacityKcal)
+  return regrown
 }
 
 /**
@@ -837,18 +910,15 @@ function advance(state: ValleyState, recordEvents = true) {
     state.totals.regrownLogs += regrowTrees(state, minute)
   }
   let regrownKcal = 0
+  let lakeGrownKcal = 0
   let regrownWood = 0
   if (minute > 0 && minute % 60 === 0) {
     const hour = minute / 60
-    const { berries } = regrowthOf(config, hour)
-    if (berries) {
-      for (let id = 0; id < state.bushKcal.length; id += 1) {
-        const before = state.bushKcal[id]!
-        const after = Math.min(config.bushCapacityKcal, before + berries)
-        state.bushKcal[id] = after
-        regrownKcal += after - before
-      }
-    }
+    regrownKcal += regrowFood(state, hour)
+    const grown = lakeGrowth(config, state.lakeKcal, state.lakeGrowthRemainder)
+    state.lakeKcal += grown.grown
+    state.lakeGrowthRemainder = grown.remainder
+    lakeGrownKcal = grown.grown
     regrownWood += regrowWood(state, hour)
   }
 
@@ -932,9 +1002,19 @@ function advance(state: ValleyState, recordEvents = true) {
       today.gatherSecondsById[id]! += event.workSeconds
     }
     today.walkSecondsById[id]! += event.walkSeconds
-    if (loadKg(config, event.loadWood, event.loadBerriesKcal) > 0) today.loadedWalkSecondsById[id]! += event.walkSeconds
+    const carriedLoad = {
+      wood: event.loadWood,
+      berriesKcal: event.loadBerriesKcal,
+      nutsKcal: event.loadNutsKcal,
+      fishKcal: event.loadFishKcal,
+      log: 0,
+    }
+    if (loadKg(config, carriedLoad) > 0) today.loadedWalkSecondsById[id]! += event.walkSeconds
     today.gatheredWoodById[id]! += event.gatheredWood
     today.gatheredKcal += event.gatheredKcal
+    if (event.food === 'berries') today.gatheredBerriesKcal += event.gatheredKcal
+    else if (event.food === 'nuts') today.gatheredNutsKcal += event.gatheredKcal
+    else if (event.food === 'fish') today.gatheredFishKcal += event.gatheredKcal
     today.gatheredWood += event.gatheredWood
     today.spentKcal += event.spentKcal
     today.spoiledKcal += event.spoiledKcal
@@ -970,6 +1050,7 @@ function advance(state: ValleyState, recordEvents = true) {
   today.quotes += lastQuotes.length
   if (state.totals.firstSwapMinute === null && lastSwaps.length) state.totals.firstSwapMinute = minute
   state.totals.regrownKcal += regrownKcal
+  state.totals.lakeGrownKcal += lakeGrownKcal
   state.totals.regrownWood += regrownWood
   if (lastPractice.length) {
     today.forageRates = state.foragers.map((forager) => forager.forageRate)
@@ -996,7 +1077,8 @@ function advance(state: ValleyState, recordEvents = true) {
 
   const next = minute + 1
   if (next % MINUTES_PER_DAY === 0) {
-    today.bushStockKcal = sum(state.bushKcal)
+    Object.assign(today, foodStocks(state))
+    today.lakeKcal = state.lakeKcal
     today.woodStock = sum(state.woodStock)
     today.endEnergyKcal = state.foragers.map((forager) => forager.energyKcal)
     today.carriedKcal = state.foragers.reduce((total, forager) => total + carriedKcal(forager.carried), 0)

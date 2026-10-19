@@ -38,22 +38,22 @@ const put = (forager: Forager, x: number, y: number) => {
 describe('places', () => {
   const { config } = createValley(SHORT_SIGHT)
 
-  it('divides the valley into 400 places of 30 m', () => {
-    expect(placesPerSide(config)).toBe(20)
-    expect(placeCount(config)).toBe(400)
+  it('divides the valley into 729 places of 30 m, the last row and column cut at the edge', () => {
+    expect(placesPerSide(config)).toBe(27)
+    expect(placeCount(config)).toBe(729)
     expect(placeCentre(config, 0)).toEqual({ x: 1_500, y: 1_500 })
-    expect(placeCentre(config, 21)).toEqual({ x: 4_500, y: 4_500 })
+    expect(placeCentre(config, 28)).toEqual({ x: 4_500, y: 4_500 })
   })
 
   it('counts a place seen only when all of it lies in view, as it does from its centre', () => {
-    expect(placeInView(config, 21, 4_500, 4_500)).toBe(true)
+    expect(placeInView(config, 28, 4_500, 4_500)).toBe(true)
     // 21.2 m to the far corners from the centre; 6 m off centre, the far corners lie beyond 25 m.
-    expect(placeInView(config, 21, 5_100, 4_500)).toBe(false)
+    expect(placeInView(config, 28, 5_100, 4_500)).toBe(false)
     const forager = createValley(SHORT_SIGHT).foragers[0]!
     put(forager, 4_500, 4_500)
     observePlaces(config, forager, 7)
-    expect(forager.placeSeen[21]).toBe(7)
-    expect(forager.placeSeen[22]).toBe(-1)
+    expect(forager.placeSeen[28]).toBe(7)
+    expect(forager.placeSeen[29]).toBe(-1)
     expect(forager.placesSeen).toBe(1)
   })
 
@@ -63,9 +63,9 @@ describe('places', () => {
     put(forager, 4_500, 3_000)
     forager.placeSeen.fill(TEN_AM - 10)
     forager.placesSeen = placeCount(state.config) - 2
-    // Places 1 and 21 are equally near and never seen; 1 has the lower ID.
+    // Places 1 and 28 are equally near and never seen; 1 has the lower ID.
     forager.placeSeen[1] = -1
-    forager.placeSeen[21] = -1
+    forager.placeSeen[28] = -1
     expect(choosePlace(state.config, forager, TEN_AM)).toBe(1)
     forager.placeSeen[250] = -1
     forager.placesSeen -= 1
@@ -85,11 +85,11 @@ describe('places', () => {
     const forager = state.foragers[0]!
     forager.placeSeen.fill(0)
     forager.placesSeen = placeCount(state.config) - 1
-    forager.placeSeen[399] = -1
+    forager.placeSeen[728] = -1
     forager.placeSeen[0] = 0
     put(forager, 1_500, 1_500)
     forager.hearth = { x: 1_500, y: 1_500 }
-    expect(choosePlace(state.config, forager, TEN_AM)).toBe(399)
+    expect(choosePlace(state.config, forager, TEN_AM)).toBe(728)
     // Ten minutes before dusk, the far corner of the valley is out of reach.
     forager.exploreTarget = null
     expect(choosePlace(state.config, forager, 18 * 60 - 10)).toBeNull()
@@ -103,8 +103,8 @@ describe('searching', () => {
       put(forager, valley.layout.camp.x, valley.layout.camp.y)
       forager.energyKcal = 63_000
       forager.hungry = true
-      forager.bushMemory.seen.fill(5)
-      forager.bushMemory.stock.fill(0)
+      forager.foodMemory.seen.fill(5)
+      forager.foodMemory.stock.fill(0)
     })
     const searching = lastEventOf(stepValley(state), 0)!
     expect(searching.reason).toBe('searching')
@@ -112,7 +112,7 @@ describe('searching', () => {
 
     state.foragers[0]!.placeSeen.fill(5)
     state.foragers[0]!.placesSeen = placeCount(state.config)
-    state.foragers[0]!.bushMemory.seen[1_000] = 1
+    state.foragers[0]!.foodMemory.seen[1_000] = 1
     const revisiting = lastEventOf(stepValley(state), 0)!
     expect(revisiting.reason).toBe('seeking food')
     expect(revisiting.targetId).toBe(1_000)
@@ -184,7 +184,7 @@ describe('meeting', () => {
     const [seller, buyer] = state.foragers as [Forager, Forager]
     Object.assign(seller, { forageRate: 1_000, woodRate: 30, wood: 40, energyKcal: 65_000 })
     Object.assign(buyer, { forageRate: 1_400, woodRate: 14, wood: 0, energyKcal: 69_000 })
-    buyer.carried = [{ kcal: 2_000, harvestTick: TEN_AM }]
+    buyer.carried = [{ food: 'berries' as const, kcal: 2_000, harvestTick: TEN_AM }]
     expect(swap(state.config, seller, state.foragers, TEN_AM).swaps).toHaveLength(0)
     meet(state, seller, TEN_AM)
     expect(swap(state.config, seller, state.foragers, TEN_AM).swaps).toHaveLength(1)

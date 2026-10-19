@@ -39,10 +39,25 @@ function pairBesideBush(): DisplayPair {
   forager.y = state.layout.bushes.y[0]!
   forager.energyKcal = 63_000
   forager.hungry = true
-  state.bushKcal.fill(0)
-  state.bushKcal[0] = 400
+  state.foodStock.fill(0)
+  state.foodStock[0] = 400
   return { previous: state, next: stepValley(state), alpha: 0 }
 }
+
+describe('fishing', () => {
+  it('draws a fisher on the shore facing the water, holding a rod, and says so', () => {
+    const state: ValleyState = cloneValley(createValley())
+    state.minute = 600
+    const forager = state.foragers[0]!
+    Object.assign(forager, { y: 50, energyKcal: 63_000, hungry: true, lakeKnown: true })
+    forager.siteKnown.fill(1)
+    forager.siteChecked.fill(5)
+    state.foodStock.fill(0)
+    const pair = { previous: state, next: stepValley(state), alpha: 0.5 }
+    expect(foragerPose(pair, 0)).toMatchObject({ gesture: 'fish', heading: Math.atan2(0, -1) })
+    expect(describeActivity(pair, 0)).toBe('Fishing from the shore')
+  })
+})
 
 describe('drawing between two minutes', () => {
   it('walks the walking seconds along a straight line, then picks', () => {
@@ -91,9 +106,9 @@ describe('plants and the camera', () => {
   it('compares a plant’s true stock with what the followed forager remembers, or says it has never seen it', () => {
     const known = cloneValley(createValley())
     known.minute = 30
-    known.foragers[0]!.bushMemory.stock[7] = 400
-    known.foragers[0]!.bushMemory.seen[7] = 5
-    known.bushKcal[7] = 120
+    known.foragers[0]!.foodMemory.stock[7] = 400
+    known.foragers[0]!.foodMemory.seen[7] = 5
+    known.foodStock[7] = 120
     expect(plantInspection(known, 'bush', 7, 0)).toMatchObject({
       stock: 120,
       remembered: 400,
@@ -202,7 +217,7 @@ describe('groups and what a forager knows', () => {
     forager.siteKnown[3] = 1
     forager.siteKnown[35] = 1
     forager.siteChecked[3] = 590
-    expect(foragerSummary(state, 0)).toMatchObject({ sitesKnown: 2, sitesCheckedLately: 1, sitesTotal: 48 })
+    expect(foragerSummary(state, 0)).toMatchObject({ sitesKnown: 2, sitesCheckedLately: 1, sitesTotal: 80 })
     expect(siteRings(state, 0).map((ring) => [ring.site, ring.fresh])).toEqual([
       [3, true],
       [35, false],
@@ -237,9 +252,9 @@ describe('groups and what a forager knows', () => {
     const event = pair.next.lastEvents.find((made) => made.foragerId === 0)!
     for (const [change, text] of [
       [{ reason: 'checking', action: 'walk', siteId: 3 }, 'Walking to thicket 4 to see what it holds'],
-      [{ reason: 'checking', action: 'rest', siteId: 33 }, 'Looking over stand 2'],
-      [{ reason: 'searching', action: 'walk', siteId: 34, workedFor: 'wood' }, 'Searching stand 3 for firewood'],
-      [{ reason: 'searching', action: 'walk', siteId: null, workedFor: 'food' }, 'Searching new ground for berries'],
+      [{ reason: 'checking', action: 'rest', siteId: 33 }, 'Looking over hazel thicket 2'],
+      [{ reason: 'searching', action: 'walk', siteId: 66, workedFor: 'wood' }, 'Searching stand 3 for firewood'],
+      [{ reason: 'searching', action: 'walk', siteId: null, workedFor: 'food' }, 'Searching new ground for food'],
       [{ reason: 'taking a load home', action: 'walk', loadWood: 30 }, 'Taking 30 kg of firewood home'],
     ] as const) {
       Object.assign(event, { workSeconds: 0, workedFor: null, ...change })

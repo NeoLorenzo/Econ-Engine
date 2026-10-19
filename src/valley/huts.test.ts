@@ -77,7 +77,7 @@ describe('the layout', () => {
   })
 
   it('draws craft from a stream of its own, leaving the other skills as they were', () => {
-    const born = createValley({ craftSkillMinPercent: 50, craftSkillMaxPercent: 150, skillMinPercent: 50 })
+    const born = createValley({ craftSkillMinPercent: 50, craftSkillMaxPercent: 150, skillMinPercent: 90 })
     expect(drawSkills(born.config)).toEqual(drawSkills({ ...born.config, craftSkillMinPercent: 100 }))
     expect(new Set(born.foragers.map((forager) => forager.craftSkill)).size).toBeGreaterThan(1)
   })
@@ -396,7 +396,7 @@ describe('trading axes', () => {
     // A full reserve, so it keeps the food it carries; and a seller with room to eat the price.
     state.totals.initialKcal += 6_000 + state.config.reserveMaxKcal - state.foragers[0]!.energyKcal
     state.foragers[0]!.energyKcal = state.config.reserveMaxKcal
-    state.foragers[0]!.carried = [{ kcal: 6_000, harvestTick: EIGHT_PM - 60 }]
+    state.foragers[0]!.carried = [{ food: 'berries' as const, kcal: 6_000, harvestTick: EIGHT_PM - 60 }]
     state.totals.initialKcal -= maker.energyKcal - 60_000
     maker.energyKcal = 60_000
     const after = stepValley(state)
@@ -436,7 +436,20 @@ describe('theory', () => {
     expect(theory.hutLogsPerMemberDay).toBeCloseTo(1 / 60, 10)
     expect(theory.woodOnOffer).toBe(7_440)
     expect(theory.woodRegrownPerYear).toBeCloseTo(1_104, 10)
-    expect(theory.yearlyRegrowthKcal).toBe(1_728_000)
+  })
+
+  it('feeds about seven from berries, nuts and the lake at its most productive', () => {
+    const theory = valleyTheory(createValley().config)
+    expect(theory.yearlyBerriesKcal).toBe(1_728_000)
+    expect(theory.yearlyNutsKcal).toBe(4_800_000)
+    expect(theory.yearlyFishKcal).toBe(180_000)
+    expect(theory.yearlyRegrowthKcal).toBe(6_708_000)
+    expect(theory.carryingCapacity(2_500)).toBeCloseTo(7.35, 2)
+    expect(theory.initialFoodKcal).toBe(99_840 + 2_400_000 + 1_800_000)
+    // At full rates of 1,200, 3,500 and 600, a bush is worth working down to a sixth, a hazel to 6% and the lake to a third.
+    expect(theory.worthWorkingBelow(1_200)).toBeCloseTo(1 / 6, 10)
+    expect(theory.worthWorkingBelow(3_500)).toBeCloseTo(0.057, 3)
+    expect(theory.worthWorkingBelow(600)).toBeCloseTo(1 / 3, 10)
   })
 })
 

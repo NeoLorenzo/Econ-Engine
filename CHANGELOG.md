@@ -2,6 +2,29 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE9-HazelAndLake-048] - (2026-10-19)
+
+### Added
+
+- **Life 9.7: hazel thickets and a lake.** 32 hazel thickets of 40 hazels, a fourth kind of site, each hazel growing 1.5 kg of nuts in their shells (3,750 kcal) a year and holding half that. Nuts are gathered and cracked at 3,500 kcal an hour at a full hazel, weigh a kilogram for 2,500 kcal and keep half a year. Hazels are food plants after the bushes (`foodStock`, `foodMemory`, `targetFoodId` replace `bushKcal`, `bushMemory`, `targetBushId`).
+- **A lake of 30 hectares beyond the valley's north edge,** fished from the shore straight north of the fisher. Its fish, 100 kg a hectare (1.8 million kcal) at most, grow by the logistic rule at 40% a year, counted exactly with a remainder, so a lake fished to half grows most and one fished out recovers slowly. Fish are caught at 600 kcal an hour at a full lake, weigh a kilogram for 600 kcal and spoil in a day. A forager knows the lake once it sees the shore and learns its stock only by fishing.
+- `src/valley/lake.ts`, and food helpers in `food.ts`: food kinds, weights, shelf lives and the rate at a source.
+- Every new number is sourced in a new section of the [calibration document](docs/CALIBRATION.md#hazel-and-the-lake).
+
+### Changed
+
+- **Food comes more slowly as a source thins:** the rate at a bush, hazel or the lake is the full rate times the share left, and a source is worked while an hour there brings more than the 200 kcal it costs. The minute's-worth floor for food is gone.
+- **Choosing food:** a forager weighs every bush and hazel it remembers as worth working, the nearest unchecked thicket of each kind (expected full) and the lake, and goes where an hour brings most food for the walk.
+- **Born foraging and wood skills** run from 75% to 125% (were 100%). One foraging skill and practice serve berries, nuts and fish (`nutRate`, `fishRate`).
+- **The valley is 800 m across** (was 600 m), with 80 sites and 729 places.
+- Carried food is held in lots of one food each, spoiling by that food's shelf life and weighed by its own kilocalories a kilogram; action events record the food, its source's stock and the load of each food.
+- Renamed `forageKcalPerHour` to `berryKcalPerHour` and `shelfLifeHours` to `berryShelfLifeHours`. The rule that a bush must hold a minute of picking is replaced by one that each food, full, must be worth working to the slowest forager; a lake too large to count exactly is refused.
+- **Observer.** "Life 9.7 · hazel and a lake": tall hazels whose nut clusters shrink as they are gathered, the lake beyond the north edge, a fisher holding a rod at the shore, inspectors for a hazel and the lake, the followed forager's born skill, rates for each food and carried food by kind, and charts of food taken by kind and of nuts and fish left.
+
+### Validation
+
+- The checker replays nuts on hazels and fish in the lake, including the lake's growth, and checks that food is taken only from a source worth working, at its rate there, within reach, and that a fisher remembers the stock it found. New unit tests cover loads of three foods, the lake's growth, rates by stock, the choice of food, fishing, spoilage by food, configuration rules and the checker catching fish made from nothing, food taken too fast and a forager on the water. New fingerprints for Life 9.7; the band with unequal skills is replaced by a band born alike.
+
 ## [LIFE9-Calibrated-047] - (2026-10-19)
 
 ### Changed
