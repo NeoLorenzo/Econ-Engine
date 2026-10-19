@@ -172,21 +172,36 @@ export function displayedStock(pair: DisplayPair, kind: 'bush' | 'tree', id: num
 }
 
 /**
- * How a tree is drawn part of the way through the minute. A standing tree's crown fills out with its branches. A
- * felled tree lies where it fell beside its stump: its trunk shortens from the butt as logs are cut from it, and its
- * crown, lying at the far end, shrinks as its branches are gathered. A log comes off at the end of the minute it is
- * cut, and the tree falls then.
+ * How a tree is drawn part of the way through the minute. A standing tree's crown is whole, and the dead branches
+ * beneath it, `deadwood` of a full share, grow and shrink with its wood. A felled tree lies where it fell beside its
+ * stump: its trunk shortens from the butt as logs are cut from it, and its crown, lying at the far end, shrinks as its
+ * branches are gathered. A log comes off at the end of the minute it is cut, and the tree falls then.
  */
 export function treeShape(pair: DisplayPair, id: number, interpolate = true) {
   const { config } = pair.next
   const wood = displayedStock(pair, 'tree', id, interpolate)
   const felled = pair.next.treeFelledMinute[id]! >= 0
-  if (!felled) return { felled, trunk: 1, crown: 0.8 + 0.2 * Math.min(1, wood / Math.max(1, config.treeCapacityWood)) }
+  if (!felled) return { felled, trunk: 1, crown: 1, deadwood: Math.min(1, wood / Math.max(1, config.treeCapacityWood)) }
   return {
     felled,
+    deadwood: 0,
     trunk: pair.next.treeLogs[id]! / Math.max(1, config.logsPerTree),
     crown: Math.min(1, wood / Math.max(1, config.treeCapacityWood + config.fellWood)),
   }
+}
+
+/**
+ * How many days a forager's reserve would last at the rate it has been losing it, over up to the last three whole
+ * days: null while it holds steady or gains, or before two days have ended.
+ */
+export function daysOfFoodLeft(state: ValleyState, id: number) {
+  const forager = state.foragers[id]
+  if (!forager?.alive) return null
+  const recent = state.days.slice(-4)
+  if (recent.length < 2) return null
+  const lossPerDay =
+    (recent[0]!.endEnergyKcal[id]! - recent[recent.length - 1]!.endEnergyKcal[id]!) / (recent.length - 1)
+  return lossPerDay > 0 ? forager.energyKcal / lossPerDay : null
 }
 
 /** A tree as the inspector names it: standing, lying felled with logs or branches left, or a bare stump. */

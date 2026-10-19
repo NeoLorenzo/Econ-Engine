@@ -2,13 +2,15 @@ import { isqrt } from './geometry'
 import type { Point, ValleyConfig } from './types'
 
 /**
- * The canonical Life 9 valley: 600 m square, with 32 thickets of 60 bushes, 12 stands of 12 trees and 4 outcrops of
- * stones, and a band of 8 born alike, who gather sticks from bushes and branches from trees, bring firewood home in
- * loads of 30 kg, swap wood for food and get better at what they practise. They start scattered and form groups when
- * they meet. By day they see across the valley, check the sites they know when idle, walk more slowly under a load,
- * and take a full load home. Each group keeps one fire at its flag, which members feed, with their huts on a ring round
- * it. Every member wants a hut of 23 logs, cut from felled trees with an axe it makes from a stone and a kilogram of
- * wood, or buys from another member for food. A night by the fire in a whole hut is the warmest.
+ * The canonical Life 9.6 valley: 600 m square in Mesolithic northern Europe, with 32 thickets of 60 bushes, 12 stands
+ * of 12 trees and 4 outcrops of stones, and a band of 8 born alike, who gather sticks from bushes and dead branches
+ * from under trees, bring firewood home in loads of 30 kg, swap wood for food and get better at what they practise.
+ * They start scattered and form groups when they meet. By day they see across the valley, check the sites they know
+ * when idle, pay for a load in energy, and take a full load home. Each group keeps one fire at its flag, which members
+ * feed, with their huts on a ring round it. Every member wants a hut of 23 logs, cut from felled trees with a ground
+ * stone axe it makes from a stone and a kilogram of wood, or buys from another member for food. A night by the fire in
+ * a whole hut is the warmest. Every physical number is set from real measurements, sourced in docs/CALIBRATION.md:
+ * the valley feeds about two.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
@@ -17,19 +19,19 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   bushesPerThicket: 60,
   thicketRadiusCm: 1_200,
   bushSpacingCm: 200,
-  bushCapacityKcal: 400,
-  initialBushKcal: 400,
-  bushRegrowthKcalPerDay: 20,
+  bushCapacityKcal: 52,
+  initialBushKcal: 52,
+  bushRegrowthKcalPerYear: 900,
   bushCapacityWood: 2,
   initialBushWood: 2,
-  bushRegrowthWoodPerDay: 1,
+  bushRegrowthWoodPerDecade: 2,
   standCount: 12,
   treesPerStand: 12,
   standRadiusCm: 1_500,
   treeSpacingCm: 400,
   treeCapacityWood: 25,
   initialTreeWood: 25,
-  treeRegrowthWoodPerDay: 6,
+  treeDeadfallWoodPerYear: 5,
   fellWood: 10,
   siteSpacingCm: 5_000,
   siteMarginCm: 3_000,
@@ -42,21 +44,25 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   dawnHour: 6,
   duskHour: 18,
   forageKcalPerHour: 1_200,
-  woodPerHour: 24,
+  woodPerHour: 15,
   sleepKcalPerHour: 60,
   restKcalPerHour: 90,
-  forageCostKcalPerHour: 300,
-  travelKcalPerHour: 300,
-  reserveMaxKcal: 20_000,
-  initialReserveKcal: 16_000,
-  hungryBelowKcal: 14_000,
-  satiatedAtKcal: 18_000,
+  pickKcalPerHour: 200,
+  gatherKcalPerHour: 250,
+  chopKcalPerHour: 360,
+  makeKcalPerHour: 150,
+  walkTerrainPercent: 120,
+  loadSlowdownPerMille: 75,
+  reserveMaxKcal: 70_000,
+  initialReserveKcal: 66_000,
+  hungryBelowKcal: 64_000,
+  satiatedAtKcal: 68_000,
   bandSize: 8,
   shelfLifeHours: 48,
   fireWoodPerHour: 1,
-  fireSleepKcalPerHour: 80,
-  hutSleepKcalPerHour: 120,
-  coldSleepKcalPerHour: 150,
+  fireSleepKcalPerHour: 70,
+  hutSleepKcalPerHour: 75,
+  coldSleepKcalPerHour: 90,
   woodStockNights: 2,
   woodLoad: 30,
   skillMinPercent: 100,
@@ -73,7 +79,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   exploreAfterHours: 24,
   sightRadiusCm: 100_000,
   bodyKg: 60,
-  berryKcalPerKg: 500,
+  berryKcalPerKg: 600,
   campfireWoodPerHour: 1,
   outcropCount: 4,
   stonesPerOutcrop: 12,
@@ -81,13 +87,13 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   stoneSpacingCm: 300,
   stonesPerSpot: 5,
   logsPerTree: 3,
-  treeRegrowthDays: 60,
-  logKg: 20,
+  treeRegrowthDays: 7_300,
+  logKg: 35,
   logChopMinutes: 30,
   hutLogs: 23,
-  hutLogDays: 10,
-  axeHours: 4,
-  axeLogs: 40,
+  hutLogDays: 60,
+  axeHours: 50,
+  axeLogs: 200,
   axeWood: 1,
   craftSkillMinPercent: 100,
   craftSkillMaxPercent: 100,
@@ -193,21 +199,24 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'hutLogDays',
     'axeHours',
     'axeLogs',
+    'pickKcalPerHour',
+    'gatherKcalPerHour',
+    'chopKcalPerHour',
+    'makeKcalPerHour',
+    'walkTerrainPercent',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
-    'bushRegrowthKcalPerDay',
+    'bushRegrowthKcalPerYear',
     'bushCapacityWood',
-    'bushRegrowthWoodPerDay',
+    'bushRegrowthWoodPerDecade',
     'standCount',
     'treesPerStand',
-    'treeRegrowthWoodPerDay',
+    'treeDeadfallWoodPerYear',
     'fellWood',
     'siteMarginCm',
     'sleepKcalPerHour',
     'restKcalPerHour',
-    'forageCostKcalPerHour',
-    'travelKcalPerHour',
     'shelfLifeHours',
     'woodLoad',
     'termsMemoryHours',
@@ -215,6 +224,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'stonesPerOutcrop',
     'stonesPerSpot',
     'axeWood',
+    'loadSlowdownPerMille',
   ]
   for (const key of notNegative) if ((config[key] as number) < 0) errors.push(`${key} must not be negative`)
   if (errors.length) return errors
@@ -244,11 +254,14 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     errors.push(
       'Sleep must satisfy sleepKcalPerHour ≤ fireSleepKcalPerHour ≤ hutSleepKcalPerHour ≤ coldSleepKcalPerHour',
     )
-  // An axe costs the extra energy of working instead of resting, which must be something.
-  if (config.forageCostKcalPerHour <= config.restKcalPerHour)
-    errors.push('forageCostKcalPerHour must be more than restKcalPerHour')
-  if (Math.floor((config.walkCmPerSecond * config.bodyKg) / (config.bodyKg + config.logKg)) < 1)
-    errors.push('A forager must be able to carry a log at 1 cm a second')
+  // Every task costs more than resting; an axe costs the extra energy of making instead of resting.
+  for (const key of ['pickKcalPerHour', 'gatherKcalPerHour', 'chopKcalPerHour', 'makeKcalPerHour'] as const)
+    if (config[key] <= config.restKcalPerHour) errors.push(`${key} must be more than restKcalPerHour`)
+  if (config.walkTerrainPercent < 100) errors.push('walkTerrainPercent must be at least 100')
+  const logSpeed =
+    (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * config.logKg)) /
+    (1_000 * config.bodyKg)
+  if (Math.floor(logSpeed) < 1) errors.push('A forager must be able to carry a log at 1 cm a second')
   if (config.startPracticeHoursPerDay < 0 || config.startPracticeHoursPerDay > 24)
     errors.push('startPracticeHoursPerDay must be between 0 and 24')
   const practiceRangeOk = config.practiceMinPercent >= 1 && config.practiceMinPercent <= config.practiceMaxPercent

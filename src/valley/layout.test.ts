@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveValleyConfig } from './config'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { drawStarts, forEachPlantWithin, generateLayout, nearestPlant } from './layout'
-import { hourlyShare, minuteCost, workSeconds } from './work'
+import { HOURS_PER_DECADE, HOURS_PER_YEAR, hourlyShare, minuteCost, regrowthOf, workCostOf, workSeconds } from './work'
 
 const config = resolveValleyConfig()
 const layout = generateLayout(config)
@@ -142,12 +142,24 @@ describe('geometry', () => {
 })
 
 describe('regrowth and remainders', () => {
-  it('shares a day’s regrowth among its hours exactly', () => {
-    for (const perDay of [0, 6, 20, 25, 1_200]) {
-      const shares = Array.from({ length: 24 }, (_, hour) => hourlyShare(perDay, hour))
-      expect(shares.reduce((a, b) => a + b, 0)).toBe(perDay)
-      expect(Math.max(...shares) - Math.min(...shares)).toBeLessThanOrEqual(1)
+  it('shares a year’s or a decade’s regrowth among its hours exactly', () => {
+    for (const [amount, period] of [
+      [0, HOURS_PER_YEAR],
+      [5, HOURS_PER_YEAR],
+      [900, HOURS_PER_YEAR],
+      [2, HOURS_PER_DECADE],
+      [20_000, HOURS_PER_YEAR],
+    ] as const) {
+      const shares = Array.from({ length: period }, (_, hour) => hourlyShare(amount, hour, period))
+      expect(shares.reduce((a, b) => a + b, 0)).toBe(amount)
+      expect(Math.max(...shares) - Math.min(...shares)).toBeLessThanOrEqual(Math.ceil(amount / period))
+      // The next period repeats it.
+      expect(hourlyShare(amount, period + 17, period)).toBe(shares[17])
     }
+    // A bush's 900 kcal a year comes about 2.5 kcal a day, in whole kilocalories.
+    const day = Array.from({ length: 24 }, (_, hour) => regrowthOf(config, 24 + hour).berries)
+    expect(day.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(2)
+    expect(day.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(3)
   })
 
   it('takes exactly an hour’s rate from an hour of work, minute by minute or in odd pieces', () => {
@@ -172,9 +184,16 @@ describe('regrowth and remainders', () => {
     }
   })
 
-  it('charges each second at its hourly cost', () => {
-    expect(minuteCost(config, { walk: 60, work: 0, stand: 0, sleep: 0 }, null)).toBe(60 * 300)
-    expect(minuteCost(config, { walk: 10, work: 20, stand: 30, sleep: 0 }, null)).toBe(10 * 300 + 20 * 300 + 30 * 90)
-    expect(minuteCost(config, { walk: 0, work: 0, stand: 0, sleep: 60 }, 'cold')).toBe(60 * 150)
+  it('charges each second at its hourly cost, and each task its own', () => {
+    expect(minuteCost(config, { walk: 60, work: 0, stand: 0, sleep: 0 }, null, 222, 200)).toBe(60 * 222)
+    expect(minuteCost(config, { walk: 10, work: 20, stand: 30, sleep: 0 }, null, 222, 360)).toBe(
+      10 * 222 + 20 * 360 + 30 * 90,
+    )
+    expect(minuteCost(config, { walk: 0, work: 0, stand: 0, sleep: 60 }, 'cold', 222, 200)).toBe(60 * 90)
+    expect(workCostOf(config, 'food', null)).toBe(200)
+    expect(workCostOf(config, 'wood', null)).toBe(250)
+    expect(workCostOf(config, null, 'stone')).toBe(250)
+    expect(workCostOf(config, null, 'cut')).toBe(360)
+    expect(workCostOf(config, null, 'make')).toBe(150)
   })
 })

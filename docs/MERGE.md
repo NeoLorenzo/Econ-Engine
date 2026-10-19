@@ -124,6 +124,8 @@ The core ticks in minutes, decides by priority rules, lives in `src/valley/`, an
 
 The [step 9 specification](LIFE9_SPEC.md) settled step 9. The owner set its rules: every member has an inherent drive for a hut of its own, a basic wooden hut; tools are only instrumental, wanted because cutting logs needs an axe; axes are made with a skill that grows with practice, so the skilled make them faster and better, and better axes cut faster and last longer; axes wear out; and members may trade them. The owner also asked for stone outcrops as a resource and more trees. Its other choices: huts weather a log every 10 days, so the need for axes never ends; a whole hut keeps its sleeper warm with the fire out; an axe is priced at the extra energy of making it; and a maker can promise an axe to a member who asks.
 
+Life 9.6, on 2026-10-19, set every physical number from real measurements, recorded in the [calibration document](CALIBRATION.md). The owner found that the valley gave no reason to store, claim land or trade, and realistic numbers make food, wood and logs scarce. Seasons, and food that keeps, are what the calibration points to next.
+
 From step 9 on, the owner set the Life core in a feature-building phase: experiments wait for a later, stable version, and each step's specification lists its questions for later.
 
 ## References

@@ -19,7 +19,9 @@ describe('valley configuration', () => {
     expect(errorsWith({ walkCmPerSecond: 0 })).toContain('walkCmPerSecond must be positive')
     expect(errorsWith({ thicketCount: 0 })).toContain('thicketCount must be positive')
     expect(errorsWith({ woodLoad: -1 })).toContain('woodLoad must not be negative')
-    expect(errorsWith({ travelKcalPerHour: -1 })).toContain('travelKcalPerHour must not be negative')
+    expect(errorsWith({ loadSlowdownPerMille: -1 })).toContain('loadSlowdownPerMille must not be negative')
+    expect(errorsWith({ walkTerrainPercent: 0 })).toContain('walkTerrainPercent must be positive')
+    expect(errorsWith({ walkTerrainPercent: 90 })).toContain('walkTerrainPercent must be at least 100')
   })
 
   it('refuses a reach as long as sight', () => {
@@ -33,14 +35,14 @@ describe('valley configuration', () => {
 
   it('refuses hours, thresholds and costs out of order', () => {
     expect(errorsWith({ dawnHour: 18 })).toContain('Hours must satisfy 0 ≤ dawnHour < duskHour ≤ 24')
-    expect(errorsWith({ hungryBelowKcal: 18_000 })).toContain(
+    expect(errorsWith({ hungryBelowKcal: 68_000 })).toContain(
       'Thresholds must satisfy 0 < hungryBelowKcal < satiatedAtKcal ≤ reserveMaxKcal',
     )
     const sleepOrder =
       'Sleep must satisfy sleepKcalPerHour ≤ fireSleepKcalPerHour ≤ hutSleepKcalPerHour ≤ coldSleepKcalPerHour'
-    expect(errorsWith({ coldSleepKcalPerHour: 100 })).toContain(sleepOrder)
+    expect(errorsWith({ coldSleepKcalPerHour: 74 })).toContain(sleepOrder)
     // A hut must not warm more than a fire.
-    expect(errorsWith({ hutSleepKcalPerHour: 70 })).toContain(sleepOrder)
+    expect(errorsWith({ hutSleepKcalPerHour: 65 })).toContain(sleepOrder)
   })
 
   it('refuses skill and practice ranges out of order, and rates that round to nothing', () => {
@@ -171,9 +173,8 @@ describe('huts and axes', () => {
     expect(errorsWith({ craftSkillMinPercent: 120, craftSkillMaxPercent: 110 })).toContain(
       'Craft must satisfy 1 ≤ craftSkillMinPercent ≤ craftSkillMaxPercent',
     )
-    expect(errorsWith({ forageCostKcalPerHour: 90 })).toContain(
-      'forageCostKcalPerHour must be more than restKcalPerHour',
-    )
+    for (const key of ['pickKcalPerHour', 'gatherKcalPerHour', 'chopKcalPerHour', 'makeKcalPerHour'] as const)
+      expect(errorsWith({ [key]: 90 })).toContain(`${key} must be more than restKcalPerHour`)
   })
 
   it('refuses a log too heavy to carry', () => {

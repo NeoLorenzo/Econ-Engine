@@ -101,7 +101,7 @@ describe('searching', () => {
     const state = valleyAt(TEN_AM, (valley) => {
       const forager = valley.foragers[0]!
       put(forager, valley.layout.camp.x, valley.layout.camp.y)
-      forager.energyKcal = 13_000
+      forager.energyKcal = 63_000
       forager.hungry = true
       forager.bushMemory.seen.fill(5)
       forager.bushMemory.stock.fill(0)
@@ -138,6 +138,22 @@ describe('meeting', () => {
     expect(state.groups[0]!.members).toEqual([0, 1])
   })
 
+  it('leaves the survivor of a group founded and dissolved in the same minute at its slot, keeping every invariant', () => {
+    const state = pair(1_000)
+    // Both asleep where they lie, at night, and forager 1 with a kilocalorie left, so it starves in its turn.
+    state.minute = 20 * 60
+    for (const forager of state.foragers) forager.hearth = { x: forager.x, y: forager.y }
+    const dying = state.foragers[1]!
+    state.totals.initialKcal -= dying.energyKcal - 1
+    dying.energyKcal = 1
+    const checker = new ValleyChecker(state)
+    const after = stepValley(state)
+    expect(after.lastGroupEvents.map((made) => made.kind)).toEqual(['found', 'dissolve'])
+    expect(after.foragers[0]!.groupId).toBeNull()
+    expect(after.foragers[0]!.hearth).toEqual(hearthAround(after.config, after.groups[0]!.flag, 0))
+    expect(checker.check(after)).toEqual([])
+  })
+
   it('does not meet beyond talking distance', () => {
     const state = pair(2_001)
     expect(meet(state, state.foragers[0]!, TEN_AM)).toBeNull()
@@ -166,8 +182,8 @@ describe('meeting', () => {
   it('swaps and tells terms only within a group', () => {
     const state = pair(1_000)
     const [seller, buyer] = state.foragers as [Forager, Forager]
-    Object.assign(seller, { forageRate: 1_000, woodRate: 30, wood: 40, energyKcal: 15_000 })
-    Object.assign(buyer, { forageRate: 1_400, woodRate: 14, wood: 0, energyKcal: 19_000 })
+    Object.assign(seller, { forageRate: 1_000, woodRate: 30, wood: 40, energyKcal: 65_000 })
+    Object.assign(buyer, { forageRate: 1_400, woodRate: 14, wood: 0, energyKcal: 69_000 })
     buyer.carried = [{ kcal: 2_000, harvestTick: TEN_AM }]
     expect(swap(state.config, seller, state.foragers, TEN_AM).swaps).toHaveLength(0)
     meet(state, seller, TEN_AM)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
-import { loadKg, loadOf, mustGoHome, reachableInTime, speedForLoad, walkSpeed } from './forager'
+import { loadKg, loadOf, mustGoHome, reachableInTime, speedForLoad, walkCostForLoad, walkSpeed } from './forager'
 import { distance } from './geometry'
 import { ValleyChecker } from './invariants'
 import { valleyTheory } from './theory'
@@ -21,18 +21,20 @@ function valleyAt(minute: number, change: (forager: Forager, state: ValleyState)
 const withFullLoad = (forager: Forager, state: ValleyState) => {
   forager.x = state.layout.trees.x[0]! - 50
   forager.y = state.layout.trees.y[0]!
-  forager.energyKcal = 17_000
+  forager.energyKcal = 67_000
   forager.hungry = false
   forager.wood = 30
   forager.tripWood = 30
   forager.shortOfWood = false
   forager.groupId = 0
+  // Its hearth 200 m off, more than a minute's walk.
+  forager.hearth = { x: forager.x + (forager.x > 30_000 ? -20_000 : 20_000), y: forager.y }
 }
 
 describe('a load', () => {
   const { config } = createValley()
 
-  it('is the wood of the trip, no more than it holds, and its berries at 500 kcal a kilogram', () => {
+  it('is the wood of the trip, no more than it holds, and its berries at 600 kcal a kilogram', () => {
     const forager = valleyAt(TEN_AM).foragers[0]!
     forager.tripWood = 12
     forager.wood = 20
@@ -43,18 +45,27 @@ describe('a load', () => {
     expect(loadOf(forager).wood).toBe(5)
   })
 
-  it('slows the walk: 4.5 km/h unloaded, about 3.9 with 10 kg and 3.0 with 30 kg', () => {
+  it('slows the walk only a little: 3% under 40% of body mass', () => {
     expect(speedForLoad(config, 0)).toBe(125)
-    expect(speedForLoad(config, 10)).toBe(107)
-    expect(speedForLoad(config, 30)).toBe(83)
-    const theory = valleyTheory(config)
-    expect(theory.loadedWalkSeconds(15_000, 30)).toBe(181)
-    expect(theory.carryCostKcal(15_000, 30)).toBeCloseTo(5.08, 2)
+    expect(speedForLoad(config, 10)).toBe(123)
+    expect(speedForLoad(config, 24)).toBe(121)
+    expect(speedForLoad(config, 30)).toBe(120)
+    expect(speedForLoad(config, config.logKg)).toBe(119)
+    expect(speedForLoad({ ...config, loadSlowdownPerMille: 1_000 }, 60)).toBe(1)
   })
 
-  it('costs the same each second of walking, so each metre costs more', () => {
+  it('costs energy by the Pandolf equation: 222 kcal an hour unloaded, 316 under 30 kg and 341 under a log', () => {
+    expect(walkCostForLoad(config, 0, 125)).toBe(222)
+    expect(walkCostForLoad(config, 30, 120)).toBe(316)
+    expect(walkCostForLoad(config, 35, 119)).toBe(341)
+    // On a road, η = 1, walking costs less.
+    expect(walkCostForLoad({ ...config, walkTerrainPercent: 100 }, 0, 125)).toBe(198)
+    const theory = valleyTheory(config)
+    expect(theory.walkCost(30)).toBe(316)
+    expect(theory.loadedWalkSeconds(15_000, 30)).toBe(125)
+    expect(theory.carryCostKcal(15_000, 30)).toBeCloseTo((125 * 316 - 120 * 222) / 3_600, 6)
     const minute = { walk: 60, work: 0, stand: 0, sleep: 0 }
-    expect(minuteCost(config, minute, null)).toBe(60 * config.travelKcalPerHour)
+    expect(minuteCost(config, minute, null, 316, config.pickKcalPerHour)).toBe(60 * 316)
   })
 
   it('counts in what can be reached before dusk and when it must set out for home', () => {
@@ -63,14 +74,14 @@ describe('a load', () => {
     forager.hearth = { x: 0, y: 0 }
     forager.x = 0
     forager.y = 0
-    // 300 m out and back: 480 s unloaded with a minute's work, 783 s with 30 kg.
-    expect(reachableInTime(config, forager, 30_000, 0, 600)).toBe(true)
+    // 365 m out and back: 644 s unloaded with a minute's work, 670 s with 30 kg.
+    expect(reachableInTime(config, forager, 36_500, 0, 660)).toBe(true)
     forager.tripWood = 30
     forager.wood = 30
-    expect(walkSpeed(config, forager)).toBe(83)
-    expect(reachableInTime(config, forager, 30_000, 0, 600)).toBe(false)
-    forager.x = 30_000
-    // 300 m home is 240 s unloaded and 362 s with the load; 18:00 less 5 minutes leaves 300.
+    expect(walkSpeed(config, forager)).toBe(120)
+    expect(reachableInTime(config, forager, 36_500, 0, 660)).toBe(false)
+    forager.x = 36_500
+    // 365 m home is 292 s unloaded and 305 s with the load; 18:00 less 5 minutes leaves 300.
     const late = 18 * 60 - 5
     expect(mustGoHome(config, forager, late)).toBe(true)
     forager.tripWood = 0
@@ -84,10 +95,10 @@ describe('taking a load home', () => {
     const forager = state.foragers[0]!
     const after = stepValley(state)
     const event = lastEventOf(after, 0)!
-    expect(event).toMatchObject({ reason: 'taking a load home', loadWood: 30, speedCmPerSecond: 83, walkSeconds: 60 })
+    expect(event).toMatchObject({ reason: 'taking a load home', loadWood: 30, speedCmPerSecond: 120, walkSeconds: 60 })
     const walked = distance(event.from.x, event.from.y, event.position.x, event.position.y)
-    expect(walked).toBeLessThanOrEqual(60 * 83)
-    expect(walked).toBeGreaterThan(60 * 82)
+    expect(walked).toBeLessThanOrEqual(60 * 120)
+    expect(walked).toBeGreaterThan(60 * 119)
     const before = distance(forager.x, forager.y, forager.hearth.x, forager.hearth.y)
     const now = after.foragers[0]!
     expect(distance(now.x, now.y, now.hearth.x, now.hearth.y)).toBeLessThan(before)
@@ -96,12 +107,12 @@ describe('taking a load home', () => {
   it('works for food first when hungry, load and all', () => {
     const state = valleyAt(TEN_AM, (forager, valley) => {
       withFullLoad(forager, valley)
-      forager.energyKcal = 13_000
+      forager.energyKcal = 63_000
       forager.hungry = true
     })
     const event = lastEventOf(stepValley(state), 0)!
     expect(['seeking food', 'foraging', 'searching']).toContain(event.reason)
-    expect(event.speedCmPerSecond).toBe(83)
+    expect(event.speedCmPerSecond).toBe(120)
   })
 })
 
@@ -144,12 +155,21 @@ describe('the checker', () => {
     expect(checker.check(after).join('\n')).toBe('')
   })
 
+  it('catches energy charged at the wrong cost for its task or load', () => {
+    expect(damaged((after) => (own(after).spentKcal += 1))).toMatch('for a minute that cost')
+    expect(
+      damaged((after) => (after.foragers[0]!.costRemainder = (after.foragers[0]!.costRemainder + 1) % 3_600)),
+    ).toMatch('for a minute that cost')
+    // Charged as if it carried nothing.
+    expect(damaged((after) => (own(after).loadWood = 0))).toMatch('for a minute that cost')
+  })
+
   it('catches a walk faster than the load allows', () => {
     expect(damaged((after) => (own(after).speedCmPerSecond = 125))).toMatch('a speed its load does not allow')
     expect(
       damaged((after) => {
         const event = own(after)
-        event.position = { x: event.from.x + 60 * 100, y: event.from.y }
+        event.position = { x: event.from.x + 60 * 130, y: event.from.y }
       }),
     ).toMatch('moved further than it walked')
     expect(damaged((after) => (own(after).loadWood = 31))).toMatch('a load it did not have')

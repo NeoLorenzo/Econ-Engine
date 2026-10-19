@@ -6,6 +6,45 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE9-Calibrated-047] - (2026-10-19)
+
+### Problem
+
+The owner saw no pressure in the valley to develop anything: one-person huts were enough, berries and wood regrew almost without limit, and anyone could do everything alone, so there was no reason to store, claim land, farm or trade. They asked for every physical number to be made as realistic as possible, with sources.
+
+### What the calibration found
+
+The [calibration document](docs/CALIBRATION.md) compares each parameter with real measurements. Most numbers for people were close: body, sleep, rest, walking speed, picking rate, and the time to cut a log with a stone axe. The land was far too generous. Bushes produced about 19,000 kg of berries a hectare a year, more than a commercial blueberry farm and hundreds of times a wild bilberry forest. Trees regrew 2,200 kg of branches a year and grew back in 60 days. Four things about people were off: the energy reserve was a week's food against a real month or two, a load slowed a walker by a third and cost nothing, cold nights cost too much, and firewood was gathered too fast.
+
+### Decisions
+
+The owner chose:
+
+- the valley is in Mesolithic northern Europe;
+- every realistic number applies at once, to the current valley, letting the band shrink to what it can feed;
+- berries are spread evenly over the year until seasons arrive;
+- firewood is dead branches falling from trees at a realistic rate, alongside sticks from bushes;
+- axes are ground stone.
+
+Implementation choices:
+
+- Yearly amounts are shared hour by hour over a year of 8,760 hours, so a whole year gives exactly the amount. A bush's sticks are counted by the decade, because a bush grows less than a kilogram of wood a year.
+- The Pandolf rate is computed exactly in integer arithmetic and rounded down once, so it is the same on every machine.
+- The hunger thresholds keep their distances below a full reserve; only the store of fat behind them grows.
+
+### What the implementation showed
+
+- On the canonical seed, all eight foragers starve between about day 27 and day 30, and nobody finishes an axe or a hut. The specification expected the band to shrink to the one or two the valley feeds. Instead every forager draws on the same thinning bushes at the same rate, so all their reserves run out together. When the first die, the bushes left hold less than a minute's picking each, so the survivors cannot pick them and starve too. Once everyone is dead, the bushes fill again.
+- The first deaths exposed a gap in the checker. A forager could found a group with someone who starved in the same minute, and the checker wrongly reported its hearth as moved without a group. Nobody had starved in Life 9.5, so it had never happened. The engine was right; the checker was fixed.
+
+These are observations from single runs, not experiments.
+
+### Open questions
+
+- Whether a picker should be able to take the last berries from a bush holding less than a minute's work, and whether picking should slow as a bush empties.
+- Whether foragers should differ in body or reserve, so that hunger sorts the band instead of killing it all at once.
+- Seasons and storable food, which the calibration points to next.
+
 ## [LIFE9-LogHuts-046] - (2026-10-18)
 
 ### Problem

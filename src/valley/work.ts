@@ -1,10 +1,33 @@
 import { SECONDS_PER_HOUR } from './practice'
 import { woodMatters } from './trade'
-import type { Forager, ValleyConfig, Warmth } from './types'
+import type { Good, HutTask, ValleyConfig, Warmth, Forager } from './types'
 
-/** Hour `hour`'s share of a daily amount, in whole units: the shares of a day add up to the amount exactly. */
-export const hourlyShare = (perDay: number, hour: number) =>
-  Math.floor((perDay * (hour + 1)) / 24) - Math.floor((perDay * hour) / 24)
+export const HOURS_PER_YEAR = 8_760
+export const HOURS_PER_DECADE = 10 * HOURS_PER_YEAR
+
+/**
+ * Hour `hour`'s share of an amount spread evenly over a period of `periodHours`, in whole units, with hours counted
+ * from minute 0: the shares of a whole period add up to the amount exactly.
+ */
+export function hourlyShare(amount: number, hour: number, periodHours: number) {
+  const h = hour % periodHours
+  return Math.floor((amount * (h + 1)) / periodHours) - Math.floor((amount * h) / periodHours)
+}
+
+/** The hour's regrowth of berries on a bush, of dead branches under a standing tree, and of sticks on a bush. */
+export const regrowthOf = (config: ValleyConfig, hour: number) => ({
+  berries: hourlyShare(config.bushRegrowthKcalPerYear, hour, HOURS_PER_YEAR),
+  branches: hourlyShare(config.treeDeadfallWoodPerYear, hour, HOURS_PER_YEAR),
+  sticks: hourlyShare(config.bushRegrowthWoodPerDecade, hour, HOURS_PER_DECADE),
+})
+
+/** What an hour of a task costs: picking, gathering wood or fetching a stone, cutting a log, or making an axe. */
+export function workCostOf(config: ValleyConfig, good: Good | null, task: HutTask | null) {
+  if (task === 'cut') return config.chopKcalPerHour
+  if (task === 'make') return config.makeKcalPerHour
+  if (task === 'stone' || good === 'wood') return config.gatherKcalPerHour
+  return config.pickKcalPerHour
+}
 
 /**
  * `seconds` of work at hourly rate `rate` with a remainder in 3,600ths: the whole units now due, and the remainder
@@ -36,12 +59,21 @@ export function sleepCostOf(config: ValleyConfig, warmth: Warmth | null) {
   return config.sleepKcalPerHour
 }
 
-/** The minute's cost in 3,600ths of a kilocalorie: each second at its hourly cost, sleep at its warmth. */
-export function minuteCost(config: ValleyConfig, seconds: MinuteSeconds, warmth: Warmth | null) {
+/**
+ * The minute's cost in 3,600ths of a kilocalorie: each second at its hourly cost, walking at `walkKcalPerHour` for the
+ * load carried, work at `workKcalPerHour` for its task, and sleep at its warmth.
+ */
+export function minuteCost(
+  config: ValleyConfig,
+  seconds: MinuteSeconds,
+  warmth: Warmth | null,
+  walkKcalPerHour: number,
+  workKcalPerHour: number,
+) {
   const sleepCost = sleepCostOf(config, warmth)
   return (
-    seconds.walk * config.travelKcalPerHour +
-    seconds.work * config.forageCostKcalPerHour +
+    seconds.walk * walkKcalPerHour +
+    seconds.work * workKcalPerHour +
     seconds.stand * config.restKcalPerHour +
     seconds.sleep * sleepCost
   )

@@ -35,12 +35,42 @@ export const loadKg = (config: ValleyConfig, wood: number, berriesKcal: number, 
   wood + Math.floor(berriesKcal / config.berryKcalPerKg) + logs * config.logKg
 
 /**
- * Walking speed under a load of `kg`, in centimetres a second: `floor(walkCmPerSecond · bodyKg / (bodyKg + kg))`,
- * never below 1. Each second still costs `travelKcalPerHour`, so each metre costs `(bodyKg + kg) / bodyKg` times as
- * much.
+ * Walking speed under a load of `kg`, in centimetres a second: it falls by `loadSlowdownPerMille` thousandths for each
+ * body mass carried, `floor(walkCmPerSecond · (1,000 · bodyKg − loadSlowdownPerMille · kg) / (1,000 · bodyKg))`, never
+ * below 1. Walkers barely slow under a load; it costs them energy instead (see `walkCostForLoad`).
  */
 export const speedForLoad = (config: ValleyConfig, kg: number) =>
-  Math.max(1, Math.floor((config.walkCmPerSecond * config.bodyKg) / (config.bodyKg + kg)))
+  Math.max(
+    1,
+    Math.floor(
+      (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * kg)) / (1_000 * config.bodyKg),
+    ),
+  )
+
+const walkCosts = new WeakMap<ValleyConfig, Map<number, number>>()
+
+/**
+ * What an hour of walking under a load of `kg` at `speed` centimetres a second costs, in whole kilocalories rounded
+ * down: the Pandolf equation (Pandolf, Givoni and Goldman, 1977) for body mass `W`, load `L`, speed `V` in m/s and
+ * terrain factor `η` = `walkTerrainPercent` / 100, `M = 1.5 W + 2 (W + L) (L / W)² + η (W + L) · 1.5 V²` watts, at
+ * 0.86 kcal a watt-hour. It is computed exactly over a common denominator, so it is the same on every machine.
+ */
+export function walkCostForLoad(config: ValleyConfig, kg: number, speed: number) {
+  let costs = walkCosts.get(config)
+  if (!costs) walkCosts.set(config, (costs = new Map()))
+  const key = kg * 1_000_000 + speed
+  const known = costs.get(key)
+  if (known !== undefined) return known
+  const W = BigInt(config.bodyKg)
+  const L = BigInt(kg)
+  const v = BigInt(speed)
+  const T = BigInt(config.walkTerrainPercent)
+  // M · 2,000,000 · W², with V = v / 100 and η = T / 100.
+  const numerator = 3n * W * 1_000_000n * W * W + 4_000_000n * (W + L) * L * L + 3n * T * (W + L) * v * v * W * W
+  const cost = Number((86n * numerator) / (100n * 2_000_000n * W * W))
+  costs.set(key, cost)
+  return cost
+}
 
 /** A forager's walking speed for what it carries now. */
 export function walkSpeed(config: ValleyConfig, forager: Forager) {

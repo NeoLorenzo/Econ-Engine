@@ -19,19 +19,22 @@ export interface ValleyConfig {
   bushSpacingCm: number
   bushCapacityKcal: number
   initialBushKcal: number
-  bushRegrowthKcalPerDay: number
-  /** Sticks a bush holds, in kilograms, gathered by hand like a tree's branches. */
+  /** Berries a bush grows in a year, spread evenly over the year. */
+  bushRegrowthKcalPerYear: number
+  /** Sticks a bush holds, in kilograms, gathered by hand like the dead branches under a tree. */
   bushCapacityWood: number
   initialBushWood: number
-  bushRegrowthWoodPerDay: number
+  /** Sticks a bush grows in a decade, spread evenly over it: a bush grows less than a kilogram of wood a year. */
+  bushRegrowthWoodPerDecade: number
   standCount: number
   treesPerStand: number
   standRadiusCm: number
   treeSpacingCm: number
-  /** The branches a standing tree holds, in kilograms, snapped off by hand. A felled tree's branches do not regrow. */
+  /** Dead branches lying under a standing tree, in kilograms, gathered by hand. A felled tree gains none. */
   treeCapacityWood: number
   initialTreeWood: number
-  treeRegrowthWoodPerDay: number
+  /** Dead branches a standing tree drops in a year, spread evenly over the year. */
+  treeDeadfallWoodPerYear: number
   /** Branches a tree's crown brings down when it is felled, in kilograms. */
   fellWood: number
   /** Site centres lie at least this far apart, this far from the valley's edges and this far from the camp. */
@@ -57,9 +60,15 @@ export interface ValleyConfig {
   /** An hour asleep in a whole hut by a lit fire, the warmest night. */
   sleepKcalPerHour: number
   restKcalPerHour: number
-  /** The cost of picking and of gathering. */
-  forageCostKcalPerHour: number
-  travelKcalPerHour: number
+  /** What an hour of each task costs: picking, gathering wood or fetching a stone, cutting a log, making an axe. */
+  pickKcalPerHour: number
+  gatherKcalPerHour: number
+  chopKcalPerHour: number
+  makeKcalPerHour: number
+  /** The Pandolf terrain factor for walking, in percent: 100 for a road, 120 for light brush. */
+  walkTerrainPercent: number
+  /** Walking speed falls by this many thousandths for each body mass carried. */
+  loadSlowdownPerMille: number
   reserveMaxKcal: number
   initialReserveKcal: number
   hungryBelowKcal: number
@@ -99,7 +108,7 @@ export interface ValleyConfig {
   exploreAfterHours: number
   /** By day a forager sees thickets, stands, other foragers and flags this far; at night only `perceptionRadiusCm`. */
   sightRadiusCm: number
-  /** A forager's body, against which its load slows it. */
+  /** A forager's body, against which its load is weighed. */
   bodyKg: number
   /** Carried berries weigh a kilogram for every this many kilocalories. */
   berryKcalPerKg: number

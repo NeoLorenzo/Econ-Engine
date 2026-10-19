@@ -19,6 +19,7 @@ import {
   observeFar,
   plantsInViewOf,
   speedForLoad,
+  walkCostForLoad,
 } from './forager'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { burnFires, feedFire, sleepsByGroupFire } from './fire'
@@ -38,7 +39,16 @@ import {
 } from './social'
 import { chooseSite, observeSites, sightOf, siteCentre, siteCount, sitesCheckedSince, sitesKnown } from './sites'
 import { nextShortOfWood, swap, woodMatters } from './trade'
-import { coldMatters, hourlyShare, minuteCost, tendFire, warmthOf, workSeconds, type MinuteSeconds } from './work'
+import {
+  coldMatters,
+  minuteCost,
+  regrowthOf,
+  tendFire,
+  warmthOf,
+  workCostOf,
+  workSeconds,
+  type MinuteSeconds,
+} from './work'
 import type {
   ActionEvent,
   ActionReason,
@@ -465,7 +475,8 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   if (abandoned) hutEvents.push(abandoned)
   // What it carries as it sets out decides how fast it walks this minute.
   const load = loadOf(forager)
-  const speed = speedForLoad(config, loadKg(config, load.wood, load.berriesKcal, load.log))
+  const kg = loadKg(config, load.wood, load.berriesKcal, load.log)
+  const speed = speedForLoad(config, kg)
 
   const from = { x: forager.x, y: forager.y }
   const seconds: MinuteSeconds = { walk: 0, work: 0, stand: 0, sleep: 0 }
@@ -723,7 +734,9 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   forager.energyKcal += eatenAgain.takenKcal
   forager.carried = eatenAgain.rest
 
-  const owed = forager.costRemainder + minuteCost(config, seconds, warmth)
+  const owed =
+    forager.costRemainder +
+    minuteCost(config, seconds, warmth, walkCostForLoad(config, kg, speed), workCostOf(config, good, task))
   const due = Math.floor(owed / 3_600)
   forager.costRemainder = owed - due * 3_600
   const spent = Math.min(forager.energyKcal, due)
@@ -781,14 +794,15 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
 }
 
 /**
- * The hour's regrowth of wood: branches on every standing tree and sticks on every bush, each up to its capacity. A
- * felled tree's branches do not regrow, and a crown above capacity keeps what it has. Returns the wood regrown.
+ * Hour `hour`'s regrowth of wood, with hours counted from minute 0: dead branches falling under every standing tree and
+ * sticks on every bush, each up to its capacity. A felled tree gains no dead branches, and a crown above capacity keeps
+ * what it has. Returns the wood regrown.
  */
 export function regrowWood(state: Pick<ValleyState, 'config' | 'woodStock' | 'treeFelledMinute'>, hour: number) {
   const { config, woodStock, treeFelledMinute } = state
   const trees = treeFelledMinute.length
   let regrown = 0
-  const branches = hourlyShare(config.treeRegrowthWoodPerDay, hour)
+  const { branches, sticks } = regrowthOf(config, hour)
   if (branches)
     for (let id = 0; id < trees; id += 1) {
       if (treeFelledMinute[id]! >= 0) continue
@@ -797,7 +811,6 @@ export function regrowWood(state: Pick<ValleyState, 'config' | 'woodStock' | 'tr
       woodStock[id] = after
       regrown += after - before
     }
-  const sticks = hourlyShare(config.bushRegrowthWoodPerDay, hour)
   if (sticks)
     for (let id = trees; id < woodStock.length; id += 1) {
       const before = woodStock[id]!
@@ -826,8 +839,8 @@ function advance(state: ValleyState, recordEvents = true) {
   let regrownKcal = 0
   let regrownWood = 0
   if (minute > 0 && minute % 60 === 0) {
-    const hour = (minute / 60) % 24
-    const berries = hourlyShare(config.bushRegrowthKcalPerDay, hour)
+    const hour = minute / 60
+    const { berries } = regrowthOf(config, hour)
     if (berries) {
       for (let id = 0; id < state.bushKcal.length; id += 1) {
         const before = state.bushKcal[id]!

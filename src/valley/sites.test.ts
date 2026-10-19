@@ -23,7 +23,7 @@ const put = (forager: Forager, x: number, y: number) => {
 
 /** A forager whose needs are met, in a group, so that it explores or checks when idle. */
 function idle(forager: Forager) {
-  forager.energyKcal = 19_000
+  forager.energyKcal = 69_000
   forager.hungry = false
   forager.wood = 24
   forager.shortOfWood = false
@@ -140,7 +140,7 @@ describe('searching', () => {
     const state = valleyAt(TEN_AM, (valley) => {
       const forager = valley.foragers[0]!
       put(forager, valley.layout.camp.x, valley.layout.camp.y)
-      forager.energyKcal = 13_000
+      forager.energyKcal = 63_000
       forager.hungry = true
       forager.siteKnown.fill(1)
       forager.siteChecked.fill(5)

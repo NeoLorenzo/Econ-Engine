@@ -1,5 +1,5 @@
 import { askOf } from './axes'
-import { speedForLoad } from './forager'
+import { speedForLoad, walkCostForLoad } from './forager'
 import { placeCount } from './social'
 import { siteCount } from './sites'
 import { nightHours, nightWood, woodTarget } from './trade'
@@ -11,8 +11,11 @@ import type { ValleyConfig } from './types'
 export function valleyTheory(config: ValleyConfig) {
   const night = nightHours(config)
   const daylight = 24 - night
-  const restDelta = config.forageCostKcalPerHour - config.restKcalPerHour
-  const travelDelta = config.travelKcalPerHour - config.restKcalPerHour
+  /** What an hour of walking under `kg` costs. */
+  const walkCost = (kg: number) => walkCostForLoad(config, kg, speedForLoad(config, kg))
+  const pickDelta = config.pickKcalPerHour - config.restKcalPerHour
+  const gatherDelta = config.gatherKcalPerHour - config.restKcalPerHour
+  const travelDelta = walkCost(0) - config.restKcalPerHour
   /** Sleeping warm every night hour and resting every daylight hour. */
   const fixedDailyCostKcal = night * config.sleepKcalPerHour + daylight * config.restKcalPerHour
   /**
@@ -20,11 +23,12 @@ export function valleyTheory(config: ValleyConfig) {
    * of work or walking replaces an hour of rest, and foraging must pay for the whole day.
    */
   const forageHoursPerDay = (g: number, gatherHours: number, walkHours: number) =>
-    (fixedDailyCostKcal + gatherHours * restDelta + walkHours * travelDelta) / (g - restDelta)
+    (fixedDailyCostKcal + gatherHours * gatherDelta + walkHours * travelDelta) / (g - pickDelta)
   /** The food a forager eats in a day at rate `g`, which is its daily need. */
   const dailyNeedKcal = (g: number, gatherHours: number, walkHours: number) =>
     g * forageHoursPerDay(g, gatherHours, walkHours)
-  const dailyRegrowthKcal = config.thicketCount * config.bushesPerThicket * config.bushRegrowthKcalPerDay
+  const yearlyRegrowthKcal = config.thicketCount * config.bushesPerThicket * config.bushRegrowthKcalPerYear
+  const dailyRegrowthKcal = yearlyRegrowthKcal / 365
   /** Wood gathered for one's own fires a day: a night's wood at rate `w`. */
   const gatherHoursPerDay = (w: number) => nightWood(config) / w
   /** The most spare wood a forager can hold after a trip for itself: `max(0, nightWood − 1 + woodLoad − woodTarget)`. */
@@ -37,7 +41,7 @@ export function valleyTheory(config: ValleyConfig) {
   const loadedWalkSeconds = (cm: number, kg: number) => Math.ceil(cm / speedForLoad(config, kg))
   /** What walking `cm` centimetres under a load of `kg` costs beyond walking it unloaded, in kilocalories. */
   const carryCostKcal = (cm: number, kg: number) =>
-    ((loadedWalkSeconds(cm, kg) - Math.ceil(cm / config.walkCmPerSecond)) * config.travelKcalPerHour) / 3_600
+    (loadedWalkSeconds(cm, kg) * walkCost(kg) - loadedWalkSeconds(cm, 0) * walkCost(0)) / 3_600
   /**
    * The shortest tour through every site, about `0.7124 · √(n · A)` for `n` points spread over an area `A`
    * (Beardwood, Halton and Hammersley, 1959), with site centres in the square inside the margins; in hours of walking.
@@ -52,6 +56,7 @@ export function valleyTheory(config: ValleyConfig) {
     forageHoursPerDay,
     dailyNeedKcal,
     gatherHoursPerDay,
+    yearlyRegrowthKcal,
     dailyRegrowthKcal,
     /** How many foragers the valley could feed if each needed `need` kilocalories a day. */
     carryingCapacity: (need: number) => dailyRegrowthKcal / need,
@@ -70,6 +75,8 @@ export function valleyTheory(config: ValleyConfig) {
     /** What walking instead of resting costs over a sweep of the valley. */
     sweepCostKcal: sweepHours * travelDelta,
     speedForLoad: (kg: number) => speedForLoad(config, kg),
+    /** What an hour of walking under a load of `kg` costs, by the Pandolf equation. */
+    walkCost,
     loadedWalkSeconds,
     carryCostKcal,
     shortestCheckTourHours,
@@ -79,7 +86,7 @@ export function valleyTheory(config: ValleyConfig) {
     campfireWoodPerMember: (n: number) => (night * config.campfireWoodPerHour) / n,
     /** Hours of gathering a day for a member of a group of `n` at rate `w`, its share of the fire's night. */
     campfireGatherHoursPerDay: (n: number, w: number) => (night * config.campfireWoodPerHour) / n / w,
-    /** What an axe costs to make at craft `craft`: its hours times the extra energy of working, `840 · 100 / craft`. */
+    /** What an axe costs to make at craft `craft`: its hours times the extra energy of making, `3,000 · 100 / craft`. */
     axeAsk: (craft: number) => askOf(config, craft),
     /** A first axe is made at half one's born craft: `2 · axeHours` hours at craft 100%. */
     firstAxeHours: (config.axeHours * 100) / Math.floor((100 * config.practiceMinPercent) / 100),
@@ -91,6 +98,13 @@ export function valleyTheory(config: ValleyConfig) {
      */
     logsOnOffer: config.standCount * config.treesPerStand * config.logsPerTree,
     logsRegrownPerDay: (config.standCount * config.treesPerStand * config.logsPerTree) / config.treeRegrowthDays,
+    /** Sticks and dead branches the valley starts with, and the most it adds in a year. */
+    woodOnOffer:
+      config.standCount * config.treesPerStand * config.initialTreeWood +
+      config.thicketCount * config.bushesPerThicket * config.initialBushWood,
+    woodRegrownPerYear:
+      config.standCount * config.treesPerStand * config.treeDeadfallWoodPerYear +
+      (config.thicketCount * config.bushesPerThicket * config.bushRegrowthWoodPerDecade) / 10,
     /** Logs a whole hut loses to the weather each day, which its builder must replace. */
     hutLogsPerMemberDay: 1 / config.hutLogDays,
   }

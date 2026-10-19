@@ -15,6 +15,7 @@ import {
   clearView,
   clockLabel,
   daySeries,
+  daysOfFoodLeft,
   DEFAULT_SPEED_INDEX,
   describeActivity,
   displayedEnergy,
@@ -342,6 +343,7 @@ export default function ValleyApp() {
   const fire = fireSaving(config)
   const days = daySeries(state, followed)
   const percent = (value: number) => `${(value / config.reserveMaxKcal) * 100}%`
+  const foodLeft = daysOfFoodLeft(state, followed)
 
   return (
     <div className="life-app">
@@ -354,7 +356,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 9.5 · huts round the fire</span>
+        <span className="life-title">Life 9.6 · a realistic valley</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -471,7 +473,10 @@ export default function ValleyApp() {
             <div className="life-energy-mark" style={{ left: percent(config.satiatedAtKcal) }} title="Satiated at" />
           </div>
           <div className="life-energy-legend">
-            <span>{!forager.alive ? 'Dead' : forager.hungry ? 'Hungry' : 'Not hungry'}</span>
+            <span>
+              {!forager.alive ? 'Dead' : forager.hungry ? 'Hungry' : 'Not hungry'}
+              {foodLeft !== null && ` · about ${Math.round(foodLeft)} days of food left at its recent rate`}
+            </span>
             <span className="num">
               hungry below {formatKcal(config.hungryBelowKcal)} · full at {formatKcal(config.satiatedAtKcal)}
             </span>
@@ -617,7 +622,7 @@ export default function ValleyApp() {
               {selected!.kind === 'bush'
                 ? `${plant.stock.toLocaleString('en-US')} of ${formatKcal(plant.capacity)}`
                 : plant.treeState === 'standing'
-                  ? `${plant.stock} of ${formatKg(plant.capacity)} of branches`
+                  ? `${plant.stock} of ${formatKg(plant.capacity)} of dead branches beneath it`
                   : `${formatKg(plant.stock)} of branches on the ground`}
             </dd>
             {plant.sticks !== null && (
@@ -992,24 +997,29 @@ export default function ValleyApp() {
             {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
             knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, and berries and firewood up
             close. When their needs are met they explore ground they have never seen, then check the thickets and stands
-            they have not checked for {formatHours(setup.exploreAfterHours)}. A load slows them down, so every metre
-            costs more, and they take a full load home before anything else. Those without a group look for company: two
-            who meet found a group and plant its flag, and anyone who meets a member joins. Members sleep on a ring
-            round their flag and swap wood for food only with each other, telling each other their terms.{' '}
+            they have not checked for {formatHours(setup.exploreAfterHours)}. A load costs them energy and slows them a
+            little, and they take a full load home before anything else. Those without a group look for company: two who
+            meet found a group and plant its flag, and anyone who meets a member joins. Members sleep on a ring round
+            their flag and swap wood for food only with each other, telling each other their terms.{' '}
             {`Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs on the ring round the fire, cut from trees it fells with an axe it makes from a stone and wood${setup.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${setup.craftPractice ? 'grows with practice' : 'stays fixed'}. A hut keeps its sleeper a little warm, the fire more, and both together most.`}{' '}
             They are born with skills{' '}
             {setup.skillMinPercent === setup.skillMaxPercent
               ? `of ${setup.skillMinPercent}%`
               : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
             , which grow with practice over {setup.practiceDays} days from {setup.practiceMinPercent}% towards{' '}
-            {setup.practiceMaxPercent}%. They pick berries bush by bush and gather sticks from bushes and branches from
-            trees, bringing them home in loads of {formatKg(setup.woodLoad)}. Each is coloured by what wood costs it,
-            from <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
+            {setup.practiceMaxPercent}%. They pick berries bush by bush and gather sticks from bushes and dead branches
+            from under trees, bringing them home in loads of {formatKg(setup.woodLoad)}. Each is coloured by what wood
+            costs it, from <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
             group’s colour; each group’s base has a fire, a flag, coloured ground and a lettered badge. Ground the
             followed person has never seen is darkest, and a ring marks each thicket and stand it knows, bright if it
             checked it lately. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to
             follow them, a bush or tree to inspect it, and a flag, badge or group to see the group.
+          </p>
+          <p className="life-note">
+            Every physical number, from what a bush yields to how long a hut lasts, is set from real measurements; the{' '}
+            <a href="https://github.com/NeoLorenzo/Econ-Engine/blob/main/docs/CALIBRATION.md">calibration document</a>{' '}
+            gives the source of each.
           </p>
         </details>
       </section>

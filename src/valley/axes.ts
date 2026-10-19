@@ -26,11 +26,11 @@ export const makeSeconds = (config: ValleyConfig, craft: number) =>
   Math.ceil((SECONDS_PER_HOUR * config.axeHours * 100) / craft)
 
 /**
- * What making an axe costs at craft `craft`, in kilocalories: the extra energy of working instead of resting, for the
+ * What making an axe costs at craft `craft`, in kilocalories: the extra energy of making instead of resting, for the
  * seconds it takes. It is a maker's asking price.
  */
 export const askOf = (config: ValleyConfig, craft: number) =>
-  Math.ceil((makeSeconds(config, craft) * (config.forageCostKcalPerHour - config.restKcalPerHour)) / SECONDS_PER_HOUR)
+  Math.ceil((makeSeconds(config, craft) * (config.makeKcalPerHour - config.restKcalPerHour)) / SECONDS_PER_HOUR)
 
 /** The quality a forager at craft `craft` expects to make: three quarters of its craft, at least 1. */
 export const expectedQuality = (craft: number) => Math.max(1, Math.floor((3 * craft) / 4))

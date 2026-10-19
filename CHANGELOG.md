@@ -2,6 +2,28 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE9-Calibrated-047] - (2026-10-19)
+
+### Changed
+
+- **Life 9.6: every physical number is set from real measurements.** The new [calibration document](docs/CALIBRATION.md) compares each parameter with real-world figures and lists their sources. The valley is placed in Mesolithic northern Europe.
+- **Berries.** A bush yields 900 kcal (1.5 kg) a year, spread evenly over the year, holds at most three weeks' yield (52 kcal), and berries carry 600 kcal a kilogram. The valley now feeds about two people, not fifteen.
+- **Bodies.** A forager's reserve holds 70,000 kcal, a store of fat, and it starts at 66,000; hunger thresholds keep their distances from a full reserve.
+- **Work costs by task:** picking 200 kcal an hour, gathering wood and fetching stones 250, cutting logs 360, making axes 150 (`forageCostKcalPerHour` is removed).
+- **Carrying.** Walking costs the Pandolf rate for the load and speed, 222 kcal an hour unloaded on light brush, and a load slows a walker by only 3% at 40% of body mass (`walkTerrainPercent`, `loadSlowdownPerMille`; `travelKcalPerHour` is removed).
+- **Cold nights** cost 90 kcal an hour asleep with neither fire nor hut, 75 in a hut alone and 70 by a fire alone.
+- **Firewood is dead wood.** Dead branches gather under standing trees at 5 kg a year (`treeDeadfallWoodPerYear`), and bushes grow 2 kg of sticks a decade (`bushRegrowthWoodPerDecade`). Wood is gathered at 15 kg an hour.
+- **Trees, axes and huts.** A felled tree grows back in 20 years, a fresh log weighs 35 kg, a ground stone axe takes 50 hours to make and lasts 200 logs at quality 100, and a hut loses a log every 60 days.
+- **Observer.** "Life 9.6 · a realistic valley": dead branches lie beneath each standing tree, the followed forager's card shows its days of food left at its recent rate, and the setup links to the calibration document.
+
+### Fixed
+
+- The checker no longer reports a hearth moved without joining a group when a forager founds or joins a group that dissolves in the same minute because a member starves.
+
+### Validation
+
+- A new invariant checks that every second is charged the cost of its task, warmth or load. New unit tests cover yearly and decade regrowth, the Pandolf rate and speed under a load, task costs, dead branches, days of food left and a group founded and dissolved in one minute. New fingerprints for Life 9.6.
+
 ## [LIFE9-LogHuts-046] - (2026-10-18)
 
 ### Changed
