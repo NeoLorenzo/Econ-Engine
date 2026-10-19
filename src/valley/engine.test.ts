@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { takeOldest } from './food'
+import { LAKE_ID, takeOldest } from './food'
+import { lakeCapacityKcal } from './config'
 import { cloneValley, createValley, eatCarried, lastEventOf, runValley, stepValley } from './engine'
 import { choosePlant } from './forager'
 import { distance } from './geometry'
@@ -62,8 +63,8 @@ describe('a forager’s minute', () => {
       forager.energyKcal = 63_000
       forager.hungry = true
       // Only bush 0 holds berries, so it is the one worth walking to.
-      valley.bushKcal.fill(0)
-      valley.bushKcal[0] = 400
+      valley.foodStock.fill(0)
+      valley.foodStock[0] = 400
     })
     const next = stepValley(state)
     const event = lastEventOf(next, 0)!
@@ -92,39 +93,70 @@ describe('choosing a plant', () => {
     valleyAt(TEN_AM, (forager, valley) => {
       forager.x = valley.layout.camp.x
       forager.y = valley.layout.camp.y
-      forager.bushMemory.stock.fill(0)
-      forager.bushMemory.seen.fill(5)
+      forager.foodMemory.stock.fill(0)
+      forager.foodMemory.seen.fill(5)
     })
 
-  it('chooses the nearest bush remembered as holding a minute’s work', () => {
+  /** Food plants of one kind, nearest the camp first. */
+  const nearestFirst = (state: ValleyState, from: number, to: number) => {
+    const { foodPlants, camp } = state.layout
+    const near = (id: number) => distance(foodPlants.x[id]!, foodPlants.y[id]!, camp.x, camp.y)
+    return Array.from({ length: to - from }, (_, index) => from + index).sort((a, b) => near(a) - near(b))
+  }
+
+  it('chooses the nearer of two sources that would bring the same food an hour', () => {
     const state = setUp()
     const forager = state.foragers[0]!
-    const { bushes, camp } = state.layout
-    const byDistance = Array.from({ length: bushes.count }, (_, id) => id).sort(
-      (a, b) =>
-        distance(bushes.x[a]!, bushes.y[a]!, camp.x, camp.y) - distance(bushes.x[b]!, bushes.y[b]!, camp.x, camp.y),
-    )
-    forager.bushMemory.stock[byDistance[10]!] = 100
-    forager.bushMemory.stock[byDistance[500]!] = 400
+    const byDistance = nearestFirst(state, 0, state.layout.bushes.count)
+    forager.foodMemory.stock[byDistance[10]!] = state.config.bushCapacityKcal
+    forager.foodMemory.stock[byDistance[500]!] = state.config.bushCapacityKcal
     expect(choosePlant(state.config, state.layout, forager, 'food', state.minute)).toBe(byDistance[10])
+  })
+
+  it('walks further for a full hazel than it would stay at a thin bush, and leaves a bush not worth working', () => {
+    const state = setUp()
+    const forager = state.foragers[0]!
+    const { bushes, foodPlants } = state.layout
+    const bush = nearestFirst(state, 0, bushes.count)[0]!
+    const hazel = nearestFirst(state, bushes.count, foodPlants.count)[0]!
+    // A thin bush, still worth working: at any skill, 15 kcal of 52 gives more than the 200 an hour picking costs.
+    forager.foodMemory.stock[bush] = 15
+    forager.foodMemory.stock[hazel] = state.config.hazelCapacityKcal
+    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute)).toBe(hazel)
+    forager.foodMemory.stock[hazel] = 0
+    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute)).toBe(bush)
+    // With 5 kcal of 52 left, an hour at the bush would bring less than it costs even the quickest picker.
+    forager.foodMemory.stock[bush] = 5
+    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBeNull()
+  })
+
+  it('goes to fish once it knows the lake, expecting it full, when it remembers no better food', () => {
+    const state = setUp()
+    const forager = state.foragers[0]!
+    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBeNull()
+    forager.lakeKnown = true
+    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBe(LAKE_ID)
+    // Having fished it down to a quarter, it no longer finds it worth working.
+    forager.lakeStock = lakeCapacityKcal(state.config) / 4
+    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBeNull()
   })
 
   it('otherwise chooses the bush seen longest ago', () => {
     const state = setUp()
     const forager = state.foragers[0]!
-    forager.bushMemory.seen[1_000] = 1
+    forager.foodMemory.seen[1_000] = 1
     expect(choosePlant(state.config, state.layout, forager, 'food', state.minute)).toBe(1_000)
   })
 
   it('keeps its target while it remembers it holding a minute’s work', () => {
     const state = setUp()
     const forager = state.foragers[0]!
-    forager.bushMemory.stock[1_500] = 400
-    forager.bushMemory.stock[3] = 400
-    forager.targetBushId = 1_500
+    forager.foodMemory.stock[1_500] = 400
+    forager.foodMemory.stock[3] = 400
+    forager.targetFoodId = 1_500
     expect(choosePlant(state.config, state.layout, forager, 'food', state.minute)).toBe(1_500)
-    forager.bushMemory.seen[1_500] = state.minute
-    forager.bushMemory.stock[1_500] = 0
+    forager.foodMemory.seen[1_500] = state.minute
+    forager.foodMemory.stock[1_500] = 0
     expect(choosePlant(state.config, state.layout, forager, 'food', state.minute)).not.toBe(1_500)
   })
 })
@@ -135,7 +167,7 @@ describe('exchange', () => {
     const [seller, buyer] = state.foragers as [Forager, Forager]
     Object.assign(seller, { x: 10_000, y: 10_000, forageRate: 1_000, woodRate: 30, wood: 40, energyKcal: 65_000 })
     Object.assign(buyer, { x: 10_000 + apart, y: 10_000, forageRate: 1_400, woodRate: 14, wood: 0, energyKcal: 69_000 })
-    buyer.carried = [{ kcal: 2_000, harvestTick: TEN_AM }]
+    buyer.carried = [{ food: 'berries' as const, kcal: 2_000, harvestTick: TEN_AM }]
     return { state, seller, buyer }
   }
 
@@ -155,10 +187,10 @@ describe('exchange', () => {
 describe('the engine', () => {
   it('eats carried food exactly as Life’s takeOldest does', () => {
     const lots = [
-      { kcal: 30, harvestTick: 1 },
-      { kcal: 5, harvestTick: 2 },
-      { kcal: 40, harvestTick: 2 },
-      { kcal: 12, harvestTick: 9 },
+      { food: 'berries' as const, kcal: 30, harvestTick: 1 },
+      { food: 'berries' as const, kcal: 5, harvestTick: 2 },
+      { food: 'berries' as const, kcal: 40, harvestTick: 2 },
+      { food: 'berries' as const, kcal: 12, harvestTick: 9 },
     ]
     for (let room = -1; room <= 90; room += 1) {
       const expected = takeOldest(lots, room)
@@ -172,11 +204,11 @@ describe('the engine', () => {
   const fingerprint = (state: ValleyState) =>
     JSON.stringify({
       minute: state.minute,
-      bushes: Array.from(state.bushKcal),
+      bushes: Array.from(state.foodStock),
       trees: Array.from(state.woodStock),
       foragers: state.foragers.map((forager) => ({
         ...forager,
-        bushMemory: Array.from(forager.bushMemory.stock),
+        foodMemory: Array.from(forager.foodMemory.stock),
         woodMemory: Array.from(forager.woodMemory.stock),
       })),
       totals: state.totals,
@@ -225,7 +257,7 @@ describe('the engine', () => {
     }
     const someoneWorked = (state: ValleyState) => state.lastEvents.some((event) => event.workSeconds > 0)
     expect(breaking(10, (state) => (state.foragers[0]!.energyKcal -= 1))).toMatch('energy is not conserved')
-    expect(breaking(420, (state) => (state.bushKcal[5]! -= 1))).toMatch('changed without a record')
+    expect(breaking(420, (state) => (state.foodStock[5]! -= 1))).toMatch('changed without a record')
     expect(
       breaking(500, (state) => {
         const event = state.lastEvents[0]!

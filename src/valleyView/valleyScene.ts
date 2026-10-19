@@ -9,6 +9,7 @@ import type {
   PerspectiveCamera,
   Sprite,
 } from 'three'
+import { LAKE_ID } from '../valley/food'
 import { isDaylight } from '../valley/forager'
 import { siteCount } from '../valley/sites'
 import { livingMembers, placesPerSide } from '../valley/social'
@@ -18,6 +19,7 @@ import { hex, palette } from '../ui/theme'
 import { LOG_LENGTH, LOG_RADIUS, hutPlan, pieceLength } from './hutPlan'
 import {
   BERRIES_PER_BUSH,
+  NUTS_PER_HAZEL,
   closeTilt,
   CAMERA_LIMITS,
   arcPoint,
@@ -65,6 +67,9 @@ const OUTSIDE = 0x2c4a30
 const GRID = 0x355f39
 const LEAF = 0x2f7a3c
 const BERRY = 0xc8243f
+const HAZEL_LEAF = 0x4c8a35
+const NUT = 0x9a6a35
+const WATER = 0x2e5d78
 const TRUNK = 0x5a3d26
 const CROWN = 0x2a6236
 const FIREWOOD = 0x8a6a48
@@ -101,7 +106,7 @@ const POLE_OFFSET = { x: -1.1, z: -0.7 }
  * to follow.
  */
 export type ValleyPick = ValleySelection | { kind: 'forager'; id: number }
-export type ValleyPlant = { kind: 'bush' | 'tree' | 'stone' | 'hut'; id: number }
+export type ValleyPlant = { kind: 'bush' | 'hazel' | 'tree' | 'stone' | 'hut' | 'lake'; id: number }
 /** A plant, or a group by its ID. */
 export type ValleySelection = ValleyPlant | { kind: 'group'; id: number }
 
@@ -135,6 +140,19 @@ const BUSH_LOBES: [number, number, number, number][] = [
   [-0.38, 0.45, -0.3, 0.42],
 ]
 const BERRY_RADIUS = 0.06
+/**
+ * A hazel: a clump of stems about 3 m tall, each a lean, tall leafy lobe on top: offset across, height and offset
+ * along, and radius, in metres. Its nuts hang in clusters under the lower lobes.
+ */
+const HAZEL_LOBES: [number, number, number, number][] = [
+  [0, 3.3, 0, 1.1],
+  [0.9, 2.8, 0.5, 0.9],
+  [-0.85, 2.9, -0.55, 0.9],
+  [0.25, 2.5, -0.95, 0.75],
+]
+const NUT_RADIUS = 0.09
+/** A fishing rod in a fisher's hand, and how long it is. */
+const ROD_LENGTH = 2.2
 /** A tree's trunk height, and its two crown cones: height of each centre, radius and height. */
 const TRUNK_HEIGHT = 5.5
 const CROWN_CONES: [number, number, number][] = [
@@ -163,9 +181,10 @@ interface Figure {
   sashMaterial: MeshStandardMaterial
   bundle: Group
   parcel: Mesh
-  /** A log on its shoulder, and an axe in its right hand. */
+  /** A log on its shoulder, an axe in its right hand, and a rod in its left while it fishes. */
   shoulderLog: Mesh
   axe: Group
+  rod: Mesh
   heading: number
 }
 
@@ -266,6 +285,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const leafMaterial = new THREE.MeshStandardMaterial({ color: LEAF, roughness: 0.85, flatShading: true })
   const berryGeometry = new THREE.IcosahedronGeometry(1, 0)
   const berryMaterial = new THREE.MeshStandardMaterial({ color: BERRY, roughness: 0.4 })
+  const hazelLeafMaterial = new THREE.MeshStandardMaterial({ color: HAZEL_LEAF, roughness: 0.85, flatShading: true })
+  const nutMaterial = new THREE.MeshStandardMaterial({ color: NUT, roughness: 0.6, flatShading: true })
+  const stemGeometry = new THREE.CylinderGeometry(0.05, 0.07, 1, 5)
+  stemGeometry.translate(0, 0.5, 0)
+  const rodGeometry = new THREE.CylinderGeometry(0.012, 0.02, ROD_LENGTH, 5)
+  rodGeometry.translate(0, ROD_LENGTH / 2, 0)
   const trunkGeometry = new THREE.CylinderGeometry(0.16, 0.26, 1, 7)
   trunkGeometry.translate(0, 0.5, 0)
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: TRUNK, roughness: 1, flatShading: true })
@@ -349,6 +374,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let grid: InstanceType<Three['LineSegments']> | null = null
   let leaves: InstancedMesh | null = null
   let berryMesh: InstancedMesh | null = null
+  let hazelLeaves: InstancedMesh | null = null
+  let hazelStems: InstancedMesh | null = null
+  let nutMesh: InstancedMesh | null = null
+  let lake: Mesh | null = null
   let trunks: InstancedMesh | null = null
   let crowns: InstancedMesh | null = null
   let stumps: InstancedMesh | null = null
@@ -364,6 +393,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let figures: Figure[] = []
   /** The fill last drawn for each bush and tree, so only plants that changed are redrawn. */
   let bushFill = new Float32Array(0)
+  let hazelFill = new Float32Array(0)
   let treeDrawn: TreeDrawn[] = []
   /** The stones last drawn on each stone spot. */
   let rockFill = new Int32Array(0)
@@ -554,6 +584,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     shoulderLog.position.set(0.12, 0.62, 0.1)
     shoulderLog.rotation.x = -0.12
     shoulderLog.castShadow = true
+    // A rod held out over the water in the left hand.
+    const rod = new THREE.Mesh(rodGeometry, bundleMaterial)
+    rod.position.set(0, -0.55, 0.05)
+    rod.rotation.x = Math.PI / 2 - 0.5
+    rod.visible = false
+    arms[0].add(rod)
     const axe = new THREE.Group()
     const handle = new THREE.Mesh(axeHandleGeometry, bundleMaterial)
     const blade = new THREE.Mesh(axeHeadGeometry, axeHeadMaterial)
@@ -588,6 +624,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       parcel,
       shoulderLog,
       axe,
+      rod,
       heading: 0,
     }
   }
@@ -817,19 +854,19 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       knowledgeTexture = null
       knowledgeKey = ''
     }
-    for (const mesh of [leaves, berryMesh, trunks, crowns, stumps, deadwood, rocks]) {
+    for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh, trunks, crowns, stumps, deadwood, rocks]) {
       if (!mesh) continue
       mesh.dispose()
       world.remove(mesh)
     }
-    leaves = berryMesh = trunks = crowns = stumps = deadwood = rocks = null
-    for (const mesh of [ground, outside]) {
+    leaves = berryMesh = hazelLeaves = hazelStems = nutMesh = trunks = crowns = stumps = deadwood = rocks = null
+    for (const mesh of [ground, outside, lake]) {
       if (!mesh) continue
       mesh.geometry.dispose()
       ;(mesh.material as MeshStandardMaterial).dispose()
       world.remove(mesh)
     }
-    ground = outside = null
+    ground = outside = lake = null
     if (grid) {
       grid.geometry.dispose()
       ;(grid.material as InstanceType<Three['LineBasicMaterial']>).dispose()
@@ -850,6 +887,22 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         matrix
           .makeScale(radius, radius, radius)
           .setPosition(berrySpots[index * 3]!, berrySpots[index * 3 + 1]!, berrySpots[index * 3 + 2]!),
+      )
+    }
+  }
+
+  /** Where each cluster of nuts hangs, by hazel: under its lower lobes, spread around it. */
+  let nutSpots = new Float32Array(0)
+
+  function placeNuts(hazel: number, fills: number[]) {
+    for (let slot = 0; slot < NUTS_PER_HAZEL; slot += 1) {
+      const index = hazel * NUTS_PER_HAZEL + slot
+      const radius = Math.max(1e-5, NUT_RADIUS * fills[slot]!)
+      nutMesh!.setMatrixAt(
+        index,
+        matrix
+          .makeScale(radius, radius * 1.2, radius)
+          .setPosition(nutSpots[index * 3]!, nutSpots[index * 3 + 1]!, nutSpots[index * 3 + 2]!),
       )
     }
   }
@@ -974,7 +1027,16 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     )
     outside.rotation.x = -Math.PI / 2
     outside.position.y = -0.05
-    world.add(outside, ground)
+    // The lake beyond the north edge: as wide as the valley, and as deep as its area makes it.
+    const lakeDepth = (state.config.lakeHectares * 10_000) / size
+    lake = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, lakeDepth),
+      new THREE.MeshStandardMaterial({ color: WATER, roughness: 0.25, metalness: 0.1 }),
+    )
+    lake.rotation.x = -Math.PI / 2
+    lake.position.set(0, -0.02, -size / 2 - lakeDepth / 2)
+    lake.receiveShadow = true
+    world.add(outside, ground, lake)
 
     const points: number[] = []
     for (let line = 0; line <= size; line += GRID_STEP_M) {
@@ -1019,6 +1081,51 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       }
     }
 
+    // Hazels: a clump of stems, each topped by a leafy lobe, with clusters of nuts under the lower lobes. Hazels are
+    // food plants after the bushes, so hazel `h` is food plant `bushes.count + h`.
+    const { foodPlants } = state.layout
+    const hazelCount = foodPlants.count - bushes.count
+    hazelLeaves = new THREE.InstancedMesh(leafGeometry, hazelLeafMaterial, Math.max(1, hazelCount * HAZEL_LOBES.length))
+    hazelStems = new THREE.InstancedMesh(stemGeometry, trunkMaterial, Math.max(1, hazelCount * HAZEL_LOBES.length))
+    nutMesh = new THREE.InstancedMesh(berryGeometry, nutMaterial, Math.max(1, hazelCount * NUTS_PER_HAZEL))
+    nutSpots = new Float32Array(hazelCount * NUTS_PER_HAZEL * 3)
+    for (let hazel = 0; hazel < hazelCount; hazel += 1) {
+      const id = bushes.count + hazel
+      const { x, z } = at(foodPlants.x[id]!, foodPlants.y[id]!)
+      const look = plantLook('hazel', id)
+      const cos = Math.cos(look.turn)
+      const sin = Math.sin(look.turn)
+      const lobes = HAZEL_LOBES.map(([dx, height, dz, radius]) => ({
+        x: x + (dx * cos - dz * sin) * look.size,
+        y: height * look.size,
+        z: z + (dx * sin + dz * cos) * look.size,
+        radius: radius * look.size,
+      }))
+      for (const [index, lobe] of lobes.entries()) {
+        const slot = hazel * HAZEL_LOBES.length + index
+        hazelLeaves.setMatrixAt(
+          slot,
+          matrix.makeScale(lobe.radius, lobe.radius * 1.15, lobe.radius).setPosition(lobe.x, lobe.y, lobe.z),
+        )
+        // A stem leans from the clump's foot up into its lobe.
+        position.set(lobe.x - x, lobe.y - lobe.radius * 0.5, lobe.z - z)
+        const length = position.length()
+        quaternion.setFromUnitVectors(yAxis, position.normalize())
+        hazelStems.setMatrixAt(
+          slot,
+          matrix.compose(position.set(x, 0, z), quaternion, scale.set(look.size, length, look.size)),
+        )
+      }
+      for (let slot = 0; slot < NUTS_PER_HAZEL; slot += 1) {
+        const lobe = lobes[1 + (slot % (lobes.length - 1))]!
+        const around = look.turn + slot * 2.1
+        const index = (hazel * NUTS_PER_HAZEL + slot) * 3
+        nutSpots[index] = lobe.x + Math.cos(around) * lobe.radius * 0.8
+        nutSpots[index + 1] = lobe.y - lobe.radius * 0.55
+        nutSpots[index + 2] = lobe.z + Math.sin(around) * lobe.radius * 0.8
+      }
+    }
+
     // Trees: a trunk and two crown cones each, and a stump once felled. The crown of a standing tree is drawn full at
     // first, for the bounds; each tree is redrawn as it is when the first minute is drawn.
     trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.count)
@@ -1036,9 +1143,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     bushFill = new Float32Array(bushes.count).fill(-1)
     const ripe = fillInTurn(1, 1, BERRIES_PER_BUSH)
     for (let bush = 0; bush < bushes.count; bush += 1) placeBerries(bush, ripe)
-    for (const mesh of [leaves, berryMesh, trunks, crowns, stumps, deadwood, rocks]) {
+    hazelFill = new Float32Array(hazelCount).fill(-1)
+    const ripeNuts = fillInTurn(1, 1, NUTS_PER_HAZEL)
+    for (let hazel = 0; hazel < hazelCount; hazel += 1) placeNuts(hazel, ripeNuts)
+    for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh, trunks, crowns, stumps, deadwood, rocks]) {
       mesh.castShadow = true
-      mesh.receiveShadow = mesh === leaves || mesh === rocks
+      mesh.receiveShadow = mesh === leaves || mesh === hazelLeaves || mesh === rocks
       mesh.instanceMatrix.needsUpdate = true
       mesh.computeBoundingSphere()
       world.add(mesh)
@@ -1155,6 +1265,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     } else if (pose.gesture === 'pick') {
       bend = 0.25
       reach = -1.25 + 0.25 * Math.sin(phase * 5)
+    } else if (pose.gesture === 'fish') {
+      // Holding a rod out over the water, twitching it now and then.
+      reach = -0.9 + 0.08 * Math.max(0, Math.sin(phase * 2.5))
     } else if (pose.gesture === 'gather') {
       bend = 0.95 + 0.1 * Math.sin(phase * 3)
       reach = -0.6 + 0.35 * Math.sin(phase * 4)
@@ -1175,9 +1288,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     if (pose.gesture === 'chop' || pose.gesture === 'make') {
       figure.arms[0].rotation.x = reach
       figure.arms[1].rotation.x = reach
-    } else if (pose.gesture === 'pick' || pose.gesture === 'gather') {
+    } else if (pose.gesture === 'pick' || pose.gesture === 'gather' || pose.gesture === 'fish') {
       figure.arms[0].rotation.x = reach
-      figure.arms[1].rotation.x = pose.gesture === 'pick' ? -0.3 : reach * 0.8
+      figure.arms[1].rotation.x = pose.gesture === 'gather' ? reach * 0.8 : -0.3
     } else {
       figure.arms[0].rotation.x = armSwing
       figure.arms[1].rotation.x = -armSwing
@@ -1185,6 +1298,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     // Lying down tips the whole body over at the feet.
     figure.body.rotation.x = (-Math.PI / 2) * pose.lying
     figure.body.position.y = 0.16 * pose.lying
+    figure.rod.visible = pose.gesture === 'fish'
   }
 
   function draw(pair: DisplayPair, options: DrawOptions) {
@@ -1251,6 +1365,16 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       berriesChanged = true
     }
     if (berriesChanged) berryMesh!.instanceMatrix.needsUpdate = true
+    let nutsChanged = false
+    for (let hazel = 0; hazel < hazelFill.length; hazel += 1) {
+      const id = layout.bushes.count + hazel
+      const fill = displayedStock(pair, 'hazel', id, interpolate) / config.hazelCapacityKcal
+      if (Math.abs(fill - hazelFill[hazel]!) < 0.002) continue
+      hazelFill[hazel] = fill
+      placeNuts(hazel, fillInTurn(fill, 1, NUTS_PER_HAZEL))
+      nutsChanged = true
+    }
+    if (nutsChanged) nutMesh!.instanceMatrix.needsUpdate = true
     // Trees stand, or lie felled as they are cut up, and stone spots show the stones left on them.
     let treesChanged = false
     for (let tree = 0; tree < layout.trees.count; tree += 1) {
@@ -1530,17 +1654,18 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       arc.food.position.set(foodAt.x, foodAt.y, foodAt.z)
     }
 
-    // The followed forager's target: the tree it works for wood, or else its bush.
+    // The followed forager's target: the tree it works for wood, or else its bush or hazel. The lake needs no ring.
     const event = followed ? currentEvent(pair, followedId) : null
+    const foodTarget = followed?.targetFoodId ?? null
     const targetPlant =
       followed && event?.workedFor === 'wood' && followed.targetWoodId !== null
         ? { kind: 'tree' as const, id: followed.targetWoodId }
-        : followed && event?.workedFor === 'food' && followed.targetBushId !== null
-          ? { kind: 'bush' as const, id: followed.targetBushId }
+        : event?.workedFor === 'food' && foodTarget !== null && foodTarget !== LAKE_ID
+          ? { kind: foodTarget < layout.bushes.count ? ('bush' as const) : ('hazel' as const), id: foodTarget }
           : null
     const ringAt = (ring: Mesh, chosen: ValleySelection | null) => {
-      ring.visible = chosen !== null && (ring !== targetRing || followed!.alive)
-      if (!chosen) return
+      ring.visible = chosen !== null && chosen.kind !== 'lake' && (ring !== targetRing || followed!.alive)
+      if (!chosen || chosen.kind === 'lake') return
       let spot: { x: number; z: number }
       if (chosen.kind === 'group') {
         const flag = state.groups[chosen.id]!.flag
@@ -1554,20 +1679,26 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         spot = at(hut.x, hut.y)
       } else {
         const plants =
-          chosen.kind === 'bush' ? layout!.bushes : chosen.kind === 'stone' ? layout!.stones : layout!.trees
+          chosen.kind === 'bush' || chosen.kind === 'hazel'
+            ? layout!.foodPlants
+            : chosen.kind === 'stone'
+              ? layout!.stones
+              : layout!.trees
         spot = at(plants.x[chosen.id]!, plants.y[chosen.id]!)
       }
       ring.position.set(spot.x, ring === selectRing ? 0.04 : 0.035, spot.z)
       ring.scale.setScalar(
         chosen.kind === 'bush'
           ? 1.1
-          : chosen.kind === 'group'
-            ? 0.7
-            : chosen.kind === 'hut'
-              ? 2
-              : chosen.kind === 'stone'
-                ? 0.9
-                : 1.8,
+          : chosen.kind === 'hazel'
+            ? 2.2
+            : chosen.kind === 'group'
+              ? 0.7
+              : chosen.kind === 'hut'
+                ? 2
+                : chosen.kind === 'stone'
+                  ? 0.9
+                  : 1.8,
       )
     }
     ringAt(targetRing, targetPlant)
@@ -1577,9 +1708,14 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
   /** The plant an instance of a bush's or tree's mesh belongs to. */
   function plantOf(object: unknown, instance: number | undefined): ValleyPlant | null {
+    if (object === lake) return { kind: 'lake', id: 0 }
     if (instance === undefined) return null
     if (object === leaves) return { kind: 'bush', id: Math.floor(instance / BUSH_LOBES.length) }
     if (object === berryMesh) return { kind: 'bush', id: Math.floor(instance / BERRIES_PER_BUSH) }
+    const bushes = layout!.bushes.count
+    if (object === hazelLeaves || object === hazelStems)
+      return { kind: 'hazel', id: bushes + Math.floor(instance / HAZEL_LOBES.length) }
+    if (object === nutMesh) return { kind: 'hazel', id: bushes + Math.floor(instance / NUTS_PER_HAZEL) }
     if (object === trunks) return { kind: 'tree', id: instance }
     if (object === crowns) return { kind: 'tree', id: Math.floor(instance / CROWN_CONES.length) }
     if (object === stumps) return { kind: 'tree', id: instance }
@@ -1645,7 +1781,19 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
-    const plants = [leaves, berryMesh, trunks, crowns, stumps, deadwood, rocks].filter((mesh) => mesh !== null)
+    const plants = [
+      leaves,
+      berryMesh,
+      hazelLeaves,
+      hazelStems,
+      nutMesh,
+      trunks,
+      crowns,
+      stumps,
+      deadwood,
+      rocks,
+      lake,
+    ].filter((mesh) => mesh !== null)
     const shown = (object: { visible: boolean; parent: unknown } | null): boolean =>
       !object || (object.visible && shown(object.parent as typeof object))
     const hit = raycaster
@@ -1762,6 +1910,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         axeHandleGeometry,
         axeHeadGeometry,
         axeHeadMaterial,
+        hazelLeafMaterial,
+        nutMaterial,
+        stemGeometry,
+        rodGeometry,
         circleGeometry,
         swapMaterial,
         freshSiteMaterial,

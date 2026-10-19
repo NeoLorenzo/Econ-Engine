@@ -38,9 +38,13 @@ describe('a load', () => {
     const forager = valleyAt(TEN_AM).foragers[0]!
     forager.tripWood = 12
     forager.wood = 20
-    forager.carried = [{ kcal: 1_200, harvestTick: TEN_AM }]
-    expect(loadOf(forager)).toEqual({ wood: 12, berriesKcal: 1_200, log: 0 })
-    expect(loadKg(config, 12, 1_200)).toBe(14)
+    forager.carried = [{ food: 'berries' as const, kcal: 1_200, harvestTick: TEN_AM }]
+    expect(loadOf(forager)).toEqual({ wood: 12, berriesKcal: 1_200, nutsKcal: 0, fishKcal: 0, log: 0 })
+    expect(loadKg(config, loadOf(forager))).toBe(14)
+    // Nuts weigh a kilogram for 2,500 kcal and fish for 600, rounded down once over every food together.
+    expect(loadKg(config, { wood: 0, berriesKcal: 300, nutsKcal: 1_250, fishKcal: 300, log: 0 })).toBe(1)
+    expect(loadKg(config, { wood: 0, berriesKcal: 299, nutsKcal: 1_250, fishKcal: 300, log: 0 })).toBe(1)
+    expect(loadKg(config, { wood: 0, berriesKcal: 299, nutsKcal: 0, fishKcal: 300, log: 0 })).toBe(0)
     forager.wood = 5
     expect(loadOf(forager).wood).toBe(5)
   })

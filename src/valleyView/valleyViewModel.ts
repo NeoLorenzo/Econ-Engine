@@ -1,5 +1,5 @@
 import { askOf, expectedQuality, usableAsk } from '../valley/axes'
-import { carriedKcal } from '../valley/food'
+import { LAKE_ID, capacityOf, carriedByFood, carriedKcal, spoilsIn } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { ringOf } from '../valley/config'
 import { lastEventOf } from '../valley/engine'
@@ -7,7 +7,7 @@ import { campfireBurn } from '../valley/fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
 import { practicePercents } from '../valley/practice'
-import { siteCentre, siteCount, siteRadius, sitesKnown } from '../valley/sites'
+import { siteCentre, siteCount, siteKindOf, siteRadius, sitesKnown } from '../valley/sites'
 import { livingMembers, placeCount, placesPerSide } from '../valley/social'
 import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
 import type { ActionEvent, Group, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
@@ -77,7 +77,7 @@ export const toMetres = (config: ValleyConfig, x: number, y: number) => ({
   z: (y - config.valleySizeCm / 2) / 100,
 })
 
-export type Gesture = 'walk' | 'pick' | 'gather' | 'chop' | 'make' | 'stand' | 'sleep' | 'dead'
+export type Gesture = 'walk' | 'pick' | 'fish' | 'gather' | 'chop' | 'make' | 'stand' | 'sleep' | 'dead'
 
 export interface ForagerPose {
   /** Its position in valley centimetres. */
@@ -122,15 +122,18 @@ export function foragerPose(pair: DisplayPair, foragerId: number, interpolate = 
     }
   }
   const { layout } = next
-  const plants = event.workedFor === 'food' ? layout.bushes : layout.woodPlants
+  const plants = event.workedFor === 'food' ? layout.foodPlants : layout.woodPlants
   const toward = (xs: Int32Array, ys: Int32Array, id: number | null) =>
     id === null ? null : headingOf(xs[id]! - position.x, ys[id]! - position.y)
+  const fishing = event.plantId === LAKE_ID
   const facing =
     event.task === 'cut'
       ? toward(layout.trees.x, layout.trees.y, event.treeId)
       : event.task === 'stone'
         ? toward(layout.stones.x, layout.stones.y, event.stoneId)
-        : toward(plants.x, plants.y, event.plantId)
+        : fishing
+          ? headingOf(0, -1)
+          : toward(plants.x, plants.y, event.plantId)
   const gesture: Gesture = event.workSeconds
     ? event.task === 'cut'
       ? 'chop'
@@ -138,7 +141,9 @@ export function foragerPose(pair: DisplayPair, foragerId: number, interpolate = 
         ? 'make'
         : event.task === 'stone' || event.workedFor === 'wood'
           ? 'gather'
-          : 'pick'
+          : fishing
+            ? 'fish'
+            : 'pick'
     : event.action === 'sleep'
       ? 'sleep'
       : 'stand'
@@ -164,10 +169,13 @@ export const holdsAxe = (pair: DisplayPair, foragerId: number) => {
   return pair.next.foragers[foragerId]!.axe !== null || event?.task === 'cut'
 }
 
+/** A plant the inspector can show: a bush or hazel by food plant ID, or a tree by tree ID. */
+export type PlantKind = 'bush' | 'hazel' | 'tree'
+
 /** A plant's stock, part of the way through the minute. */
-export function displayedStock(pair: DisplayPair, kind: 'bush' | 'tree', id: number, interpolate = true) {
-  const before = kind === 'bush' ? pair.previous.bushKcal[id]! : pair.previous.woodStock[id]!
-  const after = kind === 'bush' ? pair.next.bushKcal[id]! : pair.next.woodStock[id]!
+export function displayedStock(pair: DisplayPair, kind: PlantKind, id: number, interpolate = true) {
+  const before = kind === 'tree' ? pair.previous.woodStock[id]! : pair.previous.foodStock[id]!
+  const after = kind === 'tree' ? pair.next.woodStock[id]! : pair.next.foodStock[id]!
   return interpolate ? lerp(before, after, pair.alpha) : after
 }
 
@@ -219,8 +227,9 @@ export const fillInTurn = (amount: number, capacity: number, count: number) =>
     Math.min(1, Math.max(0, (Math.max(0, amount) / capacity) * count - index)),
   )
 
-/** Berries drawn on each bush. */
+/** Berries drawn on each bush, and clusters of nuts on each hazel. */
 export const BERRIES_PER_BUSH = 10
+export const NUTS_PER_HAZEL = 8
 
 /** How a plant looks: fixed by its kind and ID, so it looks the same in every run, and drawn from no simulation stream. */
 export interface PlantLook {
@@ -230,9 +239,9 @@ export interface PlantLook {
   turn: number
 }
 
-const LOOK_SALT = { bush: 0x4255_5348, tree: 0x5452_4545 } as const
+const LOOK_SALT = { bush: 0x4255_5348, hazel: 0x4841_5a45, tree: 0x5452_4545 } as const
 
-export function plantLook(kind: 'bush' | 'tree', id: number): PlantLook {
+export function plantLook(kind: PlantKind, id: number): PlantLook {
   const first = randomDraw(mixSeed((id ^ LOOK_SALT[kind]) >>> 0))
   const second = randomDraw(first.state)
   return { size: 0.85 + first.value * 0.3, turn: second.value * Math.PI * 2 }
@@ -293,13 +302,18 @@ export const woodPlantName = (state: ValleyState, id: number) =>
 
 /** People count bushes, trees and foragers from 1. */
 export const bushName = (state: ValleyState, id: number) => `a bush in thicket ${state.layout.bushes.site[id]! + 1}`
+/** A hazel by its food plant ID. */
+export const hazelName = (state: ValleyState, id: number) =>
+  `a hazel in hazel thicket ${state.layout.foodPlants.site[id]! + 1}`
+/** A food source by name: a bush, a hazel, or the lake. */
+export const foodSourceName = (state: ValleyState, id: number) =>
+  id === LAKE_ID ? 'the lake' : id < state.layout.bushes.count ? bushName(state, id) : hazelName(state, id)
 export const treeName = (state: ValleyState, id: number) => `a tree in stand ${state.layout.trees.site[id]! + 1}`
 export const stoneName = (state: ValleyState, id: number) => `outcrop ${state.layout.stones.site[id]! + 1}`
 /** A site by name, as bushes and trees name theirs: thickets, stands and outcrops each counted from 1. */
 export function siteName(config: ValleyConfig, site: number) {
-  if (site < config.thicketCount) return `thicket ${site + 1}`
-  const stand = site - config.thicketCount
-  return stand < config.standCount ? `stand ${stand + 1}` : `outcrop ${stand - config.standCount + 1}`
+  const { kind, index } = siteKindOf(config, site)
+  return `${kind === 'hazel' ? 'hazel thicket' : kind} ${index + 1}`
 }
 
 /** An axe in a phrase: its quality, the logs it has left, and who made it. */
@@ -359,7 +373,7 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   if (event.reason === 'waiting for an axe being made') return 'Waiting for an axe someone promised to make'
   if (event.reason === 'going home to wait for an axe') return 'Walking home to wait for a promised axe'
   if (event.reason === 'picking food to buy an axe')
-    return event.workSeconds ? `Picking berries to buy an axe` : 'Looking for berries to buy an axe'
+    return event.workSeconds ? `Gathering ${foodWord(event)} to buy an axe` : 'Looking for food to buy an axe'
   if (event.reason === 'taking food home to buy an axe') return 'Taking food home to buy an axe'
   if (event.reason === 'waiting to buy an axe') return 'Waiting at home with food to buy an axe'
   if (event.reason === 'exploring') {
@@ -374,13 +388,19 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
   if (event.reason === 'waiting for company') return 'Waiting for company at a flag'
   if (event.reason === 'searching') {
     const where = event.siteId === null ? 'new ground' : siteName(state.config, event.siteId)
-    return event.workedFor === 'wood' ? `Searching ${where} for firewood` : `Searching ${where} for berries`
+    return event.workedFor === 'wood' ? `Searching ${where} for firewood` : `Searching ${where} for food`
   }
   if (event.reason === 'waiting to swap') return 'Resting, carrying food to swap for wood'
   if (event.reason === 'too late to set out') return 'Too late in the day to set out'
   if (event.reason === 'waiting for regrowth')
-    return event.workedFor === 'wood' ? 'Short of wood, waiting for branches to grow' : 'Hungry, waiting for berries'
-  if (event.action === 'forage') return `Picking berries${toSwap} from ${bushName(state, event.plantId!)}`
+    return event.workedFor === 'wood'
+      ? 'Short of wood, waiting for branches to grow'
+      : 'Hungry, waiting for food to grow'
+  if (event.action === 'forage') {
+    if (event.food === 'fish') return `Fishing from the shore${toSwap}`
+    if (event.food === 'nuts') return `Gathering hazelnuts${toSwap} from ${hazelName(state, event.plantId!)}`
+    return `Picking berries${toSwap} from ${bushName(state, event.plantId!)}`
+  }
   if (event.action === 'gather') {
     const id = event.plantId!
     const what =
@@ -391,10 +411,17 @@ export function describeActivity(pair: DisplayPair, foragerId: number) {
           : `Snapping branches${toSwap} off ${woodPlantName(state, id)}`
     return event.reason === 'filling a load' ? `${what} to fill a load` : what
   }
-  if (event.action === 'walk')
-    return event.workedFor === 'wood' ? `Walking to gather firewood${toSwap}` : `Walking to a bush${toSwap}`
-  return event.workedFor === 'wood' ? 'Looking for firewood' : 'Looking for berries'
+  if (event.action === 'walk') {
+    if (event.workedFor === 'wood') return `Walking to gather firewood${toSwap}`
+    if (event.food === 'fish') return `Walking to the lake to fish${toSwap}`
+    return event.food === 'nuts' ? `Walking to a hazel${toSwap}` : `Walking to a bush${toSwap}`
+  }
+  return event.workedFor === 'wood' ? 'Looking for firewood' : 'Looking for food'
 }
+
+/** The food a forager takes this minute, as a word. */
+const foodWord = (event: ActionEvent) =>
+  event.food === 'fish' ? 'fish' : event.food === 'nuts' ? 'hazelnuts' : 'berries'
 
 /** Minutes as a short phrase: "40 min", "3 h 5 min", "2 d 4 h". */
 export function formatMinutes(minutes: number) {
@@ -412,11 +439,11 @@ const seenLabel = (state: ValleyState, seen: number) => {
   return ago <= 0 ? 'this minute' : `${formatMinutes(ago)} ago`
 }
 
-/** What the inspector shows for a bush or tree: the truth beside what the followed forager believes. */
-export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: number, foragerId: number) {
+/** What the inspector shows for a bush, hazel or tree: the truth beside what the followed forager believes. */
+export function plantInspection(state: ValleyState, kind: PlantKind, id: number, foragerId: number) {
   const forager = state.foragers[foragerId]!
-  const memory = kind === 'bush' ? forager.bushMemory : forager.woodMemory
-  const stock = kind === 'bush' ? state.bushKcal[id]! : state.woodStock[id]!
+  const memory = kind === 'tree' ? forager.woodMemory : forager.foodMemory
+  const stock = kind === 'tree' ? state.woodStock[id]! : state.foodStock[id]!
   const felledMinute = kind === 'tree' ? state.treeFelledMinute[id]! : -1
   const regrowMinute = felledMinute + state.config.treeRegrowthDays * 1_440
   return {
@@ -429,9 +456,16 @@ export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: n
     name:
       kind === 'bush'
         ? `Bush in thicket ${state.layout.bushes.site[id]! + 1}`
-        : `Tree in stand ${state.layout.trees.site[id]! + 1}`,
+        : kind === 'hazel'
+          ? `Hazel in hazel thicket ${state.layout.foodPlants.site[id]! + 1}`
+          : `Tree in stand ${state.layout.trees.site[id]! + 1}`,
     stock,
-    capacity: kind === 'bush' ? state.config.bushCapacityKcal : state.config.treeCapacityWood,
+    capacity:
+      kind === 'bush'
+        ? state.config.bushCapacityKcal
+        : kind === 'hazel'
+          ? state.config.hazelCapacityKcal
+          : state.config.treeCapacityWood,
     /** Null if it has never seen the plant. */
     remembered: memory.seen[id]! < 0 ? null : memory.stock[id]!,
     seen: seenLabel(state, memory.seen[id]!),
@@ -440,6 +474,22 @@ export function plantInspection(state: ValleyState, kind: 'bush' | 'tree', id: n
     logs: kind === 'tree' ? state.treeLogs[id]! : null,
     logsCapacity: state.config.logsPerTree,
     logsRemembered: kind === 'tree' && forager.logMemory.seen[id]! >= 0 ? forager.logMemory.stock[id]! : null,
+  }
+}
+
+/** What the inspector shows for the lake: its fish, beside what the followed forager found when it last fished. */
+export function lakeInspection(state: ValleyState, foragerId: number) {
+  const forager = state.foragers[foragerId]!
+  const capacity = capacityOf(state.config, 'fish')
+  return {
+    name: 'The lake',
+    stock: state.lakeKcal,
+    capacity,
+    hectares: state.config.lakeHectares,
+    known: forager.lakeKnown,
+    /** Null if it has never fished here. */
+    remembered: forager.lakeStock < 0 ? null : forager.lakeStock,
+    fished: seenLabel(state, forager.lakeFishedMinute),
   }
 }
 
@@ -630,7 +680,7 @@ export function groupInspection(pair: DisplayPair, groupId: number) {
       name: foragerName(id),
       color: foragerColor(state.config, state.foragers[id]!),
       activity: describeActivity(pair, id),
-      loadKg: loadKg(state.config, load.wood, load.berriesKcal, load.log),
+      loadKg: loadKg(state.config, load),
     }
   })
   const since = state.minute - MINUTES_PER_DAY
@@ -729,13 +779,14 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
   const terms = knownTerms(config, forager, state.minute)
   const percent = practicePercents(config, forager.practiceLog)
   const yesterday = state.days.at(-1)
-  const oldest = forager.carried[0]
   const load = loadOf(forager)
-  const kg = loadKg(config, load.wood, load.berriesKcal, load.log)
+  const kg = loadKg(config, load)
   const hut = hutOf(state, forager)
   const ask = usableAsk(state, forager, state.minute) ?? forager.heardAsk
   return {
     forageRate: forager.forageRate,
+    nutRate: forager.nutRate,
+    fishRate: forager.fishRate,
     woodRate: forager.woodRate,
     forageRateChange: yesterday ? forager.forageRate - yesterday.forageRates[foragerId]! : 0,
     woodRateChange: yesterday ? forager.woodRate - yesterday.woodRates[foragerId]! : 0,
@@ -749,11 +800,12 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     woodTarget: woodTarget(config),
     tripWood: forager.tripWood,
     carriedKcal: carriedKcal(forager.carried),
-    /** Minutes until its oldest food spoils; null if it carries none or food keeps. */
-    spoilsInMinutes:
-      oldest && config.shelfLifeHours > 0
-        ? Math.max(0, oldest.harvestTick + 60 * config.shelfLifeHours - state.minute)
-        : null,
+    /** Its carried food by kind, in kilocalories. */
+    carriedByFood: carriedByFood(forager.carried),
+    /** Minutes until the first of its food spoils; null if it carries none or what it carries keeps. */
+    spoilsInMinutes: spoilsIn(config, forager.carried, state.minute),
+    /** Its born foraging skill, in percent. */
+    foragingSkill: forager.foragingSkill,
     heardTerms: terms,
     heardMinutesAgo: terms === null ? null : Math.max(0, state.minute - 1 - forager.heardTerms!.minute),
     ...forager.swapTotals,
@@ -842,6 +894,14 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
     coldHours: day.coldSleepMinutes / 60,
     reserve: day.endEnergyKcal[foragerId]!,
     stock: day.bushStockKcal / state.layout.bushes.count,
+    /** Nuts on the hazels and fish in the lake, as shares of full, in percent; and food taken by kind. */
+    hazelPercent:
+      (100 * day.hazelStockKcal) /
+      Math.max(1, (state.layout.foodPlants.count - state.layout.bushes.count) * state.config.hazelCapacityKcal),
+    lakePercent: (100 * day.lakeKcal) / capacityOf(state.config, 'fish'),
+    berriesTaken: day.gatheredBerriesKcal,
+    nutsTaken: day.gatheredNutsKcal,
+    fishTaken: day.gatheredFishKcal,
     groups: day.groupsStanding,
     loners: day.loners,
     axesMade: day.axesMade,

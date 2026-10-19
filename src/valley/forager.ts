@@ -1,9 +1,31 @@
-import { carriedKcal } from './food'
+import {
+  LAKE_ID,
+  capacityOf,
+  carriedByFood,
+  carriedKcal,
+  foodKg,
+  foodOfSource,
+  fullRateOf,
+  rateAtStock,
+  worthWorking,
+} from './food'
+import { shorePoint } from './lake'
+import { siteCentre, siteCount, siteKind, type SiteKind } from './sites'
 import { distance, distanceSq, walkSeconds } from './geometry'
 import { forEachPlantWithin, nearestPlant } from './layout'
 import { SECONDS_PER_HOUR } from './practice'
 import { buyingPays, knownTerms, sellingPays, spareWood, wantedWood } from './trade'
-import type { ActionReason, Forager, Good, Plants, PlantIndex, PlantMemory, ValleyConfig, ValleyLayout } from './types'
+import type {
+  ActionReason,
+  Forager,
+  Good,
+  Plants,
+  PlantIndex,
+  PlantMemory,
+  Point,
+  ValleyConfig,
+  ValleyLayout,
+} from './types'
 
 export const MINUTES_PER_DAY = 1_440
 
@@ -23,16 +45,30 @@ export const minuteOfWork = (rate: number) => Math.ceil(rate / 60)
 
 export const atHearth = (forager: Forager) => forager.x === forager.hearth.x && forager.y === forager.hearth.y
 
-/** What a forager carries: the wood of its trip, of which it can hold no more than it has, its berries and its log. */
-export const loadOf = (forager: Forager) => ({
-  wood: Math.min(forager.tripWood, forager.wood),
-  berriesKcal: carriedKcal(forager.carried),
-  log: forager.log,
-})
+/** What a forager carries: wood, its food of each kind in kilocalories, and its log. */
+export interface Load {
+  wood: number
+  berriesKcal: number
+  nutsKcal: number
+  fishKcal: number
+  log: number
+}
 
-/** A load in whole kilograms: its wood, its berries at `berryKcalPerKg`, rounded down, and its logs at `logKg`. */
-export const loadKg = (config: ValleyConfig, wood: number, berriesKcal: number, logs = 0) =>
-  wood + Math.floor(berriesKcal / config.berryKcalPerKg) + logs * config.logKg
+/** What a forager carries: the wood of its trip, of which it can hold no more than it has, its food and its log. */
+export function loadOf(forager: Forager): Load {
+  const food = carriedByFood(forager.carried)
+  return {
+    wood: Math.min(forager.tripWood, forager.wood),
+    berriesKcal: food.berries,
+    nutsKcal: food.nuts,
+    fishKcal: food.fish,
+    log: forager.log,
+  }
+}
+
+/** A load in whole kilograms: its wood, its food rounded down once over the three foods, and its log at `logKg`. */
+export const loadKg = (config: ValleyConfig, load: Load) =>
+  load.wood + foodKg(config, load.berriesKcal, load.nutsKcal, load.fishKcal) + load.log * config.logKg
 
 /**
  * Walking speed under a load of `kg`, in centimetres a second: it falls by `loadSlowdownPerMille` thousandths for each
@@ -74,8 +110,7 @@ export function walkCostForLoad(config: ValleyConfig, kg: number, speed: number)
 
 /** A forager's walking speed for what it carries now. */
 export function walkSpeed(config: ValleyConfig, forager: Forager) {
-  const load = loadOf(forager)
-  return speedForLoad(config, loadKg(config, load.wood, load.berriesKcal, load.log))
+  return speedForLoad(config, loadKg(config, loadOf(forager)))
 }
 
 /** Hunger with hysteresis: hungry below `hungryBelowKcal`, until satiated at `satiatedAtKcal`. */
@@ -242,10 +277,10 @@ export function mustGoHome(config: ValleyConfig, forager: Forager, minute: numbe
 }
 
 /**
- * The plant a forager working for `good` heads for or works this minute: its target, unless it has just seen it
- * holding less than a minute's work or cannot reach it in time; otherwise the nearest plant remembered as holding a
- * minute's work; otherwise, with `fallback`, the one seen longest ago. Only plants it has seen and can reach in time
- * are considered.
+ * The plant a forager working for `good` heads for or works this minute. For food, see `chooseFood`. For wood: its
+ * target, unless it has just seen it holding less than a minute's work or cannot reach it in time; otherwise the
+ * nearest felled crown, then the nearest plant, remembered as holding a minute's work; otherwise, with `fallback`, the
+ * one seen longest ago. Only plants it has seen and can reach in time are considered.
  */
 export function choosePlant(
   config: ValleyConfig,
@@ -255,32 +290,31 @@ export function choosePlant(
   minute: number,
   fallback = true,
 ): number | null {
-  const plants = good === 'food' ? layout.bushes : layout.woodPlants
-  const index = good === 'food' ? layout.bushIndex : layout.woodIndex
-  const memory = good === 'food' ? forager.bushMemory : forager.woodMemory
-  const threshold = minuteOfWork(good === 'food' ? forager.forageRate : forager.woodRate)
+  if (good === 'food') return chooseFood(config, layout, forager, minute, fallback)
+  const plants = layout.woodPlants
+  const index = layout.woodIndex
+  const memory = forager.woodMemory
+  const threshold = minuteOfWork(forager.woodRate)
   const left = daylightSecondsLeft(config, minute)
   const speed = walkSpeed(config, forager)
   const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)
-  const target = good === 'food' ? forager.targetBushId : forager.targetWoodId
+  const target = forager.targetWoodId
   if (target !== null && reachable(target) && (memory.seen[target] !== minute || memory.stock[target]! >= threshold))
     return target
-  if (good === 'wood') {
-    // It clears the crown of a felled tree before it takes from a plant still growing: a tree it saw from afar holding
-    // fewer than every log is down, and trees come first among wood plants.
-    const fallen = nearestPlant(
-      layout.treeIndex,
-      layout.trees,
-      forager.x,
-      forager.y,
-      (id) =>
-        forager.logMemory.seen[id]! >= 0 &&
-        forager.logMemory.stock[id]! < config.logsPerTree &&
-        memory.stock[id]! >= threshold &&
-        reachable(id),
-    )
-    if (fallen !== null) return fallen
-  }
+  // It clears the crown of a felled tree before it takes from a plant still growing: a tree it saw from afar holding
+  // fewer than every log is down, and trees come first among wood plants.
+  const fallen = nearestPlant(
+    layout.treeIndex,
+    layout.trees,
+    forager.x,
+    forager.y,
+    (id) =>
+      forager.logMemory.seen[id]! >= 0 &&
+      forager.logMemory.stock[id]! < config.logsPerTree &&
+      memory.stock[id]! >= threshold &&
+      reachable(id),
+  )
+  if (fallen !== null) return fallen
   const nearest = nearestPlant(
     index,
     plants,
@@ -289,6 +323,14 @@ export function choosePlant(
     (id) => memory.stock[id]! >= threshold && reachable(id),
   )
   if (nearest !== null || !fallback) return nearest
+  return seenLongestAgo(config, forager, plants, memory, minute)
+}
+
+/** With nothing left to search, the plant of a kind it saw longest ago that it can reach in time, nearest first. */
+function seenLongestAgo(config: ValleyConfig, forager: Forager, plants: Plants, memory: PlantMemory, minute: number) {
+  const left = daylightSecondsLeft(config, minute)
+  const speed = walkSpeed(config, forager)
+  const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)
   let chosen: number | null = null
   let chosenSeen = Infinity
   let chosenSq = Infinity
@@ -303,6 +345,132 @@ export function choosePlant(
     chosenSq = sq
   }
   return chosen
+}
+
+/** Where a forager works a food source: a food plant where it stands, or the shore straight north of it. */
+export const sourcePoint = (layout: ValleyLayout, forager: Forager, source: number): Point =>
+  source === LAKE_ID ? shorePoint(forager) : { x: layout.foodPlants.x[source]!, y: layout.foodPlants.y[source]! }
+
+/** What a forager remembers a food source holding: a food plant as it last saw it, the lake as it last fished it. */
+export function rememberedStock(config: ValleyConfig, forager: Forager, source: number) {
+  if (source !== LAKE_ID) return forager.foodMemory.stock[source]!
+  return forager.lakeStock < 0 ? capacityOf(config, 'fish') : forager.lakeStock
+}
+
+/** The hourly rate a forager expects at a food source, from what it remembers there. */
+export function expectedRate(config: ValleyConfig, layout: ValleyLayout, forager: Forager, source: number) {
+  const food = foodOfSource(layout, source)
+  return rateAtStock(config, fullRateOf(forager, food), food, rememberedStock(config, forager, source))
+}
+
+/**
+ * The food source a forager working for food heads for or works this minute, a food plant or `LAKE_ID`: its target
+ * while it remembers it worth working and can reach it in time. Otherwise the nearest bush and the nearest hazel it
+ * remembers as worth working, ties to the lowest ID, and the lake if it knows it, remembers it worth working and can
+ * reach the shore; of these, the one that promises most food for the time, an hour there at its expected rate over
+ * the walk there plus that hour, ties to berries, then nuts, then fish. With none, and with `fallback`, the bush or
+ * hazel it saw longest ago.
+ */
+export function chooseFood(
+  config: ValleyConfig,
+  layout: ValleyLayout,
+  forager: Forager,
+  minute: number,
+  fallback = true,
+): number | null {
+  const goal = foodGoal(config, layout, forager, minute, fallback)
+  return goal?.source ?? null
+}
+
+/** Where a forager working for food goes: a source to work, or a thicket it has spotted but never checked. */
+export type FoodGoal = { source: number; site?: undefined } | { site: number; source?: undefined }
+
+/**
+ * As `chooseFood`, but a thicket or hazel thicket it has spotted and never checked is a candidate too, which it
+ * expects to find full, as it expects the lake before it has fished: the nearest of each kind it can reach and return
+ * from before dusk, by its centre, at its full rate for that food.
+ */
+export function foodGoal(
+  config: ValleyConfig,
+  layout: ValleyLayout,
+  forager: Forager,
+  minute: number,
+  fallback = true,
+): FoodGoal | null {
+  const left = daylightSecondsLeft(config, minute)
+  const speed = walkSpeed(config, forager)
+  const reachable = (source: number) => {
+    const point = sourcePoint(layout, forager, source)
+    return reachableInTime(config, forager, point.x, point.y, left, speed)
+  }
+  const worth = (source: number) => worthWorking(config, expectedRate(config, layout, forager, source))
+  const target = forager.targetFoodId
+  if (target !== null && (target !== LAKE_ID || forager.lakeKnown) && worth(target) && reachable(target))
+    return { source: target }
+  const plants = layout.foodPlants
+  let best: FoodGoal | null = null
+  let bestRate = 0
+  let bestTime = 1
+  /** Food for the time is `3,600 · rate / time`; comparing by multiplying across keeps it exact. Ties keep the first. */
+  const consider = (goal: FoodGoal, point: Point, rate: number) => {
+    const time = walkSeconds(distance(forager.x, forager.y, point.x, point.y), speed) + SECONDS_PER_HOUR
+    if (best !== null && rate * bestTime <= bestRate * time) return
+    if (!reachableInTime(config, forager, point.x, point.y, left, speed)) return
+    best = goal
+    bestRate = rate
+    bestTime = time
+  }
+  // In the order of ties: every bush, then every hazel, by ID; a thicket and a hazel thicket never checked; the lake.
+  const fullBerries = fullRateOf(forager, 'berries')
+  const fullNuts = fullRateOf(forager, 'nuts')
+  for (let id = 0; id < plants.count; id += 1) {
+    const berries = id < layout.bushes.count
+    const rate = rateAtStock(
+      config,
+      berries ? fullBerries : fullNuts,
+      berries ? 'berries' : 'nuts',
+      forager.foodMemory.stock[id]!,
+    )
+    if (worthWorking(config, rate)) consider({ source: id }, { x: plants.x[id]!, y: plants.y[id]! }, rate)
+  }
+  for (const [kind, food] of [
+    ['thicket', 'berries'],
+    ['hazel', 'nuts'],
+  ] as const) {
+    const site = uncheckedSite(config, layout, forager, minute, kind, speed)
+    if (site !== null) consider({ site }, siteCentre(config, layout, site), fullRateOf(forager, food))
+  }
+  if (forager.lakeKnown && worth(LAKE_ID))
+    consider({ source: LAKE_ID }, shorePoint(forager), expectedRate(config, layout, forager, LAKE_ID))
+  if (best !== null || !fallback) return best
+  const longAgo = seenLongestAgo(config, forager, plants, forager.foodMemory, minute)
+  return longAgo === null ? null : { source: longAgo }
+}
+
+/**
+ * The nearest site of a kind a forager has spotted and never checked, that it can reach and return home from before
+ * dusk, by the distance to its centre, ties to the lowest ID; or null.
+ */
+function uncheckedSite(
+  config: ValleyConfig,
+  layout: ValleyLayout,
+  forager: Forager,
+  minute: number,
+  kind: SiteKind,
+  speed: number,
+) {
+  let best: number | null = null
+  let bestSq = Infinity
+  for (let site = 0; site < siteCount(config); site += 1) {
+    if (!forager.siteKnown[site] || forager.siteChecked[site]! >= 0 || siteKind(config, site) !== kind) continue
+    const centre = siteCentre(config, layout, site)
+    const sq = distanceSq(forager.x, forager.y, centre.x, centre.y)
+    if (sq < bestSq && reachableAndBack(config, forager, centre.x, centre.y, minute, speed)) {
+      best = site
+      bestSq = sq
+    }
+  }
+  return best
 }
 
 /** The reason recorded when no plant of the good can be reached: too late in the day, or nothing worth the walk. */

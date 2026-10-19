@@ -118,6 +118,28 @@ In the Scandinavian experiments, ground axes lasted much longer than flaked ones
 | `hutLogs` | 23 | Set by the hut plan in update 046 | Derived | **Keep 23** |
 | `hutLogDays` | 10: a whole hut rots in 230 days | Mud huts last 1 to 2 years [24]; untreated poles in the ground last a few years | Measured roughly, plus estimate | **About 60 days a log**, so a hut lasts about 4 years, with the poles in the ground going first |
 
+## Hazel and the lake
+
+Added in Life 9.7, after every forager starved in Life 9.6's valley of berries alone. The owner chose to change the land, not the bodies: Mesolithic people in northern Europe lived largely on hazelnuts [25, 26] and beside water, and the valley gains both. The valley grows from 600 m to 800 m across to make room for 32 hazel thickets, and the lake lies beyond its north edge.
+
+| Parameter | Value | Real world | Trust |
+| --- | --- | --- | --- |
+| `nutKcalPerKg` | 2,500 kcal a kg of nuts in their shells | Hazelnut kernels 628 kcal per 100 g [27]; about 250 per 100 g weighed with shells [28], the kernel being 35 to 45% of the weight | Measured |
+| `hazelRegrowthKcalPerYear` | 3,750, 1.5 kg of nuts in their shells | Wild woodland hazel about 400 kg a hectare [30]; varieties in trials 126 to 448 kg a hectare [30]; garden bushes 2 to 5 kg, alternating heavy and light years [31] | Measured, then derived: 40 bushes on a thicket 20 m in radius are 318 a hectare, giving 477 kg a hectare, at the top of the wild range |
+| `hazelCapacityKcal` | 1,875, half a year's nuts | Fallen nuts lie for months, but rodents take many | Estimate |
+| `nutKcalPerHour` | 3,500 at a full bush | Hand collection from the ground 4.5 to 8 kg an hour in orchards [33]; wild bushes are sparser, and the nuts must be cracked. About 1.4 kg in their shells an hour, gathered and cracked | Derived from orchard rates, then estimate |
+| `nutShelfLifeHours` | 4,380, half a year | Dry hazelnuts in their shells keep for months | Estimate |
+| `lakeHectares` | 30, the water along the valley's north shore, 800 m by 375 m | | Choice |
+| `lakeFishKgPerHectare` | 100 kg a hectare, 1,800,000 kcal for the lake | Perch alone 16 to 44 kg a hectare in a Finnish lake [34]; a whole fish community up to about 540 kg a hectare in a rich reservoir [34] | Measured, then estimate |
+| Fish yield | `lakeGrowthPercentPerYear` 40: at most 10 kg a hectare a year, at half the stock | 166 northern Finnish lakes yielded 0.2 to 43 kg a hectare a year [29] | Measured, then derived |
+| `fishKcalPerKg` | 600 kcal a kg of whole fish | Raw perch and pike flesh about 900 kcal a kg [27]; about two thirds of a fish is eaten with its roe and liver | Measured, then estimate |
+| `fishKcalPerHour` | 600 at a full lake, 1 kg of fish | Anglers after perch catch 4 to 7 fish an hour [35], about 0.5 to 1 kg | Measured, then derived |
+| `fishShelfLifeHours` | 24 | Fresh fish spoils within a day unchilled | Estimate |
+| Work at either | `pickKcalPerHour`, 200 | Fishing from a bank and gathering nuts are light work, as picking fruit is | Estimate |
+| `skillMinPercent`, `skillMaxPercent` | 75, 125 | Return rates differ widely between individual foragers of the same age and sex [32] | Measured, qualitative |
+
+Lakes in a northern climate yield little fish for their area, so the lake gives at most 180,000 kcal a year, about 70 days of food for one forager: a reserve that can be fished down, not a staple. The hazels give 4.8 million kcal a year, and with the berries and the lake the valley feeds about seven. Hazel yields swing between heavy and light years [31], and nuts ripen in one season; both are spread evenly over the year until seasons arrive.
+
 ## What realistic numbers imply
 
 These are worked out from the proposals above, not from runs.
@@ -137,6 +159,8 @@ The owner decided on 2026-10-19:
 2. **Every realistic number applies at once, to the current valley.** The band is not rescued by a larger valley or new foods; it shrinks to what the valley can feed.
 3. **Dead branches fall from trees at a realistic rate** and are firewood, alongside sticks from bushes and the crowns of felled trees. This replaces the Life 9.5 rule of firewood from living plants only.
 4. **Axes are ground stone axes:** 40 to 60 hours to make, lasting a few hundred logs.
+
+Later on 2026-10-19, after every forager starved in the implemented Life 9.6, the owner revised the second decision: **change the land, not the bodies.** The valley gains hazel thickets and a lake, at realistic yields, and grows to 800 m across to hold them (see [Hazel and the lake](#hazel-and-the-lake)).
 
 ## Sources
 
@@ -164,3 +188,14 @@ The owner decided on 2026-10-19:
 22. Miles, D. *The Tale of the Axe*, as quoted at https://www.greaterwrong.com/posts/bkjqfhKd8ZWHK9XqF/should-you-make-stone-tools/comment/TsYzcSL3oFfPtnqzJ. Unverified.
 23. "Testing times: examining insights from experimental archaeology". *The Past*. https://the-past.com/feature/testing-times-examining-insights-from-experimental-archaeology
 24. "African round hut". Wikipedia. https://en.wikipedia.org/wiki/African_round_hut
+25. Mithen, S., et al. (2001). Plant use in the Mesolithic: evidence from Staosnaig, Isle of Colonsay, Scotland. *Journal of Archaeological Science*, 28(3), 223–234. Summarised in ScARF, Mesolithic activities: https://scarf.scot/?p=1817
+26. Holst, D. (2010). Hazelnut economy of early Holocene hunter-gatherers: a case study from Mesolithic Duvensee, northern Germany. *Journal of Archaeological Science*, 37(11), 2871–2880. https://en.wikipedia.org/wiki/Duvensee_archaeological_sites
+27. USDA FoodData Central: hazelnuts (FDC 2707502), 628 kcal per 100 g; raw perch and pike about 90 kcal per 100 g. https://fdc.nal.usda.gov/ (via https://getfoodfacts.com/food/hazelnuts-2707502)
+28. Hazelnuts, kernel only, weighed with shells, 247 kcal per 100 g. https://www.caloriecounter.com.au/?p=617699
+29. Ranta, E., and Lindström, K. (1998). Fish yields of 166 northern Finnish lakes, 0.2 to 43 kg a hectare a year. *Annales Zoologici Fennici*, 35. https://www.annzool.net/PDF/anzf35/anzf35-095p.pdf
+30. Wild hazel in Arasbaran forest, Iran, about 395 kg a hectare: https://www.magiran.com/paper/865071/?lang=en; hazel varieties in Ukrainian trials, 126 to 448 kg a hectare: https://journal.udau.edu.ua/assets/files/88/agro/angl/17.pdf
+31. Garden hazel bushes, 2 to 5 kg a bush, alternating heavy and light years; 1 kg of whole nuts gives about 350 g of kernels. Anecdotal: https://permies.com/mobile/t/40/27229/Hazelnuts-harvest-processing-propagation
+32. Koster, J., et al. (2020). The life history of human foraging: cross-cultural and individual variation. *Science Advances*, 6(26), eaax9070.
+33. Traditional hand harvesting of hazelnuts, 4.5 to 5.3 kg an hour: https://journals.tubitak.gov.tr/agriculture/vol40/iss3/1; manual collection from the ground, 6 to 8 kg an hour: https://fsantos.utad.pt/Bibliografia/04TarragPap0615.pdf
+34. Perch biomass 16.1 to 44.2 kg a hectare over 20 years in a Finnish humic lake: https://jukuri.luke.fi/bitstreams/436ea40c-cadf-40f5-a5eb-b4d71634d13f/download; a whole fish community about 537 kg a hectare in a Polish reservoir: https://czasopisma.pan.pl/Content/89902
+35. Sodus Bay creel survey: anglers after yellow perch caught 4.4 to 7.1 perch an hour. https://extapps.dec.ny.gov/docs/fish_marine_pdf/sbaycreel.pdf

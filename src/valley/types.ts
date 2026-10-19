@@ -1,5 +1,9 @@
-/** Carried food in a lot picked in one minute: its kilocalories and the minute it was picked. */
+/** The three foods: berries from bushes, hazelnuts from hazels, and fish from the lake. */
+export type FoodKind = 'berries' | 'nuts' | 'fish'
+
+/** Carried food in a lot of one food taken in one minute: its food, its kilocalories and the minute it was taken. */
 export interface FoodLot {
+  food: FoodKind
   kcal: number
   harvestTick: number
 }
@@ -26,6 +30,29 @@ export interface ValleyConfig {
   initialBushWood: number
   /** Sticks a bush grows in a decade, spread evenly over it: a bush grows less than a kilogram of wood a year. */
   bushRegrowthWoodPerDecade: number
+  /** Hazel thickets, a fourth kind of site, of hazels holding nuts, gathered and cracked by hand. */
+  hazelThicketCount: number
+  hazelsPerThicket: number
+  hazelThicketRadiusCm: number
+  hazelSpacingCm: number
+  hazelCapacityKcal: number
+  initialHazelKcal: number
+  /** Nuts a hazel grows in a year, spread evenly over the year. */
+  hazelRegrowthKcalPerYear: number
+  /** Nuts gathered and cracked in an hour at a full hazel at a skill of 100%. */
+  nutKcalPerHour: number
+  /** Carried nuts, in their shells, weigh a kilogram for every this many kilocalories. */
+  nutKcalPerKg: number
+  nutShelfLifeHours: number
+  /** The lake beyond the valley's north edge: its area, its fish at capacity, and their yearly logistic growth rate. */
+  lakeHectares: number
+  lakeFishKgPerHectare: number
+  lakeGrowthPercentPerYear: number
+  /** Fish caught in an hour at a full lake at a skill of 100%. */
+  fishKcalPerHour: number
+  /** Carried fish weigh a kilogram for every this many kilocalories. */
+  fishKcalPerKg: number
+  fishShelfLifeHours: number
   standCount: number
   treesPerStand: number
   standRadiusCm: number
@@ -53,8 +80,8 @@ export interface ValleyConfig {
   /** Daylight runs from `dawnHour` up to, but not including, `duskHour`. */
   dawnHour: number
   duskHour: number
-  /** Berries picked in an hour at a skill of 100%. */
-  forageKcalPerHour: number
+  /** Berries picked in an hour at a full bush at a skill of 100%. */
+  berryKcalPerHour: number
   /** Wood, sticks or branches, gathered in an hour at a skill of 100%. */
   woodPerHour: number
   /** An hour asleep in a whole hut by a lit fire, the warmest night. */
@@ -75,8 +102,8 @@ export interface ValleyConfig {
   satiatedAtKcal: number
   /** The number of foragers at the start. There are no births. */
   bandSize: number
-  /** Carried food spoils this many hours after it was picked; 0 means it keeps. */
-  shelfLifeHours: number
+  /** Carried berries spoil this many hours after they were picked; 0 means they keep. */
+  berryShelfLifeHours: number
   /** Wood burned for an hour of warm sleep. */
   fireWoodPerHour: number
   /** An hour asleep by a lit fire without a hut, in a whole hut without a fire, and with neither. */
@@ -171,9 +198,14 @@ export interface PlantIndex {
 export interface ValleyLayout {
   camp: Point
   thickets: Point[]
+  hazelThickets: Point[]
   stands: Point[]
   outcrops: Point[]
   bushes: Plants
+  /** Hazels, by hazel ID, each belonging to a hazel thicket. */
+  hazels: Plants
+  /** Every plant that holds food: the bushes, by ID, then the hazels, food plant `bushes.count + h` being hazel `h`. */
+  foodPlants: Plants
   trees: Plants
   /** Every plant that holds wood: the trees, by ID, then the bushes, wood plant `trees.count + b` being bush `b`. */
   woodPlants: Plants
@@ -181,7 +213,10 @@ export interface ValleyLayout {
   stones: Plants
   /** Each forager's starting hearth, by forager ID. A forager's hearth moves when it joins a group. */
   hearths: Point[]
+  /** The bushes and the hazels by food plant ID, each kind on its own, and every food plant together. */
   bushIndex: PlantIndex
+  hazelIndex: PlantIndex
+  foodIndex: PlantIndex
   treeIndex: PlantIndex
   woodIndex: PlantIndex
   stoneIndex: PlantIndex
@@ -308,10 +343,16 @@ export interface Forager {
   shortOfWood: boolean
   /** Wood gathered since it last stood at its hearth. */
   tripWood: number
-  targetBushId: number | null
+  /** The food plant it works for food, or `LAKE_ID` for the lake. */
+  targetFoodId: number | null
   targetWoodId: number | null
-  bushMemory: PlantMemory
+  /** For each food plant, the berries or nuts it last saw there. */
+  foodMemory: PlantMemory
   woodMemory: PlantMemory
+  /** Whether it has seen the lake's shore; the fish it found there when it last fished, or −1, and that minute. */
+  lakeKnown: boolean
+  lakeStock: number
+  lakeFishedMinute: number
   /** The logs on each tree and the stones on each stone spot, as it last saw them from afar. */
   logMemory: PlantMemory
   stoneMemory: PlantMemory
@@ -336,8 +377,10 @@ export interface Forager {
   axeTotals: AxeTotals
   /** Minutes asleep in its whole hut. */
   hutSleepMinutes: number
-  /** Hourly rates for the day. It knows them. */
+  /** Hourly rates for the day at full sources: berries, nuts, fish and wood. It knows them. */
   forageRate: number
+  nutRate: number
+  fishRate: number
   woodRate: number
   practiceLog: PracticeLog
   secondsToday: TaskSeconds
@@ -392,6 +435,8 @@ export type ActionReason =
   | 'too late to set out'
   | 'waiting for regrowth'
   | 'foraging'
+  | 'gathering nuts'
+  | 'fishing'
   | 'gathering'
   | 'seeking food'
   | 'seeking wood'
@@ -427,10 +472,13 @@ export interface ActionEvent {
   /** The good it worked for or walked towards, and whether to swap it. */
   workedFor: Good | null
   forTrade: boolean
-  /** The plant it walked towards or worked, if any: a bush for food, a wood plant for wood. */
+  /** What it walked towards or worked, if any: a food plant or `LAKE_ID` for food, a wood plant for wood. */
   targetId: number | null
-  /** The plant it worked this minute, if any. */
+  /** What it worked this minute, if any. */
   plantId: number | null
+  /** The food it worked for this minute, if it worked for food, and the stock of its source as it began. */
+  food: FoodKind | null
+  sourceStockBefore: number
   walkSeconds: number
   workSeconds: number
   standSeconds: number
@@ -455,9 +503,11 @@ export interface ActionEvent {
   placeId: number | null
   /** The site it walked towards to check or search, if any. */
   siteId: number | null
-  /** What it carried at the start of its action: the wood of its trip, and its berries in kilocalories. */
+  /** What it carried at the start of its action: the wood of its trip, and its food of each kind in kilocalories. */
   loadWood: number
   loadBerriesKcal: number
+  loadNutsKcal: number
+  loadFishKcal: number
   /** Its walking speed for that load, in centimetres a second. */
   speedCmPerSecond: number
   /** The group whose fire it slept by, if it slept as a member; null if it tended its own fire or did not sleep. */
@@ -596,6 +646,8 @@ export interface PracticeEvent {
   forageRateBefore: number
   woodRateBefore: number
   forageRate: number
+  nutRate: number
+  fishRate: number
   woodRate: number
   makePercent: number
   craftBefore: number
@@ -695,7 +747,14 @@ export interface DaySummary {
   spentKcal: number
   alive: number
   deaths: number
+  /** Berries on bushes, nuts on hazels and fish in the lake. */
   bushStockKcal: number
+  hazelStockKcal: number
+  lakeKcal: number
+  /** Food taken during the day, of each kind. */
+  gatheredBerriesKcal: number
+  gatheredNutsKcal: number
+  gatheredFishKcal: number
   woodStock: number
   endEnergyKcal: number[]
   spoiledKcal: number
@@ -761,9 +820,11 @@ export interface DaySummary {
 }
 
 export interface ValleyTotals {
-  /** Bush stock plus every reserve at minute 0. */
+  /** Food on plants and in the lake, plus every reserve, at minute 0. */
   initialKcal: number
+  /** Berries and nuts regrown, and fish grown in the lake. */
   regrownKcal: number
+  lakeGrownKcal: number
   metabolizedKcal: number
   gatheredKcal: number
   spoiledKcal: number
@@ -797,9 +858,12 @@ export interface ValleyState {
   layout: ValleyLayout
   /** The next minute to run. Minute `m` is minute `m mod 1,440` of day `floor(m / 1,440)`. */
   minute: number
-  /** Every bush's berries, and every wood plant's sticks or branches, by ID. */
-  bushKcal: Int32Array
+  /** Every food plant's berries or nuts, and every wood plant's sticks or branches, by ID. */
+  foodStock: Int32Array
   woodStock: Int32Array
+  /** The lake's fish in kilocalories, and the growth owed it, in units of `100 · capacity · 8,760`. */
+  lakeKcal: number
+  lakeGrowthRemainder: number
   /** Every tree's logs, the minute it was felled or −1 while it stands, and every stone spot's stones, by ID. */
   treeLogs: Int32Array
   treeFelledMinute: Int32Array

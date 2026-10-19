@@ -31,6 +31,7 @@ import {
   groupInspection,
   groupName,
   hutInspection,
+  lakeInspection,
   ownTermsByDay,
   plantInspection,
   stoneInspection,
@@ -332,9 +333,10 @@ export default function ValleyApp() {
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
   const plant =
-    selected && (selected.kind === 'bush' || selected.kind === 'tree')
+    selected && (selected.kind === 'bush' || selected.kind === 'hazel' || selected.kind === 'tree')
       ? plantInspection(state, selected.kind, selected.id, followed)
       : null
+  const lake = selected?.kind === 'lake' ? lakeInspection(state, followed) : null
   const stone = selected?.kind === 'stone' ? stoneInspection(state, selected.id, followed) : null
   const hut = selected?.kind === 'hut' && state.huts[selected.id] ? hutInspection(state, selected.id) : null
   const group = selected?.kind === 'group' && state.groups[selected.id] ? groupInspection(pair, selected.id) : null
@@ -356,7 +358,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 9.6 · a realistic valley</span>
+        <span className="life-title">Life 9.7 · hazel and a lake</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -546,7 +548,9 @@ export default function ValleyApp() {
           </dd>
           <dt>Skills</dt>
           <dd className="num">
-            {formatKcal(summary.forageRate)}/h{formatChange(summary.forageRateChange)} · {summary.woodRate} kg/h
+            born a {summary.foragingSkill}% forager · berries {formatKcal(summary.forageRate)}/h
+            {formatChange(summary.forageRateChange)} · nuts {formatKcal(summary.nutRate)}/h · fish{' '}
+            {formatKcal(summary.fishRate)}/h · {summary.woodRate} kg/h
             {formatChange(summary.woodRateChange)}
           </dd>
           <dt>Picking practice</dt>
@@ -590,10 +594,10 @@ export default function ValleyApp() {
           )}
           <dt>Carries</dt>
           <dd className="num">
-            {summary.carriedKcal ? formatKcal(summary.carriedKcal) : 'no food'}
+            {summary.carriedKcal ? carriedPhrase(summary.carriedByFood) : 'no food'}
             {summary.carriedKcal > 0 &&
               summary.spoilsInMinutes !== null &&
-              `, oldest spoils in ${formatMinutes(summary.spoilsInMinutes)}`}
+              `, the first spoils in ${formatMinutes(summary.spoilsInMinutes)}`}
           </dd>
           <dt>Terms it heard</dt>
           <dd className="num">
@@ -619,8 +623,8 @@ export default function ValleyApp() {
           <dl>
             <dt>Actually holds</dt>
             <dd className="num">
-              {selected!.kind === 'bush'
-                ? `${plant.stock.toLocaleString('en-US')} of ${formatKcal(plant.capacity)}`
+              {selected!.kind === 'bush' || selected!.kind === 'hazel'
+                ? `${plant.stock.toLocaleString('en-US')} of ${formatKcal(plant.capacity)} of ${selected!.kind === 'bush' ? 'berries' : 'nuts'}`
                 : plant.treeState === 'standing'
                   ? `${plant.stock} of ${formatKg(plant.capacity)} of dead branches beneath it`
                   : `${formatKg(plant.stock)} of branches on the ground`}
@@ -637,9 +641,9 @@ export default function ValleyApp() {
             <dd className="num">
               {plant.remembered === null
                 ? 'nothing'
-                : selected!.kind === 'bush'
-                  ? formatKcal(plant.remembered)
-                  : formatKg(plant.remembered)}
+                : selected!.kind === 'tree'
+                  ? formatKg(plant.remembered)
+                  : formatKcal(plant.remembered)}
             </dd>
             <dt>Last seen</dt>
             <dd>{plant.seen}</dd>
@@ -672,7 +676,35 @@ export default function ValleyApp() {
               ? `${name} has never seen this ${selected!.kind}, so it does not know it is here.`
               : plant.difference === 0
                 ? 'Its memory is up to date.'
-                : `It knows only what it last saw, so it ${plant.difference > 0 ? 'underestimates' : 'overestimates'} this ${selected!.kind} by ${selected!.kind === 'bush' ? formatKcal(Math.abs(plant.difference)) : formatKg(Math.abs(plant.difference))}.`}
+                : `It knows only what it last saw, so it ${plant.difference > 0 ? 'underestimates' : 'overestimates'} this ${selected!.kind} by ${selected!.kind === 'tree' ? formatKg(Math.abs(plant.difference)) : formatKcal(Math.abs(plant.difference))}.`}
+          </p>
+        </section>
+      )}
+
+      {lake && (
+        <section className="life-card life-inspector" aria-label={lake.name}>
+          <header>
+            <h2>{lake.name}</h2>
+            <button type="button" className="icon-button" aria-label="Close" onClick={() => setSelected(null)}>
+              <Icon name="close" />
+            </button>
+          </header>
+          <dl>
+            <dt>Fish</dt>
+            <dd className="num">
+              {formatKcal(lake.stock)}, {Math.round((100 * lake.stock) / lake.capacity)}% of a full lake
+            </dd>
+            <dt>{name} found</dt>
+            <dd className="num">
+              {lake.remembered === null
+                ? lake.known
+                  ? 'never fished here; expects it full'
+                  : 'has not seen the lake'
+                : `${Math.round((100 * lake.remembered) / lake.capacity)}% of a full lake, ${lake.fished}`}
+            </dd>
+          </dl>
+          <p className="life-note">
+            {`A lake of ${lake.hectares} hectares beyond the north shore. Fish cannot be seen: a fisher learns the stock by what it catches. A full or empty lake gains no fish; a lake fished to half its stock gains most.`}
           </p>
         </section>
       )}
@@ -960,6 +992,27 @@ export default function ValleyApp() {
                   { key: 'stock', name: 'Berries per bush, kcal', color: palette.positive, dashed: true },
                 ]}
               />
+              <TimeChart
+                data={days}
+                height={100}
+                format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
+                domain={[0, 'auto']}
+                series={[
+                  { key: 'nutsTaken', name: 'Nuts taken each day, kcal', color: palette.accent },
+                  { key: 'berriesTaken', name: 'Berries taken each day, kcal', color: palette.positive },
+                  { key: 'fishTaken', name: 'Fish taken each day, kcal', color: palette.household, dashed: true },
+                ]}
+              />
+              <TimeChart
+                data={days}
+                height={90}
+                format={(value) => `${Math.round(value)}%`}
+                domain={[0, 100]}
+                series={[
+                  { key: 'hazelPercent', name: 'Nuts on the hazels, % of full', color: palette.accent },
+                  { key: 'lakePercent', name: 'Fish in the lake, % of full', color: palette.household, dashed: true },
+                ]}
+              />
             </>
           ) : (
             <p className="life-note">The charts over time start after the first full day.</p>
@@ -1007,14 +1060,16 @@ export default function ValleyApp() {
               ? `of ${setup.skillMinPercent}%`
               : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
             , which grow with practice over {setup.practiceDays} days from {setup.practiceMinPercent}% towards{' '}
-            {setup.practiceMaxPercent}%. They pick berries bush by bush and gather sticks from bushes and dead branches
-            from under trees, bringing them home in loads of {formatKg(setup.woodLoad)}. Each is coloured by what wood
-            costs it, from <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
+            {setup.practiceMaxPercent}%. They pick berries bush by bush, gather hazelnuts and fish the lake beyond the
+            north shore, taking less an hour as a source thins, and go where an hour brings most food for the walk. They
+            gather sticks from bushes and dead branches from under trees, bringing them home in loads of{' '}
+            {formatKg(setup.woodLoad)}. Each is coloured by what wood costs it, from{' '}
+            <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
             group’s colour; each group’s base has a fire, a flag, coloured ground and a lettered badge. Ground the
             followed person has never seen is darkest, and a ring marks each thicket and stand it knows, bright if it
             checked it lately. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to
-            follow them, a bush or tree to inspect it, and a flag, badge or group to see the group.
+            follow them, a bush, hazel, tree or the lake to inspect it, and a flag, badge or group to see the group.
           </p>
           <p className="life-note">
             Every physical number, from what a bush yields to how long a hut lasts, is set from real measurements; the{' '}
@@ -1025,6 +1080,14 @@ export default function ValleyApp() {
       </section>
     </div>
   )
+}
+
+/** Carried food by kind, as a phrase: "1,200 kcal of nuts and 300 of fish". */
+function carriedPhrase(food: { berries: number; nuts: number; fish: number }) {
+  const parts = (['nuts', 'berries', 'fish'] as const).filter((kind) => food[kind] > 0)
+  return parts
+    .map((kind, index) => `${index === 0 ? formatKcal(food[kind]) : food[kind].toLocaleString('en-US')} of ${kind}`)
+    .join(' and ')
 }
 
 function stringify(setup: Setup) {

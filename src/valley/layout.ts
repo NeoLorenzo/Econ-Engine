@@ -131,19 +131,24 @@ function scatter(draws: Draws, count: number, centre: Point, radius: number, spa
   return placed
 }
 
-/** Every plant that holds wood: the trees, then the bushes, in ID order, each keeping its site. */
-export function woodPlantsOf(trees: Plants, bushes: Plants): Plants {
-  const count = trees.count + bushes.count
+/** Two kinds of plant as one list, the first by ID then the second, each keeping its site. */
+export function joinPlants(first: Plants, second: Plants): Plants {
+  const count = first.count + second.count
   const plants: Plants = { count, x: new Int32Array(count), y: new Int32Array(count), site: new Int32Array(count) }
-  plants.x.set(trees.x)
-  plants.x.set(bushes.x, trees.count)
-  plants.y.set(trees.y)
-  plants.y.set(bushes.y, trees.count)
-  plants.site.set(trees.site)
-  plants.site.set(bushes.site, trees.count)
+  plants.x.set(first.x)
+  plants.x.set(second.x, first.count)
+  plants.y.set(first.y)
+  plants.y.set(second.y, first.count)
+  plants.site.set(first.site)
+  plants.site.set(second.site, first.count)
   return plants
 }
 
+/** Every plant that holds wood: the trees, then the bushes, in ID order, each keeping its site. */
+export const woodPlantsOf = (trees: Plants, bushes: Plants) => joinPlants(trees, bushes)
+
+/** Every plant that holds food: the bushes, then the hazels, in ID order, each keeping its site. */
+export const foodPlantsOf = (bushes: Plants, hazels: Plants) => joinPlants(bushes, hazels)
 function plantsOf(sites: readonly Point[][]): Plants {
   const count = sites.reduce((sum, site) => sum + site.length, 0)
   const plants: Plants = { count, x: new Int32Array(count), y: new Int32Array(count), site: new Int32Array(count) }
@@ -159,16 +164,23 @@ function plantsOf(sites: readonly Point[][]): Plants {
   return plants
 }
 
-export function buildIndex(plants: Plants, cellCm: number, valleySizeCm: number): PlantIndex {
+/** An index of the plants with IDs from `from` up to, not including, `to`; by default every plant. */
+export function buildIndex(
+  plants: Plants,
+  cellCm: number,
+  valleySizeCm: number,
+  from = 0,
+  to = plants.count,
+): PlantIndex {
   const cells = Math.floor(valleySizeCm / cellCm) + 1
   const lists: number[][] = Array.from({ length: cells * cells }, () => [])
-  for (let id = 0; id < plants.count; id += 1)
+  for (let id = from; id < to; id += 1)
     lists[Math.floor(plants.y[id]! / cellCm) * cells + Math.floor(plants.x[id]! / cellCm)]!.push(id)
   return { cellCm, cells, buckets: lists.map((list) => Int32Array.from(list)) }
 }
 
 /**
- * The valley's layout: site centres, then each thicket's bushes, each stand's trees and each outcrop's stone spots,
+ * The valley's layout: site centres, then each thicket's bushes, each hazel thicket's hazels, each stand's trees and each outcrop's stone spots,
  * then the starting hearths: scattered, or on the rings round the camp for a band that starts as one group. Throws if
  * a site, plant, stone spot or start cannot be placed.
  */
@@ -179,7 +191,8 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const centres: Point[] = []
   const span = size - 2 * config.siteMarginCm + 1
   let failed = 0
-  while (centres.length < config.thicketCount + config.standCount + config.outcropCount) {
+  const kinds = [config.thicketCount, config.hazelThicketCount, config.standCount, config.outcropCount]
+  while (centres.length < kinds.reduce((total, count) => total + count, 0)) {
     const x = config.siteMarginCm + draws.int(span)
     const y = config.siteMarginCm + draws.int(span)
     const fits =
@@ -189,11 +202,11 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
       centres.push({ x, y })
       failed = 0
     } else if ((failed += 1) >= PLACEMENT_DRAWS)
-      throw new LayoutError('The thickets, stands and outcrops cannot all be placed')
+      throw new LayoutError('The thickets, hazel thickets, stands and outcrops cannot all be placed')
   }
-  const thickets = centres.slice(0, config.thicketCount)
-  const stands = centres.slice(config.thicketCount, config.thicketCount + config.standCount)
-  const outcrops = centres.slice(config.thicketCount + config.standCount)
+  let next = 0
+  const [thickets, hazelThickets, stands, outcrops] = kinds.map((count) => centres.slice(next, (next += count)))
+  if (!thickets || !hazelThickets || !stands || !outcrops) throw new Error('Every kind of site has centres')
   const bushSites = thickets.map((centre, id) =>
     scatter(
       draws,
@@ -202,6 +215,16 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
       config.thicketRadiusCm,
       config.bushSpacingCm,
       `Thicket ${id}'s bushes`,
+    ),
+  )
+  const hazelSites = hazelThickets.map((centre, id) =>
+    scatter(
+      draws,
+      config.hazelsPerThicket,
+      centre,
+      config.hazelThicketRadiusCm,
+      config.hazelSpacingCm,
+      `Hazel thicket ${id}'s hazels`,
     ),
   )
   const treeSites = stands.map((centre, id) =>
@@ -218,6 +241,8 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
     ),
   )
   const bushes = plantsOf(bushSites)
+  const hazels = plantsOf(hazelSites)
+  const foodPlants = foodPlantsOf(bushes, hazels)
   const trees = plantsOf(treeSites)
   const stones = plantsOf(stoneSites)
   const woodPlants = woodPlantsOf(trees, bushes)
@@ -230,14 +255,19 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   return {
     camp,
     thickets,
+    hazelThickets,
     stands,
     outcrops,
     bushes,
+    hazels,
+    foodPlants,
     trees,
     stones,
     woodPlants,
     hearths,
-    bushIndex: buildIndex(bushes, config.perceptionRadiusCm, size),
+    bushIndex: buildIndex(foodPlants, config.perceptionRadiusCm, size, 0, bushes.count),
+    hazelIndex: buildIndex(foodPlants, config.perceptionRadiusCm, size, bushes.count),
+    foodIndex: buildIndex(foodPlants, config.perceptionRadiusCm, size),
     treeIndex: buildIndex(trees, config.perceptionRadiusCm, size),
     woodIndex: buildIndex(woodPlants, config.perceptionRadiusCm, size),
     stoneIndex: buildIndex(stones, config.perceptionRadiusCm, size),

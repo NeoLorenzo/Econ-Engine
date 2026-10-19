@@ -1,5 +1,6 @@
 import { askOf, axeLife, salePrice, worthTo } from './axes'
 import { feedAmount } from './fire'
+import { FOODS, LAKE_ID, capacityOf, foodOfSource, fullRateOf, rateAtStock, spoiledBy, worthWorking } from './food'
 import {
   MINUTES_PER_DAY,
   isDaylight,
@@ -11,6 +12,7 @@ import {
 } from './forager'
 import { distance, distanceSq } from './geometry'
 import { regrowsAt, weathersOn } from './huts'
+import { lakeGrowth } from './lake'
 import { forEachPlantWithin } from './layout'
 import { craftOf, ratesOf } from './practice'
 import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
@@ -70,13 +72,17 @@ const sum = (values: Int32Array) => {
  * plant it worked or walked towards every minute.
  */
 export class ValleyChecker {
-  private bushes: Int32Array
+  /** Every food plant's berries or nuts, every wood plant's wood, and the lake's fish and growth owed, replayed. */
+  private food: Int32Array
   private trees: Int32Array
-  private bushTotal: number
+  private foodTotal: number
   private treeTotal: number
+  private lake: number
+  private lakeRemainder: number
   private aliveBefore: boolean[]
   private burnHour: number[]
-  private rates: [number, number][]
+  /** Each forager's rates at full sources the minute before: berries, nuts, fish and wood. */
+  private rates: [number, number, number, number][]
   private turns: Int32Array
   private practised: Int32Array
   /** Each forager's group and hearth at the end of the minute before. */
@@ -108,13 +114,20 @@ export class ValleyChecker {
   private hutsBefore: Hut[]
 
   constructor(state: ValleyState) {
-    this.bushes = state.bushKcal.slice()
+    this.food = state.foodStock.slice()
     this.trees = state.woodStock.slice()
-    this.bushTotal = sum(this.bushes)
+    this.foodTotal = sum(this.food)
+    this.lake = state.lakeKcal
+    this.lakeRemainder = state.lakeGrowthRemainder
     this.treeTotal = sum(this.trees)
     this.aliveBefore = state.foragers.map((forager) => forager.alive)
     this.burnHour = state.foragers.map(() => -1)
-    this.rates = state.foragers.map((forager) => [forager.forageRate, forager.woodRate])
+    this.rates = state.foragers.map((forager) => [
+      forager.forageRate,
+      forager.nutRate,
+      forager.fishRate,
+      forager.woodRate,
+    ])
     this.turns = new Int32Array(state.foragers.length)
     this.practised = new Int32Array(state.foragers.length)
     this.groupBefore = state.foragers.map((forager) => forager.groupId)
@@ -157,12 +170,20 @@ export class ValleyChecker {
         }
 
     if (minute > 0 && minute % 60 === 0) {
-      const { berries, branches, sticks } = regrowthOf(config, minute / 60)
-      for (let id = 0; id < this.bushes.length; id += 1) {
-        const after = Math.min(config.bushCapacityKcal, this.bushes[id]! + berries)
-        this.bushTotal += after - this.bushes[id]!
-        this.bushes[id] = after
+      const { berries, nuts, branches, sticks } = regrowthOf(config, minute / 60)
+      // Food plants: berries on bushes, then nuts on hazels, each up to its capacity; and the lake's fish.
+      const bushes = layout.bushes.count
+      for (let id = 0; id < this.food.length; id += 1) {
+        const after =
+          id < bushes
+            ? Math.min(config.bushCapacityKcal, this.food[id]! + berries)
+            : Math.min(config.hazelCapacityKcal, this.food[id]! + nuts)
+        this.foodTotal += after - this.food[id]!
+        this.food[id] = after
       }
+      const grown = lakeGrowth(config, this.lake, this.lakeRemainder)
+      this.lake += grown.grown
+      this.lakeRemainder = grown.remainder
       // Wood plants: branches on standing trees, where a crown above capacity keeps what it has, then sticks on bushes.
       const trees = layout.trees.count
       for (let id = 0; id < this.trees.length; id += 1) {
@@ -193,7 +214,7 @@ export class ValleyChecker {
     }
 
     // The plants worked this minute, compared with the replay once every event has been applied.
-    const touchedBushes: number[] = []
+    const touchedFood: number[] = []
     const touchedTrees: number[] = []
     const fullView = minute % 60 === 0
     const daylight = isDaylight(config, minute)
@@ -212,9 +233,23 @@ export class ValleyChecker {
       // It walks at the speed its load allows as it sets out, and its load is no more than the wood of its trip.
       const tripWood = this.tripWoodBefore[forager.id]!
       const logBefore = this.logBefore[forager.id]!
-      if (event.loadWood < 0 || event.loadWood > tripWood || event.loadBerriesKcal < 0 || event.loadLog !== logBefore)
+      const load = {
+        wood: event.loadWood,
+        berriesKcal: event.loadBerriesKcal,
+        nutsKcal: event.loadNutsKcal,
+        fishKcal: event.loadFishKcal,
+        log: event.loadLog,
+      }
+      if (
+        load.wood < 0 ||
+        load.wood > tripWood ||
+        load.berriesKcal < 0 ||
+        load.nutsKcal < 0 ||
+        load.fishKcal < 0 ||
+        load.log !== logBefore
+      )
         fail(`forager ${forager.id} carries a load it did not have`)
-      const kg = loadKg(config, event.loadWood, event.loadBerriesKcal, event.loadLog)
+      const kg = loadKg(config, load)
       if (event.speedCmPerSecond !== speedForLoad(config, kg))
         fail(`forager ${forager.id} walks at a speed its load does not allow`)
       if (distance(from.x, from.y, position.x, position.y) > event.walkSeconds * event.speedCmPerSecond)
@@ -250,21 +285,22 @@ export class ValleyChecker {
         if (hearthSq(event.position) > hearthSq(from)) fail(`forager ${forager.id} walked away from home with its log`)
       } else if (logBefore && daylight && forager.alive && event.reason !== 'going home')
         fail(`forager ${forager.id} is ${event.reason} carrying a log`)
-      const food = event.workedFor === 'food'
-      const plants = food ? layout.bushes : layout.woodPlants
-      const stocks = food ? this.bushes : this.trees
-      const memory = food ? forager.bushMemory : forager.woodMemory
-      // What it remembers matches what it saw at the start of its turn, before its own work.
+      const forFood = event.workedFor === 'food'
+      const plants = forFood ? layout.foodPlants : layout.woodPlants
+      const stocks = forFood ? this.food : this.trees
+      const memory = forFood ? forager.foodMemory : forager.woodMemory
+      // What it remembers matches what it saw at the start of its turn, before its own work. Fish cannot be seen.
       const target = event.targetId
       if (
         target !== null &&
+        target !== LAKE_ID &&
         (plants.x[target]! - from.x) ** 2 + (plants.y[target]! - from.y) ** 2 <= config.perceptionRadiusCm ** 2 &&
         (memory.seen[target] !== minute || memory.stock[target] !== stocks[target])
       )
         fail(`forager ${forager.id}'s memory of its target does not match what it saw`)
       if (fullView) {
         for (const [kindPlants, kindIndex, kindStocks, kindMemory] of [
-          [layout.bushes, layout.bushIndex, this.bushes, forager.bushMemory],
+          [layout.foodPlants, layout.foodIndex, this.food, forager.foodMemory],
           [layout.woodPlants, layout.woodIndex, this.trees, forager.woodMemory],
         ] as const) {
           for (const id of plantsInView(config, kindIndex, kindPlants, from.x, from.y)) {
@@ -338,26 +374,26 @@ export class ValleyChecker {
       else if (event.workSeconds) {
         if (!daylight) fail(`forager ${forager.id} worked at night`)
         if (event.plantId === null) fail(`forager ${forager.id} worked no plant`)
+        else if (forFood) this.checkFoodWork(state, event, minute, fail, touchedFood)
         else {
           const id = event.plantId
           if ((plants.x[id]! - position.x) ** 2 + (plants.y[id]! - position.y) ** 2 > reach2)
             fail(`forager ${forager.id} worked a plant out of reach`)
-          const rate = food ? forager.forageRate : forager.woodRate
-          if (stocks[id]! < minuteOfWork(rate))
+          if (stocks[id]! < minuteOfWork(forager.woodRate))
             fail(`forager ${forager.id} worked a plant holding less than a minute's work`)
-          const taken = food ? event.gatheredKcal : event.gatheredWood
-          if (taken > stocks[id]!) fail(`forager ${forager.id} took more than the plant held`)
+          const taken = event.gatheredWood
+          if (event.gatheredKcal || taken > stocks[id]!) fail(`forager ${forager.id} took more than the plant held`)
           stocks[id]! -= taken
-          if (food) {
-            this.bushTotal -= taken
-            touchedBushes.push(id)
-          } else {
-            this.treeTotal -= taken
-            touchedTrees.push(id)
-          }
+          this.treeTotal -= taken
+          touchedTrees.push(id)
         }
       } else if (event.gatheredKcal || event.gatheredWood)
         fail(`forager ${forager.id} took from a plant without working`)
+      // A forager at the shore found the lake's fish as they were, whether it fished or not.
+      if (event.targetId === LAKE_ID && event.workSeconds) {
+        if (forager.lakeFishedMinute !== minute || forager.lakeStock !== event.sourceStockBefore)
+          fail(`forager ${forager.id}'s memory of the lake does not match what it found`)
+      }
       const hearth = hearthAtTurn[forager.id]!
       if (event.sleepSeconds) {
         if (daylight) fail(`forager ${forager.id} slept in daylight`)
@@ -419,14 +455,17 @@ export class ValleyChecker {
     }
     for (let id = 0; id < this.stones.length; id += 1)
       if (state.stoneStock[id] !== this.stones[id]) fail(`stone spot ${id} holds the wrong stones`)
-    for (const id of touchedBushes)
-      if (state.bushKcal[id] !== this.bushes[id]) fail(`bush ${id} holds ${state.bushKcal[id]}, not ${this.bushes[id]}`)
+    for (const id of touchedFood)
+      if (state.foodStock[id] !== this.food[id])
+        fail(`food plant ${id} holds ${state.foodStock[id]}, not ${this.food[id]}`)
+    if (state.lakeKcal !== this.lake || state.lakeGrowthRemainder !== this.lakeRemainder)
+      fail(`the lake holds ${state.lakeKcal} kcal of fish, not ${this.lake}`)
     // Work only ever takes, and regrowth stops at capacity, so every stock the replay holds stays in range.
     for (const id of touchedTrees)
       if (state.woodStock[id] !== this.trees[id]) fail(`tree ${id} holds ${state.woodStock[id]}, not ${this.trees[id]}`)
     if (minute % 60 === 0) {
-      for (let id = 0; id < this.bushes.length; id += 1)
-        if (state.bushKcal[id] !== this.bushes[id]) fail(`bush ${id} changed without a record`)
+      for (let id = 0; id < this.food.length; id += 1)
+        if (state.foodStock[id] !== this.food[id]) fail(`food plant ${id} changed without a record`)
       for (let id = 0; id < this.trees.length; id += 1)
         if (state.woodStock[id] !== this.trees[id]) fail(`tree ${id} changed without a record`)
     }
@@ -448,9 +487,9 @@ export class ValleyChecker {
       kcalReceived += forager.swapTotals.kcalReceived
       kcalPaid += forager.swapTotals.kcalPaid
     }
-    const held = this.bushTotal + reserves + carried + totals.metabolizedKcal + totals.spoiledKcal
-    if (held !== totals.initialKcal + totals.regrownKcal)
-      fail(`energy is not conserved: ${held} held, ${totals.initialKcal + totals.regrownKcal} supplied`)
+    const held = this.foodTotal + this.lake + reserves + carried + totals.metabolizedKcal + totals.spoiledKcal
+    const supplied = totals.initialKcal + totals.regrownKcal + totals.lakeGrownKcal
+    if (held !== supplied) fail(`energy is not conserved: ${held} held, ${supplied} supplied`)
     let fireWood = 0
     for (const group of state.groups) fireWood += group.fireWood
     if (
@@ -502,11 +541,10 @@ export class ValleyChecker {
       const lots = forager.carried
       if (lots.length) {
         for (const lot of fullView ? lots : [lots[0]!, lots[lots.length - 1]!]) {
-          if (!Number.isInteger(lot.kcal) || lot.kcal <= 0)
-            fail(`forager ${forager.id} carries a lot of ${lot.kcal} kcal`)
+          if (!Number.isInteger(lot.kcal) || lot.kcal <= 0 || !FOODS.includes(lot.food))
+            fail(`forager ${forager.id} carries a lot of ${lot.kcal} kcal of ${lot.food}`)
           if (lot.harvestTick > minute) fail(`forager ${forager.id} carries food picked in the future`)
-          if (config.shelfLifeHours > 0 && lot.harvestTick <= minute - 60 * config.shelfLifeHours)
-            fail(`forager ${forager.id} carries food that should have spoiled`)
+          if (spoiledBy(config, lot, minute)) fail(`forager ${forager.id} carries food that should have spoiled`)
         }
         if (fullView)
           for (let index = 1; index < lots.length; index += 1)
@@ -547,16 +585,28 @@ export class ValleyChecker {
             fail(`forager ${forager.id}'s practice log is out of range`)
         if (forager.alive) {
           const expected = ratesOf(config, forager.foragingSkill, forager.woodSkill, log)
-          if (expected.forageRate !== forager.forageRate || expected.woodRate !== forager.woodRate)
+          if (
+            expected.forageRate !== forager.forageRate ||
+            expected.nutRate !== forager.nutRate ||
+            expected.fishRate !== forager.fishRate ||
+            expected.woodRate !== forager.woodRate
+          )
             fail(`forager ${forager.id}'s rates do not follow from its skills and practice`)
           if (forager.craft !== craftOf(config, forager.craftSkill, log))
             fail(`forager ${forager.id}'s craft does not follow from its skill and practice`)
         }
-      } else if (forager.forageRate !== rates[0] || forager.woodRate !== rates[1])
+      } else if (
+        forager.forageRate !== rates[0] ||
+        forager.nutRate !== rates[1] ||
+        forager.fishRate !== rates[2] ||
+        forager.woodRate !== rates[3]
+      )
         fail(`forager ${forager.id}'s rates changed mid-day`)
       else if (forager.craft !== this.craftBefore[forager.id]) fail(`forager ${forager.id}'s craft changed mid-day`)
       rates[0] = forager.forageRate
-      rates[1] = forager.woodRate
+      rates[1] = forager.nutRate
+      rates[2] = forager.fishRate
+      rates[3] = forager.woodRate
     }
     for (const made of state.lastSwaps) {
       const seller = state.foragers[made.sellerId]!
@@ -721,6 +771,46 @@ export class ValleyChecker {
   }
 
   /**
+   * Work for food at a bush, a hazel or the shore: within reach of it, while it is worth working at the rate its stock
+   * gives, taking no more than that rate allows over the seconds worked, with the remainder carried, and no more than
+   * the source holds. The source's stock is replayed.
+   */
+  private checkFoodWork(
+    state: ValleyState,
+    event: ValleyState['lastEvents'][number],
+    minute: number,
+    fail: (message: string) => void,
+    touchedFood: number[],
+  ) {
+    const { config, layout } = state
+    const forager = state.foragers[event.foragerId]!
+    const id = event.plantId!
+    const lake = id === LAKE_ID
+    const food = foodOfSource(layout, id)
+    const { position } = event
+    const reach2 = config.reachCm ** 2
+    const sq = lake
+      ? position.y * position.y
+      : (layout.foodPlants.x[id]! - position.x) ** 2 + (layout.foodPlants.y[id]! - position.y) ** 2
+    if (sq > reach2) fail(`forager ${forager.id} worked for food out of reach`)
+    if (event.food !== food) fail(`forager ${forager.id} took ${event.food} from a source of ${food}`)
+    const stock = lake ? this.lake : this.food[id]!
+    if (event.sourceStockBefore !== stock) fail(`forager ${forager.id} found a stock that was not there`)
+    const rate = rateAtStock(config, fullRateOf(forager, food), food, stock)
+    if (!worthWorking(config, rate)) fail(`forager ${forager.id} worked a source not worth working`)
+    if (stock > capacityOf(config, food)) fail(`a source of ${food} holds more than it can`)
+    const taken = event.gatheredKcal
+    if (event.gatheredWood || taken > stock || taken > Math.floor((3_599 + rate * event.workSeconds) / 3_600))
+      fail(`forager ${forager.id} took food faster than the source allows`)
+    if (lake) this.lake -= taken
+    else {
+      this.food[id]! -= taken
+      this.foodTotal -= taken
+      touchedFood.push(id)
+    }
+  }
+
+  /**
    * What a forager knows: places near where it stood are marked seen this minute exactly when they lay wholly within
    * sight, and stay seen; sites within sight are known, and are checked exactly when it stood close
    * enough to see all of them; a place or site it walked towards was worth exploring, checking or searching; and, in
@@ -769,7 +859,7 @@ export class ValleyChecker {
       if (seenPlaces !== forager.placesSeen || forager.placesSeen > placeCount(config))
         fail(`forager ${forager.id}'s count of places seen is wrong`)
       for (const [plants, memory] of [
-        [layout.bushes, forager.bushMemory],
+        [layout.foodPlants, forager.foodMemory],
         [layout.woodPlants, forager.woodMemory],
       ] as const)
         for (let id = 0; id < plants.count; id += 1) {
