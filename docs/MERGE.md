@@ -1,6 +1,6 @@
 # Merge: Life Engine into Econ-Engine
 
-This is a direction document, not a specification. Nothing in it is implemented. It records a decision the owner made on 2026-10-10 and the plan that follows from it. The current MVP specifications remain authoritative for what the engine does, and the [simulation design rules](../SIMULATION_DESIGN_RULES.md) remain authoritative for how it must be built. It extends the [vision document](VISION.md) and replaces that document's incremental path.
+This is a direction document, not a specification. Nothing in it is implemented. It records a decision the owner made on 2026-10-10 and the plan that follows from it. The current MVP specifications remain authoritative for what the engine does, and the [simulation design rules](../SIMULATION_DESIGN_RULES.md) remain authoritative for how it must be built. It extends the [vision document](VISION.md) and replaces that document's incremental path. From step 10 on, its ladder is replaced by the [roadmap](ROADMAP.md), which the owner set on 2026-10-19.
 
 ## Decision
 
@@ -83,33 +83,23 @@ Firms, posted-price markets, employment and payroll, Government and fiscal trans
 
 ## The ladder
 
-Each step adds one thing, answers one question that could come out either way, and is validated before the next begins (design rule 12). Each will get its own specification.
+Steps 0 to 9 each added one thing, answered one question that could come out either way, and were validated before the next began (design rule 12). They built the valley one mechanism at a time: a lone forager, a band, sharing, wood and skill, practice, real scale, groups, sight and loads, a shared fire, and tools and shelter. Life 9 holds everything they added. Their specifications, code and experiments were removed in update 039, so that the repository holds only the current step; they remain in git history, the changelog and the lab notes.
 
-Steps 0 to 8 built the valley one mechanism at a time: a lone forager, a band, sharing, wood and skill, practice, real scale, groups, sight and loads, and a shared fire. Life 9 holds everything they added. Their specifications, code and experiments were removed in update 039, so that the repository holds only the current step; they remain in git history, the changelog and the lab notes.
-
-| Step | Adds | Question | Validation |
-| --- | --- | --- | --- |
-| 8. A shared fire | One fire at each group's flag, in place of its members' own, which warms every member, burns at night, goes out when it runs dry, and is fed by members with spare wood or when it runs low; a record of what each member gives | Who feeds a fire that warms everyone at it? | Exact conservation of wood through the shared fire. Counterfactuals with every forager keeping its own fire, a fire that burns for each member, and members giving only to a low fire. |
-| 9. Tools and shelter | Recipes that convert materials into tools that raise productivity, and shelter | Do tools concentrate in the hands of those who make them, and does making them become a trade? | Exact conservation through every conversion. |
-| 10. Storage and claims | Durable stores, and the first objects of the rules layer: claims on stores and patches, with sanctions | Does property appear, and who ends up enforcing it? | Claims expressed in the Crawford and Ostrom (1995) grammar from the vision. Counterfactuals with claims unavailable. |
-| 11. Generations | Births, ageing, deaths from age, kin, inheritance | Do living standards return towards subsistence after a productivity gain? Does advantage persist across generations? | Malthusian dynamics, as named in the vision. |
-| 12. A medium of exchange | Goods that differ in how well they keep and how widely they are wanted | Does one good become accepted by agents who do not want to use it? | Kiyotaki and Wright (1989). |
-
-Beyond step 12, in the order questions demand them: claims on land with costs of exit (which makes Domar's hypothesis from the vision testable), decision procedures within groups, enforcement capacity, prices, wages, firms and government. These are the institutions MVP9 builds in. In the new core they have to be reached from below.
+The ladder went on to storage and claims, generations, and a medium of exchange, each asking an economic question. On 2026-10-19 the owner replaced those steps with the [roadmap](ROADMAP.md): the Life core's goal is now a realistic life, built world first, and economic institutions are watched for rather than built towards.
 
 ## Changes to the vision
 
 The [vision](VISION.md) stands: primitives instead of institutions, the four layers, rules as data, observer-owned labels, collective authority, sources of change, politics and culture, and its validation targets. Two things change:
 
-- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above. The rules layer first appears at step 10, in an economy that has never had built-in institutions, instead of being fitted onto one that has.
+- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above and, from step 10, the [roadmap](ROADMAP.md). The roadmap no longer builds towards a rules layer: institutions, if they appear, should grow out of a realistic life.
 - **The unit of time.** The vision asked when a simulated day stops being the right unit. The answer is now: from step 0, because bodies act within a day. The step 0 specification chooses the tick.
 
 ## Risks
 
-- **Scope.** "A simulation of life" has no natural end. The defence is the ladder: no feature without a question it makes answerable.
+- **Scope.** "A simulation of life" has no natural end. The defence is the roadmap: every step makes one part of life realistic and is checked against real measurements.
 - **Familiar results.** Sugarscape covered much of steps 0 to 2. The contribution has to be what Sugarscape lacked: exact accounting, a causal record of every change, information limited to what agents perceive and remember, and rules as data. Steps 0 and 1 are foundations; step 2 is the first that can produce a new finding.
 - **Physiological detail.** Life Engine models drives in real units. Detail that changes no answer is cost without benefit, so physiology stays coarse until a question needs more.
-- **Long runs.** From step 11, runs span generations at sub-day ticks. From step 5 the tick is a minute, so a run of 400 days is already 576,000 ticks. Performance and ledger size will need attention before then.
+- **Long runs.** The roadmap's runs span several years at a tick of a minute: five years is about 2.6 million ticks, over a large landscape with many animals. Its first step, Life 10, is speed and scale.
 - **Two cores in one repository.** The MVP9 core must stay runnable but unchanged, and the observer must make clear which core a view shows.
 
 ## Open decisions

@@ -140,7 +140,7 @@ Known theory gives testable predictions without hard-coding the outcome:
 
 ## Incremental path
 
-> Superseded by the ladder in the [merge document](MERGE.md#the-ladder). The path below is kept as the record of the earlier plan.
+> Superseded by the ladder in the [merge document](MERGE.md#the-ladder) and, from step 10, the [roadmap](ROADMAP.md). The path below is kept as the record of the earlier plan.
 
 No rewrite is required. Each step moves one hard-coded institution into the rules layer and gets its own specification and validation:
 

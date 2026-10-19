@@ -4,12 +4,13 @@
 
 The repository holds two simulation cores:
 
-- **The Life core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is built bottom-up, one step at a time, following the ladder in [docs/MERGE.md](docs/MERGE.md#the-ladder). Only the current Life step exists: its specification describes the whole simulation. Earlier steps live in git history, the changelog and the lab notes.
+- **The Life core** (`src/valley/`, observer in `src/valleyView/` and `life.html`) is where new work goes. It is built bottom-up, one step at a time, following the [roadmap](docs/ROADMAP.md). Only the current Life step exists: its specification describes the whole simulation. Earlier steps live in git history, the changelog and the lab notes.
 - **The MVP9 core** (`src/sim/`, observer in `src/App.tsx` and `src/ui/`) is frozen as a reference. Do not change it unless explicitly asked; any change must keep its canonical trajectory bit-for-bit.
 
 Before starting Life work, read:
 
-- [docs/MERGE.md](docs/MERGE.md) for the direction, the ladder and the next step's open questions;
+- [docs/ROADMAP.md](docs/ROADMAP.md) for the goal, the setting and the steps ahead;
+- [docs/MERGE.md](docs/MERGE.md) for why Life Engine merged into this project, and steps 0 to 9;
 - [SIMULATION_DESIGN_RULES.md](SIMULATION_DESIGN_RULES.md), which is authoritative;
 - the current `docs/LIFE<n>_SPEC.md`;
 - the Life sections of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/VALIDATION.md](docs/VALIDATION.md);
@@ -22,7 +23,7 @@ The owner directs the project but does not write code. Explain choices in plain 
 The Life core is in a feature-building phase: get features working, and leave experiments for a later, stable version of the engine. Do not run throwaway prototypes, multi-seed sweeps or experiment tests unless the owner asks for them.
 
 1. **Spec first.** Write a short `docs/LIFE<n>_SPEC.md`, headed `[LIFE<n>-<Name>-<NNN>]` and modelled on the current spec. It describes the whole simulation, not only what changes, and replaces the current spec. It covers:
-   - the step's question, and its design decisions with their reasons;
+   - what the step makes realistic and the real measurements it is checked against, and its design decisions with their reasons;
    - the order of phases in a tick, defaults and configuration validation;
    - invariants and the observer;
    - the code layout and the tests;

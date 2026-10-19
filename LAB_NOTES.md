@@ -6,6 +6,30 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE-Roadmap-049] - (2026-10-19)
+
+### Problem
+
+The ladder's next steps after Life 9 were storage and claims, generations, and a medium of exchange, each asking an economic question. The owner wants the Life core's goal to be a realistic life first, with economics left to grow out of realism later. Comparing Life 9.7 with Life Engine in Unity also showed what the valley still lacks: danger and fleeing, sleep driven by tiredness, heat and shade by day, fuller senses, materials broken down by recipes, and a world larger than one valley.
+
+### Decisions
+
+The owner made each of these choices; the code is unchanged.
+
+- **Replace the roadmap, keep the valley.** Life 9.7 stays as the starting point.
+- **Realistic life is the goal.** Economic institutions are watched for, not built towards.
+- **The world first, in layers.** Speed and scale first, because a landscape and individual animals depend on them; then terrain, water, seasons and weather, vegetation, plant-eaters, predators, and people living in that world. Each layer lives with or without people. Two other shapes were set aside: growing the world outward from what the band meets next, which shapes the world around people, and rebuilding the engine before any world feature, which shows nothing new for a while.
+- **A landscape a few to tens of kilometres across,** **every animal an individual agent,** **runs of several years,** and **Mesolithic northern Europe** as the setting, with every number sourced.
+- **Then the body, making things, and people together,** in that order: the world gives the body its cold, water, food and danger; the body gives making things a purpose; and families need fed, sheltered adults.
+- **Thirst comes with water** at step 12, and the spear and bow with hunting at step 17, ahead of their areas.
+- **Steps are checked against real measurements** in place of answering an economic question.
+
+### Open questions
+
+- How plants are represented over tens of kilometres: individual where people or animals use them, counted in stands elsewhere, is the recommendation for step 10.
+- Whether runs grow long enough for generations after step 26.
+- Which of Life Engine's low-poly models, now including animals, are converted for the observer.
+
 ## [LIFE9-HazelAndLake-048] - (2026-10-19)
 
 ### Problem

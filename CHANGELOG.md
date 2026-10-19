@@ -2,6 +2,17 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE-Roadmap-049] - (2026-10-19)
+
+### Added
+
+- **A new roadmap for the Life core,** [docs/ROADMAP.md](docs/ROADMAP.md). Its goal is a realistic life in Mesolithic northern Europe, built world first: scale (Life 10), terrain, water, seasons and weather, vegetation, plant-eaters and predators as individual agents, and people hunting in that world (to Life 17); then the body (18 to 19), making things (20 to 22) and people together (23 to 26). Each step is checked against real measurements. Economic behaviour is watched for, not built towards.
+
+### Changed
+
+- **The merge document's ladder** now records steps 0 to 9 and points to the roadmap; its steps 10 to 12 (storage and claims, generations, a medium of exchange) are removed.
+- `AGENTS.md` points Life work at the roadmap, and a step's specification opens with what it makes realistic and the measurements it is checked against, in place of its question. The README, the vision document and the Life 9 specification point to the roadmap instead of the ladder's later steps.
+
 ## [LIFE9-HazelAndLake-048] - (2026-10-19)
 
 ### Added
