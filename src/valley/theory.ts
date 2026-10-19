@@ -1,10 +1,53 @@
 import { askOf } from './axes'
 import { lakeCapacityKcal } from './config'
-import { speedForLoad, walkCostForLoad } from './forager'
+import { speedForLoad } from './forager'
 import { placeCount } from './social'
 import { siteCount } from './sites'
+import { GROUND_NAMES, cellSlopePercent, speedOnGrade, walkCost as landWalkCost } from './terrain'
 import { nightHours, nightWood, woodTarget } from './trade'
-import type { ValleyConfig } from './types'
+import type { ValleyConfig, ValleyLayout } from './types'
+
+/**
+ * The generated land, measured: its lowest and highest ground, the share of its area of each ground, the share steeper
+ * than 5%, 10% and 20%, and its kettles' radii and depths. Validation compares these with real young moraine country.
+ */
+export function landStats(layout: ValleyLayout) {
+  const { terrain, ground } = layout
+  const { cells, cellCm, height } = terrain
+  const points = cells + 1
+  let lowest = Infinity
+  let highest = -Infinity
+  for (const h of height) {
+    lowest = Math.min(lowest, h)
+    highest = Math.max(highest, h)
+  }
+  const counts = [0, 0, 0, 0]
+  for (const kind of ground) counts[kind]! += 1
+  const steeper = [0, 0, 0]
+  for (let j = 0; j < cells; j += 1)
+    for (let i = 0; i < cells; i += 1) {
+      const slope = cellSlopePercent(
+        cellCm,
+        height[j * points + i]!,
+        height[j * points + i + 1]!,
+        height[(j + 1) * points + i]!,
+        height[(j + 1) * points + i + 1]!,
+      )
+      if (slope >= 5) steeper[0]! += 1
+      if (slope >= 10) steeper[1]! += 1
+      if (slope >= 20) steeper[2]! += 1
+    }
+  const area = cells * cells
+  return {
+    lowestCm: lowest,
+    highestCm: highest,
+    groundShares: Object.fromEntries(GROUND_NAMES.map((name, kind) => [name, counts[kind]! / area])),
+    steeperThan5: steeper[0]! / area,
+    steeperThan10: steeper[1]! / area,
+    steeperThan20: steeper[2]! / area,
+    kettles: terrain.kettles.map((kettle) => ({ radiusCm: kettle.radius, depthCm: kettle.depth })),
+  }
+}
 
 /**
  * What the valley's rules imply. Experiments compare measured behaviour with these; foragers never use them.
@@ -12,8 +55,14 @@ import type { ValleyConfig } from './types'
 export function valleyTheory(config: ValleyConfig) {
   const night = nightHours(config)
   const daylight = 24 - night
-  /** What an hour of walking under `kg` costs. */
-  const walkCost = (kg: number) => walkCostForLoad(config, kg, speedForLoad(config, kg))
+  /** What an hour of walking under `kg` costs on the flat on soil. */
+  const walkCost = (kg: number) => walkCostOnGrade(kg, 0)
+  /** Speed and cost of walking under `kg` on a grade of `grade` percent over ground of `terrainPercent`. */
+  const walkOnGrade = (kg: number, grade: number, terrainPercent = config.soilTerrainPercent) => {
+    const speed = speedOnGrade(speedForLoad(config, kg), grade)
+    return { speed, kcalPerHour: landWalkCost(config, kg, speed, grade, terrainPercent) }
+  }
+  const walkCostOnGrade = (kg: number, grade: number) => walkOnGrade(kg, grade).kcalPerHour
   const pickDelta = config.pickKcalPerHour - config.restKcalPerHour
   const gatherDelta = config.gatherKcalPerHour - config.restKcalPerHour
   const travelDelta = walkCost(0) - config.restKcalPerHour
@@ -95,8 +144,13 @@ export function valleyTheory(config: ValleyConfig) {
     /** What walking instead of resting costs over a sweep of the valley. */
     sweepCostKcal: sweepHours * travelDelta,
     speedForLoad: (kg: number) => speedForLoad(config, kg),
-    /** What an hour of walking under a load of `kg` costs, by the Pandolf equation. */
+    /** What an hour of walking under a load of `kg` costs on the flat, by the Pandolf equation. */
     walkCost,
+    /** Speed and hourly cost on a slope, by Tobler's function and the Pandolf equation with Santee's correction. */
+    walkOnGrade,
+    /** A forager's estimate of walking `cm` on the flat while climbing `climbCm`, by Naismith's rule. */
+    estimateSeconds: (cm: number, climbCm: number) =>
+      Math.ceil(cm / config.walkCmPerSecond) + Math.ceil((config.climbSecondsPerMetre * Math.max(0, climbCm)) / 100),
     loadedWalkSeconds,
     carryCostKcal,
     shortestCheckTourHours,

@@ -1,3 +1,5 @@
+import type { Terrain } from './terrain'
+
 /** The three foods: berries from bushes, hazelnuts from hazels, and fish from the lake. */
 export type FoodKind = 'berries' | 'nuts' | 'fish'
 
@@ -14,8 +16,33 @@ export interface FoodLot {
  */
 export interface ValleyConfig {
   seed: number
-  /** The valley is a square this many centimetres wide, with the camp at its centre. */
+  /** The land is a square this many centimetres wide, with the camp at its centre and the lake beyond its north edge. */
   valleySizeCm: number
+  /** Heights are held on a lattice this far apart; the land is cut into chunks this wide for searches. */
+  terrainCellCm: number
+  chunkCm: number
+  /** The broad rise and fall: up to `reliefCm` high, its hills `reliefWavelengthCm` apart. */
+  reliefCm: number
+  reliefWavelengthCm: number
+  /** Hummocks: up to `hummockCm` high, `hummockWavelengthCm` apart. */
+  hummockCm: number
+  hummockWavelengthCm: number
+  /** Kettle hollows: their count, radii, and depth at the centre in thousandths of the radius. */
+  kettleCount: number
+  kettleMinRadiusCm: number
+  kettleMaxRadiusCm: number
+  kettleDepthPerMille: number
+  /** The land rises from the lake over `shoreRampCm`; its first `shoreWetCm` are wet. */
+  shoreRampCm: number
+  shoreWetCm: number
+  /** Sand lies where the broad relief is below `sandBelowCm`; rock on slopes of `rockSlopePercent` or more. */
+  sandBelowCm: number
+  rockSlopePercent: number
+  /** A forager's eye above the ground, and the step at which a line of sight is checked against the ground. */
+  eyeHeightCm: number
+  sightStepCm: number
+  /** Scattered starts lie within the square this wide round the land's centre. */
+  startAreaCm: number
   thicketCount: number
   bushesPerThicket: number
   thicketRadiusCm: number
@@ -92,8 +119,13 @@ export interface ValleyConfig {
   gatherKcalPerHour: number
   chopKcalPerHour: number
   makeKcalPerHour: number
-  /** The Pandolf terrain factor for walking, in percent: 100 for a road, 120 for light brush. */
-  walkTerrainPercent: number
+  /** The Pandolf terrain factor of each ground for walking, in percent: 100 for a road, 120 for light brush. */
+  soilTerrainPercent: number
+  sandTerrainPercent: number
+  rockTerrainPercent: number
+  wetTerrainPercent: number
+  /** A forager judges a walk's climb at this many seconds a metre, by Naismith's rule. */
+  climbSecondsPerMetre: number
   /** Walking speed falls by this many thousandths for each body mass carried. */
   loadSlowdownPerMille: number
   reserveMaxKcal: number
@@ -197,6 +229,17 @@ export interface PlantIndex {
 /** Where everything stands. It never changes during a run, so every state shares it. */
 export interface ValleyLayout {
   camp: Point
+  /** The land's heights, and the ground of each terrain cell with every outcrop's circle laid as rock. */
+  terrain: Terrain
+  ground: Uint8Array
+  /** Every site's centre as a point, by site ID, with an index for close sight. */
+  sitePoints: Plants
+  siteIndex: PlantIndex
+  /** The food and wood plants listed by chunk, for searches outwards from a forager. */
+  foodChunks: PlantIndex
+  woodChunks: PlantIndex
+  treeChunks: PlantIndex
+  stoneChunks: PlantIndex
   thickets: Point[]
   hazelThickets: Point[]
   stands: Point[]
@@ -416,6 +459,11 @@ export interface Forager {
   siteKnown: Uint8Array
   /** For each site, the last minute it stood close enough to see every plant in it, or −1 if never. */
   siteChecked: Int32Array
+  /** The place it last looked round from by long sight, or −1 since dark, and the minute it did. */
+  farPlace: number
+  farMinute: number
+  /** The height it has climbed since minute 0, in whole centimetres. */
+  climbedCm: number
 }
 
 /** How warm a forager sleeps: by a lit fire in its whole hut, by the fire alone, in its hut alone, or with neither. */
@@ -508,8 +556,15 @@ export interface ActionEvent {
   loadBerriesKcal: number
   loadNutsKcal: number
   loadFishKcal: number
-  /** Its walking speed for that load, in centimetres a second. */
+  /** The point it walked towards, if it walked. */
+  walkTarget: Point | null
+  /** Its speed for that load on the flat, and its walking speed on the grade it walked, in centimetres a second. */
+  loadSpeedCmPerSecond: number
   speedCmPerSecond: number
+  /** The grade ahead of it as it set out, in whole percent; the terrain factor of the ground it set out from; the height it climbed. */
+  gradePercent: number
+  terrainPercent: number
+  climbCm: number
   /** The group whose fire it slept by, if it slept as a member; null if it tended its own fire or did not sleep. */
   fireGroupId: number | null
   /** Its log at the start of its action, which slows it at `logKg`. */
@@ -776,6 +831,9 @@ export interface DaySummary {
   gatherSecondsById: number[]
   walkSecondsById: number[]
   gatheredWoodById: number[]
+  /** Every forager's height climbed and energy spent walking during the day. */
+  climbedCmById: number[]
+  walkKcalById: number[]
   /** Groups standing and foragers alive without a group at the end of the day. */
   groupsStanding: number
   loners: number

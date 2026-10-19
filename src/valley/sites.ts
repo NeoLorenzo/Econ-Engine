@@ -78,21 +78,6 @@ export function siteGeometry(config: ValleyConfig, layout: ValleyLayout): SiteGe
   return geometry
 }
 
-/** Spots every site whose centre is within sight, and checks every site it stands close enough to see all of. */
-export function observeSites(config: ValleyConfig, layout: ValleyLayout, forager: Forager, minute: number) {
-  const sightSq = sightOf(config, minute) ** 2
-  const { x, y, checkSq } = siteGeometry(config, layout)
-  const known = forager.siteKnown
-  const checked = forager.siteChecked
-  for (let site = 0; site < x.length; site += 1) {
-    const dx = forager.x - x[site]!
-    const dy = forager.y - y[site]!
-    const sq = dx * dx + dy * dy
-    if (sq <= sightSq) known[site] = 1
-    if (sq <= checkSq[site]!) checked[site] = minute
-  }
-}
-
 /** Checking goes to known sites not checked for `exploreAfterHours` or never; searching only to sites never checked. */
 export type SiteSearch = 'check' | 'search'
 

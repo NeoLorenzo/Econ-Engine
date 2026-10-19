@@ -1,3 +1,4 @@
+import { FLAT_LAND } from '../valley/config'
 import { describe, expect, it } from 'vitest'
 import { cloneValley, createValley, stepValley } from '../valley/engine'
 import { meet, placeCount } from '../valley/social'
@@ -32,7 +33,7 @@ import {
 
 /** The canonical valley at ten in the morning, with forager 0 hungry three metres from a bush that alone holds food. */
 function pairBesideBush(): DisplayPair {
-  const state: ValleyState = cloneValley(createValley())
+  const state: ValleyState = cloneValley(createValley(FLAT_LAND))
   state.minute = 600
   const forager = state.foragers[0]!
   forager.x = state.layout.bushes.x[0]! - 300
@@ -46,7 +47,7 @@ function pairBesideBush(): DisplayPair {
 
 describe('fishing', () => {
   it('draws a fisher on the shore facing the water, holding a rod, and says so', () => {
-    const state: ValleyState = cloneValley(createValley())
+    const state: ValleyState = cloneValley(createValley(FLAT_LAND))
     state.minute = 600
     const forager = state.foragers[0]!
     Object.assign(forager, { y: 50, energyKcal: 63_000, hungry: true, lakeKnown: true })
@@ -74,7 +75,7 @@ describe('drawing between two minutes', () => {
   })
 
   it('lays a sleeper down and draws only whole minutes at the fastest speed', () => {
-    const state = cloneValley(createValley())
+    const state = cloneValley(createValley(FLAT_LAND))
     state.minute = 1_200
     const pair = { previous: state, next: stepValley(state), alpha: 0.5 }
     expect(foragerPose(pair, 0)).toMatchObject({ gesture: 'sleep', lying: 1 })
@@ -104,7 +105,7 @@ describe('plants and the camera', () => {
   })
 
   it('compares a plant’s true stock with what the followed forager remembers, or says it has never seen it', () => {
-    const known = cloneValley(createValley())
+    const known = cloneValley(createValley(FLAT_LAND))
     known.minute = 30
     known.foragers[0]!.foodMemory.stock[7] = 400
     known.foragers[0]!.foodMemory.seen[7] = 5
@@ -115,7 +116,7 @@ describe('plants and the camera', () => {
       difference: -280,
       seen: '24 min ago',
     })
-    const state = cloneValley(createValley())
+    const state = cloneValley(createValley(FLAT_LAND))
     expect(plantInspection(state, 'bush', 7, 0)).toMatchObject({ remembered: null, seen: 'never' })
   })
 
@@ -130,7 +131,7 @@ describe('plants and the camera', () => {
 
 describe('days of food left', () => {
   it('divides the reserve by what it lost a day over the last days, and says nothing while it holds steady', () => {
-    const state = cloneValley(createValley())
+    const state = cloneValley(createValley(FLAT_LAND))
     expect(daysOfFoodLeft(state, 0)).toBeNull()
     const end = (kcal: number) => ({ endEnergyKcal: state.foragers.map(() => kcal) }) as ValleyState['days'][number]
     state.days = [end(66_000), end(64_000), end(62_000)]
@@ -143,7 +144,7 @@ describe('days of food left', () => {
 
 describe('trees and huts', () => {
   it('draws a standing tree upright over its dead branches, and a felled one lying, shorter for each log cut', () => {
-    const state = cloneValley(createValley())
+    const state = cloneValley(createValley(FLAT_LAND))
     const standing = treeShape({ previous: state, next: state, alpha: 1 }, 0)
     expect(standing).toMatchObject({ felled: false, trunk: 1, crown: 1, deadwood: 1 })
     state.woodStock[0] = 5
@@ -159,20 +160,20 @@ describe('trees and huts', () => {
   })
 
   it('turns a member’s hut, and the member asleep in it, towards its group’s fire', () => {
-    const state = cloneValley(createValley({ scattered: false }))
+    const state = cloneValley(createValley({ ...FLAT_LAND, scattered: false }))
     const hearth = state.foragers[3]!.hearth
     // Slot 3 lies due east of the flag, so the fire is due west.
     const toward = towardFire(state, 3, hearth.x, hearth.y)!
     expect(toward.x).toBeCloseTo(-1, 10)
     expect(toward.z).toBeCloseTo(0, 10)
-    expect(towardFire(cloneValley(createValley()), 0, 100, 100)).toBeNull()
+    expect(towardFire(cloneValley(createValley(FLAT_LAND)), 0, 100, 100)).toBeNull()
   })
 })
 
 describe('groups and what a forager knows', () => {
   /** Foragers 0 and 1 meet at ten in the morning and found Group A. */
   function founded(overrides = {}) {
-    const state = cloneValley(createValley(overrides))
+    const state = cloneValley(createValley({ ...FLAT_LAND, ...overrides }))
     state.minute = 601
     const [first, second] = state.foragers as [ValleyState['foragers'][0], ValleyState['foragers'][0]]
     second.x = first.x + 500
@@ -266,7 +267,7 @@ describe('groups and what a forager knows', () => {
 describe('a group’s fire and what each member gives', () => {
   /** The band as one group around the camp at minute `minute`, with `fireWood` in its fire and member 0 holding 30. */
   function together(minute: number, fireWood: number) {
-    const state = cloneValley(createValley({ scattered: false }))
+    const state = cloneValley(createValley({ ...FLAT_LAND, scattered: false }))
     state.minute = minute
     state.groups[0]!.fireWood = fireWood
     state.groups[0]!.given = state.groups[0]!.given.map((given, slot) => (slot === 1 ? fireWood : given))

@@ -6,6 +6,42 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE10-TerrainAndScale-050] - (2026-10-19)
+
+### Problem
+
+The roadmap's first step was scale, a pure speed-up, then terrain. The owner swapped them, then merged them: the land grows to a few kilometres and gains its relief in one step, with performance worked on only as far as the larger land needs.
+
+### Decisions
+
+The owner approved the spec. Within it:
+
+- **4 km square, as dense as Life 9.7 by the hectare.** Each plant's yield was set from real yields by the hectare, so the density stands. The land grows enough for about 180 people against a band of 8: it is rich only because it has no winter yet.
+- **Every plant individual.** About 85,000 plants are few enough to keep one by one; counting them in stands waits for vegetation.
+- **Glacial relief at three scales,** generated in integers: value noise for the broad rise and fall and for hummocks, and round kettles an eighth of their radius deep.
+- **Ground derived from the terrain,** not drawn on its own: wet in kettles and by the lake, rock at outcrops and on steep slopes, sand on low ground, soil elsewhere.
+- **Tobler for speed, Pandolf with Santee for energy, Naismith for judging.** A forager can see the rise of the land but cannot time each step, so it judges a walk as walkers do.
+- **Straight walks.** Path finding round hills is left for later; the slopes are mostly gentle.
+
+### What the implementation showed
+
+- **Seeing round from every place was the cost.** The first sight rule checked a line to every place within a kilometre, about 4,800 lines a place. Once foragers explored, new places came every minute and a run slowed to seconds a day. Casting rays outwards from the viewer and keeping the steepest slope seen along each, sampled every 30 m, gives the same kind of answer for a fraction of the work. The spec's step of 15 m became 30 m, and its rule for visibility became the rays.
+- **Long sight from the place, every hour.** Looking round from the exact position every minute could not be kept. Long sight is reckoned from the centre of the forager's place, when it stands in a new place or after an hour, so each place's view can be worked out once and kept. Close sight now records trees and stones too, so a forager watching a tree cut sees it.
+- **Searches stop when nothing further can win.** Choosing food scanned all 80,000 food plants whenever a bush ran out. Searching chunk by chunk outwards, and stopping when even a full source at the next ring's distance would lose, finds the same source. A test runs the same land with two chunk sizes and gets identical days.
+- **Plants that did not fit.** A thicket next to a kettle could not fit its bushes on dry ground, so a site is now drawn only where its whole circle suits its kind. A stone near an outcrop's edge could lie in a cell outside its rock circle; that cell is rock too.
+- **Regrowth stays hourly.** Settling regrowth only when a plant is read was planned but not needed: hourly regrowth of every plant costs a few seconds a year.
+- **Speed.** A canonical year runs unchecked in about 2 minutes, a checked 30 days in seconds.
+- **A year on the land.** On the canonical seed everyone lives on hazelnuts alone, nobody dies, and by the end of the year every forager has seen all 17,956 places. They climb about 210 m a day and spend about 1,400 kcal a day walking, most of it exploring, since a land this large always has somewhere unseen. Four groups stand with every hut whole; eight axes are made and none sold.
+
+These are observations from single runs, not experiments.
+
+### Open questions
+
+- Whether foragers should keep exploring once they know enough, and what a real band's range was.
+- Path finding round hills, and how much straight walks lose.
+- A measured relief for a 4 km square of young moraine country; the relief, hummock, sand and rock numbers are estimates.
+- The view's speed in a visible browser pane at the fastest settings has not been measured; the hidden pane draws only on screenshots.
+
 ## [LIFE-Roadmap-049] - (2026-10-19)
 
 ### Problem

@@ -1,6 +1,7 @@
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { ringOffset } from './config'
 import { distanceSq } from './geometry'
+import { ROCK, SAND, SOIL, WET, cellOf, terrainOf, type Terrain } from './terrain'
 import type { PlantIndex, Plants, Point, ValleyConfig, ValleyLayout } from './types'
 
 const LAYOUT_STREAM_SALT = 0x5641_4c4c
@@ -95,17 +96,21 @@ class Draws {
 }
 
 /**
- * Scattered starts, from a stream of their own so the plants stand where they would without them: points drawn uniformly over
- * the valley in forager ID order, each at least `startSpacingCm` from the earlier ones.
+ * Scattered starts, from a stream of their own so the plants stand where they would without them: points drawn
+ * uniformly over the square `startAreaCm` wide round the land's centre in forager ID order, each at least
+ * `startSpacingCm` from the earlier ones and never on wet ground.
  */
-export function drawStarts(config: ValleyConfig): Point[] {
+export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(config).ground): Point[] {
   const draws = new Draws(deriveStartSeed(config.seed))
+  const terrain = terrainOf(config)
+  const origin = Math.floor((config.valleySizeCm - config.startAreaCm) / 2)
   const starts: Point[] = []
   let failed = 0
   while (starts.length < config.bandSize) {
-    const x = draws.int(config.valleySizeCm + 1)
-    const y = draws.int(config.valleySizeCm + 1)
-    if (starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
+    const x = origin + draws.int(config.startAreaCm + 1)
+    const y = origin + draws.int(config.startAreaCm + 1)
+    const dry = ground[cellOf(terrain, x, y)] !== WET
+    if (dry && starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
       starts.push({ x, y })
       failed = 0
     } else if ((failed += 1) >= PLACEMENT_DRAWS) throw new LayoutError('The foragers’ starts cannot all be placed')
@@ -113,8 +118,53 @@ export function drawStarts(config: ValleyConfig): Point[] {
   return starts
 }
 
-/** Plants drawn uniformly in the square around `centre`, kept within `radius` and `spacing` from the site's others. */
-function scatter(draws: Draws, count: number, centre: Point, radius: number, spacing: number, what: string) {
+/** The grounds a kind of site and its plants grow on, as one bit for each ground. */
+const grows = (...grounds: number[]) => grounds.reduce((bits, ground) => bits | (1 << ground), 0)
+export const BUSH_GROUNDS = grows(SAND, SOIL)
+export const HAZEL_GROUNDS = grows(SOIL)
+export const TREE_GROUNDS = grows(SOIL, SAND, WET)
+export const OUTCROP_GROUNDS = grows(SOIL, SAND, ROCK)
+
+/** Whether a point's ground is one of `grounds`. */
+export const onGround = (terrain: Terrain, ground: Uint8Array, x: number, y: number, grounds: number) =>
+  ((grounds >> ground[cellOf(terrain, x, y)]!) & 1) === 1
+
+/** Whether the cell holding a point, and every cell whose centre lies within `radius` of it, is one of `grounds`. */
+export function circleOnGround(
+  terrain: Terrain,
+  ground: Uint8Array,
+  x: number,
+  y: number,
+  radius: number,
+  grounds: number,
+) {
+  if (!onGround(terrain, ground, x, y, grounds)) return false
+  const { cellCm, cells } = terrain
+  const half = Math.floor(cellCm / 2)
+  const i0 = Math.max(0, Math.floor((x - radius) / cellCm))
+  const i1 = Math.min(cells - 1, Math.floor((x + radius) / cellCm))
+  const j0 = Math.max(0, Math.floor((y - radius) / cellCm))
+  const j1 = Math.min(cells - 1, Math.floor((y + radius) / cellCm))
+  for (let j = j0; j <= j1; j += 1)
+    for (let i = i0; i <= i1; i += 1)
+      if (distanceSq(i * cellCm + half, j * cellCm + half, x, y) <= radius * radius)
+        if (((grounds >> ground[j * cells + i]!) & 1) === 0) return false
+  return true
+}
+
+/**
+ * Plants drawn uniformly in the square around `centre`, kept within `radius`, `spacing` from the site's others, and on
+ * ground they grow on.
+ */
+function scatter(
+  draws: Draws,
+  count: number,
+  centre: Point,
+  radius: number,
+  spacing: number,
+  what: string,
+  growsAt: (x: number, y: number) => boolean,
+) {
   const placed: Point[] = []
   let failed = 0
   while (placed.length < count) {
@@ -122,6 +172,7 @@ function scatter(draws: Draws, count: number, centre: Point, radius: number, spa
     const y = centre.y + draws.int(2 * radius + 1) - radius
     const fits =
       distanceSq(x, y, centre.x, centre.y) <= radius * radius &&
+      growsAt(x, y) &&
       placed.every((other) => distanceSq(x, y, other.x, other.y) >= spacing * spacing)
     if (fits) {
       placed.push({ x, y })
@@ -186,20 +237,46 @@ export function buildIndex(
  */
 export function generateLayout(config: ValleyConfig): ValleyLayout {
   const draws = new Draws(deriveLayoutSeed(config.seed))
+  const terrain = terrainOf(config)
+  const base = terrain.ground
+  const on = (grounds: number) => (x: number, y: number) => onGround(terrain, base, x, y, grounds)
   const size = config.valleySizeCm
   const camp = { x: Math.floor(size / 2), y: Math.floor(size / 2) }
   const centres: Point[] = []
   const span = size - 2 * config.siteMarginCm + 1
   let failed = 0
   const kinds = [config.thicketCount, config.hazelThicketCount, config.standCount, config.outcropCount]
-  while (centres.length < kinds.reduce((total, count) => total + count, 0)) {
+  const kindGrounds = [BUSH_GROUNDS, HAZEL_GROUNDS, TREE_GROUNDS, OUTCROP_GROUNDS]
+  const total = kinds.reduce((sum, count) => sum + count, 0)
+  const kindRadii = [config.thicketRadiusCm, config.hazelThicketRadiusCm, config.standRadiusCm, config.outcropRadiusCm]
+  /** Whether every cell whose centre lies within the next site's radius of a point is ground its kind grows on. */
+  const groundFitsNext = (x: number, y: number) => {
+    let index = centres.length
+    let kind = 0
+    while (kind < kinds.length - 1 && index >= kinds[kind]!) index -= kinds[kind++]!
+    return circleOnGround(terrain, base, x, y, kindRadii[kind]!, kindGrounds[kind]!)
+  }
+  // A grid of cells `siteSpacingCm` wide holds every earlier centre too close to a draw in the nine cells round it.
+  const spacing = config.siteSpacingCm
+  const gridCells = Math.floor(size / spacing) + 1
+  const grid: Point[][] = Array.from({ length: gridCells * gridCells }, () => [])
+  const clearOfOthers = (x: number, y: number) => {
+    const gx = Math.floor(x / spacing)
+    const gy = Math.floor(y / spacing)
+    for (let row = Math.max(0, gy - 1); row <= Math.min(gridCells - 1, gy + 1); row += 1)
+      for (let column = Math.max(0, gx - 1); column <= Math.min(gridCells - 1, gx + 1); column += 1)
+        for (const other of grid[row * gridCells + column]!)
+          if (distanceSq(x, y, other.x, other.y) < spacing ** 2) return false
+    return true
+  }
+  while (centres.length < total) {
     const x = config.siteMarginCm + draws.int(span)
     const y = config.siteMarginCm + draws.int(span)
     const fits =
-      distanceSq(x, y, camp.x, camp.y) >= config.campClearingCm ** 2 &&
-      centres.every((other) => distanceSq(x, y, other.x, other.y) >= config.siteSpacingCm ** 2)
+      distanceSq(x, y, camp.x, camp.y) >= config.campClearingCm ** 2 && groundFitsNext(x, y) && clearOfOthers(x, y)
     if (fits) {
       centres.push({ x, y })
+      grid[Math.floor(y / spacing) * gridCells + Math.floor(x / spacing)]!.push({ x, y })
       failed = 0
     } else if ((failed += 1) >= PLACEMENT_DRAWS)
       throw new LayoutError('The thickets, hazel thickets, stands and outcrops cannot all be placed')
@@ -215,6 +292,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
       config.thicketRadiusCm,
       config.bushSpacingCm,
       `Thicket ${id}'s bushes`,
+      on(BUSH_GROUNDS),
     ),
   )
   const hazelSites = hazelThickets.map((centre, id) =>
@@ -225,11 +303,21 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
       config.hazelThicketRadiusCm,
       config.hazelSpacingCm,
       `Hazel thicket ${id}'s hazels`,
+      on(HAZEL_GROUNDS),
     ),
   )
   const treeSites = stands.map((centre, id) =>
-    scatter(draws, config.treesPerStand, centre, config.standRadiusCm, config.treeSpacingCm, `Stand ${id}'s trees`),
+    scatter(
+      draws,
+      config.treesPerStand,
+      centre,
+      config.standRadiusCm,
+      config.treeSpacingCm,
+      `Stand ${id}'s trees`,
+      on(TREE_GROUNDS),
+    ),
   )
+  // Stones lie within their outcrop's circle, which is rock.
   const stoneSites = outcrops.map((centre, id) =>
     scatter(
       draws,
@@ -238,8 +326,24 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
       config.outcropRadiusCm,
       config.stoneSpacingCm,
       `Outcrop ${id}'s stones`,
+      () => true,
     ),
   )
+  const ground = base.slice()
+  const half = Math.floor(terrain.cellCm / 2)
+  for (const centre of outcrops) {
+    const r = config.outcropRadiusCm
+    const i0 = Math.max(0, Math.floor((centre.x - r) / terrain.cellCm))
+    const i1 = Math.min(terrain.cells - 1, Math.floor((centre.x + r) / terrain.cellCm))
+    const j0 = Math.max(0, Math.floor((centre.y - r) / terrain.cellCm))
+    const j1 = Math.min(terrain.cells - 1, Math.floor((centre.y + r) / terrain.cellCm))
+    for (let j = j0; j <= j1; j += 1)
+      for (let i = i0; i <= i1; i += 1)
+        if (distanceSq(i * terrain.cellCm + half, j * terrain.cellCm + half, centre.x, centre.y) <= r * r)
+          ground[j * terrain.cells + i] = ROCK
+  }
+  // A stone near the edge of its outcrop may lie in a cell whose centre is outside it; that cell is rock too.
+  for (const points of stoneSites) for (const stone of points) ground[cellOf(terrain, stone.x, stone.y)] = ROCK
   const bushes = plantsOf(bushSites)
   const hazels = plantsOf(hazelSites)
   const foodPlants = foodPlantsOf(bushes, hazels)
@@ -247,13 +351,22 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const stones = plantsOf(stoneSites)
   const woodPlants = woodPlantsOf(trees, bushes)
   const hearths = config.scattered
-    ? drawStarts(config)
+    ? drawStarts(config, ground)
     : Array.from({ length: config.bandSize }, (_, slot) => {
         const offset = ringOffset(config, slot)
         return { x: camp.x + offset.x, y: camp.y + offset.y }
       })
+  const sitePoints = plantsOf([...thickets, ...hazelThickets, ...stands, ...outcrops].map((centre) => [centre]))
   return {
     camp,
+    terrain,
+    ground,
+    sitePoints,
+    siteIndex: buildIndex(sitePoints, config.perceptionRadiusCm, size),
+    foodChunks: buildIndex(foodPlants, config.chunkCm, size),
+    woodChunks: buildIndex(woodPlants, config.chunkCm, size),
+    treeChunks: buildIndex(trees, config.chunkCm, size),
+    stoneChunks: buildIndex(stones, config.chunkCm, size),
     thickets,
     hazelThickets,
     stands,
@@ -319,33 +432,46 @@ export function nearestPlant(
   x: number,
   y: number,
   accept: (id: number) => boolean,
+  range = Infinity,
 ): number | null {
-  const { cellCm, cells } = index
-  const cx = Math.min(cells - 1, Math.max(0, Math.floor(x / cellCm)))
-  const cy = Math.min(cells - 1, Math.max(0, Math.floor(y / cellCm)))
   let best: number | null = null
   let bestSq = Infinity
-  const consider = (cell: number) => {
-    for (const id of index.buckets[cell]!) {
-      const sq = distanceSq(plants.x[id]!, plants.y[id]!, x, y)
-      if ((sq < bestSq || (sq === bestSq && id < best!)) && accept(id)) {
-        best = id
-        bestSq = sq
-      }
+  const consider = (id: number) => {
+    const sq = distanceSq(plants.x[id]!, plants.y[id]!, x, y)
+    if ((sq < bestSq || (sq === bestSq && id < best!)) && sq <= range * range && accept(id)) {
+      best = id
+      bestSq = sq
     }
   }
-  for (let ring = 0; ring < cells; ring += 1) {
-    // Every plant in ring `ring` lies at least `(ring − 1) · cellCm` away.
-    const floor = Math.max(0, (ring - 1) * cellCm)
-    if (floor * floor > bestSq) break
+  forEachRingOutwards(index, x, y, (floor) => floor <= range && floor * floor <= bestSq, consider)
+  return best
+}
+
+/**
+ * Visits every plant in an index ring by ring of cells outwards from the cell holding a point, while `goOn` allows the
+ * next ring, given the least distance from the point to any plant in it: every plant in ring `ring` lies at least
+ * `(ring − 1) · cellCm` away.
+ */
+export function forEachRingOutwards(
+  index: PlantIndex,
+  x: number,
+  y: number,
+  goOn: (floor: number) => boolean,
+  visit: (id: number) => void,
+) {
+  const { cellCm, cells, buckets } = index
+  const cx = Math.min(cells - 1, Math.max(0, Math.floor(x / cellCm)))
+  const cy = Math.min(cells - 1, Math.max(0, Math.floor(y / cellCm)))
+  const rings = Math.max(cx, cy, cells - 1 - cx, cells - 1 - cy)
+  for (let ring = 0; ring <= rings; ring += 1) {
+    if (!goOn(Math.max(0, (ring - 1) * cellCm))) break
     for (let row = cy - ring; row <= cy + ring; row += 1) {
       if (row < 0 || row >= cells) continue
       const edge = row === cy - ring || row === cy + ring
       for (let column = cx - ring; column <= cx + ring; column += edge ? 1 : 2 * ring) {
-        if (column >= 0 && column < cells) consider(row * cells + column)
+        if (column >= 0 && column < cells) for (const id of buckets[row * cells + column]!) visit(id)
         if (ring === 0) break
       }
     }
   }
-  return best
 }

@@ -82,16 +82,23 @@ export function planHut(state: ValleyState, forager: Forager, minute: number, sp
   if (needLogs && forager.axe) {
     // It finishes a tree already felled before it fells another: the nearest it knows lying with a log, else the
     // nearest standing. A standing tree holds every log, so what it saw from afar tells them apart.
-    const { trees, treeIndex } = layout
+    const { trees, treeChunks } = layout
     const nearestWith = (fallen: boolean) =>
-      nearestPlant(treeIndex, trees, forager.x, forager.y, (id) => {
-        const logs = forager.logMemory.stock[id]!
-        return (
-          logs > 0 &&
-          logs < config.logsPerTree === fallen &&
-          reachableInTime(config, forager, trees.x[id]!, trees.y[id]!, left, speed)
-        )
-      })
+      nearestPlant(
+        treeChunks,
+        trees,
+        forager.x,
+        forager.y,
+        (id) => {
+          const logs = forager.logMemory.stock[id]!
+          return (
+            logs > 0 &&
+            logs < config.logsPerTree === fallen &&
+            reachableInTime(config, forager, trees.x[id]!, trees.y[id]!, left, speed)
+          )
+        },
+        left * speed,
+      )
     const tree = nearestWith(true) ?? nearestWith(false)
     if (tree !== null) return { kind: 'cut', treeId: tree }
   }
@@ -106,15 +113,16 @@ export function planHut(state: ValleyState, forager: Forager, minute: number, sp
   }
   if (!lacksAxe && !forager.promised) return null
   if (forager.stone < 1) {
-    const { stones, stoneIndex } = layout
+    const { stones, stoneChunks } = layout
     const spot = nearestPlant(
-      stoneIndex,
+      stoneChunks,
       stones,
       forager.x,
       forager.y,
       (id) =>
         forager.stoneMemory.stock[id]! > 0 &&
         reachableInTime(config, forager, stones.x[id]!, stones.y[id]!, left, speed),
+      left * speed,
     )
     return spot === null ? null : { kind: 'stone', stoneId: spot }
   }

@@ -1,22 +1,16 @@
 import { askOf, axeLife, salePrice, worthTo } from './axes'
 import { feedAmount } from './fire'
 import { FOODS, LAKE_ID, capacityOf, foodOfSource, fullRateOf, rateAtStock, spoiledBy, worthWorking } from './food'
-import {
-  MINUTES_PER_DAY,
-  isDaylight,
-  loadKg,
-  minuteOfWork,
-  plantsInView,
-  speedForLoad,
-  walkCostForLoad,
-} from './forager'
-import { distance, distanceSq } from './geometry'
+import { MINUTES_PER_DAY, isDaylight, loadKg, minuteOfWork, plantsInView, speedForLoad } from './forager'
+import { distance, distanceSq, stepTowards } from './geometry'
 import { regrowsAt, weathersOn } from './huts'
 import { lakeGrowth } from './lake'
-import { forEachPlantWithin } from './layout'
+import { BUSH_GROUNDS, HAZEL_GROUNDS, TREE_GROUNDS, forEachPlantWithin, onGround } from './layout'
 import { craftOf, ratesOf } from './practice'
+import { placeOf, viewFrom, type PlaceView } from './sight'
 import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
-import { siteCentre, siteGeometry, siteHolds, siteWanted, sightOf } from './sites'
+import { siteCentre, siteGeometry, siteHolds, siteWanted } from './sites'
+import { ROCK, WET, cellOf, gradeOf, heightAt, speedOnGrade, terrainPercentOf, walkCost } from './terrain'
 import { bothGain } from './trade'
 import { coldMatters, minuteCost, regrowthOf, warmthOf, workCostOf } from './work'
 import type { ActionReason, Axe, CutEvent, Hut, Point, ValleyState } from './types'
@@ -62,6 +56,34 @@ const sum = (values: Int32Array) => {
   let total = 0
   for (const value of values) total += value
   return total
+}
+
+/** Every way the layout breaks the ground's rules: a site's centre, plant or stone off the ground it grows on, or a start on wet ground. */
+export function layoutViolations(state: ValleyState): string[] {
+  const { config, layout } = state
+  const { terrain, ground } = layout
+  const violations: string[] = []
+  const kinds = [
+    [layout.thickets, layout.bushes, BUSH_GROUNDS, 'berry bush'],
+    [layout.hazelThickets, layout.hazels, HAZEL_GROUNDS, 'hazel'],
+    [layout.stands, layout.trees, TREE_GROUNDS, 'tree'],
+  ] as const
+  for (const [centres, plants, grounds, name] of kinds) {
+    for (const [id, centre] of centres.entries())
+      if (!onGround(terrain, ground, centre.x, centre.y, grounds))
+        violations.push(`The site of ${name} ${id} lies on the wrong ground`)
+    for (let id = 0; id < plants.count; id += 1)
+      if (!onGround(terrain, ground, plants.x[id]!, plants.y[id]!, grounds))
+        violations.push(`A ${name}, ${id}, grows on the wrong ground`)
+  }
+  for (let id = 0; id < layout.stones.count; id += 1)
+    if (ground[cellOf(terrain, layout.stones.x[id]!, layout.stones.y[id]!)] !== ROCK)
+      violations.push(`Stone spot ${id} lies off rock`)
+  if (config.outcropCount && !layout.outcrops.every((centre) => ground[cellOf(terrain, centre.x, centre.y)] === ROCK))
+    violations.push('An outcrop does not lie on rock')
+  for (const [id, hearth] of layout.hearths.entries())
+    if (ground[cellOf(terrain, hearth.x, hearth.y)] === WET) violations.push(`Forager ${id} starts on wet ground`)
+  return violations
 }
 
 /**
@@ -112,8 +134,18 @@ export class ValleyChecker {
   private axeBefore: (Axe | null)[]
   private spareBefore: (Axe | null)[]
   private hutsBefore: Hut[]
+  /** Each forager's place and minute it last looked round from by long sight, at the end of the minute before. */
+  private farPlaceBefore: number[]
+  private farMinuteBefore: number[]
+  /** Sites seen by long sight in the turn being checked, marked by ID. */
+  private farSites = new Uint8Array(0)
+  /** Breaches of the layout's rules, found once and reported at the first check. */
+  private layoutViolations: string[]
 
   constructor(state: ValleyState) {
+    this.farPlaceBefore = state.foragers.map((forager) => forager.farPlace)
+    this.farMinuteBefore = state.foragers.map((forager) => forager.farMinute)
+    this.layoutViolations = layoutViolations(state)
     this.food = state.foodStock.slice()
     this.trees = state.woodStock.slice()
     this.foodTotal = sum(this.food)
@@ -222,7 +254,6 @@ export class ValleyChecker {
     const hearthAtTurn = this.hearthsAtTurns(state)
     const cuts = new Map<number, CutEvent>()
     for (const made of state.lastAxeEvents) if (made.kind === 'cut') cuts.set(made.foragerId, made)
-    const sight = sightOf(config, minute)
     for (const event of state.lastEvents) {
       const forager = state.foragers[event.foragerId]!
       const { from, position } = event
@@ -250,8 +281,24 @@ export class ValleyChecker {
       )
         fail(`forager ${forager.id} carries a load it did not have`)
       const kg = loadKg(config, load)
-      if (event.speedCmPerSecond !== speedForLoad(config, kg))
+      const loadSpeed = speedForLoad(config, kg)
+      if (event.loadSpeedCmPerSecond !== loadSpeed)
         fail(`forager ${forager.id} walks at a speed its load does not allow`)
+      // Its grade is the rise towards where it walked, its speed Tobler's for that grade, and its ground where it set out.
+      const { terrain } = layout
+      let grade = 0
+      if (event.walkTarget) {
+        const ahead = stepTowards(from, event.walkTarget, 60 * loadSpeed)
+        const run = distance(from.x, from.y, ahead.x, ahead.y)
+        grade = gradeOf(heightAt(terrain, ahead.x, ahead.y) - heightAt(terrain, from.x, from.y), run)
+      }
+      if (event.gradePercent !== grade || event.speedCmPerSecond !== speedOnGrade(loadSpeed, grade))
+        fail(`forager ${forager.id} walks at a grade or speed the land does not give`)
+      if (event.walkSeconds && !event.walkTarget) fail(`forager ${forager.id} walked towards nothing`)
+      if (event.terrainPercent !== terrainPercentOf(config, layout.ground[cellOf(terrain, from.x, from.y)]!))
+        fail(`forager ${forager.id} walks on ground it does not stand on`)
+      if (event.climbCm !== Math.max(0, heightAt(terrain, position.x, position.y) - heightAt(terrain, from.x, from.y)))
+        fail(`forager ${forager.id}'s climb does not match the land`)
       if (distance(from.x, from.y, position.x, position.y) > event.walkSeconds * event.speedCmPerSecond)
         fail(`forager ${forager.id} moved further than it walked`)
       // Every second is charged its cost: walking the Pandolf rate for its load, work its task's, sleep its warmth's.
@@ -261,10 +308,10 @@ export class ValleyChecker {
         stand: event.standSeconds,
         sleep: event.sleepSeconds,
       }
-      const walkCost = walkCostForLoad(config, kg, event.speedCmPerSecond)
+      const walking = walkCost(config, kg, event.speedCmPerSecond, event.gradePercent, event.terrainPercent)
       const owed =
         this.costRemainderBefore[forager.id]! +
-        minuteCost(config, seconds, event.warmth, walkCost, workCostOf(config, event.workedFor, event.task))
+        minuteCost(config, seconds, event.warmth, walking, workCostOf(config, event.workedFor, event.task))
       const due = Math.floor(owed / 3_600)
       if (forager.costRemainder !== owed - 3_600 * due || (forager.alive && event.spentKcal !== due))
         fail(`forager ${forager.id} paid ${event.spentKcal} kcal for a minute that cost ${due}`)
@@ -308,15 +355,19 @@ export class ValleyChecker {
               fail(`forager ${forager.id}'s memory of a plant in view does not match what it saw`)
           }
         }
-        // Logs and stones are seen as far as long sight.
-        for (const [kindPlants, kindIndex, kindStocks, kindMemory] of [
-          [layout.trees, layout.treeIndex, this.treeLogs, forager.logMemory],
-          [layout.stones, layout.stoneIndex, this.stones, forager.stoneMemory],
-        ] as const)
-          forEachPlantWithin(kindIndex, kindPlants, from.x, from.y, sight, (id) => {
-            if (kindMemory.seen[id] !== minute || kindMemory.stock[id] !== kindStocks[id])
-              fail(`forager ${forager.id}'s memory of logs or stones in sight does not match what it saw`)
-          })
+      }
+      // Logs and stones are seen every minute by close sight, and by long sight from its place when it looks round.
+      const view = this.lookedRound(state, forager.id, from, minute, fail)
+      for (const [kindPlants, kindIndex, kindStocks, kindMemory, far] of [
+        [layout.trees, layout.treeIndex, this.treeLogs, forager.logMemory, view?.trees],
+        [layout.stones, layout.stoneIndex, this.stones, forager.stoneMemory, view?.stones],
+      ] as const) {
+        const matches = (id: number) => {
+          if (kindMemory.seen[id] !== minute || kindMemory.stock[id] !== kindStocks[id])
+            fail(`forager ${forager.id}'s memory of logs or stones in sight does not match what it saw`)
+        }
+        forEachPlantWithin(kindIndex, kindPlants, from.x, from.y, config.perceptionRadiusCm, matches)
+        if (far) for (const id of far) matches(id)
       }
       if (event.task) {
         if (event.workSeconds && !daylight) fail(`forager ${forager.id} worked at night`)
@@ -631,6 +682,12 @@ export class ValleyChecker {
     this.axeBefore = state.foragers.map((forager) => forager.axe)
     this.spareBefore = state.foragers.map((forager) => forager.spareAxe)
     this.hutsBefore = [...state.huts]
+    this.farPlaceBefore = state.foragers.map((forager) => forager.farPlace)
+    this.farMinuteBefore = state.foragers.map((forager) => forager.farMinute)
+    if (this.layoutViolations.length) {
+      violations.push(...this.layoutViolations)
+      this.layoutViolations = []
+    }
     return violations
   }
 
@@ -642,8 +699,8 @@ export class ValleyChecker {
     const { config, totals } = state
     let onTrees = 0
     for (const logs of state.treeLogs) onTrees += logs
-    let onGround = 0
-    for (const stones of state.stoneStock) onGround += stones
+    let lying = 0
+    for (const stones of state.stoneStock) lying += stones
     let carriedLogs = 0
     let heldStones = 0
     let axesHeld = 0
@@ -661,7 +718,7 @@ export class ValleyChecker {
     if (onTrees + carriedLogs + inHuts + totals.rottedLogs !== totals.initialLogs + totals.regrownLogs)
       fail('logs are not conserved')
     if (onTrees !== totals.initialLogs + totals.regrownLogs - totals.logsCut) fail('logs cut do not add up')
-    if (onGround + heldStones + totals.stonesWorked !== totals.initialStones) fail('stones are not conserved')
+    if (lying + heldStones + totals.stonesWorked !== totals.initialStones) fail('stones are not conserved')
     if (totals.stonesWorked !== totals.axesMade + making) fail('stones worked do not match axes made and begun')
     if (axesHeld + totals.axesWornOut !== totals.axesMade) fail('axes are not conserved')
     if (totals.axeWood !== totals.stonesWorked * config.axeWood) fail('wood in axes does not match axes begun')
@@ -811,34 +868,75 @@ export class ValleyChecker {
   }
 
   /**
-   * What a forager knows: places near where it stood are marked seen this minute exactly when they lay wholly within
-   * sight, and stay seen; sites within sight are known, and are checked exactly when it stood close
-   * enough to see all of them; a place or site it walked towards was worth exploring, checking or searching; and, in
-   * full at midnight, plants never seen say so and its count of places seen is right.
+   * Whether a forager looked round by long sight this minute, and what it saw if it did: by day it must when it stands
+   * in a new place or has not looked round for an hour, and never otherwise; at night it never does.
+   */
+  private lookedRound(state: ValleyState, id: number, from: Point, minute: number, fail: (message: string) => void) {
+    const { config, layout } = state
+    const forager = state.foragers[id]!
+    if (!isDaylight(config, minute)) {
+      if (forager.farPlace !== -1) fail(`forager ${id} looked round by long sight at night`)
+      return null
+    }
+    const place = placeOf(config, from.x, from.y)
+    const due = place !== this.farPlaceBefore[id] || minute - this.farMinuteBefore[id]! >= 60
+    if (!due) {
+      if (forager.farPlace !== this.farPlaceBefore[id] || forager.farMinute !== this.farMinuteBefore[id])
+        fail(`forager ${id} looked round by long sight when it was not due`)
+      return null
+    }
+    if (forager.farPlace !== place || forager.farMinute !== minute)
+      fail(`forager ${id} did not look round by long sight from a new place or after an hour`)
+    return viewFrom(config, layout, place)
+  }
+
+  /**
+   * What a forager knows: places are marked seen this minute exactly when they lay wholly within close sight, or wholly
+   * within long sight of a place it looked round from, and stay seen; sites in sight are known, and are checked exactly
+   * when it stood close enough to see all of them; a place or site it walked towards was worth exploring, checking or
+   * searching; and, in full at midnight, plants never seen say so and its count of places seen is right.
    */
   private checkKnowledge(state: ValleyState, minute: number, full: boolean, fail: (message: string) => void) {
     const { config, layout } = state
     const n = placesPerSide(config)
-    const r = sightOf(config, minute)
+    const r = config.perceptionRadiusCm
     for (const event of state.lastEvents) {
       const forager = state.foragers[event.foragerId]!
       const { from } = event
-      this.checkSites(state, minute, event, fail)
-      // A forager that had seen every place has nothing left to mark.
-      const allSeen = this.placesSeenBefore[forager.id] === placeCount(config)
+      const view =
+        isDaylight(config, minute) && forager.farMinute === minute
+          ? viewFrom(config, state.layout, placeOf(config, from.x, from.y))
+          : null
+      this.checkSites(state, minute, event, view, fail)
+      // Every place it marked this minute lay in sight, and every place in sight is seen; its count grew by those
+      // marked, so no place out of sight was marked.
+      let marked = 0
+      const visit = (place: number, inView: boolean) => {
+        const seen = forager.placeSeen[place]!
+        if (inView && (seen < 0 || seen > minute))
+          fail(`forager ${forager.id}'s memory of place ${place} does not match what it saw`)
+        if (seen === minute && inView) marked += 1
+      }
+      const counted = new Set<number>()
+      const far = new Set(view?.whole ?? [])
       const column0 = Math.max(0, Math.floor((from.x - r) / config.placeCm))
       const column1 = Math.min(n - 1, Math.floor((from.x + r) / config.placeCm))
       const row0 = Math.max(0, Math.floor((from.y - r) / config.placeCm))
       const row1 = Math.min(n - 1, Math.floor((from.y + r) / config.placeCm))
-      if (!allSeen)
-        for (let row = row0; row <= row1; row += 1)
-          for (let column = column0; column <= column1; column += 1) {
-            const place = row * n + column
-            const inView = placeInView(config, place, from.x, from.y, r)
-            const seen = forager.placeSeen[place]!
-            const matches = (seen === minute ? inView : true) && (!inView || (seen >= 0 && seen <= minute))
-            if (!matches) fail(`forager ${forager.id}'s memory of place ${place} does not match what it saw`)
+      for (let row = row0; row <= row1; row += 1)
+        for (let column = column0; column <= column1; column += 1) {
+          const place = row * n + column
+          counted.add(place)
+          visit(place, far.has(place) || placeInView(config, place, from.x, from.y, r))
+        }
+      if (view)
+        for (const place of view.whole)
+          if (!counted.has(place)) {
+            counted.add(place)
+            visit(place, true)
           }
+      if (forager.placesSeen - this.placesSeenBefore[forager.id]! !== marked)
+        fail(`forager ${forager.id} marked a place out of sight as seen`)
       if (event.placeId !== null) {
         if (!placeWanted(forager, event.placeId)) fail(`forager ${forager.id} walked to a place it did not need to see`)
         const centre = placeCentre(config, event.placeId)
@@ -896,25 +994,36 @@ export class ValleyChecker {
     state: ValleyState,
     minute: number,
     event: ValleyState['lastEvents'][number],
+    view: PlaceView | null,
     fail: (message: string) => void,
   ) {
     const { config, layout } = state
     const forager = state.foragers[event.foragerId]!
     const { from } = event
-    const sightSq = sightOf(config, minute) ** 2
+    const closeSq = config.perceptionRadiusCm ** 2
     const before = this.siteKnownBefore[forager.id]!
     const { x, y, checkSq } = siteGeometry(config, layout)
-    for (let site = 0; site < x.length; site += 1) {
+    if (this.farSites.length !== x.length) this.farSites = new Uint8Array(x.length)
+    const far = this.farSites
+    if (view) for (const site of view.sites) far[site] = 1
+    const checkSite = (site: number) => {
       const dx = from.x - x[site]!
       const dy = from.y - y[site]!
       const sq = dx * dx + dy * dy
-      const inSight = sq <= sightSq
+      const inSight = sq <= closeSq || far[site] === 1
       if (inSight && !forager.siteKnown[site]) fail(`forager ${forager.id} did not spot site ${site} in sight`)
       if (!inSight && forager.siteKnown[site] && !before[site])
         fail(`forager ${forager.id} spotted site ${site} out of sight`)
       if ((forager.siteChecked[site] === minute) !== sq <= checkSq[site]!)
         fail(`forager ${forager.id}'s check of site ${site} does not match where it stood`)
     }
+    // Every site is checked once an hour, those in close sight and seen from afar every minute.
+    if (minute % 60 === 0) for (let site = 0; site < x.length; site += 1) checkSite(site)
+    else {
+      forEachPlantWithin(layout.siteIndex, layout.sitePoints, from.x, from.y, config.perceptionRadiusCm, checkSite)
+      if (view) for (const site of view.sites) checkSite(site)
+    }
+    if (view) for (const site of view.sites) far[site] = 0
     if (event.siteId === null) return
     const why = event.reason === 'searching' ? 'search' : 'check'
     if (event.reason !== 'searching' && event.reason !== 'checking' && event.reason !== 'seeking company')

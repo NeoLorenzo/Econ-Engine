@@ -104,18 +104,32 @@ No existing simulation test needed a new expected value: they assert behaviour r
 
 The eight-seed MVP8/MVP9 comparison is in [MVP9_SPEC.md](MVP9_SPEC.md#mvp8-and-mvp9-compared). The fast-mode browser check passed with a pause latency of 256 ms. In the browser, the 40×40 town, plot buildings, the overlay and scenery, clicking a plot, Locate, the 2D market map and the 375px layout were checked with no console errors.
 
-# Life 9.7
+# Life 10
 
-Life 9.7, a revision of Life 9 that adds hazel thickets and a lake, with every physical number from the [calibration document](CALIBRATION.md), is the only Life step in the repository. Runtime invariants, checked after every minute of every checked run, by `src/valley/invariants.ts`:
+Life 10, terrain and scale, with every physical number from the [calibration document](CALIBRATION.md), is the only Life step in the repository. Runtime invariants, checked after every minute of every checked run, by `src/valley/invariants.ts`:
 
-- energy (berries, nuts, fish and the lake's growth), wood (sticks, dead branches, branches brought down by felling and wood in axes), logs and stones are conserved exactly, and every plant, hazel, tree, stone spot and the lake is replayed from regrowth and recorded work, every tree's fall and regrowth included;
-- food is taken only within reach of a bush, hazel or the shore, only while the source is worth working, at no more than its rate at the stock there, and a fisher remembers the stock it found;
-- every second charged its cost: its task, its warmth asleep, or the Pandolf rate for its load and speed;
-- turns, seconds, speeds under a load (each food at its own weight, firewood and a log), work only in daylight on something within reach, and memory matching what was seen, near or far;
-- groups, fires and gifts, as in Life 8, and every sleeper's warmth: its hut exactly when it sleeps in a whole one, a member's group's fire exactly when it is lit, and cold only with neither;
-- huts change only by their builder laying a log at its hearth, by weather on their day, or by being left behind;
-- an axe's quality lies between half its maker's craft and its craft; it loses one log per cut; every promise and sale stays within a group, and every sale is at the midpoint of the seller's ask and the axe's worth to the buyer, both of which it exceeds or meets.
+- energy (berries, nuts, fish and the lake's growth), wood (sticks, dead branches, branches brought down by felling and wood in axes), logs and stones are conserved exactly, and every plant, hazel, tree, stone spot and the lake is replayed from regrowth and recorded work, every tree's fall and regrowth included: the plants worked every minute, and every plant every hour;
+- walking follows the land: each walking minute's grade is the rise towards where it walked, its speed Tobler's for that grade, its terrain factor the ground's where it set out, its climb the rise it made, and every second is charged the Pandolf rate with Santee's correction for that load, speed, grade and ground;
+- sight follows the land: a forager looks round by long sight exactly when it stands in a new place by day or has not for an hour, and what it then records, sites spotted, places seen, logs and stones, lies in places visible from its own; close sight records the same within 25 m every minute;
+- the layout follows the ground: every site, plant and stone spot lies on ground its kind grows on, and no forager starts on wet ground;
+- food is taken only within reach of a bush, hazel or the shore, only while the source is worth working, at no more than its rate at the stock there;
+- turns, seconds, speeds, work only in daylight on something within reach, groups, fires and gifts, warmth, huts, axes, promises and sales, as in Life 9.7.
 
-Unit tests cover configuration, the layout and its streams, yearly and decade regrowth, the lake's growth, rates that fall as a source thins, the choice of food, fishing, spoilage by food, the Pandolf rate and task costs, making, felling, cutting, wear, stumps, sticks and branches, huts on their rings, warmth, weathering, abandonment, asking, promising and selling, and the checker catching damaged records. `fingerprints.test.ts` checks that Life 9.7 runs exactly as recorded over 30 days on three seeds for six configurations. Experiments are left for a later, stable version of the Life engine; the specification lists the [questions for later](LIFE9_SPEC.md#questions-for-later).
+Unit tests cover configuration, the terrain (the same for a seed, 0 along the shore and never below, kettles, interpolation, a flat land), the ground and which plants grow on it, Tobler's table, grades, the Pandolf rate on slopes and each ground, Naismith's estimate, sight over flat ground and blocked by a ridge, a site hidden behind a hill, chunks of two sizes giving the same run, the checker catching a walk at a grade the land does not give, and the rules of Life 9.7 on a flat land. `fingerprints.test.ts` checks that Life 10 runs exactly as recorded over 30 days on three seeds for seven configurations. Experiments are left for a later, stable version of the Life engine; the specification lists the [questions for later](LIFE10_SPEC.md#questions-for-later).
 
-Before Life 9 was implemented, a quick prototype over 32 seeds and 400 days found that axes are sold in nearly every run once a maker can promise one and an axe is priced at the extra energy of making it; that in a band that starts as one group a single member makes about three times an even share of the axes; and that with practice switched off, no axe is ever sold.
+## The land against real young moraine country
+
+`landStats` in `src/valley/theory.ts` measures the canonical land (seed 20260813):
+
+| Measure | Life 10 |
+| --- | --- |
+| Height above the lake | 0 m to 31.0 m |
+| Ground | soil 62.3%, sand 36.0%, rock 0.6%, wet 1.1% |
+| Area steeper than 5%, 10%, 20% | 6.3%, 2.0%, 0.4% |
+| Kettles | 80, radii 20 m to 59 m; 74 of them 1 ha or less |
+
+The checks against real measurements are qualitative for now: the relief is within the tens of metres of young moraine country, the kettles' sizes fall in the range of Schleswig-Holstein's mapped depressions, though 93% of them are a hectare or less against 64% there, so the land lacks its larger hollows, and Tobler's speeds and the Pandolf costs are those of the published equations. A measured relief for a 4 km square of young moraine is still needed.
+
+## A year of the canonical land
+
+On the canonical seed, a year runs unchecked in about 2 minutes. All eight foragers are alive at its end, their reserves between about 63,700 and 66,400 kcal, in four groups with every hut whole. They live on hazelnuts alone, taking about 9.7 million kcal of nuts against almost no berries and no fish. By the end of the year every forager has seen every place on the land; they climb about 210 m a day and spend about 1,400 kcal a day walking, most of it exploring. Eight axes are made and none sold. These are observations from one run, not experiments.

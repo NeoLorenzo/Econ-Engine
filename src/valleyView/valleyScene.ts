@@ -13,6 +13,8 @@ import { LAKE_ID } from '../valley/food'
 import { isDaylight } from '../valley/forager'
 import { siteCount } from '../valley/sites'
 import { livingMembers, placesPerSide } from '../valley/social'
+import { heightAt } from '../valley/terrain'
+import { TiledInstances } from './tiledInstances'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
 import { hex, palette } from '../ui/theme'
@@ -62,9 +64,15 @@ type Three = typeof import('three')
 
 const NIGHT_SKY = 0x070a12
 const DAY_SKY = 0x7fa6b8
-const GRASS = 0x3b6b3e
 const OUTSIDE = 0x2c4a30
-const GRID = 0x355f39
+/** The ground's colours: soil, sand, rock and wet ground, by ground code. */
+const GROUND_COLOURS = [0x3f6b3a, 0x9a9468, 0x85827a, 0x2c4632]
+/** Bushes and hazels are drawn in square tiles this wide, and only those near the camera. */
+const PLANT_TILE_M = 400
+/** Bushes and hazels are drawn within this many metres of the camera's target, more when it is further away. */
+const PLANT_DRAW_M = 500
+/** The ground is drawn with at most this many squares along each side. */
+const GROUND_SQUARES = 400
 const LEAF = 0x2f7a3c
 const BERRY = 0xc8243f
 const HAZEL_LEAF = 0x4c8a35
@@ -89,8 +97,6 @@ const ROCK = 0x8c877c
 const AXE_HEAD = 0x55524c
 /** Points along each swap's arc. */
 const ARC_POINTS = 24
-/** Grid lines every this many metres, so distances can be judged at any zoom. */
-const GRID_STEP_M = 50
 
 /** A group's badge, as a share of the view's height: the same size at every zoom. */
 const BADGE_SCALE = 0.05
@@ -130,6 +136,10 @@ export interface ValleyScene {
   draw(pair: DisplayPair, options: DrawOptions): void
   /** Moves the camera to take in a group's base and every living member, as last drawn, in the clear part of the view. */
   showGroup(groupId: number, clear?: ClearView | null): void
+  /** The point on the land the camera looks at and how far it is, in centimetres from the land's north-west corner. */
+  view(): { x: number; y: number; distanceCm: number }
+  /** Moves the camera to look at a point of the land, in centimetres. */
+  lookAt(x: number, y: number): void
   dispose(): void
 }
 
@@ -279,6 +289,61 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let config: ValleyState['config'] | null = null
   let layout: ValleyState['layout'] | null = null
   const at = (x: number, y: number) => toMetres(config!, x, y)
+  /** The ground's height in metres under a point of the scene given in metres. */
+  const groundY = (x: number, z: number) =>
+    layout
+      ? heightAt(
+          layout.terrain,
+          Math.round(x * 100 + config!.valleySizeCm / 2),
+          Math.round(z * 100 + config!.valleySizeCm / 2),
+        ) / 100
+      : 0
+
+  /**
+   * The ground as a mesh: the height field sampled at most `GROUND_SQUARES` times along each side, each vertex
+   * coloured by the ground of its cell, with a little shading by height so the hills read from above.
+   */
+  function terrainMeshGeometry(state: ValleyState) {
+    const { terrain, ground } = state.layout
+    const { cells, cellCm, height } = terrain
+    const stride = Math.max(1, Math.ceil(cells / GROUND_SQUARES))
+    const columns: number[] = []
+    for (let i = 0; i < cells; i += stride) columns.push(i)
+    columns.push(cells)
+    const along = columns.length
+    const points = cells + 1
+    const half = state.config.valleySizeCm / 200
+    const positions = new Float32Array(along * along * 3)
+    const colours = new Float32Array(along * along * 3)
+    const colour = new THREE.Color()
+    let highest = 1
+    for (const h of height) highest = Math.max(highest, h)
+    for (const [row, j] of columns.entries())
+      for (const [column, i] of columns.entries()) {
+        const vertex = row * along + column
+        positions[vertex * 3] = (i * cellCm) / 100 - half
+        positions[vertex * 3 + 1] = height[j * points + i]! / 100
+        positions[vertex * 3 + 2] = (j * cellCm) / 100 - half
+        const kind = ground[Math.min(cells - 1, j) * cells + Math.min(cells - 1, i)]!
+        colour.setHex(GROUND_COLOURS[kind]!)
+        colour.multiplyScalar(0.7 + (0.6 * height[j * points + i]!) / highest)
+        colours[vertex * 3] = colour.r
+        colours[vertex * 3 + 1] = colour.g
+        colours[vertex * 3 + 2] = colour.b
+      }
+    const indices: number[] = []
+    for (let row = 0; row < along - 1; row += 1)
+      for (let column = 0; column < along - 1; column += 1) {
+        const a = row * along + column
+        indices.push(a, a + along, a + 1, a + 1, a + along, a + along + 1)
+      }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
+    geometry.setIndex(indices)
+    geometry.computeVertexNormals()
+    return geometry
+  }
 
   // Shared geometry and materials.
   const leafGeometry = new THREE.IcosahedronGeometry(1, 1)
@@ -371,12 +436,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
   let ground: Mesh | null = null
   let outside: Mesh | null = null
-  let grid: InstanceType<Three['LineSegments']> | null = null
-  let leaves: InstancedMesh | null = null
-  let berryMesh: InstancedMesh | null = null
-  let hazelLeaves: InstancedMesh | null = null
-  let hazelStems: InstancedMesh | null = null
-  let nutMesh: InstancedMesh | null = null
+  let leaves: TiledInstances | null = null
+  let berryMesh: TiledInstances | null = null
+  let hazelLeaves: TiledInstances | null = null
+  let hazelStems: TiledInstances | null = null
+  let nutMesh: TiledInstances | null = null
   let lake: Mesh | null = null
   let trunks: InstancedMesh | null = null
   let crowns: InstancedMesh | null = null
@@ -654,7 +718,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       group.add(log)
       return log
     })
-    group.position.set(x, 0, z)
+    group.position.set(x, groundY(x, z), z)
     // The hut's length runs along its local x, which turns to point at the fire.
     if (toward) group.rotation.y = Math.atan2(-toward.z, toward.x)
     hutGroup.add(group)
@@ -755,7 +819,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       group.add(stone)
     }
     group.traverse((part) => (part.userData.groupId = id))
-    group.position.set(x, 0, z)
+    group.position.set(x, groundY(x, z), z)
     flagGroup.add(group)
     return { group, cloth, disc, badge, fire, fireFlame, firePile, fireAsh }
   }
@@ -814,7 +878,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
    */
   function placeHearth(hearth: Hearth, x: number, y: number, toward: { x: number; z: number } | null) {
     const spot = at(x, y)
-    hearth.group.position.set(spot.x, 0, spot.z)
+    hearth.group.position.set(spot.x, groundY(spot.x, spot.z), spot.z)
     hearth.ring.visible = toward === null
     if (toward) hearth.pile.position.set(-toward.z * 1.5, 0, toward.x * 1.5)
     else hearth.pile.position.set(1.45, 0, 0.3)
@@ -857,7 +921,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh, trunks, crowns, stumps, deadwood, rocks]) {
       if (!mesh) continue
       mesh.dispose()
-      world.remove(mesh)
+      world.remove(mesh instanceof TiledInstances ? mesh.group : mesh)
     }
     leaves = berryMesh = hazelLeaves = hazelStems = nutMesh = trunks = crowns = stumps = deadwood = rocks = null
     for (const mesh of [ground, outside, lake]) {
@@ -867,12 +931,6 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       world.remove(mesh)
     }
     ground = outside = lake = null
-    if (grid) {
-      grid.geometry.dispose()
-      ;(grid.material as InstanceType<Three['LineBasicMaterial']>).dispose()
-      world.remove(grid)
-      grid = null
-    }
   }
 
   /** Where each berry hangs, by bush: on the upper sides of its lobes, spread around it. */
@@ -914,6 +972,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
    */
   function placeTree(tree: number, shape: TreeDrawn) {
     const { x, z } = at(layout!.trees.x[tree]!, layout!.trees.y[tree]!)
+    const gy = groundY(x, z)
     const look = plantLook('tree', tree)
     const size = look.size
     const cones = CROWN_CONES.length
@@ -923,9 +982,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         matrix
           .makeRotationY(look.turn)
           .scale(scale.set(size, TRUNK_HEIGHT * size, size))
-          .setPosition(x, 0, z),
+          .setPosition(x, gy - 0.1, z),
       )
-      stumps!.setMatrixAt(tree, matrix.makeScale(1e-5, 1e-5, 1e-5).setPosition(x, 0, z))
+      stumps!.setMatrixAt(tree, matrix.makeScale(1e-5, 1e-5, 1e-5).setPosition(x, gy, z))
       placeDeadwood(tree, x, z, look.turn, size, shape.deadwood)
       for (const [cone, [coneHeight, radius, tall]] of CROWN_CONES.entries()) {
         const r = radius * size * shape.crown
@@ -934,7 +993,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           matrix
             .makeRotationY(look.turn)
             .scale(scale.set(r, tall * size * shape.crown, r))
-            .setPosition(x, coneHeight * size, z),
+            .setPosition(x, gy + coneHeight * size, z),
         )
       }
       return
@@ -945,7 +1004,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const dz = Math.sin(look.turn)
     fallAlong.set(dx, 0, dz)
     fallAcross.set(-dz, 0, dx)
-    stumps!.setMatrixAt(tree, matrix.makeScale(size * 1.15, 0.4, size * 1.15).setPosition(x, 0, z))
+    stumps!.setMatrixAt(tree, matrix.makeScale(size * 1.15, 0.4, size * 1.15).setPosition(x, gy - 0.1, z))
     placeDeadwood(tree, x, z, look.turn, size, 0)
     // The trunk lies out from the stump and shortens from its far end as logs are cut from it.
     const length = Math.max(1e-5, TRUNK_HEIGHT * size * shape.trunk)
@@ -955,7 +1014,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       matrix
         .makeBasis(fallAcross, fallAlong, yAxis)
         .scale(scale.set(thick, length, thick))
-        .setPosition(x + dx * 0.5, 0.24 * size, z + dz * 0.5),
+        .setPosition(x + dx * 0.5, groundY(x + dx * 0.5, z + dz * 0.5) + 0.24 * size, z + dz * 0.5),
     )
     // The crown lies at the far end, flattened against the ground, shrinking as its branches are gathered.
     for (const [cone, [coneHeight, radius, tall]] of CROWN_CONES.entries()) {
@@ -966,7 +1025,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         matrix
           .makeBasis(fallAcross, fallAlong, yAxis)
           .scale(scale.set(r, Math.max(1e-5, tall * size * shape.crown), r * 0.4))
-          .setPosition(x + dx * out, r * 0.4, z + dz * out),
+          .setPosition(x + dx * out, groundY(x + dx * out, z + dz * out) + r * 0.4, z + dz * out),
       )
     }
   }
@@ -984,7 +1043,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const out = (0.75 + 0.3 * (stick % 3)) * size
       // Lying flat, at an angle of its own to the trunk.
       quaternion.setFromEuler(euler.set(Math.PI / 2, around + 0.9 + 0.4 * stick, 0, 'YXZ'))
-      position.set(x + Math.cos(around) * out, 0.05, z + Math.sin(around) * out)
+      const sx = x + Math.cos(around) * out
+      const sz = z + Math.sin(around) * out
+      position.set(sx, groundY(sx, sz) + 0.05, sz)
       scale.set(1, (0.7 + 0.12 * (stick % 4)) * size, 1)
       deadwood!.setMatrixAt(index, matrix.compose(position, quaternion, scale))
     }
@@ -993,6 +1054,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   /** Lays a stone spot's stones in a little heap, each shown while it is there. */
   function placeRocks(spot: number, stones: number) {
     const { x, z } = at(layout!.stones.x[spot]!, layout!.stones.y[spot]!)
+    const gy = groundY(x, z)
     const per = config!.stonesPerSpot
     for (let slot = 0; slot < per; slot += 1) {
       const angle = spot * 1.7 + slot * 2.4
@@ -1002,7 +1064,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       rocks!.setMatrixAt(
         spot * per + slot,
         matrix.compose(
-          position.set(x + Math.cos(angle) * out, 0.12 + (slot === 0 ? 0.1 : 0), z + Math.sin(angle) * out),
+          position.set(x + Math.cos(angle) * out, gy + 0.12 + (slot === 0 ? 0.1 : 0), z + Math.sin(angle) * out),
           quaternion,
           scale.set(size, size * 0.75, size),
         ),
@@ -1015,11 +1077,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     config = state.config
     layout = state.layout
     const size = state.config.valleySizeCm / 100
+    const terrainGeometry = terrainMeshGeometry(state)
     ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(size, size),
-      new THREE.MeshStandardMaterial({ color: GRASS, roughness: 0.95 }),
+      terrainGeometry,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false }),
     )
-    ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = true
     outside = new THREE.Mesh(
       new THREE.PlaneGeometry(size * 8, size * 8),
@@ -1038,29 +1100,41 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     lake.receiveShadow = true
     world.add(outside, ground, lake)
 
-    const points: number[] = []
-    for (let line = 0; line <= size; line += GRID_STEP_M) {
-      const offset = line - size / 2
-      points.push(offset, 0.02, -size / 2, offset, 0.02, size / 2, -size / 2, 0.02, offset, size / 2, 0.02, offset)
-    }
-    const gridGeometry = new THREE.BufferGeometry()
-    gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
-    grid = new THREE.LineSegments(gridGeometry, new THREE.LineBasicMaterial({ color: GRID }))
-    world.add(grid)
-
-    // Bushes: three leafy lobes each, with berries on their upper sides.
+    // Bushes: three leafy lobes each, with berries on their upper sides. Bushes and hazels are drawn in tiles of the
+    // land, so only those near the camera are drawn.
     const { bushes, trees } = state.layout
-    leaves = new THREE.InstancedMesh(leafGeometry, leafMaterial, bushes.count * BUSH_LOBES.length)
-    berryMesh = new THREE.InstancedMesh(berryGeometry, berryMaterial, bushes.count * BERRIES_PER_BUSH)
+    const positionsOf = (from: number, to: number) => {
+      const xs = new Float32Array(to - from)
+      const zs = new Float32Array(to - from)
+      for (let id = from; id < to; id += 1) {
+        const spot = at(state.layout.foodPlants.x[id]!, state.layout.foodPlants.y[id]!)
+        xs[id - from] = spot.x
+        zs[id - from] = spot.z
+      }
+      return [xs, zs] as const
+    }
+    const tiled = (
+      geometry: ConstructorParameters<typeof TiledInstances>[1],
+      material: ConstructorParameters<typeof TiledInstances>[2],
+      per: number,
+      from: number,
+      to: number,
+    ) => {
+      const [xs, zs] = positionsOf(from, to)
+      return new TiledInstances(THREE, geometry, material, per, xs, zs, size, PLANT_TILE_M)
+    }
+    leaves = tiled(leafGeometry, leafMaterial, BUSH_LOBES.length, 0, bushes.count)
+    berryMesh = tiled(berryGeometry, berryMaterial, BERRIES_PER_BUSH, 0, bushes.count)
     berrySpots = new Float32Array(bushes.count * BERRIES_PER_BUSH * 3)
     for (let bush = 0; bush < bushes.count; bush += 1) {
       const { x, z } = at(bushes.x[bush]!, bushes.y[bush]!)
+      const gy = groundY(x, z)
       const look = plantLook('bush', bush)
       const cos = Math.cos(look.turn)
       const sin = Math.sin(look.turn)
       const lobes = BUSH_LOBES.map(([dx, height, dz, radius]) => ({
         x: x + (dx * cos - dz * sin) * look.size,
-        y: height * look.size,
+        y: gy + height * look.size,
         z: z + (dx * sin + dz * cos) * look.size,
         radius: radius * look.size,
       }))
@@ -1085,19 +1159,20 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     // food plants after the bushes, so hazel `h` is food plant `bushes.count + h`.
     const { foodPlants } = state.layout
     const hazelCount = foodPlants.count - bushes.count
-    hazelLeaves = new THREE.InstancedMesh(leafGeometry, hazelLeafMaterial, Math.max(1, hazelCount * HAZEL_LOBES.length))
-    hazelStems = new THREE.InstancedMesh(stemGeometry, trunkMaterial, Math.max(1, hazelCount * HAZEL_LOBES.length))
-    nutMesh = new THREE.InstancedMesh(berryGeometry, nutMaterial, Math.max(1, hazelCount * NUTS_PER_HAZEL))
+    hazelLeaves = tiled(leafGeometry, hazelLeafMaterial, HAZEL_LOBES.length, bushes.count, foodPlants.count)
+    hazelStems = tiled(stemGeometry, trunkMaterial, HAZEL_LOBES.length, bushes.count, foodPlants.count)
+    nutMesh = tiled(berryGeometry, nutMaterial, NUTS_PER_HAZEL, bushes.count, foodPlants.count)
     nutSpots = new Float32Array(hazelCount * NUTS_PER_HAZEL * 3)
     for (let hazel = 0; hazel < hazelCount; hazel += 1) {
       const id = bushes.count + hazel
       const { x, z } = at(foodPlants.x[id]!, foodPlants.y[id]!)
+      const gy = groundY(x, z)
       const look = plantLook('hazel', id)
       const cos = Math.cos(look.turn)
       const sin = Math.sin(look.turn)
       const lobes = HAZEL_LOBES.map(([dx, height, dz, radius]) => ({
         x: x + (dx * cos - dz * sin) * look.size,
-        y: height * look.size,
+        y: gy + height * look.size,
         z: z + (dx * sin + dz * cos) * look.size,
         radius: radius * look.size,
       }))
@@ -1108,12 +1183,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           matrix.makeScale(lobe.radius, lobe.radius * 1.15, lobe.radius).setPosition(lobe.x, lobe.y, lobe.z),
         )
         // A stem leans from the clump's foot up into its lobe.
-        position.set(lobe.x - x, lobe.y - lobe.radius * 0.5, lobe.z - z)
+        position.set(lobe.x - x, lobe.y - gy - lobe.radius * 0.5, lobe.z - z)
         const length = position.length()
         quaternion.setFromUnitVectors(yAxis, position.normalize())
         hazelStems.setMatrixAt(
           slot,
-          matrix.compose(position.set(x, 0, z), quaternion, scale.set(look.size, length, look.size)),
+          matrix.compose(position.set(x, gy, z), quaternion, scale.set(look.size, length, look.size)),
         )
       }
       for (let slot = 0; slot < NUTS_PER_HAZEL; slot += 1) {
@@ -1151,7 +1226,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       mesh.receiveShadow = mesh === leaves || mesh === hazelLeaves || mesh === rocks
       mesh.instanceMatrix.needsUpdate = true
       mesh.computeBoundingSphere()
-      world.add(mesh)
+      world.add(mesh instanceof TiledInstances ? mesh.group : mesh)
     }
 
     // Each forager's hearth, where it sleeps: its own fire until it joins a group, then its stack of wood by its hut.
@@ -1164,12 +1239,28 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     knowledgeTexture.magFilter = THREE.NearestFilter
     knowledgeTexture.minFilter = THREE.NearestFilter
     const placesSize = (n * state.config.placeCm) / 100
+    // Laid over the ground itself, so it follows the hills; its texture coordinates span the places, which may run a
+    // little past the land's far edges.
+    const draped = terrainGeometry.clone()
+    const corners = draped.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+    const uv = new Float32Array(corners.count * 2)
+    for (let index = 0; index < corners.count; index += 1) {
+      uv[index * 2] = (corners.getX(index) + size / 2) / placesSize
+      uv[index * 2 + 1] = 1 - (corners.getZ(index) + size / 2) / placesSize
+    }
+    draped.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
     knowledge = new THREE.Mesh(
-      new THREE.PlaneGeometry(placesSize, placesSize),
-      new THREE.MeshBasicMaterial({ map: knowledgeTexture, transparent: true, depthWrite: false }),
+      draped,
+      new THREE.MeshBasicMaterial({
+        map: knowledgeTexture,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -4,
+      }),
     )
-    knowledge.rotation.x = -Math.PI / 2
-    knowledge.position.set((placesSize - size) / 2, 0.01, (placesSize - size) / 2)
+    knowledge.position.y = 0.03
     knowledge.renderOrder = 1
     world.add(knowledge)
 
@@ -1222,13 +1313,15 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const { target, distance, yaw } = controls
     // Close in, the camera tilts towards eye level, as in a strategy game, and looks at a person's chest.
     const pitch = Math.max(0.12, controls.pitch - closeTilt(distance))
-    const lookHeight = 1.2 * Math.max(0, 1 - distance / 40)
-    camera.position.set(
-      target.x + distance * Math.cos(pitch) * Math.sin(yaw),
-      lookHeight + distance * Math.sin(pitch),
-      target.z + distance * Math.cos(pitch) * Math.cos(yaw),
-    )
+    // It looks at the ground where the target is, and never sinks below the ground under it.
+    const lookHeight = groundY(target.x, target.z) + 1.2 * Math.max(0, 1 - distance / 40)
+    const cx = target.x + distance * Math.cos(pitch) * Math.sin(yaw)
+    const cz = target.z + distance * Math.cos(pitch) * Math.cos(yaw)
+    camera.position.set(cx, Math.max(lookHeight + distance * Math.sin(pitch), groundY(cx, cz) + 1.5), cz)
     camera.lookAt(target.x, lookHeight, target.z)
+    // Bushes and hazels are drawn only in the tiles near what the camera looks at.
+    for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh])
+      mesh?.showNear(target.x, target.z, PLANT_DRAW_M + distance)
     // Near things need a near plane close in; the whole valley needs a far one.
     camera.near = Math.max(0.05, distance / 200)
     camera.far = Math.max(2_000, distance * 8)
@@ -1355,9 +1448,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     sun.intensity = 2.4 * light * Math.max(0.2, elevation)
     sun.color.setHSL(0.1, 0.6, 0.6 + 0.35 * Math.max(0, elevation))
 
-    // Only plants whose drawn fill changed are redrawn.
+    // Only plants whose drawn fill changed are redrawn, and only those drawn; one out of view is redrawn when it shows.
     let berriesChanged = false
     for (let bush = 0; bush < layout.bushes.count; bush += 1) {
+      if (!berryMesh!.shows(bush)) {
+        bushFill[bush] = -1
+        continue
+      }
       const fill = displayedStock(pair, 'bush', bush, interpolate) / config.bushCapacityKcal
       if (Math.abs(fill - bushFill[bush]!) < 0.002) continue
       bushFill[bush] = fill
@@ -1367,6 +1464,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     if (berriesChanged) berryMesh!.instanceMatrix.needsUpdate = true
     let nutsChanged = false
     for (let hazel = 0; hazel < hazelFill.length; hazel += 1) {
+      if (!nutMesh!.shows(hazel)) {
+        hazelFill[hazel] = -1
+        continue
+      }
       const id = layout.bushes.count + hazel
       const fill = displayedStock(pair, 'hazel', id, interpolate) / config.hazelCapacityKcal
       if (Math.abs(fill - hazelFill[hazel]!) < 0.002) continue
@@ -1462,7 +1563,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         const spot = at(ring.x, ring.y)
         loop.visible = true
         loop.material = ring.fresh ? freshSiteMaterial : staleSiteMaterial
-        loop.position.set(spot.x, 0.06, spot.z)
+        loop.position.set(spot.x, groundY(spot.x, spot.z) + 0.06, spot.z)
         loop.scale.setScalar(ring.radiusCm / 100 + 1.5)
       }
     }
@@ -1507,7 +1608,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const pose = poses[id]!
       const forager = state.foragers[id]!
       const spot = at(pose.x, pose.y)
-      figure.root.position.set(spot.x, 0, spot.z)
+      figure.root.position.set(spot.x, groundY(spot.x, spot.z), spot.z)
       if (pose.heading !== null) figure.heading = pose.heading
       // A member lies down in its hut with its feet towards the fire and its head at the back, the hut's length.
       const toward =
@@ -1517,7 +1618,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       if (toward) {
         figure.root.position.set(
           spot.x + toward.x * SLEEPER_FEET * pose.lying,
-          0,
+          groundY(spot.x, spot.z),
           spot.z + toward.z * SLEEPER_FEET * pose.lying,
         )
         figure.heading = Math.atan2(toward.x, toward.z)
@@ -1552,13 +1653,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         if (lit) hearth.flame.scale.set(0.6, 0.6 * (1 + 0.15 * Math.sin(nowMs / 80 + id * 1.7)), 0.6)
       }
       if (id === followedId) {
-        followRing.position.set(spot.x, 0.03, spot.z)
+        followRing.position.set(spot.x, groundY(spot.x, spot.z) + 0.08, spot.z)
         followRing.scale.setScalar(0.6)
-        perception.position.set(spot.x, 0.05, spot.z)
+        perception.position.set(spot.x, groundY(spot.x, spot.z) + 0.1, spot.z)
         perception.visible = forager.alive
         // Long sight reaches across the valley's diagonal by day on the canonical settings, so it is rarely drawn.
         const diagonal = Math.SQRT2 * config.valleySizeCm
-        sight.position.set(spot.x, 0.05, spot.z)
+        sight.position.set(spot.x, groundY(spot.x, spot.z) + 0.1, spot.z)
         sight.visible =
           forager.alive &&
           config.sightRadiusCm > config.perceptionRadiusCm &&
@@ -1580,7 +1681,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const spot = at(pose.x, pose.y)
       ring.visible = true
       ;(ring.material as MeshBasicMaterial).color.set(hex(color))
-      ring.position.set(spot.x, 0.04, spot.z)
+      ring.position.set(spot.x, groundY(spot.x, spot.z) + 0.08, spot.z)
       ring.scale.setScalar(0.75)
       const flag = selectedGroup!.flag
       if (Math.hypot(pose.x - flag.x, pose.y - flag.y) > baseRadiusCm(config, selectedGroup!)) {
@@ -1644,14 +1745,14 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const positions = arc.line.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
       for (let point = 0; point < ARC_POINTS; point += 1) {
         const spot = arcPoint(from, to, point / (ARC_POINTS - 1))
-        positions.setXYZ(point, spot.x, spot.y, spot.z)
+        positions.setXYZ(point, spot.x, spot.y + groundY(spot.x, spot.z), spot.z)
       }
       positions.needsUpdate = true
       arc.line.geometry.computeBoundingSphere()
       const woodAt = arcPoint(from, to, pair.alpha)
       const foodAt = arcPoint(from, to, 1 - pair.alpha)
-      arc.wood.position.set(woodAt.x, woodAt.y, woodAt.z)
-      arc.food.position.set(foodAt.x, foodAt.y, foodAt.z)
+      arc.wood.position.set(woodAt.x, woodAt.y + groundY(woodAt.x, woodAt.z), woodAt.z)
+      arc.food.position.set(foodAt.x, foodAt.y + groundY(foodAt.x, foodAt.z), foodAt.z)
     }
 
     // The followed forager's target: the tree it works for wood, or else its bush or hazel. The lake needs no ring.
@@ -1686,7 +1787,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
               : layout!.trees
         spot = at(plants.x[chosen.id]!, plants.y[chosen.id]!)
       }
-      ring.position.set(spot.x, ring === selectRing ? 0.04 : 0.035, spot.z)
+      ring.position.set(spot.x, groundY(spot.x, spot.z) + (ring === selectRing ? 0.09 : 0.085), spot.z)
       ring.scale.setScalar(
         chosen.kind === 'bush'
           ? 1.1
@@ -1710,12 +1811,17 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function plantOf(object: unknown, instance: number | undefined): ValleyPlant | null {
     if (object === lake) return { kind: 'lake', id: 0 }
     if (instance === undefined) return null
-    if (object === leaves) return { kind: 'bush', id: Math.floor(instance / BUSH_LOBES.length) }
-    if (object === berryMesh) return { kind: 'bush', id: Math.floor(instance / BERRIES_PER_BUSH) }
     const bushes = layout!.bushes.count
-    if (object === hazelLeaves || object === hazelStems)
-      return { kind: 'hazel', id: bushes + Math.floor(instance / HAZEL_LOBES.length) }
-    if (object === nutMesh) return { kind: 'hazel', id: bushes + Math.floor(instance / NUTS_PER_HAZEL) }
+    for (const [mesh, kind, per] of [
+      [leaves, 'bush', BUSH_LOBES.length],
+      [berryMesh, 'bush', BERRIES_PER_BUSH],
+      [hazelLeaves, 'hazel', HAZEL_LOBES.length],
+      [hazelStems, 'hazel', HAZEL_LOBES.length],
+      [nutMesh, 'hazel', NUTS_PER_HAZEL],
+    ] as const) {
+      const index = mesh?.indexOf(object, instance) ?? null
+      if (index !== null) return { kind, id: (kind === 'hazel' ? bushes : 0) + Math.floor(index / per) }
+    }
     if (object === trunks) return { kind: 'tree', id: instance }
     if (object === crowns) return { kind: 'tree', id: Math.floor(instance / CROWN_CONES.length) }
     if (object === stumps) return { kind: 'tree', id: instance }
@@ -1782,11 +1888,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
     const plants = [
-      leaves,
-      berryMesh,
-      hazelLeaves,
-      hazelStems,
-      nutMesh,
+      leaves?.group ?? null,
+      berryMesh?.group ?? null,
+      hazelLeaves?.group ?? null,
+      hazelStems?.group ?? null,
+      nutMesh?.group ?? null,
       trunks,
       crowns,
       stumps,
@@ -1859,6 +1965,19 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     setWorld,
     draw,
     showGroup,
+    view() {
+      const half = config ? config.valleySizeCm / 2 : 0
+      return {
+        x: controls.target.x * 100 + half,
+        y: controls.target.z * 100 + half,
+        distanceCm: controls.distance * 100,
+      }
+    },
+    lookAt(x: number, y: number) {
+      if (!config) return
+      controls.target = at(x, y)
+      applyCamera()
+    },
     dispose() {
       resizeObserver.disconnect()
       canvas.removeEventListener('pointerdown', onPointerDown)

@@ -1,7 +1,8 @@
 import { ringOffset } from './config'
 import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
-import { chooseSite, siteCentre, sightOf } from './sites'
+import { nearestSeen } from './sight'
+import { chooseSite, siteCentre } from './sites'
 import type {
   ActionReason,
   DissolveEvent,
@@ -99,29 +100,19 @@ function forEachPlaceNear(config: ValleyConfig, x: number, y: number, r: number,
 }
 
 /**
- * Marks every place never seen before that lies wholly within sight as seen this minute. Ground once seen stays seen,
- * so once every place has been seen there is nothing to mark.
+ * Marks every place never seen before that lies wholly within close sight as seen this minute; long sight marks the
+ * places it sees from the forager's place (see `observeAround`). Ground once seen stays seen, so once every place has
+ * been seen there is nothing to mark.
  */
 export function observePlaces(config: ValleyConfig, forager: Forager, minute: number) {
   if (forager.placesSeen === placeCount(config)) return
-  const r = sightOf(config, minute)
+  const r = config.perceptionRadiusCm
   forEachPlaceNear(config, forager.x, forager.y, r, (place) => {
     if (forager.placeSeen[place]! >= 0) return
     if (!placeInView(config, place, forager.x, forager.y, r)) return
     if (forager.placeSeen[place]! < 0) forager.placesSeen += 1
     forager.placeSeen[place] = minute
   })
-}
-
-/** Learns every standing flag within sight, and forgets every known flag whose spot is within sight and holds none. */
-export function observeFlags(config: ValleyConfig, forager: Forager, groups: readonly Group[], minute: number) {
-  const r2 = sightOf(config, minute) ** 2
-  for (const group of groups) {
-    if (distanceSq(forager.x, forager.y, group.flag.x, group.flag.y) > r2) continue
-    const known = forager.knownFlags.includes(group.id)
-    if (group.dissolvedMinute === null && !known) forager.knownFlags = [...forager.knownFlags, group.id]
-    if (group.dissolvedMinute !== null && known) forager.knownFlags = forager.knownFlags.filter((id) => id !== group.id)
-  }
 }
 
 /** Exploring and searching go only to places never seen. */
@@ -323,7 +314,7 @@ export interface Goal {
 export function idleGoal(state: ValleyState, forager: Forager, minute: number): Goal | null {
   const { config } = state
   if (forager.groupId === null) {
-    const seen = nearestOther(forager, state.foragers, sightOf(config, minute))
+    const seen = nearestSeen(state, forager, minute)
     if (seen) return { x: seen.x, y: seen.y, reason: 'seeking company', placeId: null, siteId: null }
     let flag: Point | null = null
     let flagSq = Infinity

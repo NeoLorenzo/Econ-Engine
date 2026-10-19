@@ -2,6 +2,29 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE10-TerrainAndScale-050] - (2026-10-19)
+
+### Added
+
+- **Life 10: terrain and scale.** The 800 m valley becomes a generated stretch of young moraine country 4 km square, falling to a lake along its north edge: a broad rise and fall of up to 30 m, hummocks up to 8 m high and 200 m apart, and 80 kettle hollows 20 m to 60 m in radius. Heights are held on a 5 m lattice in whole centimetres (`src/valley/terrain.ts`).
+- **Ground:** each 5 m cell is wet (inside kettles and along the shore), rock (at outcrops and on slopes of 20% or more), sand (on low ground) or soil. Berry bushes grow on sand or soil, hazels on soil, trees anywhere but rock, and outcrops on dry ground; a site's centre is drawn only where its whole circle suits its kind.
+- **Walking on slopes:** speed follows Tobler's hiking function for the grade ahead, as a table of thousandths; energy follows the Pandolf equation with its grade term, Santee's correction downhill, and the terrain factor of the ground underfoot (soil 120, sand 150, rock 150, wet 180). Each walking minute records its target, grade, terrain factor and climb.
+- **Judging a walk by Naismith's rule:** every rule about time uses the flat walk plus 6 seconds for every metre climbed.
+- **Hills block long sight:** by day a forager sees within 1 km of its place's centre only into places reached by rays from its eye over the ground, worked out once per place and kept (`src/valley/sight.ts`). It looks round by long sight when it stands in a new place or after an hour; close sight, every minute, also records trees and stones.
+- **Chunks:** food, wood, trees and stones are indexed by 200 m chunk, and searches for the best or nearest go outwards ring by ring until nothing further could win, giving the same result as a search of everything (`forEachRingOutwards`).
+- `FLAT_LAND`, a flat 800 m land with Life 9.7's sites, on which tests of rules that need no terrain run. `landStats` measures the generated land. `terrain.test.ts`.
+- **Observer:** the ground is a mesh of the height field coloured by ground, with everything at its height and the followed forager's knowledge laid over it; bushes and hazels are drawn in 400 m tiles near the camera; a map of the whole land in a corner, which moves the camera when clicked; the HUD shows the ground underfoot, its height, the slope walked and the climb today. "Life 10 · terrain".
+- The [calibration document](docs/CALIBRATION.md#terrain) gains a section for terrain, with nine sources.
+
+### Changed
+
+- **Defaults:** 800 berry thickets, 800 hazel thickets, 300 stands and 100 outcrops (25 times Life 9.7's), a lake of 150 hectares, starts within the middle 800 m (`startAreaCm`). `walkTerrainPercent` is replaced by four terrain factors. The camera pulls back to 5 km.
+- **The roadmap** merges scale and terrain into step 10; the later steps move up by one.
+- Daily summaries record each forager's height climbed and energy spent walking.
+- The checker replays sites in close sight every minute and every site every hour, and checks the layout's ground once.
+- Fingerprints are recorded anew for seven configurations, the flat land among them.
+- `docs/LIFE10_SPEC.md` replaces `docs/LIFE9_SPEC.md`.
+
 ## [LIFE-Roadmap-049] - (2026-10-19)
 
 ### Added

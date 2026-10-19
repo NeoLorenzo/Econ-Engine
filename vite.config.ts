@@ -8,7 +8,9 @@ import react from '@vitejs/plugin-react'
  * first and which shard each goes to, never whether a test runs.
  */
 const TEST_SECONDS: Record<string, number> = {
-  'fingerprints.test.ts': 70,
+  'fingerprints.test.ts': 130,
+  'fingerprintsSkills.test.ts': 130,
+  'fingerprintsBand.test.ts': 130,
   'wagesProfits.test.ts': 20,
   'performance.test.ts': 20,
   'competitionGridExperiment.test.ts': 16,

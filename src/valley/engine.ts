@@ -1,7 +1,9 @@
 import { beginAxe, cutAt, exchangeAxes, planHut, workAxe } from './axes'
 import { LAKE_ID, carriedKcal, foodOfSource, fullRateOf, rateAtStock, spoil, worthWorking } from './food'
 import { lakeCapacityKcal, resolveValleyConfig } from './config'
-import { lakeGrowth, seesShore } from './lake'
+import { lakeGrowth } from './lake'
+import { observeAround } from './sight'
+import { cellOf, gradeOf, heightAt, speedOnGrade, terrainPercentOf, walkCost } from './terrain'
 import {
   MINUTES_PER_DAY,
   atHearth,
@@ -18,29 +20,17 @@ import {
   mustGoHome,
   nextHungry,
   observe,
-  observeFar,
   plantsInViewOf,
   sourcePoint,
   speedForLoad,
-  walkCostForLoad,
 } from './forager'
 import { distance, distanceSq, distanceUp, stepTowards, walkSeconds } from './geometry'
 import { burnFires, feedFire, sleepsByGroupFire } from './fire'
 import { hutWhole, layLog, leaveHutIfMoved, regrowTrees, wantsLogs, weatherHuts } from './huts'
 import { drawCraftSkills, drawSkills, generateLayout, layoutError, turnOrder } from './layout'
 import { craftOf, noTaskSeconds, practiceDay, ratesOf, startingLog } from './practice'
-import {
-  choosePlace,
-  dissolveIfAlone,
-  idleGoal,
-  meet,
-  observeFlags,
-  observePlaces,
-  placeCentre,
-  placeCount,
-  startingGroups,
-} from './social'
-import { chooseSite, observeSites, sightOf, siteCentre, siteCount, sitesCheckedSince, sitesKnown } from './sites'
+import { choosePlace, dissolveIfAlone, idleGoal, meet, placeCentre, placeCount, startingGroups } from './social'
+import { chooseSite, siteCentre, siteCount, sitesCheckedSince, sitesKnown } from './sites'
 import { nextShortOfWood, swap, woodMatters } from './trade'
 import {
   coldMatters,
@@ -147,6 +137,8 @@ function emptyDay(
     gatherSecondsById: zeros(foragers.length),
     walkSecondsById: zeros(foragers.length),
     gatheredWoodById: zeros(foragers.length),
+    climbedCmById: zeros(foragers.length),
+    walkKcalById: zeros(foragers.length),
     ...groupCounts(state),
     foundings: 0,
     joinings: 0,
@@ -276,6 +268,9 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       fireGiven: 0,
       warmByFireMinutes: 0,
       swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
+      farPlace: -1,
+      farMinute: -1,
+      climbedCm: 0,
     }
   })
   const groups = startingGroups(config, layout, foragers)
@@ -370,6 +365,8 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   gatherSecondsById: [...day.gatherSecondsById],
   walkSecondsById: [...day.walkSecondsById],
   gatheredWoodById: [...day.gatheredWoodById],
+  climbedCmById: [...day.climbedCmById],
+  walkKcalById: [...day.walkKcalById],
   placesSeenById: [...day.placesSeenById],
   loadedWalkSecondsById: [...day.loadedWalkSecondsById],
   sitesKnownById: [...day.sitesKnownById],
@@ -463,33 +460,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     state.woodStock,
     minute,
   )
-  const far = sightOf(config, minute)
-  if (seesShore(forager.y, far)) forager.lakeKnown = true
-  observeFar(
-    config,
-    forager.logMemory,
-    layout.treeIndex,
-    layout.trees,
-    state.treeLogs,
-    forager.x,
-    forager.y,
-    far,
-    minute,
-  )
-  observeFar(
-    config,
-    forager.stoneMemory,
-    layout.stoneIndex,
-    layout.stones,
-    state.stoneStock,
-    forager.x,
-    forager.y,
-    far,
-    minute,
-  )
-  observePlaces(config, forager, minute)
-  observeFlags(config, forager, state.groups, minute)
-  observeSites(config, layout, forager, minute)
+  observeAround(state, forager, minute)
   forager.hungry = nextHungry(config, forager.energyKcal, forager.hungry)
   forager.shortOfWood = nextShortOfWood(config, forager.wood, forager.shortOfWood)
   const hutEvents: HutEvent[] = []
@@ -500,6 +471,13 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   const load = loadOf(forager)
   const kg = loadKg(config, load)
   const speed = speedForLoad(config, kg)
+  // Where it walks this minute sets its grade, and the grade its speed; the ground it sets out from, the walk's cost.
+  const { terrain } = layout
+  const startHeight = heightAt(terrain, forager.x, forager.y)
+  const terrainPercent = terrainPercentOf(config, layout.ground[cellOf(terrain, forager.x, forager.y)]!)
+  let grade = 0
+  let walkingSpeed = speed
+  let walkTarget: { x: number; y: number } | null = null
 
   const from = { x: forager.x, y: forager.y }
   const seconds: MinuteSeconds = { walk: 0, work: 0, stand: 0, sleep: 0 }
@@ -526,12 +504,19 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   let felled = false
   let tookStone = false
   let inHut = false
-  const stride = 60 * speed
 
-  /** Walks towards a point for up to the whole minute, at its speed; returns the seconds left after arriving. */
+  /**
+   * Walks towards a point for up to the whole minute, at its speed on the grade ahead: the rise to where a minute at
+   * its speed on the flat would take it, or to the point if nearer. Returns the seconds left after arriving.
+   */
   const walkTo = (x: number, y: number) => {
-    const needed = walkSeconds(distance(forager.x, forager.y, x, y), speed)
-    const next = stepTowards(forager, { x, y }, stride)
+    walkTarget = { x, y }
+    const ahead = stepTowards(forager, walkTarget, 60 * speed)
+    const run = distance(forager.x, forager.y, ahead.x, ahead.y)
+    grade = gradeOf(heightAt(terrain, ahead.x, ahead.y) - startHeight, run)
+    walkingSpeed = speedOnGrade(speed, grade)
+    const needed = walkSeconds(distance(forager.x, forager.y, x, y), walkingSpeed)
+    const next = stepTowards(forager, { x, y }, 60 * walkingSpeed)
     forager.x = next.x
     forager.y = next.y
     seconds.walk = Math.min(60, needed)
@@ -702,7 +687,7 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
         placeId = search
         seconds.stand = walkTo(centre.x, centre.y)
       } else if (chosen === null) {
-        reason = idleReason(config, forager, plants, minute)
+        reason = idleReason(config, forager, plants, forFood ? layout.foodChunks : layout.woodChunks, minute)
         seconds.stand = 60
       } else if (forFood) {
         targetId = chosen
@@ -780,9 +765,11 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
   forager.energyKcal += eatenAgain.takenKcal
   forager.carried = eatenAgain.rest
 
+  const climbCm = Math.max(0, heightAt(terrain, forager.x, forager.y) - startHeight)
+  forager.climbedCm += climbCm
+  const walkKcalPerHour = walkCost(config, kg, walkingSpeed, grade, terrainPercent)
   const owed =
-    forager.costRemainder +
-    minuteCost(config, seconds, warmth, walkCostForLoad(config, kg, speed), workCostOf(config, good, task))
+    forager.costRemainder + minuteCost(config, seconds, warmth, walkKcalPerHour, workCostOf(config, good, task))
   const due = Math.floor(owed / 3_600)
   forager.costRemainder = owed - due * 3_600
   const spent = Math.min(forager.energyKcal, due)
@@ -828,7 +815,12 @@ function takeTurn(state: ValleyState, forager: Forager, minute: number): TurnRes
     loadBerriesKcal: load.berriesKcal,
     loadNutsKcal: load.nutsKcal,
     loadFishKcal: load.fishKcal,
-    speedCmPerSecond: speed,
+    walkTarget,
+    loadSpeedCmPerSecond: speed,
+    speedCmPerSecond: walkingSpeed,
+    gradePercent: grade,
+    terrainPercent,
+    climbCm,
     fireGroupId,
     loadLog: load.log,
     task,
@@ -1010,6 +1002,12 @@ function advance(state: ValleyState, recordEvents = true) {
       log: 0,
     }
     if (loadKg(config, carriedLoad) > 0) today.loadedWalkSecondsById[id]! += event.walkSeconds
+    today.climbedCmById[id]! += event.climbCm
+    if (event.walkSeconds) {
+      const kg = loadKg(config, { ...carriedLoad, log: event.loadLog })
+      const rate = walkCost(config, kg, event.speedCmPerSecond, event.gradePercent, event.terrainPercent)
+      today.walkKcalById[id]! += Math.floor((event.walkSeconds * rate) / 3_600)
+    }
     today.gatheredWoodById[id]! += event.gatheredWood
     today.gatheredKcal += event.gatheredKcal
     if (event.food === 'berries') today.gatheredBerriesKcal += event.gatheredKcal

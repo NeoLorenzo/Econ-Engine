@@ -2,21 +2,36 @@ import { isqrt } from './geometry'
 import type { Point, ValleyConfig } from './types'
 
 /**
- * The canonical Life 9.7 valley: 800 m square in Mesolithic northern Europe above a lake of 30 hectares, with 32
- * thickets of 60 berry bushes, 32 hazel thickets of 40 hazels, 12 stands of 12 trees and 4 outcrops of stones, and a
- * band of 8 born with foraging skills from 75% to 125%, who pick berries, gather nuts and fish, taking less an hour as a
- * source thins, gather sticks from bushes and dead branches from under trees, bring firewood home in loads of 30 kg, swap wood for food and get better at what they practise.
- * They start scattered and form groups when they meet. By day they see across the valley, check the sites they know
- * when idle, pay for a load in energy, and take a full load home. Each group keeps one fire at its flag, which members
- * feed, with their huts on a ring round it. Every member wants a hut of 23 logs, cut from felled trees with a ground
- * stone axe it makes from a stone and a kilogram of wood, or buys from another member for food. A night by the fire in
- * a whole hut is the warmest. Every physical number is set from real measurements, sourced in docs/CALIBRATION.md:
- * the valley feeds about seven.
+ * The canonical Life 10 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
+ * fall of up to 30 m with hummocks and kettle hollows, falling to a lake of 150 hectares along its north edge. Its
+ * ground is soil, sand, rock or wet, and each plant grows on the ground that suits it: 800 thickets of 60 berry
+ * bushes, 800 hazel thickets of 40 hazels, 300 stands of 12 trees and 100 outcrops of stones, as dense as Life 9.7's
+ * valley. A band of 8 born with foraging skills from 75% to 125% starts scattered over the middle 800 m. Slopes slow
+ * walking by Tobler's hiking function and cost energy by the Pandolf equation's grade term; the ground sets its
+ * terrain factor; hills block long sight. Every member wants a hut of 23 logs, cut from felled trees with a ground
+ * stone axe it makes or buys. Every physical number is set from real measurements, sourced in docs/CALIBRATION.md.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   seed: 20260813,
-  valleySizeCm: 80_000,
-  thicketCount: 32,
+  valleySizeCm: 400_000,
+  terrainCellCm: 500,
+  chunkCm: 20_000,
+  reliefCm: 3_000,
+  reliefWavelengthCm: 160_000,
+  hummockCm: 800,
+  hummockWavelengthCm: 20_000,
+  kettleCount: 80,
+  kettleMinRadiusCm: 2_000,
+  kettleMaxRadiusCm: 6_000,
+  kettleDepthPerMille: 125,
+  shoreRampCm: 40_000,
+  shoreWetCm: 2_000,
+  sandBelowCm: 750,
+  rockSlopePercent: 20,
+  eyeHeightCm: 160,
+  sightStepCm: 3_000,
+  startAreaCm: 80_000,
+  thicketCount: 800,
   bushesPerThicket: 60,
   thicketRadiusCm: 1_200,
   bushSpacingCm: 200,
@@ -26,7 +41,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   bushCapacityWood: 2,
   initialBushWood: 2,
   bushRegrowthWoodPerDecade: 2,
-  hazelThicketCount: 32,
+  hazelThicketCount: 800,
   hazelsPerThicket: 40,
   hazelThicketRadiusCm: 2_000,
   hazelSpacingCm: 400,
@@ -36,13 +51,13 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   nutKcalPerHour: 3_500,
   nutKcalPerKg: 2_500,
   nutShelfLifeHours: 4_380,
-  lakeHectares: 30,
+  lakeHectares: 150,
   lakeFishKgPerHectare: 100,
   lakeGrowthPercentPerYear: 40,
   fishKcalPerHour: 600,
   fishKcalPerKg: 600,
   fishShelfLifeHours: 24,
-  standCount: 12,
+  standCount: 300,
   treesPerStand: 12,
   standRadiusCm: 1_500,
   treeSpacingCm: 400,
@@ -68,7 +83,11 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   gatherKcalPerHour: 250,
   chopKcalPerHour: 360,
   makeKcalPerHour: 150,
-  walkTerrainPercent: 120,
+  soilTerrainPercent: 120,
+  sandTerrainPercent: 150,
+  rockTerrainPercent: 150,
+  wetTerrainPercent: 180,
+  climbSecondsPerMetre: 6,
   loadSlowdownPerMille: 75,
   reserveMaxKcal: 70_000,
   initialReserveKcal: 66_000,
@@ -98,7 +117,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   bodyKg: 60,
   berryKcalPerKg: 600,
   campfireWoodPerHour: 1,
-  outcropCount: 4,
+  outcropCount: 100,
   stonesPerOutcrop: 12,
   outcropRadiusCm: 1_000,
   stoneSpacingCm: 300,
@@ -116,6 +135,25 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   craftSkillMaxPercent: 100,
   axeTrade: true,
   craftPractice: true,
+}
+
+/**
+ * A flat land the size of Life 9.7's valley, 800 m square with its sites and lake, all soil but for the wet shore: no
+ * relief, no hummocks, no kettles and no sand. Tests of rules that do not need the terrain run on it.
+ */
+export const FLAT_LAND: Partial<ValleyConfig> = {
+  valleySizeCm: 80_000,
+  thicketCount: 32,
+  hazelThicketCount: 32,
+  standCount: 12,
+  outcropCount: 4,
+  lakeHectares: 30,
+  reliefCm: 0,
+  hummockCm: 0,
+  kettleCount: 0,
+  sandBelowCm: 0,
+  startAreaCm: 80_000,
+  reliefWavelengthCm: 80_000,
 }
 
 const BOOLEAN_KEYS = new Set(['scattered', 'axeTrade', 'craftPractice'])
@@ -234,7 +272,15 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'gatherKcalPerHour',
     'chopKcalPerHour',
     'makeKcalPerHour',
-    'walkTerrainPercent',
+    'terrainCellCm',
+    'chunkCm',
+    'reliefWavelengthCm',
+    'hummockWavelengthCm',
+    'kettleMinRadiusCm',
+    'shoreRampCm',
+    'eyeHeightCm',
+    'sightStepCm',
+    'startAreaCm',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
@@ -262,6 +308,14 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'stonesPerSpot',
     'axeWood',
     'loadSlowdownPerMille',
+    'reliefCm',
+    'hummockCm',
+    'kettleCount',
+    'kettleDepthPerMille',
+    'shoreWetCm',
+    'sandBelowCm',
+    'rockSlopePercent',
+    'climbSecondsPerMetre',
   ]
   for (const key of notNegative) if ((config[key] as number) < 0) errors.push(`${key} must not be negative`)
   if (errors.length) return errors
@@ -300,7 +354,23 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   // Every task costs more than resting; an axe costs the extra energy of making instead of resting.
   for (const key of ['pickKcalPerHour', 'gatherKcalPerHour', 'chopKcalPerHour', 'makeKcalPerHour'] as const)
     if (config[key] <= config.restKcalPerHour) errors.push(`${key} must be more than restKcalPerHour`)
-  if (config.walkTerrainPercent < 100) errors.push('walkTerrainPercent must be at least 100')
+  for (const key of ['soilTerrainPercent', 'sandTerrainPercent', 'rockTerrainPercent', 'wetTerrainPercent'] as const)
+    if (config[key] < 100) errors.push(`${key} must be at least 100`)
+  if (config.valleySizeCm % config.terrainCellCm !== 0)
+    errors.push('The land must be a whole number of terrain cells: valleySizeCm divisible by terrainCellCm')
+  for (const key of ['reliefWavelengthCm', 'hummockWavelengthCm'] as const)
+    if (config[key] % config.terrainCellCm !== 0) errors.push(`${key} must be a whole number of terrain cells`)
+  if (config.kettleMinRadiusCm > config.kettleMaxRadiusCm)
+    errors.push('kettleMinRadiusCm must not exceed kettleMaxRadiusCm')
+  if (config.kettleDepthPerMille > 1_000) errors.push('kettleDepthPerMille must be at most 1,000')
+  if (config.shoreRampCm > config.valleySizeCm) errors.push('shoreRampCm must not exceed the land’s width')
+  if (config.sightStepCm > config.placeCm) errors.push('sightStepCm must not exceed placeCm')
+  if (config.startAreaCm > config.valleySizeCm) errors.push('startAreaCm must not exceed the land’s width')
+  // Heights times the lattice's interpolation weights must stay exact integers.
+  if ((config.reliefCm + config.hummockCm) * Math.max(config.shoreRampCm, config.terrainCellCm ** 2) > 2 ** 52)
+    errors.push('The terrain is too high to be computed exactly')
+  if ((config.reliefCm + config.hummockCm) * (config.reliefWavelengthCm / config.terrainCellCm) ** 3 > 2 ** 52)
+    errors.push('The broad relief is too high or too long to be computed exactly')
   const logSpeed =
     (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * config.logKg)) /
     (1_000 * config.bodyKg)

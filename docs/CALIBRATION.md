@@ -140,6 +140,34 @@ Added in Life 9.7, after every forager starved in Life 9.6's valley of berries a
 
 Lakes in a northern climate yield little fish for their area, so the lake gives at most 180,000 kcal a year, about 70 days of food for one forager: a reserve that can be fished down, not a staple. The hazels give 4.8 million kcal a year, and with the berries and the lake the valley feeds about seven. Hazel yields swing between heavy and light years [31], and nuts ripen in one season; both are spread evenly over the year until seasons arrive.
 
+## Terrain
+
+Added in Life 10, which merges the roadmap's scale and terrain steps. The valley becomes a generated stretch of young moraine country 4 km square, falling to a lake along its north edge, with every kind of site as dense by the hectare as in Life 9.7.
+
+| Parameter | Value | Real world | Trust |
+| --- | --- | --- | --- |
+| `valleySizeCm` | 400,000: 4 km square, 1,600 hectares | A few kilometres across, as the roadmap asks | Choice |
+| Site counts | 800 berry thickets, 800 hazel thickets, 300 stands, 100 outcrops | 25 times Life 9.7's, as dense by the hectare | Derived |
+| `lakeHectares` | 150, along the whole north edge, 4 km by 375 m | | Choice, until water arrives at step 11 |
+| `reliefCm`, `reliefWavelengthCm` | 3,000 over 160,000: a rise and fall of up to 30 m, its hills 1.6 km apart | Young moraine country has irregular relief of end moraines, kames, till plains and meltwater valleys, with numerous lakes [36]; Denmark's highest point is 171 m | Estimate; a measured relief for a 4 km square of young moraine is needed |
+| `hummockCm`, `hummockWavelengthCm` | 800 over 20,000: hummocks up to 8 m high, 200 m apart | Hummocky dead-ice moraine of knobs and kettles [36] | Estimate |
+| `kettleCount`, `kettleMinRadiusCm`, `kettleMaxRadiusCm` | 80 kettles, 20 m to 60 m in radius, 0.1 ha to 1.1 ha | 39,712 depressions mapped in Schleswig-Holstein, about 2.5 a km², 64% of them 1 ha or less, mainly in young moraine [37] | Derived |
+| `kettleDepthPerMille` | 125: an eighth of the radius, 2.5 m to 7.5 m | The kettle lake Ukleisee averages 7.5 m deep [38] | Estimate |
+| `shoreRampCm`, `shoreWetCm` | 40,000 and 2,000: the land rises over 400 m from the lake, and its first 20 m are wet | Lakes in young moraine are fringed by fen | Estimate |
+| `sandBelowCm` | 750: sand where the broad relief is lowest | Meltwater laid sand in low ground, as outwash plains | Estimate |
+| `rockSlopePercent` | 20 | Fine soil washes off steep slopes, leaving stones | Estimate |
+| `soilTerrainPercent`, `wetTerrainPercent` | 120, 180 | Pandolf terrain factors: light brush 1.2, swampy bog 1.8 [39] | Measured |
+| `sandTerrainPercent`, `rockTerrainPercent` | 150, 150 | Heavy brush 1.5, loose sand 2.1 [39]; woodland sand and stony ground lie between firm ground and loose sand | Estimate |
+| Speed on slopes | Speed on the flat times `exp(−3.5 · |G / 100 + 0.05|) / exp(−0.175)`, as a table of thousandths | Tobler's hiking function: 5 km an hour on the flat, fastest, 6 km an hour, on a 5% descent [40] | Measured |
+| Energy on slopes | Pandolf's grade term `η (W + L) · 0.35 V G` watts [10], less Santee's correction on descents | Santee's correction for downhill walking [41]; walking costs least at about −10% [42] | Measured |
+| `climbSecondsPerMetre` | 6 | Naismith's rule: an hour for every 5 km, and an hour more for every 600 m climbed [43] | Measured, a rule of thumb |
+| `eyeHeightCm`, `sightStepCm` | 160, 3,000 | The eye of an adult standing; the step resolves hills 200 m apart | Measured; the step is a choice |
+| `startAreaCm` | 80,000: starts within the middle 800 m | The size of Life 9.7's valley, so the band still meets | Choice |
+
+For a 60 kg forager unloaded on soil, the integer rule gives 125 cm a second and 222 kcal an hour on the flat, 88 cm a second and 340 kcal an hour up a 10% slope, and 125 cm a second and 165 kcal an hour down one. A kilometre costs about 49 kcal on the flat, 107 up a 10% slope and 37 down it.
+
+The land is rich: as dense by the hectare as Life 9.7's valley, it grows about 164 million kcal a year, enough for about 180 people, against a band of 8. Real Mesolithic densities were far lower, about 0.1 to 1 person a square kilometre, because of winter, which this land does not yet have. Seasons, at step 12, bring the hungry months.
+
 ## What realistic numbers imply
 
 These are worked out from the proposals above, not from runs.
@@ -199,3 +227,11 @@ Later on 2026-10-19, after every forager starved in the implemented Life 9.6, th
 33. Traditional hand harvesting of hazelnuts, 4.5 to 5.3 kg an hour: https://journals.tubitak.gov.tr/agriculture/vol40/iss3/1; manual collection from the ground, 6 to 8 kg an hour: https://fsantos.utad.pt/Bibliografia/04TarragPap0615.pdf
 34. Perch biomass 16.1 to 44.2 kg a hectare over 20 years in a Finnish humic lake: https://jukuri.luke.fi/bitstreams/436ea40c-cadf-40f5-a5eb-b4d71634d13f/download; a whole fish community about 537 kg a hectare in a Polish reservoir: https://czasopisma.pan.pl/Content/89902
 35. Sodus Bay creel survey: anglers after yellow perch caught 4.4 to 7.1 perch an hour. https://extapps.dec.ny.gov/docs/fish_marine_pdf/sbaycreel.pdf
+36. Old and Young Drift: the area of the last glaciation is recognisable by its irregular relief and numerous lakes, with end moraines, kames, till plains and meltwater valleys. https://en.wikipedia.org/wiki/Old_and_Young_Drift
+37. 39,712 topographic depressions mapped in Schleswig-Holstein, 63.88% of them 0.01 km² or less, mainly in young moraine landscapes. *E&G Quaternary Science Journal*, 65, 24 (2016). https://egqsj.copernicus.org/articles/65/24/2016/egqsj-65-24-2016.pdf
+38. Ukleisee, a Weichselian kettle lake in Ostholstein, 17.0 m deep at most and 7.5 m on average. https://en.wikipedia.org/wiki/Ukleisee
+39. Soule, R. G., and Goldman, R. F. (1972). Terrain coefficients for energy cost prediction. *Journal of Applied Physiology*, 32(5), 706–708. Reviewed in: Terrain factors for predicting walking and load carriage energy costs: review and refinement. https://jhp-ojs-tamucc.tdl.org/jhp/article/view/67
+40. Tobler, W. (1993). *Three presentations on geographical analysis and modeling*. NCGIA Technical Report 93-1. Summarised in the movecost documentation: https://www.rdocumentation.org/packages/movecost/versions/3.0.0/topics/mc_cost_functions
+41. Santee, W. R., Allison, W. F., Blanchard, L. A., and Small, M. G. (2001). A proposed model for load carriage on sloped terrain. *Aviation, Space, and Environmental Medicine*, 72(6), 562–566. Its correction is summarised at https://en.wikipedia.org/wiki/Pandolf_equation
+42. Minetti, A. E., et al. (2002). Energy cost of walking and running at extreme uphill and downhill slopes. *Journal of Applied Physiology*, 93(3), 1039–1046.
+43. Naismith's rule: an hour for every three miles, and an hour more for every 2,000 feet of ascent (1892). https://en.wikipedia.org/wiki/Naismith%27s_rule

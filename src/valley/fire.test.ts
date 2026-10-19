@@ -1,3 +1,4 @@
+import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
 import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
 import { feedAmount, nightHoursLeft } from './fire'
@@ -16,7 +17,7 @@ const EIGHT_PM = 20 * 60
  * so both stay balanced.
  */
 function together(minute: number, fireWood: number, wood = 0, overrides: Partial<ValleyConfig> = {}) {
-  const state = cloneValley(createValley({ scattered: false, ...overrides }))
+  const state = cloneValley(createValley({ ...FLAT_LAND, scattered: false, ...overrides }))
   state.minute = minute
   state.groups[0]!.fireWood = fireWood
   state.groups[0]!.given = state.groups[0]!.given.map((given, slot) => (slot === 1 ? fireWood : given))
@@ -54,7 +55,7 @@ describe('a shared fire', () => {
   })
 
   it('saves wood: 12 kg a night for the whole group, 1.5 kg a member in a group of 8', () => {
-    const theory = valleyTheory(createValley().config)
+    const theory = valleyTheory(createValley(FLAT_LAND).config)
     expect(theory.campfireNightWood).toBe(12)
     expect(theory.campfireWoodPerMember(8)).toBe(1.5)
     expect(theory.campfireGatherHoursPerDay(3, 24)).toBeCloseTo(1 / 6, 10)
@@ -76,7 +77,7 @@ describe('warmth', () => {
   })
 
   it('leaves a forager without a group to tend its own fire', () => {
-    const state = cloneValley(createValley())
+    const state = cloneValley(createValley(FLAT_LAND))
     state.minute = EIGHT_PM
     state.foragers[0]!.wood = 5
     state.totals.initialWood += 5
@@ -86,7 +87,7 @@ describe('warmth', () => {
 })
 
 describe('feeding', () => {
-  const config = createValley().config
+  const config = createValley(FLAT_LAND).config
 
   it('counts the night hours left: a whole night by day, those after the current hour at night', () => {
     expect(nightHoursLeft(config, TEN_AM)).toBe(12)
