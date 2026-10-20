@@ -3,8 +3,10 @@ import type { Point, ValleyConfig } from './types'
 
 /**
  * The canonical Life 10 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
- * fall of up to 30 m with hummocks and kettle hollows, falling to a lake of 150 hectares along its north edge. Its
- * ground is soil, sand, rock or wet, and each plant grows on the ground that suits it: 800 thickets of 60 berry
+ * fall of up to 30 m with broken moraine fronts, drumlins, kames, clustered hummocks, kettle hollows and tunnel
+ * valleys, falling to a lake of 150 hectares along
+ * its north edge. Its grassland surface is grass, dirt or stone, and each plant grows on suitable ground: 800
+ * thickets of 60 berry
  * bushes, 800 hazel thickets of 40 hazels, 300 stands of 12 trees and 100 outcrops of stones, as dense as Life 9.7's
  * valley. A band of 8 born with foraging skills from 75% to 125% starts scattered over the middle 800 m. Slopes slow
  * walking by Tobler's hiking function and cost energy by the Pandolf equation's grade term; the ground sets its
@@ -16,18 +18,59 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   valleySizeCm: 400_000,
   terrainCellCm: 500,
   chunkCm: 20_000,
-  reliefCm: 3_000,
-  reliefWavelengthCm: 160_000,
-  hummockCm: 800,
-  hummockWavelengthCm: 20_000,
-  kettleCount: 80,
-  kettleMinRadiusCm: 2_000,
-  kettleMaxRadiusCm: 6_000,
+  reliefCm: 3_500,
+  reliefWavelengthCm: 120_000,
+  iceFlowControlCm: 100_000,
+  iceFlowTurnSteps: 2,
+  moraineBeltCount: 3,
+  moraineMinHalfWidthCm: 5_000,
+  moraineMaxHalfWidthCm: 18_000,
+  moraineMinHeightCm: 800,
+  moraineMaxHeightCm: 2_200,
+  moraineMinControlCm: 15_000,
+  moraineMaxControlCm: 30_000,
+  drumlinCount: 56,
+  drumlinMinLengthCm: 20_000,
+  drumlinMaxLengthCm: 70_000,
+  drumlinMinWidthCm: 5_000,
+  drumlinMaxWidthCm: 18_000,
+  drumlinMinHeightCm: 500,
+  drumlinMaxHeightCm: 1_800,
+  drumlinMinAspectPerMille: 3_000,
+  kameCount: 18,
+  kameMinRadiusCm: 4_000,
+  kameMaxRadiusCm: 12_000,
+  kameMinHeightCm: 500,
+  kameMaxHeightCm: 1_500,
+  hummockClusterCount: 4,
+  hummockCount: 240,
+  hummockMinWidthCm: 1_500,
+  hummockMaxWidthCm: 5_000,
+  hummockMinHeightCm: 200,
+  hummockMaxHeightCm: 700,
+  smallKettleCount: 64,
+  largeKettleCount: 12,
+  smallKettleMinRadiusCm: 1_500,
+  smallKettleMaxRadiusCm: 5_500,
+  largeKettleMinRadiusCm: 6_000,
+  largeKettleMaxRadiusCm: 20_000,
   kettleDepthPerMille: 125,
+  kettleMaxDepthCm: 1_200,
+  tunnelValleyCount: 2,
+  tunnelValleyMinWidthCm: 12_000,
+  tunnelValleyMaxWidthCm: 35_000,
+  tunnelValleyMinDepthCm: 600,
+  tunnelValleyMaxDepthCm: 2_000,
+  tunnelValleyMinControlCm: 20_000,
+  tunnelValleyMaxControlCm: 40_000,
+  microCoarseWavelengthCm: 6_000,
+  microCoarseAmplitudeCm: 250,
+  microFineWavelengthCm: 1_500,
+  microFineAmplitudeCm: 70,
   shoreRampCm: 40_000,
-  shoreWetCm: 2_000,
-  sandBelowCm: 750,
-  rockSlopePercent: 20,
+  dirtSlopePercent: 10,
+  stoneSlopePercent: 30,
+  dirtCurvatureCm: 40,
   eyeHeightCm: 160,
   sightStepCm: 3_000,
   startAreaCm: 80_000,
@@ -83,10 +126,9 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   gatherKcalPerHour: 250,
   chopKcalPerHour: 360,
   makeKcalPerHour: 150,
-  soilTerrainPercent: 120,
-  sandTerrainPercent: 150,
-  rockTerrainPercent: 150,
-  wetTerrainPercent: 180,
+  grassTerrainPercent: 120,
+  dirtTerrainPercent: 120,
+  stoneTerrainPercent: 150,
   climbSecondsPerMetre: 6,
   loadSlowdownPerMille: 75,
   reserveMaxKcal: 70_000,
@@ -138,8 +180,8 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
 }
 
 /**
- * A flat land the size of Life 9.7's valley, 800 m square with its sites and lake, all soil but for the wet shore: no
- * relief, no hummocks, no kettles and no sand. Tests of rules that do not need the terrain run on it.
+ * A flat grassy land the size of Life 9.7's valley, 800 m square with its sites and lake: no relief or landforms.
+ * Tests of rules that do not need the terrain run on it.
  */
 export const FLAT_LAND: Partial<ValleyConfig> = {
   valleySizeCm: 80_000,
@@ -149,9 +191,16 @@ export const FLAT_LAND: Partial<ValleyConfig> = {
   outcropCount: 4,
   lakeHectares: 30,
   reliefCm: 0,
-  hummockCm: 0,
-  kettleCount: 0,
-  sandBelowCm: 0,
+  moraineBeltCount: 0,
+  drumlinCount: 0,
+  kameCount: 0,
+  hummockClusterCount: 0,
+  hummockCount: 0,
+  smallKettleCount: 0,
+  largeKettleCount: 0,
+  tunnelValleyCount: 0,
+  microCoarseAmplitudeCm: 0,
+  microFineAmplitudeCm: 0,
   startAreaCm: 80_000,
   reliefWavelengthCm: 80_000,
 }
@@ -275,8 +324,41 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'terrainCellCm',
     'chunkCm',
     'reliefWavelengthCm',
-    'hummockWavelengthCm',
-    'kettleMinRadiusCm',
+    'iceFlowControlCm',
+    'moraineMinHalfWidthCm',
+    'moraineMaxHalfWidthCm',
+    'moraineMinHeightCm',
+    'moraineMaxHeightCm',
+    'moraineMinControlCm',
+    'moraineMaxControlCm',
+    'drumlinMinLengthCm',
+    'drumlinMaxLengthCm',
+    'drumlinMinWidthCm',
+    'drumlinMaxWidthCm',
+    'drumlinMinHeightCm',
+    'drumlinMaxHeightCm',
+    'drumlinMinAspectPerMille',
+    'kameMinRadiusCm',
+    'kameMaxRadiusCm',
+    'kameMinHeightCm',
+    'kameMaxHeightCm',
+    'hummockMinWidthCm',
+    'hummockMaxWidthCm',
+    'hummockMinHeightCm',
+    'hummockMaxHeightCm',
+    'smallKettleMinRadiusCm',
+    'smallKettleMaxRadiusCm',
+    'largeKettleMinRadiusCm',
+    'largeKettleMaxRadiusCm',
+    'kettleMaxDepthCm',
+    'tunnelValleyMinWidthCm',
+    'tunnelValleyMaxWidthCm',
+    'tunnelValleyMinDepthCm',
+    'tunnelValleyMaxDepthCm',
+    'tunnelValleyMinControlCm',
+    'tunnelValleyMaxControlCm',
+    'microCoarseWavelengthCm',
+    'microFineWavelengthCm',
     'shoreRampCm',
     'eyeHeightCm',
     'sightStepCm',
@@ -309,12 +391,21 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'axeWood',
     'loadSlowdownPerMille',
     'reliefCm',
-    'hummockCm',
-    'kettleCount',
+    'iceFlowTurnSteps',
+    'moraineBeltCount',
+    'drumlinCount',
+    'kameCount',
+    'hummockClusterCount',
+    'hummockCount',
+    'smallKettleCount',
+    'largeKettleCount',
+    'tunnelValleyCount',
+    'microCoarseAmplitudeCm',
+    'microFineAmplitudeCm',
     'kettleDepthPerMille',
-    'shoreWetCm',
-    'sandBelowCm',
-    'rockSlopePercent',
+    'dirtSlopePercent',
+    'stoneSlopePercent',
+    'dirtCurvatureCm',
     'climbSecondsPerMetre',
   ]
   for (const key of notNegative) if ((config[key] as number) < 0) errors.push(`${key} must not be negative`)
@@ -354,22 +445,55 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   // Every task costs more than resting; an axe costs the extra energy of making instead of resting.
   for (const key of ['pickKcalPerHour', 'gatherKcalPerHour', 'chopKcalPerHour', 'makeKcalPerHour'] as const)
     if (config[key] <= config.restKcalPerHour) errors.push(`${key} must be more than restKcalPerHour`)
-  for (const key of ['soilTerrainPercent', 'sandTerrainPercent', 'rockTerrainPercent', 'wetTerrainPercent'] as const)
+  for (const key of ['grassTerrainPercent', 'dirtTerrainPercent', 'stoneTerrainPercent'] as const)
     if (config[key] < 100) errors.push(`${key} must be at least 100`)
   if (config.valleySizeCm % config.terrainCellCm !== 0)
     errors.push('The land must be a whole number of terrain cells: valleySizeCm divisible by terrainCellCm')
-  for (const key of ['reliefWavelengthCm', 'hummockWavelengthCm'] as const)
+  for (const key of [
+    'reliefWavelengthCm',
+    'iceFlowControlCm',
+    'microCoarseWavelengthCm',
+    'microFineWavelengthCm',
+  ] as const)
     if (config[key] % config.terrainCellCm !== 0) errors.push(`${key} must be a whole number of terrain cells`)
-  if (config.kettleMinRadiusCm > config.kettleMaxRadiusCm)
-    errors.push('kettleMinRadiusCm must not exceed kettleMaxRadiusCm')
+  for (const [min, max] of [
+    ['moraineMinHalfWidthCm', 'moraineMaxHalfWidthCm'],
+    ['moraineMinHeightCm', 'moraineMaxHeightCm'],
+    ['moraineMinControlCm', 'moraineMaxControlCm'],
+    ['drumlinMinLengthCm', 'drumlinMaxLengthCm'],
+    ['drumlinMinWidthCm', 'drumlinMaxWidthCm'],
+    ['drumlinMinHeightCm', 'drumlinMaxHeightCm'],
+    ['kameMinRadiusCm', 'kameMaxRadiusCm'],
+    ['kameMinHeightCm', 'kameMaxHeightCm'],
+    ['hummockMinWidthCm', 'hummockMaxWidthCm'],
+    ['hummockMinHeightCm', 'hummockMaxHeightCm'],
+    ['smallKettleMinRadiusCm', 'smallKettleMaxRadiusCm'],
+    ['largeKettleMinRadiusCm', 'largeKettleMaxRadiusCm'],
+    ['tunnelValleyMinWidthCm', 'tunnelValleyMaxWidthCm'],
+    ['tunnelValleyMinDepthCm', 'tunnelValleyMaxDepthCm'],
+    ['tunnelValleyMinControlCm', 'tunnelValleyMaxControlCm'],
+  ] as const)
+    if (config[min] > config[max]) errors.push(`${min} must not exceed ${max}`)
+  if (config.iceFlowTurnSteps > 4) errors.push('iceFlowTurnSteps must be at most 4')
+  if (config.drumlinMinAspectPerMille < 1_000) errors.push('drumlinMinAspectPerMille must be at least 1,000')
   if (config.kettleDepthPerMille > 1_000) errors.push('kettleDepthPerMille must be at most 1,000')
+  if (config.dirtSlopePercent > config.stoneSlopePercent)
+    errors.push('dirtSlopePercent must not exceed stoneSlopePercent')
   if (config.shoreRampCm > config.valleySizeCm) errors.push('shoreRampCm must not exceed the land’s width')
   if (config.sightStepCm > config.placeCm) errors.push('sightStepCm must not exceed placeCm')
   if (config.startAreaCm > config.valleySizeCm) errors.push('startAreaCm must not exceed the land’s width')
   // Heights times the lattice's interpolation weights must stay exact integers.
-  if ((config.reliefCm + config.hummockCm) * Math.max(config.shoreRampCm, config.terrainCellCm ** 2) > 2 ** 52)
+  const highestTerrain =
+    config.reliefCm +
+    config.moraineMaxHeightCm +
+    config.drumlinMaxHeightCm +
+    config.kameMaxHeightCm +
+    config.hummockMaxHeightCm +
+    config.microCoarseAmplitudeCm +
+    config.microFineAmplitudeCm
+  if (highestTerrain * Math.max(config.shoreRampCm, config.terrainCellCm ** 2) > 2 ** 52)
     errors.push('The terrain is too high to be computed exactly')
-  if ((config.reliefCm + config.hummockCm) * (config.reliefWavelengthCm / config.terrainCellCm) ** 3 > 2 ** 52)
+  if (config.reliefCm * (config.reliefWavelengthCm / config.terrainCellCm) ** 3 > 2 ** 52)
     errors.push('The broad relief is too high or too long to be computed exactly')
   const logSpeed =
     (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * config.logKg)) /

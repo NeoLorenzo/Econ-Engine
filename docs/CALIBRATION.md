@@ -149,22 +149,25 @@ Added in Life 10, which merges the roadmap's scale and terrain steps. The valley
 | `valleySizeCm` | 400,000: 4 km square, 1,600 hectares | A few kilometres across, as the roadmap asks | Choice |
 | Site counts | 800 berry thickets, 800 hazel thickets, 300 stands, 100 outcrops | 25 times Life 9.7's, as dense by the hectare | Derived |
 | `lakeHectares` | 150, along the whole north edge, 4 km by 375 m | | Choice, until water arrives at step 11 |
-| `reliefCm`, `reliefWavelengthCm` | 3,000 over 160,000: a rise and fall of up to 30 m, its hills 1.6 km apart | Young moraine country has irregular relief of end moraines, kames, till plains and meltwater valleys, with numerous lakes [36]; Denmark's highest point is 171 m | Estimate; a measured relief for a 4 km square of young moraine is needed |
-| `hummockCm`, `hummockWavelengthCm` | 800 over 20,000: hummocks up to 8 m high, 200 m apart | Hummocky dead-ice moraine of knobs and kettles [36] | Estimate |
-| `kettleCount`, `kettleMinRadiusCm`, `kettleMaxRadiusCm` | 80 kettles, 20 m to 60 m in radius, 0.1 ha to 1.1 ha | 39,712 depressions mapped in Schleswig-Holstein, about 2.5 a km², 64% of them 1 ha or less, mainly in young moraine [37] | Derived |
-| `kettleDepthPerMille` | 125: an eighth of the radius, 2.5 m to 7.5 m | The kettle lake Ukleisee averages 7.5 m deep [38] | Estimate |
-| `shoreRampCm`, `shoreWetCm` | 40,000 and 2,000: the land rises over 400 m from the lake, and its first 20 m are wet | Lakes in young moraine are fringed by fen | Estimate |
-| `sandBelowCm` | 750: sand where the broad relief is lowest | Meltwater laid sand in low ground, as outwash plains | Estimate |
-| `rockSlopePercent` | 20 | Fine soil washes off steep slopes, leaving stones | Estimate |
-| `soilTerrainPercent`, `wetTerrainPercent` | 120, 180 | Pandolf terrain factors: light brush 1.2, swampy bog 1.8 [39] | Measured |
-| `sandTerrainPercent`, `rockTerrainPercent` | 150, 150 | Heavy brush 1.5, loose sand 2.1 [39]; woodland sand and stony ground lie between firm ground and loose sand | Estimate |
+| `reliefCm`, `reliefWavelengthCm` | 3,500 over 120,000: broad relief up to 35 m, varying over 1.2 km | Young moraine country has irregular relief of end moraines, kames, till plains and meltwater valleys, with numerous lakes [36]; Denmark's highest point is 171 m | Estimate; the planned DHM/Terræn comparison will test it |
+| Ice flow and moraine belts | A 1 km direction lattice; 3 broken belts, half-width 50 m to 180 m and height 8 m to 22 m | End moraines form long, irregular fronts transverse to ice movement [36, 44] | Structure from mapped geology; dimensions are estimates |
+| Drumlins and kames | 56 drumlins 200 m to 700 m long, 5 m to 18 m high and at least 3:1, the first 12 in an offset central train; 18 irregular kames 40 m to 120 m in radius and 5 m to 15 m high | Streamlined subglacial hills align with ice flow; kames interrupt dead-ice terrain [44, 45] | Form from literature; counts and ranges are estimates |
+| Dead-ice hummocks | 4 clusters containing 240 hummocks, 15 m to 50 m wide and 2 m to 7 m high | Hummocky moraine forms clustered knobs and kettles rather than uniform noise [36, 45] | Upper tail widened for legibility at the 5 m lattice |
+| Small and large kettles | 64 at 15 m to 55 m radius and 12 at 60 m to 200 m | 39,712 depressions mapped in Schleswig-Holstein, about 2.5 a km², 64% of them 1 ha or less, mainly in young moraine [37] | Mixed sizes correct the earlier all-small distribution; counts are estimates |
+| Kettle depth | One eighth of radius, capped at 12 m | The kettle lake Ukleisee averages 7.5 m deep [38] | Estimate |
+| Tunnel valleys | 2 broad dry valleys, 120 m to 350 m wide and 6 m to 20 m deep | Meltwater valleys are a characteristic large-scale element of the assemblage [36, 44] | Count and dimensions are estimates; water waits for Step 11 |
+| Microrelief | Linearly interpolated 60 m / 2.5 m and 15 m / 0.7 m noise scales | Realistic terrain retains structure at several spatial scales rather than one smooth octave [46, 47] | Visual and structural choice, to be tested against DHM/Terræn [48] |
+| `shoreRampCm` | 40,000: the land rises over 400 m from the lake | The lake remains at the low edge until water arrives at step 11 | Estimate |
+| `dirtSlopePercent`, `stoneSlopePercent`, `dirtCurvatureCm` | 10, 30 and 40 cm | Fine soil is exposed on disturbed slopes and sharp local breaks; stone is rare | Estimate |
+| `grassTerrainPercent`, `dirtTerrainPercent` | 120, 120 | Pandolf terrain factor for light brush is 1.2 [39] | Grass measured as light brush; dirt held equal until evidence supports a difference |
+| `stoneTerrainPercent` | 150 | Pandolf's heavy-brush factor is 1.5 [39]; rough stony ground lies between firm ground and loose sand | Estimate |
 | Speed on slopes | Speed on the flat times `exp(−3.5 · |G / 100 + 0.05|) / exp(−0.175)`, as a table of thousandths | Tobler's hiking function: 5 km an hour on the flat, fastest, 6 km an hour, on a 5% descent [40] | Measured |
 | Energy on slopes | Pandolf's grade term `η (W + L) · 0.35 V G` watts [10], less Santee's correction on descents | Santee's correction for downhill walking [41]; walking costs least at about −10% [42] | Measured |
 | `climbSecondsPerMetre` | 6 | Naismith's rule: an hour for every 5 km, and an hour more for every 600 m climbed [43] | Measured, a rule of thumb |
 | `eyeHeightCm`, `sightStepCm` | 160, 3,000 | The eye of an adult standing; the step resolves hills 200 m apart | Measured; the step is a choice |
 | `startAreaCm` | 80,000: starts within the middle 800 m | The size of Life 9.7's valley, so the band still meets | Choice |
 
-For a 60 kg forager unloaded on soil, the integer rule gives 125 cm a second and 222 kcal an hour on the flat, 88 cm a second and 340 kcal an hour up a 10% slope, and 125 cm a second and 165 kcal an hour down one. A kilometre costs about 49 kcal on the flat, 107 up a 10% slope and 37 down it.
+For a 60 kg forager unloaded on grass, the integer rule gives 125 cm a second and 222 kcal an hour on the flat, 88 cm a second and 340 kcal an hour up a 10% slope, and 125 cm a second and 165 kcal an hour down one. A kilometre costs about 49 kcal on the flat, 107 up a 10% slope and 37 down it.
 
 The land is rich: as dense by the hectare as Life 9.7's valley, it grows about 164 million kcal a year, enough for about 180 people, against a band of 8. Real Mesolithic densities were far lower, about 0.1 to 1 person a square kilometre, because of winter, which this land does not yet have. Seasons, at step 12, bring the hungry months.
 
@@ -235,3 +238,8 @@ Later on 2026-10-19, after every forager starved in the implemented Life 9.6, th
 41. Santee, W. R., Allison, W. F., Blanchard, L. A., and Small, M. G. (2001). A proposed model for load carriage on sloped terrain. *Aviation, Space, and Environmental Medicine*, 72(6), 562–566. Its correction is summarised at https://en.wikipedia.org/wiki/Pandolf_equation
 42. Minetti, A. E., et al. (2002). Energy cost of walking and running at extreme uphill and downhill slopes. *Journal of Applied Physiology*, 93(3), 1039–1046.
 43. Naismith's rule: an hour for every three miles, and an hour more for every 2,000 feet of ascent (1892). https://en.wikipedia.org/wiki/Naismith%27s_rule
+44. Pedersen, S. A. S., Rasmussen, L. A., and Fredericia, J. (2015). *Geological map of Denmark 1:50,000, Sakskøbing 1411 I and 1412 II Syd*. GEUS Map Series 6. https://eng.geus.dk/media/13287/map6_p01-42.pdf
+45. Möller, P. (2010). Melt-out till and ribbed moraine formation, a case study from south Sweden. *Sedimentary Geology*, 232(3–4), 161–180. https://doi.org/10.1016/j.sedgeo.2009.11.003
+46. SideFX. *HeightField Erode 2.0*: terrain structure from interacting erosion, deposition and material layers at multiple scales. https://www.sidefx.com/docs/houdini/heightfields_cop/erosion.html
+47. Cordonnier, G., et al. (2016). Large scale terrain generation from tectonic uplift and fluvial erosion. *Computer Graphics Forum*, 35(2), 165–175. https://onlinelibrary.wiley.com/doi/10.1111/cgf.12820
+48. Klimadatastyrelsen. *Danmarks Højdemodel – Terræn (DHM/Terræn)*, nationwide bare-earth elevation data from airborne LiDAR. https://dataforsyningen.dk/data?filter=99%3Btag-103&view=gallery

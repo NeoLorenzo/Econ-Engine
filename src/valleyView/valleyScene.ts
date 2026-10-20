@@ -13,8 +13,8 @@ import { LAKE_ID } from '../valley/food'
 import { isDaylight } from '../valley/forager'
 import { siteCount } from '../valley/sites'
 import { livingMembers, placesPerSide } from '../valley/social'
-import { heightAt } from '../valley/terrain'
 import { TiledInstances } from './tiledInstances'
+import { groundSurface, surfaceHeightAt, type GroundSurface } from './groundSurface'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
 import { hex, palette } from '../ui/theme'
@@ -65,14 +65,14 @@ type Three = typeof import('three')
 const NIGHT_SKY = 0x070a12
 const DAY_SKY = 0x7fa6b8
 const OUTSIDE = 0x2c4a30
-/** The ground's colours: soil, sand, rock and wet ground, by ground code. */
-const GROUND_COLOURS = [0x3f6b3a, 0x9a9468, 0x85827a, 0x2c4632]
+/** The grassland's surface colours: grass, dirt and stone, by ground code. */
+const GROUND_COLOURS = [0x4f7a42, 0x785b3b, 0x85827a]
 /** Bushes and hazels are drawn in square tiles this wide, and only those near the camera. */
 const PLANT_TILE_M = 400
 /** Bushes and hazels are drawn within this many metres of the camera's target, more when it is further away. */
 const PLANT_DRAW_M = 500
-/** The ground is drawn with at most this many squares along each side. */
-const GROUND_SQUARES = 400
+/** The canonical 4 km land is drawn at its full 5 m terrain lattice, so its 15-60 m relief is not averaged away. */
+const GROUND_SQUARES = 800
 const LEAF = 0x2f7a3c
 const BERRY = 0xc8243f
 const HAZEL_LEAF = 0x4c8a35
@@ -288,45 +288,67 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   scene.add(world)
   let config: ValleyState['config'] | null = null
   let layout: ValleyState['layout'] | null = null
+  let surface: GroundSurface | null = null
   const at = (x: number, y: number) => toMetres(config!, x, y)
   /** The ground's height in metres under a point of the scene given in metres. */
   const groundY = (x: number, z: number) =>
-    layout
-      ? heightAt(
-          layout.terrain,
-          Math.round(x * 100 + config!.valleySizeCm / 2),
-          Math.round(z * 100 + config!.valleySizeCm / 2),
-        ) / 100
-      : 0
+    surface ? surfaceHeightAt(surface, x * 100 + config!.valleySizeCm / 2, z * 100 + config!.valleySizeCm / 2) / 100 : 0
+
+  /** Highest visible ground under a round footprint, used by upright objects that must not cut into a slope. */
+  const contactY = (x: number, z: number, radius = 0) => {
+    if (radius <= 0) return groundY(x, z)
+    let highest = groundY(x, z)
+    for (let index = 0; index < 8; index += 1) {
+      const angle = (index * Math.PI) / 4
+      highest = Math.max(highest, groundY(x + Math.cos(angle) * radius, z + Math.sin(angle) * radius))
+    }
+    return highest
+  }
 
   /**
    * The ground as a mesh: the height field sampled at most `GROUND_SQUARES` times along each side, each vertex
    * coloured by the ground of its cell, with a little shading by height so the hills read from above.
    */
-  function terrainMeshGeometry(state: ValleyState) {
-    const { terrain, ground } = state.layout
-    const { cells, cellCm, height } = terrain
-    const stride = Math.max(1, Math.ceil(cells / GROUND_SQUARES))
-    const columns: number[] = []
-    for (let i = 0; i < cells; i += stride) columns.push(i)
-    columns.push(cells)
-    const along = columns.length
-    const points = cells + 1
+  function terrainMeshGeometry(state: ValleyState, sampled: GroundSurface) {
+    const { ground } = state.layout
+    const { cells, cellCm, columns, along, heights } = sampled
     const half = state.config.valleySizeCm / 200
     const positions = new Float32Array(along * along * 3)
     const colours = new Float32Array(along * along * 3)
     const colour = new THREE.Color()
     let highest = 1
-    for (const h of height) highest = Math.max(highest, h)
+    for (const h of heights) highest = Math.max(highest, h)
     for (const [row, j] of columns.entries())
       for (const [column, i] of columns.entries()) {
         const vertex = row * along + column
         positions[vertex * 3] = (i * cellCm) / 100 - half
-        positions[vertex * 3 + 1] = height[j * points + i]! / 100
+        positions[vertex * 3 + 1] = heights[vertex]! / 100
         positions[vertex * 3 + 2] = (j * cellCm) / 100 - half
-        const kind = ground[Math.min(cells - 1, j) * cells + Math.min(cells - 1, i)]!
-        colour.setHex(GROUND_COLOURS[kind]!)
-        colour.multiplyScalar(0.7 + (0.6 * height[j * points + i]!) / highest)
+        // A ground cell is still exactly grass, dirt or stone in the simulation. For display, blend the nearby cells
+        // at shared vertices so threshold boundaries read as soil transitions rather than saw teeth in the decimated
+        // mesh.
+        let red = 0
+        let green = 0
+        let blue = 0
+        let samples = 0
+        for (let dj = -2; dj <= 2; dj += 1)
+          for (let di = -2; di <= 2; di += 1) {
+            const sampleI = Math.max(0, Math.min(cells - 1, i + di))
+            const sampleJ = Math.max(0, Math.min(cells - 1, j + dj))
+            colour.setHex(GROUND_COLOURS[ground[sampleJ * cells + sampleI]!]!)
+            red += colour.r
+            green += colour.g
+            blue += colour.b
+            samples += 1
+          }
+        colour.setRGB(red / samples, green / samples, blue / samples)
+        // Natural ground is never a single flat swatch. Two broad, low-contrast waves vary the albedo without moving
+        // the surface or painting arbitrary biome patches; the real mesh normals and the sun still carry the relief.
+        const xMetres = positions[vertex * 3]!
+        const zMetres = positions[vertex * 3 + 2]!
+        const grain =
+          0.96 + 0.025 * Math.sin(xMetres / 29 + zMetres / 43) + 0.015 * Math.sin(xMetres / 11 - zMetres / 17)
+        colour.multiplyScalar((0.7 + (0.6 * heights[vertex]!) / highest) * grain)
         colours[vertex * 3] = colour.r
         colours[vertex * 3 + 1] = colour.g
         colours[vertex * 3 + 2] = colour.b
@@ -342,6 +364,22 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
     geometry.setIndex(indices)
     geometry.computeVertexNormals()
+    // Fine turf and stony texture belongs to lighting only. The mesh positions—and therefore every contact query—stay
+    // on the sampled simulation surface, while a small deterministic normal perturbation keeps close views from
+    // looking computer-smooth.
+    const normals = geometry.getAttribute('normal')
+    for (let vertex = 0; vertex < normals.count; vertex += 1) {
+      const x = positions[vertex * 3]!
+      const z = positions[vertex * 3 + 2]!
+      const grainX = Math.sin(x * 0.73 + z * 1.91) * 0.09
+      const grainZ = Math.sin(x * 1.37 - z * 0.61) * 0.09
+      const nx = normals.getX(vertex) + grainX
+      const ny = Math.max(0.15, normals.getY(vertex))
+      const nz = normals.getZ(vertex) + grainZ
+      const length = Math.hypot(nx, ny, nz)
+      normals.setXYZ(vertex, nx / length, ny / length, nz / length)
+    }
+    normals.needsUpdate = true
     return geometry
   }
 
@@ -433,6 +471,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const yAxis = new THREE.Vector3(0, 1, 0)
   const fallAlong = new THREE.Vector3()
   const fallAcross = new THREE.Vector3()
+  const fallNormal = new THREE.Vector3()
 
   let ground: Mesh | null = null
   let outside: Mesh | null = null
@@ -466,7 +505,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
   const accentRing = (opacity: number) => {
     const ring = new THREE.Mesh(
-      ringGeometry,
+      ringGeometry.clone(),
       new THREE.MeshBasicMaterial({ color: hex(palette.accent), transparent: true, opacity, depthWrite: false }),
     )
     ring.rotation.x = -Math.PI / 2
@@ -476,7 +515,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const followRing = accentRing(0.95)
   const targetRing = accentRing(0.85)
   const selectRing = new THREE.Mesh(
-    ringGeometry,
+    ringGeometry.clone(),
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }),
   )
   selectRing.rotation.x = -Math.PI / 2
@@ -496,13 +535,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const circleGeometry = new THREE.BufferGeometry()
   circleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(circle, 3))
   const perception: LineLoop = new THREE.LineLoop(
-    circleGeometry,
+    circleGeometry.clone(),
     new THREE.LineBasicMaterial({ color: hex(palette.accent), transparent: true, opacity: 0.6 }),
   )
   scene.add(perception)
   // Its long sight, drawn only when it does not reach across the whole valley.
   const sight: LineLoop = new THREE.LineLoop(
-    circleGeometry,
+    circleGeometry.clone(),
     new THREE.LineBasicMaterial({ color: hex(palette.accent), transparent: true, opacity: 0.3 }),
   )
   scene.add(sight)
@@ -517,7 +556,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function memberRingAt(index: number) {
     while (memberRings.length <= index) {
       const ring = new THREE.Mesh(
-        ringGeometry,
+        ringGeometry.clone(),
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false }),
       )
       ring.rotation.x = -Math.PI / 2
@@ -534,7 +573,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function memberLineAt(index: number) {
     while (memberLines.length <= index) {
       const geometry = new THREE.BufferGeometry()
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3))
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(0), 3))
       const line = new THREE.Line(
         geometry,
         new THREE.LineBasicMaterial({ transparent: true, opacity: 0.85, depthWrite: false }),
@@ -544,6 +583,92 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       memberLines.push(line)
     }
     return memberLines[index]!
+  }
+
+  /** Drape a circular line over the visible terrain instead of holding it flat at its centre's height. */
+  function drapeLoop(loop: LineLoop, x: number, z: number, radius: number, clearance = 0.08) {
+    const positions = loop.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+    for (let index = 0; index < positions.count; index += 1) {
+      const angle = (index / positions.count) * Math.PI * 2
+      const px = x + Math.cos(angle) * radius
+      const pz = z + Math.sin(angle) * radius
+      positions.setXYZ(index, px, groundY(px, pz) + clearance, pz)
+    }
+    positions.needsUpdate = true
+    loop.geometry.computeBoundingSphere()
+    loop.position.set(0, 0, 0)
+    loop.scale.setScalar(1)
+  }
+
+  /** Drape a selected-group line over the visible terrain, sampling often enough to follow its relief. */
+  function drapeLine(line: InstanceType<Three['Line']>, from: { x: number; z: number }, to: { x: number; z: number }) {
+    const count = Math.max(2, Math.ceil(Math.hypot(to.x - from.x, to.z - from.z) / 20) + 1)
+    const positions = new Float32Array(count * 3)
+    for (let index = 0; index < count; index += 1) {
+      const t = index / (count - 1)
+      const x = from.x + (to.x - from.x) * t
+      const z = from.z + (to.z - from.z) * t
+      positions[index * 3] = x
+      positions[index * 3 + 1] = groundY(x, z) + 0.08
+      positions[index * 3 + 2] = z
+    }
+    line.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    line.geometry.computeBoundingSphere()
+  }
+
+  /** Shape a filled ground marker to the same visible surface as the land mesh. */
+  function drapeDisc(disc: Mesh, x: number, z: number, radius: number, originY: number, clearance = 0.015) {
+    if (![x, z, radius, originY, clearance].every(Number.isFinite)) {
+      disc.visible = false
+      return
+    }
+    const unit = discGeometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+    const positions = disc.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+    for (let index = 0; index < positions.count; index += 1) {
+      const dx = unit.getX(index) * radius
+      const dz = unit.getZ(index) * radius
+      const height = groundY(x + dx, z + dz)
+      if (!Number.isFinite(height)) {
+        disc.visible = false
+        return
+      }
+      positions.setXYZ(index, dx, height - originY + clearance, dz)
+    }
+    positions.needsUpdate = true
+    disc.geometry.computeVertexNormals()
+    disc.geometry.computeBoundingSphere()
+    disc.scale.setScalar(1)
+  }
+
+  /** Shape a ring marker to the visible ground, preserving its annular width. */
+  function drapeGroundRing(ring: Mesh, x: number, z: number, radius: number, clearance = 0.08) {
+    if (![x, z, radius, clearance].every(Number.isFinite)) {
+      ring.visible = false
+      return
+    }
+    const unit = ringGeometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+    const positions = ring.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
+    const originY = groundY(x, z)
+    if (!Number.isFinite(originY)) {
+      ring.visible = false
+      return
+    }
+    for (let index = 0; index < positions.count; index += 1) {
+      const dx = unit.getX(index) * radius
+      // RingGeometry starts in XY; its former Y is the ground plane's Z after draping.
+      const dz = unit.getY(index) * radius
+      const height = groundY(x + dx, z + dz)
+      if (!Number.isFinite(height)) {
+        ring.visible = false
+        return
+      }
+      positions.setXYZ(index, dx, height - originY + clearance, dz)
+    }
+    positions.needsUpdate = true
+    ring.geometry.computeBoundingSphere()
+    ring.position.set(x, originY, z)
+    ring.rotation.x = 0
+    ring.scale.setScalar(1)
   }
 
   // Pins over a selected group's members: buttons laid over the view, the same size at every zoom, held at the edge of
@@ -718,7 +843,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       group.add(log)
       return log
     })
-    group.position.set(x, groundY(x, z), z)
+    group.position.set(x, contactY(x, z, 1.45), z)
     // The hut's length runs along its local x, which turns to point at the fire.
     if (toward) group.rotation.y = Math.atan2(-toward.z, toward.x)
     hutGroup.add(group)
@@ -757,10 +882,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function makeFlag(id: number, x: number, z: number): Flag {
     const group = new THREE.Group()
     const disc = new THREE.Mesh(
-      discGeometry,
+      discGeometry.clone(),
       new THREE.MeshBasicMaterial({ color: hex(groupColor(id)), transparent: true, opacity: 0.2, depthWrite: false }),
     )
-    disc.position.y = 0.015
     disc.renderOrder = 2
     const badge = new THREE.Sprite(
       new THREE.SpriteMaterial({ map: badgeTexture(id), sizeAttenuation: false, depthTest: false, depthWrite: false }),
@@ -819,7 +943,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       group.add(stone)
     }
     group.traverse((part) => (part.userData.groupId = id))
-    group.position.set(x, groundY(x, z), z)
+    group.position.set(x, contactY(x, z, 1.7), z)
     flagGroup.add(group)
     return { group, cloth, disc, badge, fire, fireFlame, firePile, fireAsh }
   }
@@ -878,7 +1002,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
    */
   function placeHearth(hearth: Hearth, x: number, y: number, toward: { x: number; z: number } | null) {
     const spot = at(x, y)
-    hearth.group.position.set(spot.x, groundY(spot.x, spot.z), spot.z)
+    hearth.group.position.set(spot.x, contactY(spot.x, spot.z, 1.6), spot.z)
     hearth.ring.visible = toward === null
     if (toward) hearth.pile.position.set(-toward.z * 1.5, 0, toward.x * 1.5)
     else hearth.pile.position.set(1.45, 0, 0.3)
@@ -900,6 +1024,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       ;(flag.cloth.material as MeshStandardMaterial).dispose()
       flag.cloth.geometry.dispose()
       ;(flag.disc.material as MeshBasicMaterial).dispose()
+      flag.disc.geometry.dispose()
       flag.badge.material.map?.dispose()
       flag.badge.material.dispose()
       flagGroup.remove(flag.group)
@@ -907,7 +1032,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     flags = []
     for (const hut of hutModels) hutGroup.remove(hut.group)
     hutModels = []
-    for (const ring of siteLoops) world.remove(ring)
+    for (const ring of siteLoops) {
+      ring.geometry.dispose()
+      world.remove(ring)
+    }
     siteLoops = []
     if (knowledge) {
       knowledge.geometry.dispose()
@@ -998,23 +1126,38 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       }
       return
     }
-    // It fell away from its stump in a direction of its own: its length runs along \`along\`, flat on the ground, with
-    // \`up\` still up and \`across\` level beside it.
+    // It fell away from its stump in a direction of its own. Its length follows the rendered ground between its ends;
+    // a small lift by the largest intervening rise keeps the middle from cutting through a convex slope.
     const dx = Math.cos(look.turn)
     const dz = Math.sin(look.turn)
-    fallAlong.set(dx, 0, dz)
-    fallAcross.set(-dz, 0, dx)
     stumps!.setMatrixAt(tree, matrix.makeScale(size * 1.15, 0.4, size * 1.15).setPosition(x, gy - 0.1, z))
     placeDeadwood(tree, x, z, look.turn, size, 0)
     // The trunk lies out from the stump and shortens from its far end as logs are cut from it.
     const length = Math.max(1e-5, TRUNK_HEIGHT * size * shape.trunk)
     const thick = shape.trunk > 0 ? size : 1e-5
+    const start = 0.5
+    const startX = x + dx * start
+    const startZ = z + dz * start
+    const endX = startX + dx * length
+    const endZ = startZ + dz * length
+    const startY = groundY(startX, startZ)
+    const endY = groundY(endX, endZ)
+    let lift = 0
+    for (let sample = 1; sample < 8; sample += 1) {
+      const t = sample / 8
+      const sampleX = startX + dx * length * t
+      const sampleZ = startZ + dz * length * t
+      lift = Math.max(lift, groundY(sampleX, sampleZ) - (startY + (endY - startY) * t))
+    }
+    fallAlong.set(dx * length, endY - startY, dz * length).normalize()
+    fallAcross.set(-dz, 0, dx)
+    fallNormal.crossVectors(fallAcross, fallAlong).normalize()
     trunks!.setMatrixAt(
       tree,
       matrix
-        .makeBasis(fallAcross, fallAlong, yAxis)
+        .makeBasis(fallAcross, fallAlong, fallNormal)
         .scale(scale.set(thick, length, thick))
-        .setPosition(x + dx * 0.5, groundY(x + dx * 0.5, z + dz * 0.5) + 0.24 * size, z + dz * 0.5),
+        .setPosition(startX, startY + lift + 0.24 * size, startZ),
     )
     // The crown lies at the far end, flattened against the ground, shrinking as its branches are gathered.
     for (const [cone, [coneHeight, radius, tall]] of CROWN_CONES.entries()) {
@@ -1023,9 +1166,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       crowns!.setMatrixAt(
         tree * cones + cone,
         matrix
-          .makeBasis(fallAcross, fallAlong, yAxis)
+          .makeBasis(fallAcross, fallAlong, fallNormal)
           .scale(scale.set(r, Math.max(1e-5, tall * size * shape.crown), r * 0.4))
-          .setPosition(x + dx * out, groundY(x + dx * out, z + dz * out) + r * 0.4, z + dz * out),
+          .setPosition(x + dx * out, contactY(x + dx * out, z + dz * out, r) + r * 0.4, z + dz * out),
       )
     }
   }
@@ -1054,17 +1197,18 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   /** Lays a stone spot's stones in a little heap, each shown while it is there. */
   function placeRocks(spot: number, stones: number) {
     const { x, z } = at(layout!.stones.x[spot]!, layout!.stones.y[spot]!)
-    const gy = groundY(x, z)
     const per = config!.stonesPerSpot
     for (let slot = 0; slot < per; slot += 1) {
       const angle = spot * 1.7 + slot * 2.4
       const out = slot === 0 ? 0 : 0.35
+      const sx = x + Math.cos(angle) * out
+      const sz = z + Math.sin(angle) * out
       const size = slot < stones ? 0.8 + ((spot * 7 + slot * 3) % 5) * 0.1 : 1e-5
       quaternion.setFromAxisAngle(yAxis, angle)
       rocks!.setMatrixAt(
         spot * per + slot,
         matrix.compose(
-          position.set(x + Math.cos(angle) * out, gy + 0.12 + (slot === 0 ? 0.1 : 0), z + Math.sin(angle) * out),
+          position.set(sx, groundY(sx, sz) + 0.12 + (slot === 0 ? 0.1 : 0), sz),
           quaternion,
           scale.set(size, size * 0.75, size),
         ),
@@ -1076,13 +1220,15 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     clearWorld()
     config = state.config
     layout = state.layout
+    surface = groundSurface(state.layout.terrain, GROUND_SQUARES)
     const size = state.config.valleySizeCm / 100
-    const terrainGeometry = terrainMeshGeometry(state)
+    const terrainGeometry = terrainMeshGeometry(state, surface)
     ground = new THREE.Mesh(
       terrainGeometry,
       new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false }),
     )
     ground.receiveShadow = true
+    ground.castShadow = true
     outside = new THREE.Mesh(
       new THREE.PlaneGeometry(size * 8, size * 8),
       new THREE.MeshStandardMaterial({ color: OUTSIDE, roughness: 1 }),
@@ -1269,11 +1415,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     controls.target = { x: start.x, z: start.z }
     controls.distance = 60
     controls.yaw = Math.PI / 5
-    controls.pitch = 0.9
-    perception.scale.setScalar(state.config.perceptionRadiusCm / 100)
-    sight.scale.setScalar(state.config.sightRadiusCm / 100)
+    controls.pitch = 0.65
     siteLoops = Array.from({ length: siteCount(state.config) }, () => {
-      const ring = new THREE.LineLoop(circleGeometry, staleSiteMaterial)
+      const ring = new THREE.LineLoop(circleGeometry.clone(), staleSiteMaterial)
       ring.visible = false
       world.add(ring)
       return ring
@@ -1302,7 +1446,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   // The RTS camera: a point on the ground it looks at, a distance, a turn about the vertical and a pitch.
-  const controls = { target: { x: 0, z: 0 }, distance: 60, yaw: Math.PI / 5, pitch: 0.9 }
+  const controls = { target: { x: 0, z: 0 }, distance: 60, yaw: Math.PI / 5, pitch: 0.65 }
   function applyCamera() {
     if (config) {
       const clamped = clampTarget(config, controls.target.x, controls.target.z)
@@ -1406,7 +1550,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     sky.copy(night).lerp(day, light)
     ;(scene.background as InstanceType<Three['Color']>).copy(sky)
     ;(scene.fog as InstanceType<Three['Fog']>).color.copy(sky)
-    hemisphere.intensity = 0.3 + 1.2 * light
+    hemisphere.intensity = 0.25 + 0.65 * light
     moon.intensity = 0.35 * (1 - light)
 
     // Keys pan and turn the camera smoothly, at a pace that follows the zoom.
@@ -1445,7 +1589,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     sun.position.set(target.x + azimuth * span * 1.5, Math.max(0.15, elevation) * span * 2 + 10, target.z + span * 0.6)
     Object.assign(sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: span * 6 })
     sun.shadow.camera.updateProjectionMatrix()
-    sun.intensity = 2.4 * light * Math.max(0.2, elevation)
+    sun.intensity = 3 * light * Math.max(0.25, elevation)
     sun.color.setHSL(0.1, 0.6, 0.6 + 0.35 * Math.max(0, elevation))
 
     // Only plants whose drawn fill changed are redrawn, and only those drawn; one out of view is redrawn when it shows.
@@ -1536,7 +1680,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       flag.group.visible = group.dissolvedMinute === null
       if (!flag.group.visible) continue
       wave(flag.cloth, nowMs, group.id)
-      flag.disc.scale.setScalar(baseRadiusCm(config, group) / 100)
+      drapeDisc(
+        flag.disc,
+        flag.group.position.x,
+        flag.group.position.z,
+        baseRadiusCm(config, group) / 100,
+        flag.group.position.y,
+      )
       // The group's fire: a flame that grows with the nights of wood it holds, wood stacked beside it, ashes when out.
       const fire = campfireAt(pair, group.id)
       flag.fire.visible = fire !== null
@@ -1563,8 +1713,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         const spot = at(ring.x, ring.y)
         loop.visible = true
         loop.material = ring.fresh ? freshSiteMaterial : staleSiteMaterial
-        loop.position.set(spot.x, groundY(spot.x, spot.z) + 0.06, spot.z)
-        loop.scale.setScalar(ring.radiusCm / 100 + 1.5)
+        drapeLoop(loop, spot.x, spot.z, ring.radiusCm / 100 + 1.5, 0.06)
       }
     }
 
@@ -1608,7 +1757,6 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const pose = poses[id]!
       const forager = state.foragers[id]!
       const spot = at(pose.x, pose.y)
-      figure.root.position.set(spot.x, groundY(spot.x, spot.z), spot.z)
       if (pose.heading !== null) figure.heading = pose.heading
       // A member lies down in its hut with its feet towards the fire and its head at the back, the hut's length.
       const toward =
@@ -1616,13 +1764,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           ? towardFire(state, id, pose.x, pose.y)
           : null
       if (toward) {
-        figure.root.position.set(
-          spot.x + toward.x * SLEEPER_FEET * pose.lying,
-          groundY(spot.x, spot.z),
-          spot.z + toward.z * SLEEPER_FEET * pose.lying,
-        )
         figure.heading = Math.atan2(toward.x, toward.z)
       }
+      const figureX = spot.x + (toward?.x ?? 0) * SLEEPER_FEET * pose.lying
+      const figureZ = spot.z + (toward?.z ?? 0) * SLEEPER_FEET * pose.lying
+      figure.root.position.set(figureX, contactY(figureX, figureZ, 0.12 + 0.75 * pose.lying), figureZ)
       figure.root.rotation.y = figure.heading
       poseFigure(figure, pose, id, nowMs)
       figure.material.color.set(!forager.alive ? DEAD : hex(foragerColor(config, forager)))
@@ -1653,13 +1799,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         if (lit) hearth.flame.scale.set(0.6, 0.6 * (1 + 0.15 * Math.sin(nowMs / 80 + id * 1.7)), 0.6)
       }
       if (id === followedId) {
-        followRing.position.set(spot.x, groundY(spot.x, spot.z) + 0.08, spot.z)
-        followRing.scale.setScalar(0.6)
-        perception.position.set(spot.x, groundY(spot.x, spot.z) + 0.1, spot.z)
+        drapeGroundRing(followRing, spot.x, spot.z, 0.6)
+        drapeLoop(perception, spot.x, spot.z, config.perceptionRadiusCm / 100, 0.1)
         perception.visible = forager.alive
         // Long sight reaches across the valley's diagonal by day on the canonical settings, so it is rarely drawn.
         const diagonal = Math.SQRT2 * config.valleySizeCm
-        sight.position.set(spot.x, groundY(spot.x, spot.z) + 0.1, spot.z)
+        drapeLoop(sight, spot.x, spot.z, config.sightRadiusCm / 100, 0.1)
         sight.visible =
           forager.alive &&
           config.sightRadiusCm > config.perceptionRadiusCm &&
@@ -1681,18 +1826,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const spot = at(pose.x, pose.y)
       ring.visible = true
       ;(ring.material as MeshBasicMaterial).color.set(hex(color))
-      ring.position.set(spot.x, groundY(spot.x, spot.z) + 0.08, spot.z)
-      ring.scale.setScalar(0.75)
+      drapeGroundRing(ring, spot.x, spot.z, 0.75)
       const flag = selectedGroup!.flag
       if (Math.hypot(pose.x - flag.x, pose.y - flag.y) > baseRadiusCm(config, selectedGroup!)) {
         const line = memberLineAt(lines)
         lines += 1
         const home = at(flag.x, flag.y)
-        const positions = line.geometry.getAttribute('position') as InstanceType<Three['BufferAttribute']>
-        positions.setXYZ(0, home.x, 0.08, home.z)
-        positions.setXYZ(1, spot.x, 0.08, spot.z)
-        positions.needsUpdate = true
-        line.geometry.computeBoundingSphere()
+        drapeLine(line, home, spot)
         ;(line.material as InstanceType<Three['LineBasicMaterial']>).color.set(hex(color))
         line.visible = true
       }
@@ -1787,8 +1927,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
               : layout!.trees
         spot = at(plants.x[chosen.id]!, plants.y[chosen.id]!)
       }
-      ring.position.set(spot.x, groundY(spot.x, spot.z) + (ring === selectRing ? 0.09 : 0.085), spot.z)
-      ring.scale.setScalar(
+      const radius =
         chosen.kind === 'bush'
           ? 1.1
           : chosen.kind === 'hazel'
@@ -1799,8 +1938,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
                 ? 2
                 : chosen.kind === 'stone'
                   ? 0.9
-                  : 1.8,
-      )
+                  : 1.8
+      drapeGroundRing(ring, spot.x, spot.z, radius, ring === selectRing ? 0.09 : 0.085)
     }
     ringAt(targetRing, targetPlant)
     ringAt(selectRing, options.selected)
@@ -2039,15 +2178,20 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         staleSiteMaterial,
       ])
         disposable.dispose()
-      for (const ring of [followRing, targetRing, selectRing, ...memberRings])
-        (ring.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
+      for (const ring of [followRing, targetRing, selectRing, ...memberRings]) {
+        ring.geometry.dispose()
+        ;(ring.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
+      }
       for (const line of memberLines) {
         line.geometry.dispose()
         ;(line.material as InstanceType<Three['LineBasicMaterial']>).dispose()
       }
       ashMaterial.dispose()
       pinLayer.remove()
-      for (const loop of [perception, sight]) (loop.material as InstanceType<Three['LineBasicMaterial']>).dispose()
+      for (const loop of [perception, sight]) {
+        loop.geometry.dispose()
+        ;(loop.material as InstanceType<Three['LineBasicMaterial']>).dispose()
+      }
       for (const arc of swapArcs) arc.line.geometry.dispose()
       renderer.dispose()
       canvas.remove()

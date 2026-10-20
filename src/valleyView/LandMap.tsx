@@ -2,12 +2,11 @@ import { useEffect, useMemo, useRef } from 'react'
 import type { ValleyState } from '../valley/types'
 import { groupColor } from './valleyViewModel'
 
-/** The map's colours for soil, sand, rock and wet ground, by ground code, and the lake. */
+/** The map's colours for grass, dirt and stone, by ground code. */
 const MAP_GROUND = [
-  [63, 107, 58],
-  [154, 148, 104],
+  [79, 122, 66],
+  [120, 91, 59],
   [133, 130, 122],
-  [44, 70, 50],
 ]
 const MAP_SIZE = 180
 

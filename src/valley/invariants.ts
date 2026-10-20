@@ -10,7 +10,7 @@ import { craftOf, ratesOf } from './practice'
 import { placeOf, viewFrom, type PlaceView } from './sight'
 import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
 import { siteCentre, siteGeometry, siteHolds, siteWanted } from './sites'
-import { ROCK, WET, cellOf, gradeOf, heightAt, speedOnGrade, terrainPercentOf, walkCost } from './terrain'
+import { STONE, cellOf, gradeOf, heightAt, speedOnGrade, terrainPercentOf, walkCost } from './terrain'
 import { bothGain } from './trade'
 import { coldMatters, minuteCost, regrowthOf, warmthOf, workCostOf } from './work'
 import type { ActionReason, Axe, CutEvent, Hut, Point, ValleyState } from './types'
@@ -58,7 +58,7 @@ const sum = (values: Int32Array) => {
   return total
 }
 
-/** Every way the layout breaks the ground's rules: a site's centre, plant or stone off the ground it grows on, or a start on wet ground. */
+/** Every way the layout breaks the ground's rules: a site's centre, plant or stone off its ground, or a start on stone. */
 export function layoutViolations(state: ValleyState): string[] {
   const { config, layout } = state
   const { terrain, ground } = layout
@@ -77,12 +77,12 @@ export function layoutViolations(state: ValleyState): string[] {
         violations.push(`A ${name}, ${id}, grows on the wrong ground`)
   }
   for (let id = 0; id < layout.stones.count; id += 1)
-    if (ground[cellOf(terrain, layout.stones.x[id]!, layout.stones.y[id]!)] !== ROCK)
-      violations.push(`Stone spot ${id} lies off rock`)
-  if (config.outcropCount && !layout.outcrops.every((centre) => ground[cellOf(terrain, centre.x, centre.y)] === ROCK))
-    violations.push('An outcrop does not lie on rock')
+    if (ground[cellOf(terrain, layout.stones.x[id]!, layout.stones.y[id]!)] !== STONE)
+      violations.push(`Stone spot ${id} lies off stone`)
+  if (config.outcropCount && !layout.outcrops.every((centre) => ground[cellOf(terrain, centre.x, centre.y)] === STONE))
+    violations.push('An outcrop does not lie on stone')
   for (const [id, hearth] of layout.hearths.entries())
-    if (ground[cellOf(terrain, hearth.x, hearth.y)] === WET) violations.push(`Forager ${id} starts on wet ground`)
+    if (ground[cellOf(terrain, hearth.x, hearth.y)] === STONE) violations.push(`Forager ${id} starts on stone`)
   return violations
 }
 

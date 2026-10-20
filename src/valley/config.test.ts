@@ -20,8 +20,8 @@ describe('valley configuration', () => {
     expect(errorsWith({ thicketCount: 0 })).toContain('thicketCount must be positive')
     expect(errorsWith({ woodLoad: -1 })).toContain('woodLoad must not be negative')
     expect(errorsWith({ loadSlowdownPerMille: -1 })).toContain('loadSlowdownPerMille must not be negative')
-    expect(errorsWith({ wetTerrainPercent: 90 })).toContain('wetTerrainPercent must be at least 100')
-    expect(errorsWith({ kettleCount: -1 })).toContain('kettleCount must not be negative')
+    expect(errorsWith({ stoneTerrainPercent: 90 })).toContain('stoneTerrainPercent must be at least 100')
+    expect(errorsWith({ smallKettleCount: -1 })).toContain('smallKettleCount must not be negative')
     expect(errorsWith({ terrainCellCm: 0 })).toContain('terrainCellCm must be positive')
   })
 
@@ -29,10 +29,20 @@ describe('valley configuration', () => {
     expect(errorsWith({ terrainCellCm: 700 })).toContain(
       'The land must be a whole number of terrain cells: valleySizeCm divisible by terrainCellCm',
     )
-    expect(errorsWith({ hummockWavelengthCm: 20_100 })).toContain(
-      'hummockWavelengthCm must be a whole number of terrain cells',
+    expect(errorsWith({ microCoarseWavelengthCm: 20_100 })).toContain(
+      'microCoarseWavelengthCm must be a whole number of terrain cells',
     )
-    expect(errorsWith({ kettleMinRadiusCm: 7_000 })).toContain('kettleMinRadiusCm must not exceed kettleMaxRadiusCm')
+    expect(errorsWith({ microFineWavelengthCm: 20_100 })).toContain(
+      'microFineWavelengthCm must be a whole number of terrain cells',
+    )
+    expect(errorsWith({ drumlinMinLengthCm: 80_000 })).toContain(
+      'drumlinMinLengthCm must not exceed drumlinMaxLengthCm',
+    )
+    expect(errorsWith({ kameMinRadiusCm: 13_000 })).toContain('kameMinRadiusCm must not exceed kameMaxRadiusCm')
+    expect(errorsWith({ dirtSlopePercent: 31 })).toContain('dirtSlopePercent must not exceed stoneSlopePercent')
+    expect(errorsWith({ smallKettleMinRadiusCm: 7_000 })).toContain(
+      'smallKettleMinRadiusCm must not exceed smallKettleMaxRadiusCm',
+    )
     expect(errorsWith({ kettleDepthPerMille: 1_001 })).toContain('kettleDepthPerMille must be at most 1,000')
     expect(errorsWith({ shoreRampCm: 500_000 })).toContain('shoreRampCm must not exceed the land’s width')
     expect(errorsWith({ sightStepCm: 4_000 })).toContain('sightStepCm must not exceed placeCm')

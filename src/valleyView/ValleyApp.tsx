@@ -1068,16 +1068,17 @@ export default function ValleyApp() {
           )}
           <p className="life-note">
             Running seed {setup.seed}: {setup.bandSize} foragers on a stretch of glacial land{' '}
-            {config.valleySizeCm / 100} m across, with low hills, hummocks and hollows up to{' '}
-            {(config.reliefCm + config.hummockCm) / 100} m high, sloping down to a lake,{' '}
+            {config.valleySizeCm / 100} m across, with broken moraine fronts, flow-aligned drumlins, clustered hummocks,
+            irregular hollows and broad dry valleys, sloping down to a lake,{' '}
             {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
             knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, but not through hills, and
-            berries and firewood up close. Slopes slow them and cost them energy, and wet or sandy ground is harder
-            going. When their needs are met they explore ground they have never seen, then check the thickets and stands
-            they have not checked for {formatHours(setup.exploreAfterHours)}. A load costs them energy and slows them a
-            little, and they take a full load home before anything else. Those without a group look for company: two who
-            meet found a group and plant its flag, and anyone who meets a member joins. Members sleep on a ring round
-            their flag and swap wood for food only with each other, telling each other their terms.{' '}
+            berries and firewood up close. The whole land is grassland, with grass, exposed dirt and stone; slopes slow
+            them and cost them energy, and stone is harder going. When their needs are met they explore ground they have
+            never seen, then check the thickets and stands they have not checked for{' '}
+            {formatHours(setup.exploreAfterHours)}. A load costs them energy and slows them a little, and they take a
+            full load home before anything else. Those without a group look for company: two who meet found a group and
+            plant its flag, and anyone who meets a member joins. Members sleep on a ring round their flag and swap wood
+            for food only with each other, telling each other their terms.{' '}
             {`Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs on the ring round the fire, cut from trees it fells with an axe it makes from a stone and wood${setup.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${setup.craftPractice ? 'grows with practice' : 'stays fixed'}. A hut keeps its sleeper a little warm, the fire more, and both together most.`}{' '}
             They are born with skills{' '}
             {setup.skillMinPercent === setup.skillMaxPercent
