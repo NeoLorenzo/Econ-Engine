@@ -2,29 +2,82 @@ import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { distanceSq } from './geometry'
 import type { ValleyConfig } from './types'
 
-// The land's shape: a height field in whole centimetres above the lake, generated once from the terrain stream as the
-// sum of a broad rise and fall, hummocks and kettle hollows, falling to the lake along the north edge; and its ground,
-// wet, rock, sand or soil. Slopes set a walker's speed by Tobler's hiking function and its cost by the Pandolf equation
-// with its grade term, corrected downhill by Santee.
+// The immutable young-moraine landscape. Its landforms share an ice-flow field and occur in coherent zones rather
+// than as unrelated geometric bumps. All simulation heights remain whole centimetres.
 
 const TERRAIN_STREAM_SALT = 0x5445_5252
+const BROAD_STREAM_SALT = 0x4252_4f41
+const FLOW_STREAM_SALT = 0x464c_4f57
+const ZONE_STREAM_SALT = 0x5a4f_4e45
+const MORAINE_STREAM_SALT = 0x4d4f_5241
+const DRUMLIN_STREAM_SALT = 0x4452_554d
+const KAME_STREAM_SALT = 0x4b41_4d45
+const HUMMOCK_STREAM_SALT = 0x4855_4d4d
+const KETTLE_STREAM_SALT = 0x4b45_5454
+const VALLEY_STREAM_SALT = 0x5641_4c4c
+const MICRO_COARSE_STREAM_SALT = 0x4d43_524f
+const MICRO_FINE_STREAM_SALT = 0x4d46_494e
 
 export const deriveTerrainSeed = (seed: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ TERRAIN_STREAM_SALT) >>> 0))
 
-/** The four kinds of ground, by code. */
-export const SOIL = 0
-export const SAND = 1
-export const ROCK = 2
-export const WET = 3
-export type Ground = typeof SOIL | typeof SAND | typeof ROCK | typeof WET
-export const GROUND_NAMES = ['soil', 'sand', 'rock', 'wet'] as const
+export const deriveTerrainStreamSeed = (seed: number, salt: number) =>
+  normalizeSeed(mixSeed((deriveTerrainSeed(seed) ^ salt) >>> 0))
+
+/** The three surfaces of the grassland, by code. */
+export const GRASS = 0
+export const DIRT = 1
+export const STONE = 2
+export type Ground = typeof GRASS | typeof DIRT | typeof STONE
+export const GROUND_NAMES = ['grass', 'dirt', 'stone'] as const
+
+export interface LandformLobe {
+  x: number
+  y: number
+  radiusX: number
+  radiusY: number
+  height: number
+  direction: number
+}
+
+export interface MoraineSegment {
+  fromX: number
+  fromY: number
+  toX: number
+  toY: number
+  leftWidth: number
+  rightWidth: number
+  height: number
+  gap: boolean
+}
+
+export interface Drumlin {
+  x: number
+  y: number
+  length: number
+  width: number
+  height: number
+  direction: number
+}
 
 export interface Kettle {
   x: number
   y: number
   radius: number
   depth: number
+  lobes: LandformLobe[]
+}
+
+export interface TerrainZone {
+  kind: 'drumlin-field' | 'dead-ice' | 'till-plain'
+  x: number
+  y: number
+  radiusX: number
+  radiusY: number
+}
+
+export interface TunnelValley {
+  segments: MoraineSegment[]
 }
 
 /** The land's heights and ground. It never changes during a run. */
@@ -36,7 +89,15 @@ export interface Terrain {
   height: Int32Array
   /** The ground of each cell, row by row, before outcrops are laid on it. */
   ground: Uint8Array
+  flowDirections: Uint8Array
+  flowColumns: number
+  zones: TerrainZone[]
+  moraines: MoraineSegment[][]
+  drumlins: Drumlin[]
+  kames: LandformLobe[][]
+  hummocks: LandformLobe[]
   kettles: Kettle[]
+  tunnelValleys: TunnelValley[]
 }
 
 /** The configuration that decides the terrain; two configurations that agree on these share one terrain. */
@@ -46,16 +107,57 @@ const TERRAIN_KEYS = [
   'terrainCellCm',
   'reliefCm',
   'reliefWavelengthCm',
-  'hummockCm',
-  'hummockWavelengthCm',
-  'kettleCount',
+  'iceFlowControlCm',
+  'iceFlowTurnSteps',
+  'moraineBeltCount',
+  'moraineMinHalfWidthCm',
+  'moraineMaxHalfWidthCm',
+  'moraineMinHeightCm',
+  'moraineMaxHeightCm',
+  'moraineMinControlCm',
+  'moraineMaxControlCm',
+  'drumlinCount',
+  'drumlinMinLengthCm',
+  'drumlinMaxLengthCm',
+  'drumlinMinWidthCm',
+  'drumlinMaxWidthCm',
+  'drumlinMinHeightCm',
+  'drumlinMaxHeightCm',
+  'drumlinMinAspectPerMille',
+  'kameCount',
+  'kameMinRadiusCm',
+  'kameMaxRadiusCm',
+  'kameMinHeightCm',
+  'kameMaxHeightCm',
+  'hummockClusterCount',
+  'hummockCount',
+  'hummockMinWidthCm',
+  'hummockMaxWidthCm',
+  'hummockMinHeightCm',
+  'hummockMaxHeightCm',
+  'smallKettleCount',
+  'largeKettleCount',
   'kettleDepthPerMille',
-  'kettleMinRadiusCm',
-  'kettleMaxRadiusCm',
+  'smallKettleMinRadiusCm',
+  'smallKettleMaxRadiusCm',
+  'largeKettleMinRadiusCm',
+  'largeKettleMaxRadiusCm',
+  'kettleMaxDepthCm',
+  'tunnelValleyCount',
+  'tunnelValleyMinWidthCm',
+  'tunnelValleyMaxWidthCm',
+  'tunnelValleyMinDepthCm',
+  'tunnelValleyMaxDepthCm',
+  'tunnelValleyMinControlCm',
+  'tunnelValleyMaxControlCm',
+  'microCoarseWavelengthCm',
+  'microCoarseAmplitudeCm',
+  'microFineWavelengthCm',
+  'microFineAmplitudeCm',
   'shoreRampCm',
-  'shoreWetCm',
-  'sandBelowCm',
-  'rockSlopePercent',
+  'dirtSlopePercent',
+  'stoneSlopePercent',
+  'dirtCurvatureCm',
   'campClearingCm',
 ] as const satisfies readonly (keyof ValleyConfig)[]
 
@@ -96,15 +198,22 @@ export function terrainError(config: ValleyConfig) {
  * smoothstep `3t² − 2t³`, first along x, rounded down, then along y, rounded down. Returns the field at every terrain
  * lattice point.
  */
-function valueNoise(next: (max: number) => number, points: number, wavelength: number, amplitude: number) {
+function valueNoise(
+  next: (max: number) => number,
+  points: number,
+  wavelength: number,
+  amplitude: number,
+  centred = false,
+  smooth = true,
+) {
   const lattice = Math.ceil((points - 1) / wavelength) + 1
   const values = new Int32Array(lattice * lattice)
-  for (let index = 0; index < values.length; index += 1) values[index] = next(amplitude + 1)
-  const cube = wavelength ** 3
-  // The smoothstep's numerator over `wavelength³` for each offset within a wavelength.
+  for (let index = 0; index < values.length; index += 1)
+    values[index] = centred ? next(2 * amplitude + 1) - amplitude : next(amplitude + 1)
+  const denominator = smooth ? wavelength ** 3 : wavelength
   const step = new Float64Array(wavelength + 1)
-  for (let t = 0; t <= wavelength; t += 1) step[t] = t * t * (3 * wavelength - 2 * t)
-  const lerp = (a: number, b: number, t: number) => a + Math.floor(((b - a) * step[t]!) / cube)
+  for (let t = 0; t <= wavelength; t += 1) step[t] = smooth ? t * t * (3 * wavelength - 2 * t) : t
+  const lerp = (a: number, b: number, t: number) => a + Math.floor(((b - a) * step[t]!) / denominator)
   const field = new Int32Array(points * points)
   for (let j = 0; j < points; j += 1) {
     const gy = Math.min(lattice - 2, Math.floor(j / wavelength))
@@ -120,91 +229,455 @@ function valueNoise(next: (max: number) => number, points: number, wavelength: n
   return field
 }
 
-/** Generates the terrain: broad relief, hummocks and kettles from the terrain stream, then the ground of each cell. */
-export function generateTerrain(config: ValleyConfig): Terrain {
-  const cellCm = config.terrainCellCm
-  const cells = config.valleySizeCm / cellCm
-  const points = cells + 1
-  let state = deriveTerrainSeed(config.seed)
-  const next = (max: number) => {
+function randomSource(seed: number, salt: number) {
+  let state = deriveTerrainStreamSeed(seed, salt)
+  return (max: number) => {
     const draw = randomInt(state, max)
     state = draw.state
     return draw.value
   }
-  const broad = valueNoise(next, points, config.reliefWavelengthCm / cellCm, config.reliefCm)
-  const hummocks = valueNoise(next, points, config.hummockWavelengthCm / cellCm, config.hummockCm)
+}
+
+const drawBetween = (next: (max: number) => number, min: number, max: number) => min + next(max - min + 1)
+
+/** Squared distance from a point to a segment. All inputs are integer centimetres. */
+function segmentDistanceSq(x: number, y: number, segment: MoraineSegment) {
+  const dx = segment.toX - segment.fromX
+  const dy = segment.toY - segment.fromY
+  const lengthSq = dx * dx + dy * dy
+  const projection = (x - segment.fromX) * dx + (y - segment.fromY) * dy
+  if (projection <= 0) return distanceSq(x, y, segment.fromX, segment.fromY)
+  if (projection >= lengthSq) return distanceSq(x, y, segment.toX, segment.toY)
+  const nearestX = segment.fromX + (projection * dx) / lengthSq
+  const nearestY = segment.fromY + (projection * dy) / lengthSq
+  return distanceSq(x, y, nearestX, nearestY)
+}
+
+const DIRECTIONS: readonly (readonly [number, number])[] = [
+  [1024, 0],
+  [946, 392],
+  [724, 724],
+  [392, 946],
+  [0, 1024],
+  [-392, 946],
+  [-724, 724],
+  [-946, 392],
+  [-1024, 0],
+  [-946, -392],
+  [-724, -724],
+  [-392, -946],
+  [0, -1024],
+  [392, -946],
+  [724, -724],
+  [946, -392],
+]
+
+const inZone = (zone: TerrainZone, x: number, y: number) => {
+  const dx = (x - zone.x) / zone.radiusX
+  const dy = (y - zone.y) / zone.radiusY
+  return dx * dx + dy * dy <= 1
+}
+
+function paintLobe(field: Int32Array, points: number, cellCm: number, lobe: LandformLobe, combine: 'max' | 'add') {
+  const [ux, uy] = DIRECTIONS[lobe.direction]!
+  const reach = Math.max(lobe.radiusX, lobe.radiusY)
+  const cells = points - 1
+  const i0 = Math.max(0, Math.ceil((lobe.x - reach) / cellCm))
+  const i1 = Math.min(cells, Math.floor((lobe.x + reach) / cellCm))
+  const j0 = Math.max(0, Math.ceil((lobe.y - reach) / cellCm))
+  const j1 = Math.min(cells, Math.floor((lobe.y + reach) / cellCm))
+  for (let j = j0; j <= j1; j += 1)
+    for (let i = i0; i <= i1; i += 1) {
+      const dx = i * cellCm - lobe.x
+      const dy = j * cellCm - lobe.y
+      const along = (dx * ux + dy * uy) / 1024
+      const across = (-dx * uy + dy * ux) / 1024
+      const q = (along * along) / (lobe.radiusX * lobe.radiusX) + (across * across) / (lobe.radiusY * lobe.radiusY)
+      if (q >= 1) continue
+      const contribution = Math.floor(lobe.height * (1 - q) ** 2)
+      const index = j * points + i
+      field[index] = combine === 'max' ? Math.max(field[index]!, contribution) : field[index]! + contribution
+    }
+}
+
+/** A streamlined hill with a short blunt head and a tail twice as long down-flow. */
+function paintDrumlin(field: Int32Array, points: number, cellCm: number, drumlin: Drumlin) {
+  const [ux, uy] = DIRECTIONS[drumlin.direction]!
+  const cells = points - 1
+  const reach = drumlin.length
+  const head = Math.floor(drumlin.length / 3)
+  const tail = Math.floor((2 * drumlin.length) / 3)
+  const halfWidth = drumlin.width / 2
+  const i0 = Math.max(0, Math.ceil((drumlin.x - reach) / cellCm))
+  const i1 = Math.min(cells, Math.floor((drumlin.x + reach) / cellCm))
+  const j0 = Math.max(0, Math.ceil((drumlin.y - reach) / cellCm))
+  const j1 = Math.min(cells, Math.floor((drumlin.y + reach) / cellCm))
+  for (let j = j0; j <= j1; j += 1)
+    for (let i = i0; i <= i1; i += 1) {
+      const dx = i * cellCm - drumlin.x
+      const dy = j * cellCm - drumlin.y
+      const along = (dx * ux + dy * uy) / 1024
+      const across = (-dx * uy + dy * ux) / 1024
+      const radius = along < 0 ? head : tail
+      const q = (along * along) / (radius * radius) + (across * across) / (halfWidth * halfWidth)
+      if (q >= 1) continue
+      const contribution = Math.floor(drumlin.height * (1 - q) ** 2)
+      const index = j * points + i
+      field[index] = Math.max(field[index]!, contribution)
+    }
+}
+
+function paintSegments(
+  field: Int32Array,
+  points: number,
+  cellCm: number,
+  segments: MoraineSegment[],
+  subtract = false,
+) {
+  const cells = points - 1
+  for (const segment of segments) {
+    if (segment.gap) continue
+    const reach = Math.max(segment.leftWidth, segment.rightWidth)
+    const i0 = Math.max(0, Math.ceil((Math.min(segment.fromX, segment.toX) - reach) / cellCm))
+    const i1 = Math.min(cells, Math.floor((Math.max(segment.fromX, segment.toX) + reach) / cellCm))
+    const j0 = Math.max(0, Math.ceil((Math.min(segment.fromY, segment.toY) - reach) / cellCm))
+    const j1 = Math.min(cells, Math.floor((Math.max(segment.fromY, segment.toY) + reach) / cellCm))
+    const dx = segment.toX - segment.fromX
+    const dy = segment.toY - segment.fromY
+    for (let j = j0; j <= j1; j += 1)
+      for (let i = i0; i <= i1; i += 1) {
+        const x = i * cellCm
+        const y = j * cellCm
+        const side = dx * (y - segment.fromY) - dy * (x - segment.fromX)
+        const width = side >= 0 ? segment.leftWidth : segment.rightWidth
+        const d2 = segmentDistanceSq(x, y, segment)
+        if (d2 >= width * width) continue
+        const q = Math.sqrt(d2) / width
+        const profile = subtract ? (1 - q) ** 2 : side >= 0 ? (1 - q) ** 2 : (1 - q) ** 3
+        const contribution = Math.floor(segment.height * profile)
+        const index = j * points + i
+        field[index] = Math.max(field[index]!, contribution)
+      }
+  }
+}
+
+/** Generates one coherent glacial assemblage, then derives exposed dirt and stone from its relief. */
+export function generateTerrain(config: ValleyConfig): Terrain {
+  const cellCm = config.terrainCellCm
+  const cells = config.valleySizeCm / cellCm
+  const points = cells + 1
+  const broad = valueNoise(
+    randomSource(config.seed, BROAD_STREAM_SALT),
+    points,
+    config.reliefWavelengthCm / cellCm,
+    config.reliefCm,
+  )
   const size = config.valleySizeCm
   const camp = Math.floor(size / 2)
-  const kettles: Kettle[] = []
-  let failed = 0
-  const radii = config.kettleMaxRadiusCm - config.kettleMinRadiusCm + 1
-  while (kettles.length < config.kettleCount) {
-    const x = next(size + 1)
-    const y = next(size + 1)
-    const radius = config.kettleMinRadiusCm + next(radii)
-    if (distanceSq(x, y, camp, camp) >= (config.campClearingCm + radius) ** 2) {
-      kettles.push({ x, y, radius, depth: Math.floor((radius * config.kettleDepthPerMille) / 1_000) })
-      failed = 0
-    } else if ((failed += 1) >= 10_000) throw new TerrainError('The kettles cannot all be placed')
+  const flowColumns = Math.ceil(size / config.iceFlowControlCm) + 1
+  const flowDirections = new Uint8Array(flowColumns * flowColumns)
+  const nextFlow = randomSource(config.seed, FLOW_STREAM_SALT)
+  const baseDirection = nextFlow(16)
+  for (let index = 0; index < flowDirections.length; index += 1)
+    flowDirections[index] =
+      (baseDirection + nextFlow(2 * config.iceFlowTurnSteps + 1) - config.iceFlowTurnSteps + 16) % 16
+  const directionAt = (x: number, y: number) => {
+    const column = Math.min(flowColumns - 1, Math.floor(x / config.iceFlowControlCm))
+    const row = Math.min(flowColumns - 1, Math.floor(y / config.iceFlowControlCm))
+    return flowDirections[row * flowColumns + column]!
   }
+
+  const nextZone = randomSource(config.seed, ZONE_STREAM_SALT)
+  const zones: TerrainZone[] = [
+    {
+      kind: 'till-plain',
+      x: (39 * size) / 50,
+      y: (39 * size) / 50,
+      radiusX: (21 * size) / 50,
+      radiusY: (3 * size) / 10,
+    },
+  ]
+  zones.push({ kind: 'drumlin-field', x: size / 2, y: size / 2, radiusX: size / 3, radiusY: size / 4 })
+  for (let id = 1; id < 2; id += 1)
+    zones.push({
+      kind: 'drumlin-field',
+      x: nextZone(size + 1),
+      y: nextZone(size + 1),
+      radiusX: size / 4,
+      radiusY: size / 5,
+    })
+  for (let id = 0; id < config.hummockClusterCount; id += 1)
+    zones.push({ kind: 'dead-ice', x: nextZone(size + 1), y: nextZone(size + 1), radiusX: size / 8, radiusY: size / 8 })
+  const tillPlain = zones[0]!
+  const allowed = (x: number, y: number, kind: TerrainZone['kind']) =>
+    !inZone(tillPlain, x, y) && zones.some((z) => z.kind === kind && inZone(z, x, y))
+
+  const moraines: MoraineSegment[][] = []
+  const nextMoraine = randomSource(config.seed, MORAINE_STREAM_SALT)
+  for (let belt = 0; belt < config.moraineBeltCount; belt += 1) {
+    const direction = (baseDirection + 4 + nextMoraine(3) - 1 + 16) % 16
+    const [ux, uy] = DIRECTIONS[direction]!
+    const [vx, vy] = [-uy, ux]
+    const offset = nextMoraine(Math.floor((2 * size) / 3) + 1) - Math.floor(size / 3)
+    const spacing = drawBetween(nextMoraine, config.moraineMinControlCm, config.moraineMaxControlCm)
+    const controls = Math.ceil((3 * size) / spacing)
+    const vertices: { x: number; y: number }[] = []
+    let bend = 0
+    for (let k = 0; k <= controls; k += 1) {
+      const along = -size + Math.floor((3 * size * k) / controls)
+      bend += nextMoraine(Math.floor(spacing / 2) + 1) - Math.floor(spacing / 4)
+      bend = Math.max(-size / 8, Math.min(size / 8, bend))
+      vertices.push({
+        x: Math.floor(size / 2 + (ux * along + vx * (offset + bend)) / 1024),
+        y: Math.floor(size / 2 + (uy * along + vy * (offset + bend)) / 1024),
+      })
+    }
+    const segments: MoraineSegment[] = []
+    for (let k = 0; k < vertices.length - 1; k += 1) {
+      const half = drawBetween(nextMoraine, config.moraineMinHalfWidthCm, config.moraineMaxHalfWidthCm)
+      segments.push({
+        ...vertices[k]!,
+        toX: vertices[k + 1]!.x,
+        toY: vertices[k + 1]!.y,
+        fromX: vertices[k]!.x,
+        fromY: vertices[k]!.y,
+        leftWidth: half,
+        rightWidth: Math.max(cellCm, Math.floor(half * 0.55)),
+        height: drawBetween(nextMoraine, config.moraineMinHeightCm, config.moraineMaxHeightCm),
+        gap: nextMoraine(5) === 0,
+      })
+    }
+    moraines.push(segments)
+  }
+
+  const drumlins: Drumlin[] = []
+  const nextDrumlin = randomSource(config.seed, DRUMLIN_STREAM_SALT)
+  const addDrumlin = (x: number, y: number) => {
+    const length = drawBetween(nextDrumlin, config.drumlinMinLengthCm, config.drumlinMaxLengthCm)
+    const maxWidth = Math.min(config.drumlinMaxWidthCm, Math.floor((length * 1_000) / config.drumlinMinAspectPerMille))
+    const width = drawBetween(nextDrumlin, config.drumlinMinWidthCm, Math.max(config.drumlinMinWidthCm, maxWidth))
+    drumlins.push({
+      x,
+      y,
+      length,
+      width,
+      height: drawBetween(nextDrumlin, config.drumlinMinHeightCm, config.drumlinMaxHeightCm),
+      direction: directionAt(x, y),
+    })
+  }
+  // A real drumlin field is a train, not a bag of independently scattered mounds. Seed an offset, flow-aligned train
+  // across the inhabited centre before filling the rest of both field masks. This also means the first observer view
+  // reliably contains readable relief instead of occasionally landing in a chance gap between landforms.
+  const centralDirection = directionAt(camp, camp)
+  const [centralU, centralV] = DIRECTIONS[centralDirection]!
+  const centralCount = Math.min(12, config.drumlinCount)
+  for (let id = 0; id < centralCount; id += 1) {
+    const along = (Math.floor(id / 3) - 1.5) * 18_000
+    const across = ((id % 3) - 1) * 16_000 + (Math.floor(id / 3) % 2) * 4_000
+    const x = Math.floor(camp + (centralU * along - centralV * across) / 1024)
+    const y = Math.floor(camp + (centralV * along + centralU * across) / 1024)
+    addDrumlin(x, y)
+  }
+  for (let attempts = 0; drumlins.length < config.drumlinCount && attempts < 100_000; attempts += 1) {
+    const x = nextDrumlin(size + 1),
+      y = nextDrumlin(size + 1)
+    if (!allowed(x, y, 'drumlin-field')) continue
+    addDrumlin(x, y)
+  }
+  if (drumlins.length < config.drumlinCount) throw new TerrainError('The drumlins cannot all be placed')
+
+  const makeIrregular = (
+    next: (max: number) => number,
+    x: number,
+    y: number,
+    radius: number,
+    height: number,
+    count: number,
+  ) => {
+    const lobes: LandformLobe[] = []
+    for (let l = 0; l < count; l += 1)
+      lobes.push({
+        x: x + next(radius) - Math.floor(radius / 2),
+        y: y + next(radius) - Math.floor(radius / 2),
+        radiusX: Math.floor((radius * (65 + next(51))) / 100),
+        radiusY: Math.floor((radius * (65 + next(51))) / 100),
+        height: Math.floor((height * (70 + next(31))) / 100),
+        direction: next(16),
+      })
+    return lobes
+  }
+  const kames: LandformLobe[][] = []
+  const nextKame = randomSource(config.seed, KAME_STREAM_SALT)
+  for (let attempts = 0; kames.length < config.kameCount && attempts < 100_000; attempts += 1) {
+    const x = nextKame(size + 1),
+      y = nextKame(size + 1)
+    if (!allowed(x, y, 'dead-ice')) continue
+    kames.push(
+      makeIrregular(
+        nextKame,
+        x,
+        y,
+        drawBetween(nextKame, config.kameMinRadiusCm, config.kameMaxRadiusCm),
+        drawBetween(nextKame, config.kameMinHeightCm, config.kameMaxHeightCm),
+        3 + nextKame(3),
+      ),
+    )
+  }
+  const hummocks: LandformLobe[] = []
+  const nextHummock = randomSource(config.seed, HUMMOCK_STREAM_SALT)
+  for (let attempts = 0; hummocks.length < config.hummockCount && attempts < 200_000; attempts += 1) {
+    const x = nextHummock(size + 1),
+      y = nextHummock(size + 1)
+    if (!allowed(x, y, 'dead-ice')) continue
+    const width = drawBetween(nextHummock, config.hummockMinWidthCm, config.hummockMaxWidthCm)
+    hummocks.push({
+      x,
+      y,
+      radiusX: width,
+      radiusY: Math.floor((width * (65 + nextHummock(36))) / 100),
+      height: drawBetween(nextHummock, config.hummockMinHeightCm, config.hummockMaxHeightCm),
+      direction: nextHummock(16),
+    })
+  }
+  const kettles: Kettle[] = []
+  const nextKettle = randomSource(config.seed, KETTLE_STREAM_SALT)
+  const addKettles = (count: number, min: number, max: number) => {
+    for (let attempts = 0, added = 0; added < count && attempts < 100_000; attempts += 1) {
+      const x = nextKettle(size + 1)
+      const y = nextKettle(size + 1)
+      const radius = drawBetween(nextKettle, min, max)
+      if (!allowed(x, y, 'dead-ice') || distanceSq(x, y, camp, camp) < (config.campClearingCm + radius) ** 2) continue
+      const depth = Math.min(config.kettleMaxDepthCm, Math.floor((radius * config.kettleDepthPerMille) / 1_000))
+      kettles.push({ x, y, radius, depth, lobes: makeIrregular(nextKettle, x, y, radius, depth, 2 + nextKettle(2)) })
+      added += 1
+    }
+  }
+  addKettles(config.smallKettleCount, config.smallKettleMinRadiusCm, config.smallKettleMaxRadiusCm)
+  addKettles(config.largeKettleCount, config.largeKettleMinRadiusCm, config.largeKettleMaxRadiusCm)
+
+  const tunnelValleys: TunnelValley[] = []
+  const nextValley = randomSource(config.seed, VALLEY_STREAM_SALT)
+  for (let id = 0; id < config.tunnelValleyCount; id += 1) {
+    const segments: MoraineSegment[] = []
+    const x0 = nextValley(size + 1),
+      controls = 10 + nextValley(6)
+    let previous = { x: x0, y: -Math.floor(size / 10) }
+    for (let k = 1; k <= controls; k += 1) {
+      const next = {
+        x: Math.max(
+          -size / 4,
+          Math.min((5 * size) / 4, previous.x + nextValley(Math.floor(size / 5)) - Math.floor(size / 10)),
+        ),
+        y: Math.floor(-size / 10 + (1.2 * size * k) / controls),
+      }
+      const width = drawBetween(nextValley, config.tunnelValleyMinWidthCm, config.tunnelValleyMaxWidthCm)
+      segments.push({
+        fromX: previous.x,
+        fromY: previous.y,
+        toX: next.x,
+        toY: next.y,
+        leftWidth: width,
+        rightWidth: Math.floor((width * (70 + nextValley(31))) / 100),
+        height: drawBetween(nextValley, config.tunnelValleyMinDepthCm, config.tunnelValleyMaxDepthCm),
+        gap: false,
+      })
+      previous = next
+    }
+    tunnelValleys.push({ segments })
+  }
+
+  const moraineHeight = new Int32Array(points * points)
+  for (const belt of moraines) paintSegments(moraineHeight, points, cellCm, belt)
+  const drumlinHeight = new Int32Array(points * points)
+  for (const drumlin of drumlins) paintDrumlin(drumlinHeight, points, cellCm, drumlin)
+  const localHeight = new Int32Array(points * points)
+  for (const kame of kames) for (const lobe of kame) paintLobe(localHeight, points, cellCm, lobe, 'max')
+  for (const hummock of hummocks) paintLobe(localHeight, points, cellCm, hummock, 'max')
+  const kettleDepth = new Int32Array(points * points)
+  for (const kettle of kettles) for (const lobe of kettle.lobes) paintLobe(kettleDepth, points, cellCm, lobe, 'max')
+  const valleyDepth = new Int32Array(points * points)
+  for (const valley of tunnelValleys) paintSegments(valleyDepth, points, cellCm, valley.segments, true)
+  const microCoarse = valueNoise(
+    randomSource(config.seed, MICRO_COARSE_STREAM_SALT),
+    points,
+    config.microCoarseWavelengthCm / cellCm,
+    config.microCoarseAmplitudeCm,
+    true,
+    false,
+  )
+  const microFine = valueNoise(
+    randomSource(config.seed, MICRO_FINE_STREAM_SALT),
+    points,
+    config.microFineWavelengthCm / cellCm,
+    config.microFineAmplitudeCm,
+    true,
+    false,
+  )
   const height = new Int32Array(points * points)
   for (let j = 0; j < points; j += 1) {
     const y = j * cellCm
     const ramp = Math.min(y, config.shoreRampCm)
     for (let i = 0; i < points; i += 1) {
       const index = j * points + i
-      height[index] = Math.floor(((broad[index]! + hummocks[index]!) * ramp) / config.shoreRampCm)
+      height[index] = Math.floor(
+        ((broad[index]! +
+          moraineHeight[index]! +
+          drumlinHeight[index]! +
+          localHeight[index]! +
+          microCoarse[index]! +
+          microFine[index]! -
+          kettleDepth[index]! -
+          valleyDepth[index]!) *
+          ramp) /
+          config.shoreRampCm,
+      )
     }
   }
-  for (const kettle of kettles) {
-    const r2 = kettle.radius ** 2
-    const i0 = Math.max(0, Math.ceil((kettle.x - kettle.radius) / cellCm))
-    const i1 = Math.min(cells, Math.floor((kettle.x + kettle.radius) / cellCm))
-    const j0 = Math.max(0, Math.ceil((kettle.y - kettle.radius) / cellCm))
-    const j1 = Math.min(cells, Math.floor((kettle.y + kettle.radius) / cellCm))
-    for (let j = j0; j <= j1; j += 1)
-      for (let i = i0; i <= i1; i += 1) {
-        const s2 = distanceSq(i * cellCm, j * cellCm, kettle.x, kettle.y)
-        if (s2 < r2) height[j * points + i]! -= Math.floor((kettle.depth * (r2 - s2)) / r2)
-      }
-  }
   for (let index = 0; index < height.length; index += 1) if (height[index]! < 0) height[index] = 0
+  const centres = new Int32Array(cells * cells)
+  for (let j = 0; j < cells; j += 1)
+    for (let i = 0; i < cells; i += 1)
+      centres[j * cells + i] = Math.floor(
+        (height[j * points + i]! +
+          height[j * points + i + 1]! +
+          height[(j + 1) * points + i]! +
+          height[(j + 1) * points + i + 1]!) /
+          4,
+      )
   const ground = new Uint8Array(cells * cells)
-  const half = Math.floor(cellCm / 2)
-  // The inner half of every kettle is wet.
-  const wet = new Uint8Array(cells * cells)
-  for (const kettle of kettles) {
-    const reach = Math.ceil(kettle.radius / 2)
-    const i0 = Math.max(0, Math.floor((kettle.x - reach) / cellCm))
-    const i1 = Math.min(cells - 1, Math.floor((kettle.x + reach) / cellCm))
-    const j0 = Math.max(0, Math.floor((kettle.y - reach) / cellCm))
-    const j1 = Math.min(cells - 1, Math.floor((kettle.y + reach) / cellCm))
-    for (let j = j0; j <= j1; j += 1)
-      for (let i = i0; i <= i1; i += 1)
-        if (distanceSq(i * cellCm + half, j * cellCm + half, kettle.x, kettle.y) * 4 < kettle.radius ** 2)
-          wet[j * cells + i] = 1
-  }
   for (let j = 0; j < cells; j += 1)
     for (let i = 0; i < cells; i += 1) {
-      const cy = j * cellCm + half
       const a = height[j * points + i]!
       const b = height[j * points + i + 1]!
       const c = height[(j + 1) * points + i]!
       const d = height[(j + 1) * points + i + 1]!
-      let kind: Ground = SOIL
-      if (cy < config.shoreWetCm || wet[j * cells + i]) kind = WET
-      else if (cellSlopePercent(cellCm, a, b, c, d) >= config.rockSlopePercent) kind = ROCK
-      else {
-        const low =
-          broad[j * points + i]! +
-          broad[j * points + i + 1]! +
-          broad[(j + 1) * points + i]! +
-          broad[(j + 1) * points + i + 1]!
-        if (Math.floor(low / 4) < config.sandBelowCm) kind = SAND
-      }
+      const slope = cellSlopePercent(cellCm, a, b, c, d)
+      const centre = centres[j * cells + i]!
+      const left = centres[j * cells + Math.max(0, i - 1)]!
+      const right = centres[j * cells + Math.min(cells - 1, i + 1)]!
+      const up = centres[Math.max(0, j - 1) * cells + i]!
+      const down = centres[Math.min(cells - 1, j + 1) * cells + i]!
+      const curvature = Math.abs(centre - Math.floor((left + right + up + down) / 4))
+      let kind: Ground = GRASS
+      if (slope >= config.stoneSlopePercent) kind = STONE
+      else if (slope >= config.dirtSlopePercent || curvature >= config.dirtCurvatureCm) kind = DIRT
       ground[j * cells + i] = kind
     }
-  return { cellCm, cells, height, ground, kettles }
+  return {
+    cellCm,
+    cells,
+    height,
+    ground,
+    flowDirections,
+    flowColumns,
+    zones,
+    moraines,
+    drumlins,
+    kames,
+    hummocks,
+    kettles,
+    tunnelValleys,
+  }
 }
 
 /** A cell's slope in whole percent: the larger of its mean rises along x and along y, over its width. */
@@ -259,10 +732,9 @@ export function slopeAt(terrain: Terrain, x: number, y: number) {
 
 /** The Pandolf terrain factor of a ground, in percent. */
 export function terrainPercentOf(config: ValleyConfig, ground: number) {
-  if (ground === SAND) return config.sandTerrainPercent
-  if (ground === ROCK) return config.rockTerrainPercent
-  if (ground === WET) return config.wetTerrainPercent
-  return config.soilTerrainPercent
+  if (ground === DIRT) return config.dirtTerrainPercent
+  if (ground === STONE) return config.stoneTerrainPercent
+  return config.grassTerrainPercent
 }
 
 /** Grades are held between these, in whole percent. */

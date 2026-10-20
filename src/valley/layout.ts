@@ -1,7 +1,7 @@
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { ringOffset } from './config'
 import { distanceSq } from './geometry'
-import { ROCK, SAND, SOIL, WET, cellOf, terrainOf, type Terrain } from './terrain'
+import { DIRT, GRASS, STONE, cellOf, terrainOf, type Terrain } from './terrain'
 import type { PlantIndex, Plants, Point, ValleyConfig, ValleyLayout } from './types'
 
 const LAYOUT_STREAM_SALT = 0x5641_4c4c
@@ -98,7 +98,7 @@ class Draws {
 /**
  * Scattered starts, from a stream of their own so the plants stand where they would without them: points drawn
  * uniformly over the square `startAreaCm` wide round the land's centre in forager ID order, each at least
- * `startSpacingCm` from the earlier ones and never on wet ground.
+ * `startSpacingCm` from the earlier ones and always on grass or dirt.
  */
 export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(config).ground): Point[] {
   const draws = new Draws(deriveStartSeed(config.seed))
@@ -109,8 +109,8 @@ export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(
   while (starts.length < config.bandSize) {
     const x = origin + draws.int(config.startAreaCm + 1)
     const y = origin + draws.int(config.startAreaCm + 1)
-    const dry = ground[cellOf(terrain, x, y)] !== WET
-    if (dry && starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
+    const habitable = ground[cellOf(terrain, x, y)] !== STONE
+    if (habitable && starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
       starts.push({ x, y })
       failed = 0
     } else if ((failed += 1) >= PLACEMENT_DRAWS) throw new LayoutError('The foragers’ starts cannot all be placed')
@@ -120,10 +120,10 @@ export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(
 
 /** The grounds a kind of site and its plants grow on, as one bit for each ground. */
 const grows = (...grounds: number[]) => grounds.reduce((bits, ground) => bits | (1 << ground), 0)
-export const BUSH_GROUNDS = grows(SAND, SOIL)
-export const HAZEL_GROUNDS = grows(SOIL)
-export const TREE_GROUNDS = grows(SOIL, SAND, WET)
-export const OUTCROP_GROUNDS = grows(SOIL, SAND, ROCK)
+export const BUSH_GROUNDS = grows(GRASS, DIRT)
+export const HAZEL_GROUNDS = grows(GRASS, DIRT)
+export const TREE_GROUNDS = grows(GRASS, DIRT)
+export const OUTCROP_GROUNDS = grows(GRASS, DIRT, STONE)
 
 /** Whether a point's ground is one of `grounds`. */
 export const onGround = (terrain: Terrain, ground: Uint8Array, x: number, y: number, grounds: number) =>
@@ -317,7 +317,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
       on(TREE_GROUNDS),
     ),
   )
-  // Stones lie within their outcrop's circle, which is rock.
+  // Stones lie within their outcrop's circle, which is exposed stone.
   const stoneSites = outcrops.map((centre, id) =>
     scatter(
       draws,
@@ -340,10 +340,28 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
     for (let j = j0; j <= j1; j += 1)
       for (let i = i0; i <= i1; i += 1)
         if (distanceSq(i * terrain.cellCm + half, j * terrain.cellCm + half, centre.x, centre.y) <= r * r)
-          ground[j * terrain.cells + i] = ROCK
+          ground[j * terrain.cells + i] = STONE
   }
-  // A stone near the edge of its outcrop may lie in a cell whose centre is outside it; that cell is rock too.
-  for (const points of stoneSites) for (const stone of points) ground[cellOf(terrain, stone.x, stone.y)] = ROCK
+  // A stone near the edge of its outcrop may lie in a cell whose centre is outside it; that cell is stone too.
+  for (const points of stoneSites) for (const stone of points) ground[cellOf(terrain, stone.x, stone.y)] = STONE
+  // A band configured to begin together has already cleared and worked its camp ring. Do this only after all natural
+  // sites have been placed, so the clearing cannot move a site or alter any scattered-start layout.
+  if (!config.scattered)
+    for (let j = 0; j < terrain.cells; j += 1)
+      for (let i = 0; i < terrain.cells; i += 1) {
+        const index = j * terrain.cells + i
+        if (
+          ground[index] === STONE &&
+          distanceSq(
+            i * terrain.cellCm + terrain.cellCm / 2,
+            j * terrain.cellCm + terrain.cellCm / 2,
+            camp.x,
+            camp.y,
+          ) <=
+            config.campClearingCm ** 2
+        )
+          ground[index] = DIRT
+      }
   const bushes = plantsOf(bushSites)
   const hazels = plantsOf(hazelSites)
   const foodPlants = foodPlantsOf(bushes, hazels)

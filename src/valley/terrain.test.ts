@@ -7,11 +7,10 @@ import { BUSH_GROUNDS, HAZEL_GROUNDS, TREE_GROUNDS, generateLayout, onGround } f
 import { lineClear, placeOf, viewFrom } from './sight'
 import { landStats, valleyTheory } from './theory'
 import {
-  ROCK,
-  SAND,
-  SOIL,
+  DIRT,
+  GRASS,
+  STONE,
   TOBLER_PER_MILLE,
-  WET,
   cellOf,
   generateTerrain,
   gradeOf,
@@ -33,7 +32,10 @@ const SMALL: Partial<ValleyConfig> = {
   lakeHectares: 45,
   reliefWavelengthCm: 60_000,
   startAreaCm: 60_000,
-  kettleCount: 6,
+  smallKettleCount: 6,
+  largeKettleCount: 1,
+  drumlinCount: 12,
+  hummockCount: 30,
 }
 
 describe('the height field', () => {
@@ -45,19 +47,51 @@ describe('the height field', () => {
     expect(generateTerrain({ ...config, seed: 1 }).height).not.toEqual(terrain.height)
   })
 
+  it('draws recognisable landforms from independent streams', () => {
+    expect(terrain.moraines).toHaveLength(config.moraineBeltCount)
+    expect(terrain.drumlins).toHaveLength(config.drumlinCount)
+    expect(terrain.kettles).toHaveLength(config.smallKettleCount + config.largeKettleCount)
+    const fewerMoraines = generateTerrain({ ...config, moraineBeltCount: config.moraineBeltCount - 1 })
+    expect(fewerMoraines.drumlins).toEqual(terrain.drumlins)
+    expect(fewerMoraines.kettles).toEqual(terrain.kettles)
+    for (const drumlin of terrain.drumlins)
+      expect((drumlin.length * 1_000) / drumlin.width).toBeGreaterThanOrEqual(config.drumlinMinAspectPerMille)
+  })
+
   it('meets the lake at height 0 along the shore and is never below it', () => {
     for (let x = 0; x <= config.valleySizeCm; x += 5_000) expect(heightAt(terrain, x, 0)).toBe(0)
     expect(Math.min(...terrain.height)).toBe(0)
-    expect(Math.max(...terrain.height)).toBeLessThanOrEqual(config.reliefCm + config.hummockCm)
+    expect(Math.max(...terrain.height)).toBeLessThanOrEqual(
+      config.reliefCm +
+        config.moraineMaxHeightCm +
+        config.drumlinMaxHeightCm +
+        config.kameMaxHeightCm +
+        config.hummockMaxHeightCm +
+        config.microCoarseAmplitudeCm +
+        config.microFineAmplitudeCm,
+    )
   })
 
   it('digs each kettle deepest at its centre, an eighth of its radius deep', () => {
     for (const kettle of terrain.kettles) {
-      expect(kettle.depth).toBe(Math.floor((kettle.radius * config.kettleDepthPerMille) / 1_000))
-      expect(kettle.radius).toBeGreaterThanOrEqual(config.kettleMinRadiusCm)
-      expect(kettle.radius).toBeLessThanOrEqual(config.kettleMaxRadiusCm)
+      expect(kettle.depth).toBe(
+        Math.min(config.kettleMaxDepthCm, Math.floor((kettle.radius * config.kettleDepthPerMille) / 1_000)),
+      )
+      expect(kettle.depth).toBeLessThanOrEqual(config.kettleMaxDepthCm)
+      expect(kettle.lobes.length).toBeGreaterThanOrEqual(2)
     }
-    const flat = generateTerrain({ ...config, reliefCm: 0, hummockCm: 0, shoreRampCm: 1 })
+    const flat = generateTerrain({
+      ...config,
+      reliefCm: 0,
+      moraineBeltCount: 0,
+      drumlinCount: 0,
+      kameCount: 0,
+      hummockCount: 0,
+      tunnelValleyCount: 0,
+      microCoarseAmplitudeCm: 0,
+      microFineAmplitudeCm: 0,
+      shoreRampCm: 1,
+    })
     const kettle = flat.kettles.find((k) => k.y > k.radius && k.x > k.radius)!
     const centre = heightAt(flat, kettle.x, kettle.y)
     expect(centre).toBe(0)
@@ -96,14 +130,10 @@ describe('the ground', () => {
   const layout = generateLayout(config)
   const { terrain, ground } = layout
 
-  it('is wet along the shore and in kettles, rock at outcrops, and sand on low ground', () => {
-    expect(ground[cellOf(terrain, 30_000, 100)]).toBe(WET)
-    for (const kettle of terrain.kettles)
-      if (kettle.y > 2_000) expect(ground[cellOf(terrain, kettle.x, kettle.y)]).toBe(WET)
-    for (const outcrop of layout.outcrops) expect(ground[cellOf(terrain, outcrop.x, outcrop.y)]).toBe(ROCK)
+  it('is stone at outcrops, dirt on slopes and in patches, and grass elsewhere', () => {
+    for (const outcrop of layout.outcrops) expect(ground[cellOf(terrain, outcrop.x, outcrop.y)]).toBe(STONE)
     const kinds = new Set(ground)
-    expect(kinds.has(SAND)).toBe(true)
-    expect(kinds.has(SOIL)).toBe(true)
+    expect(kinds).toEqual(new Set([GRASS, DIRT, STONE]))
   })
 
   it('carries every plant on ground its kind grows on', () => {
@@ -114,7 +144,7 @@ describe('the ground', () => {
     ] as const)
       for (let id = 0; id < plants.count; id += 1)
         expect(onGround(terrain, ground, plants.x[id]!, plants.y[id]!, grounds)).toBe(true)
-    for (const hearth of layout.hearths) expect(ground[cellOf(terrain, hearth.x, hearth.y)]).not.toBe(WET)
+    for (const hearth of layout.hearths) expect(ground[cellOf(terrain, hearth.x, hearth.y)]).not.toBe(STONE)
   })
 
   it('is measured by the land statistics', () => {
@@ -155,7 +185,7 @@ describe('walking on slopes', () => {
     expect(theory.walkOnGrade(35, 0)).toEqual({ speed: 119, kcalPerHour: 341 })
     // Each ground's terrain factor.
     expect(walkCost(config, 0, 125, 0, 100)).toBe(198)
-    expect(walkCost(config, 0, 125, 0, 180)).toBe(295)
+    expect(walkCost(config, 0, 125, 0, 150)).toBe(258)
     // Never less than standing.
     expect(walkCost(config, 0, 1, -60, 100)).toBeGreaterThanOrEqual(config.restKcalPerHour)
   })
@@ -218,7 +248,7 @@ describe('sight over the land', () => {
     // Raise a ridge across the middle of a copy of the land.
     const ridge = { ...terrain, height: terrain.height.slice() }
     const points = terrain.cells + 1
-    for (let j = 0; j < points; j += 1) ridge.height[j * points + 120] = 100_000
+    for (let j = 0; j < points; j += 1) for (let i = 116; i <= 124; i += 1) ridge.height[j * points + i] = 100_000
     expect(lineClear(hilly, ridge, { x: 50_000, y: 60_000 }, { x: 70_000, y: 60_000 })).toBe(false)
     expect(lineClear(hilly, ridge, { x: 50_000, y: 60_000 }, { x: 55_000, y: 60_000 })).toBe(true)
   })

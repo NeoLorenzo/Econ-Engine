@@ -111,11 +111,11 @@ Life 10, terrain and scale, with every physical number from the [calibration doc
 - energy (berries, nuts, fish and the lake's growth), wood (sticks, dead branches, branches brought down by felling and wood in axes), logs and stones are conserved exactly, and every plant, hazel, tree, stone spot and the lake is replayed from regrowth and recorded work, every tree's fall and regrowth included: the plants worked every minute, and every plant every hour;
 - walking follows the land: each walking minute's grade is the rise towards where it walked, its speed Tobler's for that grade, its terrain factor the ground's where it set out, its climb the rise it made, and every second is charged the Pandolf rate with Santee's correction for that load, speed, grade and ground;
 - sight follows the land: a forager looks round by long sight exactly when it stands in a new place by day or has not for an hour, and what it then records, sites spotted, places seen, logs and stones, lies in places visible from its own; close sight records the same within 25 m every minute;
-- the layout follows the ground: every site, plant and stone spot lies on ground its kind grows on, and no forager starts on wet ground;
+- the layout follows the ground: every site and plant lies on grass or dirt, every stone spot lies on stone, and no forager starts on stone;
 - food is taken only within reach of a bush, hazel or the shore, only while the source is worth working, at no more than its rate at the stock there;
 - turns, seconds, speeds, work only in daylight on something within reach, groups, fires and gifts, warmth, huts, axes, promises and sales, as in Life 9.7.
 
-Unit tests cover configuration, the terrain (the same for a seed, 0 along the shore and never below, kettles, interpolation, a flat land), the ground and which plants grow on it, Tobler's table, grades, the Pandolf rate on slopes and each ground, Naismith's estimate, sight over flat ground and blocked by a ridge, a site hidden behind a hill, chunks of two sizes giving the same run, the checker catching a walk at a grade the land does not give, and the rules of Life 9.7 on a flat land. `fingerprints.test.ts` checks that Life 10 runs exactly as recorded over 30 days on three seeds for seven configurations. Experiments are left for a later, stable version of the Life engine; the specification lists the [questions for later](LIFE10_SPEC.md#questions-for-later).
+Unit tests cover configuration, the terrain (determinism, independent landform streams, feature counts and drumlin proportions, bounded relief, 0 along the shore and never below, irregular capped kettles, interpolation, and a flat land), the grass, dirt and stone ground and which surfaces carry plants, the observer's sampled display surface, Tobler's table, grades, the Pandolf rate on slopes and each ground, Naismith's estimate, sight over flat ground and blocked by relief, chunks of two sizes giving the same run, the checker catching a walk at a grade the land does not give, and the rules of Life 9.7 on a flat land. Three fingerprint files check that Life 10 runs exactly as recorded over 30 days on three seeds for seven configurations. Experiments are left for a later, stable version of the Life engine; the specification lists the [questions for later](LIFE10_SPEC.md#questions-for-later).
 
 ## The land against real young moraine country
 
@@ -123,13 +123,15 @@ Unit tests cover configuration, the terrain (the same for a seed, 0 along the sh
 
 | Measure | Life 10 |
 | --- | --- |
-| Height above the lake | 0 m to 31.0 m |
-| Ground | soil 62.3%, sand 36.0%, rock 0.6%, wet 1.1% |
-| Area steeper than 5%, 10%, 20% | 6.3%, 2.0%, 0.4% |
-| Kettles | 80, radii 20 m to 59 m; 74 of them 1 ha or less |
+| Height above the lake | 0 m to 36.91 m |
+| Ground | grass 81.07%, dirt 16.15%, stone 2.78% |
+| Area steeper than 5%, 10%, 20% | 56.10%, 18.85%, 6.42% |
+| Mean absolute height difference at 15 m, 60 m, 240 m | 0.84 m, 2.53 m, 4.10 m |
+| Landforms | 3 moraine belts, 56 drumlins, 18 kames, 240 hummocks and 2 tunnel valleys |
+| Kettles | 76, radii 15.22 m to 193.84 m, depth capped at 12 m |
 
-The checks against real measurements are qualitative for now: the relief is within the tens of metres of young moraine country, the kettles' sizes fall in the range of Schleswig-Holstein's mapped depressions, though 93% of them are a hectare or less against 64% there, so the land lacks its larger hollows, and Tobler's speeds and the Pandolf costs are those of the published equations. A measured relief for a 4 km square of young moraine is still needed.
+The checks against real measurements remain qualitative: relief is in the tens of metres of young-moraine country, the centre contains an aligned drumlin train rather than a chance flat gap, the kettle distribution contains both small hollows and larger basins, and Tobler's speeds and Pandolf's costs are the published equations. The next quantitative check is explicitly defined: sample several 4 km windows from official Danish DHM/Terræn and compare elevation distribution, multi-baseline roughness, slope, curvature, feature orientation and depression geometry. Counts, dimensions and exposure thresholds remain evidence-informed estimates until then.
 
 ## A year of the canonical land
 
-On the canonical seed, a year runs unchecked in about 2 minutes. All eight foragers are alive at its end, their reserves between about 63,700 and 66,400 kcal, in four groups with every hut whole. They live on hazelnuts alone, taking about 9.7 million kcal of nuts against almost no berries and no fish. By the end of the year every forager has seen every place on the land; they climb about 210 m a day and spend about 1,400 kcal a day walking, most of it exploring. Eight axes are made and none sold. These are observations from one run, not experiments.
+The earlier one-year observation was invalidated by the new relief, routes and sight lines. It was not rerun during this feature refinement: the fast unit tests and the 21 recorded 30-day fingerprints cover the implementation, while longer observations remain for the later stable engine as the project workflow requires.

@@ -29,27 +29,27 @@ const CONFIGS: Record<string, Partial<ValleyConfig>> = {
 const FINGERPRINT_TIMEOUT_MS = 300_000
 
 const RECORDED = [
-  { config: 'canonical', seed: 20260813, days: '35d07f45:53675', totals: '1120b933:446' },
-  { config: 'canonical', seed: 1, days: 'd0daf3d5:53473', totals: '4522dd7d:446' },
-  { config: 'canonical', seed: 2, days: 'eb8bdca7:53587', totals: '18305a0:446' },
-  { config: 'together', seed: 20260813, days: '2b8b904e:53337', totals: '33cc6683:444' },
-  { config: 'together', seed: 1, days: '7889f54b:53266', totals: '487f6602:444' },
-  { config: 'together', seed: 2, days: '1f00d39d:53329', totals: '89172e85:444' },
-  { config: 'noPractice', seed: 20260813, days: '2b47ebb3:54216', totals: '8df02636:446' },
-  { config: 'noPractice', seed: 1, days: '969276a0:54052', totals: '93b813a5:446' },
-  { config: 'noPractice', seed: 2, days: 'be38e854:54128', totals: '6ba21328:446' },
-  { config: 'talent', seed: 20260813, days: '6177b280:53536', totals: '2396c23:446' },
-  { config: 'talent', seed: 1, days: 'a713baf2:53388', totals: 'cc350afd:446' },
-  { config: 'talent', seed: 2, days: 'f476e427:53453', totals: 'e2fff32e:446' },
-  { config: 'twelve', seed: 20260813, days: '9c41ef60:62537', totals: '16e9f0d0:452' },
-  { config: 'twelve', seed: 1, days: '9cdc6826:62554', totals: '5c2a5a29:452' },
-  { config: 'twelve', seed: 2, days: '1508e6aa:62503', totals: '1432374a:452' },
-  { config: 'alike', seed: 20260813, days: 'd7652acf:53877', totals: '9677e145:446' },
-  { config: 'alike', seed: 1, days: '1668a4f2:53691', totals: 'a34f74b0:446' },
-  { config: 'alike', seed: 2, days: '21a76b25:53699', totals: '5cb34b56:446' },
-  { config: 'flat', seed: 20260813, days: 'f615ab5f:51330', totals: '8f72e029:440' },
-  { config: 'flat', seed: 1, days: 'ac79af27:51267', totals: 'e182c168:438' },
-  { config: 'flat', seed: 2, days: '4c29d0a:51461', totals: 'ef1955d5:440' },
+  { config: 'canonical', seed: 20260813, days: 'fc67acf:53532', totals: 'e283009f:446' },
+  { config: 'canonical', seed: 1, days: 'a4a986d3:53516', totals: 'c5a8ca11:446' },
+  { config: 'canonical', seed: 2, days: 'fbed2f1:53605', totals: 'ca3fb08:446' },
+  { config: 'together', seed: 20260813, days: '95647d57:53334', totals: 'fbd6d531:444' },
+  { config: 'together', seed: 1, days: 'da882814:53232', totals: 'f3e90e03:444' },
+  { config: 'together', seed: 2, days: 'becec869:53417', totals: 'd28f081f:444' },
+  { config: 'noPractice', seed: 20260813, days: 'ccf5a83f:54103', totals: 'e6ec2aa9:446' },
+  { config: 'noPractice', seed: 1, days: '5e1dc5f2:54089', totals: 'a191885c:446' },
+  { config: 'noPractice', seed: 2, days: '8c1dc65e:54166', totals: '90b932fa:446' },
+  { config: 'talent', seed: 20260813, days: 'b45d47db:53416', totals: '8a4c91c2:446' },
+  { config: 'talent', seed: 1, days: 'fb4a9f15:53430', totals: '258eb6e:446' },
+  { config: 'talent', seed: 2, days: '768d8aec:53474', totals: 'cbb47146:446' },
+  { config: 'twelve', seed: 20260813, days: '31ec7a77:62609', totals: 'e88e032d:452' },
+  { config: 'twelve', seed: 1, days: '56397083:62783', totals: '870ffc7e:452' },
+  { config: 'twelve', seed: 2, days: '4bdc3c5a:62553', totals: '2ee6dbf6:452' },
+  { config: 'alike', seed: 20260813, days: '9f200ad3:53643', totals: 'd9258d9a:446' },
+  { config: 'alike', seed: 1, days: '1334ebc1:53655', totals: '6bb64e0e:446' },
+  { config: 'alike', seed: 2, days: 'f1c0c7e4:53709', totals: '7c2c0e87:446' },
+  { config: 'flat', seed: 20260813, days: 'd7d36c8c:51444', totals: 'beb091e4:440' },
+  { config: 'flat', seed: 1, days: '63a4f53e:51361', totals: 'e9f4f71f:440' },
+  { config: 'flat', seed: 2, days: 'a9e7b183:51553', totals: '6c71778f:440' },
 ] as const
 
 /** Checks the recorded runs of the given configurations. */
@@ -62,8 +62,10 @@ export function checkFingerprints(configs: readonly string[]) {
           const start = createValley({ ...CONFIGS[recorded.config], seed: recorded.seed })
           const checker = new ValleyChecker(start)
           const end = runValley(start, 30 * 1_440, { recordEvents: false, onMinute: (state) => checker.assert(state) })
-          expect(fingerprintOf(end.days)).toBe(recorded.days)
-          expect(fingerprintOf(end.totals)).toBe(recorded.totals)
+          expect({ days: fingerprintOf(end.days), totals: fingerprintOf(end.totals) }).toEqual({
+            days: recorded.days,
+            totals: recorded.totals,
+          })
         },
         FINGERPRINT_TIMEOUT_MS,
       )

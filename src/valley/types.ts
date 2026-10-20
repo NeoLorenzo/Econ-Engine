@@ -24,20 +24,66 @@ export interface ValleyConfig {
   /** The broad rise and fall: up to `reliefCm` high, its hills `reliefWavelengthCm` apart. */
   reliefCm: number
   reliefWavelengthCm: number
-  /** Hummocks: up to `hummockCm` high, `hummockWavelengthCm` apart. */
-  hummockCm: number
-  hummockWavelengthCm: number
-  /** Kettle hollows: their count, radii, and depth at the centre in thousandths of the radius. */
-  kettleCount: number
-  kettleMinRadiusCm: number
-  kettleMaxRadiusCm: number
+  /** Regional ice-flow controls: their spacing and the greatest turn between neighbours, in sixteenths of a circle. */
+  iceFlowControlCm: number
+  iceFlowTurnSteps: number
+  /** Curved, broken moraine belts, with changing half-widths and heights. */
+  moraineBeltCount: number
+  moraineMinHalfWidthCm: number
+  moraineMaxHalfWidthCm: number
+  moraineMinHeightCm: number
+  moraineMaxHeightCm: number
+  moraineMinControlCm: number
+  moraineMaxControlCm: number
+  /** Streamlined hills aligned with the ice-flow field. */
+  drumlinCount: number
+  drumlinMinLengthCm: number
+  drumlinMaxLengthCm: number
+  drumlinMinWidthCm: number
+  drumlinMaxWidthCm: number
+  drumlinMinHeightCm: number
+  drumlinMaxHeightCm: number
+  drumlinMinAspectPerMille: number
+  /** Irregular kames and clustered dead-ice hummocks. */
+  kameCount: number
+  kameMinRadiusCm: number
+  kameMaxRadiusCm: number
+  kameMinHeightCm: number
+  kameMaxHeightCm: number
+  hummockClusterCount: number
+  hummockCount: number
+  hummockMinWidthCm: number
+  hummockMaxWidthCm: number
+  hummockMinHeightCm: number
+  hummockMaxHeightCm: number
+  /** Small and large irregular kettle hollows; centre depth is limited below. */
+  smallKettleCount: number
+  largeKettleCount: number
+  smallKettleMinRadiusCm: number
+  smallKettleMaxRadiusCm: number
+  largeKettleMinRadiusCm: number
+  largeKettleMaxRadiusCm: number
   kettleDepthPerMille: number
-  /** The land rises from the lake over `shoreRampCm`; its first `shoreWetCm` are wet. */
+  kettleMaxDepthCm: number
+  /** Broad, branching meltwater valleys. */
+  tunnelValleyCount: number
+  tunnelValleyMinWidthCm: number
+  tunnelValleyMaxWidthCm: number
+  tunnelValleyMinDepthCm: number
+  tunnelValleyMaxDepthCm: number
+  tunnelValleyMinControlCm: number
+  tunnelValleyMaxControlCm: number
+  /** Two zero-centred microrelief fields, coarse and fine. */
+  microCoarseWavelengthCm: number
+  microCoarseAmplitudeCm: number
+  microFineWavelengthCm: number
+  microFineAmplitudeCm: number
+  /** The land rises from the lake over this distance. */
   shoreRampCm: number
-  shoreWetCm: number
-  /** Sand lies where the broad relief is below `sandBelowCm`; rock on slopes of `rockSlopePercent` or more. */
-  sandBelowCm: number
-  rockSlopePercent: number
+  /** Moderate slopes or sharp local curvature expose dirt; steeper slopes expose stone. */
+  dirtSlopePercent: number
+  stoneSlopePercent: number
+  dirtCurvatureCm: number
   /** A forager's eye above the ground, and the step at which a line of sight is checked against the ground. */
   eyeHeightCm: number
   sightStepCm: number
@@ -120,10 +166,9 @@ export interface ValleyConfig {
   chopKcalPerHour: number
   makeKcalPerHour: number
   /** The Pandolf terrain factor of each ground for walking, in percent: 100 for a road, 120 for light brush. */
-  soilTerrainPercent: number
-  sandTerrainPercent: number
-  rockTerrainPercent: number
-  wetTerrainPercent: number
+  grassTerrainPercent: number
+  dirtTerrainPercent: number
+  stoneTerrainPercent: number
   /** A forager judges a walk's climb at this many seconds a metre, by Naismith's rule. */
   climbSecondsPerMetre: number
   /** Walking speed falls by this many thousandths for each body mass carried. */
@@ -229,7 +274,7 @@ export interface PlantIndex {
 /** Where everything stands. It never changes during a run, so every state shares it. */
 export interface ValleyLayout {
   camp: Point
-  /** The land's heights, and the ground of each terrain cell with every outcrop's circle laid as rock. */
+  /** The land's heights, and the ground of each terrain cell with every outcrop's circle laid as stone. */
   terrain: Terrain
   ground: Uint8Array
   /** Every site's centre as a point, by site ID, with an index for close sight. */

@@ -2,6 +2,32 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE10-GlacialRelief-051.2] - (2026-10-20)
+
+### Changed
+
+- **Relief that is visible where play begins:** stronger evidence-bounded landform heights, sharper two-scale microrelief, a south-eastern quiet till plain, and an offset train of twelve flow-aligned drumlins through the inhabited centre replace the chance flat gap around the starting view.
+- **A terrain-first observer:** the ground now renders the full 5 m lattice, uses stronger directional light, casts its own shadows, adds restrained albedo grain, and starts from a lower camera angle. Visual detail still leaves mesh positions unchanged, so people, plants and structures remain on the same contact surface.
+- Terrain measurements, deterministic fingerprints, specification, calibration, architecture, validation and lab notes are updated.
+
+## [LIFE10-GlacialTerrain-051.1] - (2026-10-20)
+
+### Changed
+
+- **A coherent glacial landscape:** the geometric ridges, circular hills and independent surface patches are replaced by a shared regional ice-flow field, terrain zones, three broken asymmetric moraine belts, 56 aligned drumlins, 18 irregular kames, 240 clustered hummocks, 76 irregular kettles, two broad tunnel valleys, quiet till plain and two finer scales of relief. Each family keeps its own named random stream.
+- **Relief-derived ground:** the whole map remains grassland; dirt now follows moderate slopes and sharp local curvature, stone follows the steepest slopes, and the observer softly blends cell colours without changing their simulation types.
+- **Close-up detail without contact errors:** fine visual grain perturbs lighting normals only. The mesh vertices and every person, structure, plant, marker and prop still use the same sampled surface, so detail cannot make objects float or sink.
+- Terrain configuration, validation, metrics, unit tests, all non-flat fingerprints, the specification, calibration, architecture, validation, roadmap, README and observer text are updated.
+
+## [LIFE10-TerrainVariety-051] - (2026-10-19)
+
+### Changed
+
+- **More varied terrain:** the broad relief now carries 12 long moraine ridges and 40 separate round hills, each from its own named random stream, before hummocks and kettle hollows are applied. Overlapping ridges and hills use the strongest contribution of each kind, keeping the relief bounded while giving it recognisable landforms.
+- **One grassland:** wet, sand, soil and rock ground are replaced by grass, coherent patches of exposed dirt, and exposed stone on outcrops and the steepest slopes. Plants and starts use grass or dirt; terrain factors are 120 for grass and dirt and 150 for stone.
+- **Ground contact:** the observer now builds one sampled display surface for both the visible mesh and object placement. People, including displaced sleepers, huts, hearths, flags, rocks, plants, fallen trees, crowns and ground markers use that surface; rings, group discs and guide lines follow its relief instead of cutting through a flat plane.
+- Configuration validation, terrain and observer-surface unit tests, the canonical fingerprints, the Life 10 specification, calibration, architecture, validation, roadmap and README are updated for the new land.
+
 ## [LIFE10-TerrainAndScale-050] - (2026-10-19)
 
 ### Added

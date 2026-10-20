@@ -6,6 +6,73 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE10-GlacialRelief-051.2] - (2026-10-20)
+
+### Problem
+
+The 051.1 map-scale view showed coherent glacial belts, but the inhabited centre could still fall between randomly placed drumlins. The opening camera therefore showed a broad green plane even when the whole map had substantial relief. Rendering the 15 m terrain detail through a 10 m display mesh, high ambient light and a steep camera angle further softened the slopes.
+
+### Decisions
+
+- Keep the lowland young-moraine setting rather than add mountains. Raise landform ranges within tens-of-metres relief, move the quiet till plain south-east, and guarantee an offset, flow-aligned twelve-drumlin train across the inhabited centre before filling the rest of both drumlin fields.
+- Use linear interpolation for the 60 m and 15 m zero-centred relief fields so their shoulders survive, with amplitudes of 2.5 m and 0.7 m.
+- Render every 5 m terrain sample, lower the default camera, strengthen directional sunlight, reduce ambient fill, let the ground cast shadows and add only low-contrast albedo grain. Contact continues to use the exact displayed surface.
+
+### What implementation showed
+
+- The canonical land ranges from 0 to 36.91 m above the lake. Grass covers 81.07%, dirt 16.15% and stone 2.78%; 56.10%, 18.85% and 6.42% of cells are at least 5%, 10% and 20% steep. Mean absolute height differences are 0.84 m at 15 m, 2.53 m at 60 m and 4.10 m at 240 m.
+- In the visible browser the starting forager now stands on a drumlin shoulder around 15-20 m above the lake, exposed dirt follows that slope and the aligned field is legible on the whole-land map. The stronger contact-consistent mesh remained responsive and the console had no warnings or errors.
+
+### Left for later
+
+- The real-data DHM/Terræn comparison remains the next quantitative calibration. Water and erosion remain Step 11; mountains remain inappropriate for this mapped lowland reference setting.
+
+## [LIFE10-GlacialTerrain-051.1] - (2026-10-20)
+
+### Problem and research
+
+The 051 terrain was more varied but still read as procedural geometry: smooth capsule ridges, isolated circular hills and surface patches unrelated to the relief. Published descriptions and maps of Danish young-moraine landscapes instead show landforms as an assemblage produced by one ice history: transverse moraine fronts, flow-parallel streamlined hills, clustered dead-ice topography, kames and broad meltwater valleys, with quieter till plain between them. Terrain-generation literature likewise treats recognizable structure at several scales as more important than adding undirected noise.
+
+### Decisions
+
+- One regional field now supplies sixteen written ice-flow directions. Drumlin fields and dead-ice clusters constrain where their landforms occur, while a protected till-plain zone prevents uniform visual busyness.
+- Moraine fronts are broken, curved polylines with unequal flanks; drumlins are elongated and aligned; kames and kettles use overlapping offset ellipses; hummocks and kettles cluster; tunnel valleys cross the map. Eleven independent named streams preserve deterministic separation between families.
+- Two finer relief fields add 60 m and 15 m variation. Dirt and stone are consequences of slope and local curvature rather than a separate random paint layer.
+- Observer-only fine grain changes vertex normals, never vertex positions. Nearby ground colours are blended at display vertices to avoid aliasing, while the engine retains exact grass, dirt and stone cells.
+
+### What implementation showed
+
+- The canonical map ranges from 0 to 30.60 m above the lake. Grass covers 90.20%, dirt 8.66% and stone 1.14%; 32.41%, 9.75% and 2.96% of cells are at least 5%, 10% and 20% steep. Mean absolute height differences are 0.54 m at 15 m, 1.61 m at 60 m and 2.99 m at 240 m.
+- The visible browser check at close and whole-land scales shows continuous small relief and distinct belts instead of the earlier giant pads. The console remained free of errors. The flat-land fingerprints did not change; all terrain-bearing trajectories were deliberately recorded again.
+
+### Left for later
+
+- These dimensions are evidence-informed defaults, not a fit to one surveyed square. A later stable-engine comparison should sample official Danish DHM/Terræn tiles and compare elevation distributions, roughness at several baselines, slope, curvature, orientation and depression geometry across several real windows.
+- Water, drainage and erosion remain Step 11. Mountains remain excluded from this lowland young-moraine setting.
+
+## [LIFE10-TerrainVariety-051] - (2026-10-19)
+
+### Problem
+
+The first Life 10 terrain was smooth at only two noise scales. Its large pale sand regions also read as a second, desert-like biome. In the 3D observer, the visible ground was a decimated mesh while people and props took their height from the finer simulation lattice, so the two surfaces could disagree: a person could appear sunk into or floating above the ground.
+
+### Decisions
+
+- **Landforms, not more noise.** Keep the broad relief, hummocks and kettles, and add 12 long moraine ridges and 40 separate round hills. Each family has its own derived random stream, so changing ridge counts does not redraw hills or kettles. At a point the strongest ridge and strongest hill contribute, rather than every overlap adding, which keeps the declared maximum relief meaningful.
+- **One grassland, three surfaces.** Grass is the default. A smooth cover field exposes coherent dirt patches, moderate slopes expose dirt, and slopes of at least 20% expose stone. Outcrops remain stone. Sand and wet ground are removed until water and vegetation can give them ecological meaning; mountains are omitted because they do not fit a 4 km young-moraine landscape.
+- **One visible surface.** The observer samples the immutable simulation height field once. Those exact samples build the mesh, and bilinear interpolation between them places every visual object. Footprint-sized objects use the highest contact under them, long fallen trunks follow their endpoint slope and clear intervening rises, and ground rings, group discs and guide lines are deformed to the surface.
+
+### What implementation showed
+
+- Separate streams made the terrain tests more useful: changing the ridge count leaves hills and kettles exactly unchanged, while the old determinism and flat-land checks still apply.
+- Sampling the visible mesh is the important contact fix. Sampling the finer simulation field more accurately was visually wrong whenever that detail was absent from the displayed mesh.
+- The new land changes routes, sight and therefore every canonical Life 10 trajectory. The 21 thirty-day fingerprints were deliberately recorded again after the rule and checker tests passed.
+
+### Left for later
+
+- The ridge and hill counts and dimensions, dirt coverage and stone threshold remain estimates. A measured 4 km square of young moraine relief is still needed.
+- Water in hollows, wet ground, soil fertility and living vegetation remain steps 11 to 13. Path finding still goes over relief in a straight line.
+
 ## [LIFE10-TerrainAndScale-050] - (2026-10-19)
 
 ### Problem

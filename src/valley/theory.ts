@@ -8,8 +8,8 @@ import { nightHours, nightWood, woodTarget } from './trade'
 import type { ValleyConfig, ValleyLayout } from './types'
 
 /**
- * The generated land, measured: its lowest and highest ground, the share of its area of each ground, the share steeper
- * than 5%, 10% and 20%, and its kettles' radii and depths. Validation compares these with real young moraine country.
+ * The generated land, measured at several scales: relief, surface shares, slopes, roughness and landform dimensions.
+ * Validation compares these with official elevation data for young-moraine country.
  */
 export function landStats(layout: ValleyLayout) {
   const { terrain, ground } = layout
@@ -38,6 +38,18 @@ export function landStats(layout: ValleyLayout) {
       if (slope >= 20) steeper[2]! += 1
     }
   const area = cells * cells
+  const roughnessAt = (step: number) => {
+    let total = 0
+    let samples = 0
+    for (let j = 0; j + step < points; j += step)
+      for (let i = 0; i + step < points; i += step) {
+        const here = height[j * points + i]!
+        total += Math.abs(height[j * points + i + step]! - here)
+        total += Math.abs(height[(j + step) * points + i]! - here)
+        samples += 2
+      }
+    return samples ? total / samples : 0
+  }
   return {
     lowestCm: lowest,
     highestCm: highest,
@@ -45,6 +57,18 @@ export function landStats(layout: ValleyLayout) {
     steeperThan5: steeper[0]! / area,
     steeperThan10: steeper[1]! / area,
     steeperThan20: steeper[2]! / area,
+    roughnessCm: {
+      at15m: roughnessAt(Math.max(1, Math.round(1_500 / cellCm))),
+      at60m: roughnessAt(Math.max(1, Math.round(6_000 / cellCm))),
+      at240m: roughnessAt(Math.max(1, Math.round(24_000 / cellCm))),
+    },
+    landforms: {
+      moraineBelts: terrain.moraines.length,
+      drumlins: terrain.drumlins.length,
+      kames: terrain.kames.length,
+      hummocks: terrain.hummocks.length,
+      tunnelValleys: terrain.tunnelValleys.length,
+    },
     kettles: terrain.kettles.map((kettle) => ({ radiusCm: kettle.radius, depthCm: kettle.depth })),
   }
 }
@@ -55,10 +79,10 @@ export function landStats(layout: ValleyLayout) {
 export function valleyTheory(config: ValleyConfig) {
   const night = nightHours(config)
   const daylight = 24 - night
-  /** What an hour of walking under `kg` costs on the flat on soil. */
+  /** What an hour of walking under `kg` costs on flat grass. */
   const walkCost = (kg: number) => walkCostOnGrade(kg, 0)
   /** Speed and cost of walking under `kg` on a grade of `grade` percent over ground of `terrainPercent`. */
-  const walkOnGrade = (kg: number, grade: number, terrainPercent = config.soilTerrainPercent) => {
+  const walkOnGrade = (kg: number, grade: number, terrainPercent = config.grassTerrainPercent) => {
     const speed = speedOnGrade(speedForLoad(config, kg), grade)
     return { speed, kcalPerHour: landWalkCost(config, kg, speed, grade, terrainPercent) }
   }
