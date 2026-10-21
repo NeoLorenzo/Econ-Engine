@@ -1,4 +1,69 @@
 import type { Terrain } from './terrain'
+import type { Hydration, HydrationConfig } from './hydration'
+import type { GroundKnowledge } from './routes'
+import type { FishStock } from './fish'
+
+export interface BankMemory extends Point {
+  id: number
+  bodyId: number
+  wetCell: number
+  dryCell: number
+  minute: number
+}
+
+export interface MovementSegment {
+  target: Point
+  from: Point
+  to: Point
+  seconds: number
+  grade: number
+  speed: number
+  terrainPercent: number
+  rate: number
+}
+
+export interface BodySecond {
+  deficitMl: number
+  thirsty: boolean
+  rate: number
+  drink: number
+  loss: number
+  spent: number
+}
+
+export interface WaterObservationEvent {
+  kind: 'water observation'
+  minute: number
+  foragerId: number
+  origin: Point
+  radiusCm: number
+  cells: number[]
+  banks: BankMemory[]
+  far: boolean
+}
+
+export interface DrinkEvent {
+  kind: 'drink'
+  minute: number
+  foragerId: number
+  bankId: number
+  bodyId: number
+  seconds: number
+  volumeMl: number
+  deficitBeforeMl: number
+  deficitAfterMl: number
+  lossMl: number
+}
+
+export interface RouteFailureEvent {
+  kind: 'route failure'
+  minute: number
+  foragerId: number
+  destination: Point
+  knowledgeRevision: number
+}
+
+export type WaterEvent = WaterObservationEvent | DrinkEvent | RouteFailureEvent
 
 /** The three foods: berries from bushes, hazelnuts from hazels, and fish from the lake. */
 export type FoodKind = 'berries' | 'nuts' | 'fish'
@@ -14,7 +79,13 @@ export interface FoodLot {
  * The valley's configuration. Lengths are whole centimetres, food and energy whole kilocalories, and wood whole
  * kilograms, so every balance is exact. Rates and costs stay per hour; a forager pays or takes them second by second.
  */
-export interface ValleyConfig {
+export interface ValleyConfig extends HydrationConfig {
+  riverCatchmentM2: number
+  riverDepthCm: number
+  drinkBankHeightCm: number
+  fishMinAreaM2: number
+  fishKgPerHectare: number
+  fishGrowthPercentPerYear: number
   seed: number
   /** The land is a square this many centimetres wide, with the camp at its centre and the lake beyond its north edge. */
   valleySizeCm: number
@@ -79,7 +150,6 @@ export interface ValleyConfig {
   microFineWavelengthCm: number
   microFineAmplitudeCm: number
   /** The land rises from the lake over this distance. */
-  shoreRampCm: number
   /** Moderate slopes or sharp local curvature expose dirt; steeper slopes expose stone. */
   dirtSlopePercent: number
   stoneSlopePercent: number
@@ -118,9 +188,6 @@ export interface ValleyConfig {
   nutKcalPerKg: number
   nutShelfLifeHours: number
   /** The lake beyond the valley's north edge: its area, its fish at capacity, and their yearly logistic growth rate. */
-  lakeHectares: number
-  lakeFishKgPerHectare: number
-  lakeGrowthPercentPerYear: number
   /** Fish caught in an hour at a full lake at a skill of 100%. */
   fishKcalPerHour: number
   /** Carried fish weigh a kilogram for every this many kilocalories. */
@@ -320,6 +387,7 @@ export interface Group {
   dissolvedMinute: number | null
   /** Every forager that ever joined, in order of joining; slot `i` of the rings round the flag went to `members[i]`. */
   members: number[]
+  hearthSlots: number[]
   /** The wood in its fire, and whether the fire is lit this hour. */
   fireWood: number
   fireLit: boolean
@@ -415,7 +483,15 @@ export interface PlantMemory {
   seen: Int32Array
 }
 
-export interface Forager {
+export interface Forager extends Hydration {
+  waterObservations: WaterObservationEvent[]
+  groundKnowledge: GroundKnowledge
+  knownBanks: Map<number, BankMemory>
+  fishMemory: Map<number, { stock: number; capacity: number; minute: number }>
+  route: Point[]
+  routeRevision: number
+  deathSecond: number | null
+  deathCauses: ('starvation' | 'dehydration')[]
   id: number
   /** Its position in whole centimetres. */
   x: number
@@ -431,16 +507,12 @@ export interface Forager {
   shortOfWood: boolean
   /** Wood gathered since it last stood at its hearth. */
   tripWood: number
-  /** The food plant it works for food, or `LAKE_ID` for the lake. */
+  /** The food plant it works for food, or a negative encoded bank ID for fishing. */
   targetFoodId: number | null
   targetWoodId: number | null
   /** For each food plant, the berries or nuts it last saw there. */
   foodMemory: PlantMemory
   woodMemory: PlantMemory
-  /** Whether it has seen the lake's shore; the fish it found there when it last fished, or −1, and that minute. */
-  lakeKnown: boolean
-  lakeStock: number
-  lakeFishedMinute: number
   /** The logs on each tree and the stones on each stone spot, as it last saw them from afar. */
   logMemory: PlantMemory
   stoneMemory: PlantMemory
@@ -520,6 +592,9 @@ export type ForagerAction = 'sleep' | 'rest' | 'walk' | 'forage' | 'gather' | 'c
 export type HutTask = 'cut' | 'stone' | 'make'
 
 export type ActionReason =
+  | 'drinking'
+  | 'seeking water'
+  | 'no known route'
   | 'going home'
   | 'night'
   | 'filling a load'
@@ -554,6 +629,20 @@ export type ActionReason =
 
 /** One forager's minute. Its seconds add up to 60. */
 export interface ActionEvent {
+  fishBodyId: number | null
+  fishBankId: number | null
+  fishExpectedRate: number
+  waterDeficitBeforeMl: number
+  waterDeficitAfterMl: number
+  drinkSeconds: number
+  observations: WaterObservationEvent[]
+  routeFailed: boolean
+  segments: MovementSegment[]
+  bodySeconds: BodySecond[]
+  drinkBankId: number | null
+  waterLostMl: number
+  waterDrunkMl: number
+  inactiveSeconds: number
   kind: 'action'
   foragerId: number
   minute: number
@@ -565,7 +654,7 @@ export interface ActionEvent {
   /** The good it worked for or walked towards, and whether to swap it. */
   workedFor: Good | null
   forTrade: boolean
-  /** What it walked towards or worked, if any: a food plant or `LAKE_ID` for food, a wood plant for wood. */
+  /** What it walked towards or worked, if any: a food plant or a negative encoded bank ID for fishing, a wood plant for wood. */
   targetId: number | null
   /** What it worked this minute, if any. */
   plantId: number | null
@@ -708,7 +797,8 @@ export interface DeathEvent {
   kind: 'death'
   foragerId: number
   minute: number
-  cause: 'starvation'
+  cause: 'starvation' | 'dehydration' | 'starvation and dehydration'
+  second: number
 }
 
 export interface SwapEvent {
@@ -816,6 +906,7 @@ export interface FeedEvent {
 }
 
 export type ValleyEvent =
+  | WaterEvent
   | ActionEvent
   | DeathEvent
   | SwapEvent
@@ -841,6 +932,16 @@ export interface ActionSeconds {
 
 /** One day of the band. Time is in seconds, summed over every forager that acted. */
 export interface DaySummary {
+  drinkingMlById: number[]
+  waterLossMlById: number[]
+  maxDeficitMlById: number[]
+  endDeficitMlById: number[]
+  thirstySecondsById: number[]
+  seekingWaterSecondsById: number[]
+  drinkingSecondsById: number[]
+  dehydrationDeaths: number
+  starvationDeaths: number
+  fishCatchByBody: Record<number, number>
   day: number
   seconds: ActionSeconds
   gatheredKcal: number
@@ -850,7 +951,7 @@ export interface DaySummary {
   /** Berries on bushes, nuts on hazels and fish in the lake. */
   bushStockKcal: number
   hazelStockKcal: number
-  lakeKcal: number
+  fishKcal: number
   /** Food taken during the day, of each kind. */
   gatheredBerriesKcal: number
   gatheredNutsKcal: number
@@ -927,7 +1028,7 @@ export interface ValleyTotals {
   initialKcal: number
   /** Berries and nuts regrown, and fish grown in the lake. */
   regrownKcal: number
-  lakeGrownKcal: number
+  fishGrownKcal: number
   metabolizedKcal: number
   gatheredKcal: number
   spoiledKcal: number
@@ -957,6 +1058,9 @@ export interface ValleyTotals {
 }
 
 export interface ValleyState {
+  lastWaterEvents: WaterEvent[]
+  fish: FishStock[]
+  waterWithdrawals: Map<number, number>
   config: ValleyConfig
   layout: ValleyLayout
   /** The next minute to run. Minute `m` is minute `m mod 1,440` of day `floor(m / 1,440)`. */
@@ -965,8 +1069,7 @@ export interface ValleyState {
   foodStock: Int32Array
   woodStock: Int32Array
   /** The lake's fish in kilocalories, and the growth owed it, in units of `100 · capacity · 8,760`. */
-  lakeKcal: number
-  lakeGrowthRemainder: number
+  fishKcal: number
   /** Every tree's logs, the minute it was felled or −1 while it stands, and every stone spot's stones, by ID. */
   treeLogs: Int32Array
   treeFelledMinute: Int32Array

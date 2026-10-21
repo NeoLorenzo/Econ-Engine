@@ -446,14 +446,14 @@ describe('theory', () => {
     expect(theory.woodRegrownPerYear).toBeCloseTo(1_104, 10)
   })
 
-  it('feeds about seven from berries, nuts and the lake at its most productive', () => {
+  it('counts the food supplied by a dry flat fixture', () => {
     const theory = valleyTheory(createValley(FLAT_LAND).config)
     expect(theory.yearlyBerriesKcal).toBe(1_728_000)
     expect(theory.yearlyNutsKcal).toBe(4_800_000)
-    expect(theory.yearlyFishKcal).toBe(180_000)
-    expect(theory.yearlyRegrowthKcal).toBe(6_708_000)
-    expect(theory.carryingCapacity(2_500)).toBeCloseTo(7.35, 2)
-    expect(theory.initialFoodKcal).toBe(99_840 + 2_400_000 + 1_800_000)
+    expect(theory.yearlyFishKcal).toBe(0)
+    expect(theory.yearlyRegrowthKcal).toBe(6_528_000)
+    expect(theory.carryingCapacity(2_500)).toBeCloseTo(6_528_000 / (365 * 2_500), 2)
+    expect(theory.initialFoodKcal).toBe(99_840 + 2_400_000)
     // At full rates of 1,200, 3,500 and 600, a bush is worth working down to a sixth, a hazel to 6% and the lake to a third.
     expect(theory.worthWorkingBelow(1_200)).toBeCloseTo(1 / 6, 10)
     expect(theory.worthWorkingBelow(3_500)).toBeCloseTo(0.057, 3)

@@ -1,8 +1,9 @@
+import { createSurveyedValley as createValley, addTestLake } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
-import { LAKE_ID, takeOldest } from './food'
-import { lakeCapacityKcal } from './config'
-import { cloneValley, createValley, eatCarried, lastEventOf, runValley, stepValley } from './engine'
+import { takeOldest } from './food'
+
+import { cloneValley, eatCarried, lastEventOf, runValley, stepValley } from './engine'
 import { choosePlant } from './forager'
 import { distance } from './geometry'
 import { ValleyChecker } from './invariants'
@@ -79,7 +80,7 @@ describe('a forager’s minute', () => {
 
   it('sleeps at its own hearth at night without a group, warm while it has wood and cold without', () => {
     const alone = (wood: number) => {
-      const state = cloneValley(createValley(FLAT_LAND))
+      const state = cloneValley(createValley(FLAT_LAND, true))
       state.minute = NIGHT
       state.foragers[0]!.wood = wood
       return lastEventOf(stepValley(state), 0)!
@@ -135,10 +136,14 @@ describe('choosing a plant', () => {
     const state = setUp()
     const forager = state.foragers[0]!
     expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBeNull()
-    forager.lakeKnown = true
-    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBe(LAKE_ID)
+    const bank = addTestLake(state)
+    expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBe(-bank.id - 1)
     // Having fished it down to a quarter, it no longer finds it worth working.
-    forager.lakeStock = lakeCapacityKcal(state.config) / 4
+    forager.fishMemory.set(bank.bodyId, {
+      stock: state.fishKcal / 4,
+      capacity: state.fish[0]!.capacity,
+      minute: state.minute,
+    })
     expect(choosePlant(state.config, state.layout, forager, 'food', state.minute, false)).toBeNull()
   })
 
@@ -219,15 +224,15 @@ describe('the engine', () => {
     })
 
   it('is deterministic, and running n minutes equals n single steps', () => {
-    const start = createValley(FLAT_LAND)
+    const start = createValley(FLAT_LAND, true)
     let stepped = start
     for (let minute = 0; minute < 1_600; minute += 1) stepped = stepValley(stepped)
     expect(fingerprint(runValley(start, 1_600))).toBe(fingerprint(stepped))
-    expect(fingerprint(runValley(createValley(FLAT_LAND), 1_600))).toBe(fingerprint(stepped))
+    expect(fingerprint(runValley(createValley(FLAT_LAND, true), 1_600))).toBe(fingerprint(stepped))
   })
 
   it('never changes the state it is given', () => {
-    const start = runValley(createValley(FLAT_LAND), 700)
+    const start = runValley(createValley(FLAT_LAND, true), 700)
     const before = fingerprint(start)
     stepValley(start)
     runValley(start, 100)
@@ -235,7 +240,7 @@ describe('the engine', () => {
   })
 
   it('keeps every invariant through two days, and the checker catches what breaks them', () => {
-    const start = createValley(FLAT_LAND)
+    const start = createValley(FLAT_LAND, true)
     const checker = new ValleyChecker(start)
     const ran = runValley(start, 2 * 1_440, { onMinute: (state) => checker.assert(state) })
     expect(ran.minute).toBe(2_880)
@@ -246,10 +251,11 @@ describe('the engine', () => {
       damage: (state: ValleyState) => void,
       ready: (state: ValleyState) => boolean = () => true,
     ) => {
-      const base = createValley(FLAT_LAND)
+      const base = createValley(FLAT_LAND, true)
       const check = new ValleyChecker(base)
       let after = stepValley(runValley(base, minutes, { onMinute: (state) => check.assert(state) }))
       while (!ready(after)) {
+        if (after.minute > minutes + 3 * 1440) throw new Error('Rule fixture never reached the action under test')
         check.assert(after)
         after = stepValley(after)
       }

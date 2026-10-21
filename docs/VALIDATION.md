@@ -104,34 +104,23 @@ No existing simulation test needed a new expected value: they assert behaviour r
 
 The eight-seed MVP8/MVP9 comparison is in [MVP9_SPEC.md](MVP9_SPEC.md#mvp8-and-mvp9-compared). The fast-mode browser check passed with a pause latency of 256 ms. In the browser, the 40×40 town, plot buildings, the overlay and scenery, clicking a plot, Locate, the 2D market map and the 375px layout were checked with no console errors.
 
-# Life 10
+# Life 11
 
-Life 10, terrain and scale, with every physical number from the [calibration document](CALIBRATION.md), is the only Life step in the repository. Runtime invariants, checked after every minute of every checked run, by `src/valley/invariants.ts`:
+[Life 11](LIFE11_SPEC.md) adds terrain-derived permanent water and drinking. Calibration evidence and estimates remain distinguished in [CALIBRATION.md](CALIBRATION.md). `npm run agent:check` is the final implementation gate.
 
-- energy (berries, nuts, fish and the lake's growth), wood (sticks, dead branches, branches brought down by felling and wood in axes), logs and stones are conserved exactly, and every plant, hazel, tree, stone spot and the lake is replayed from regrowth and recorded work, every tree's fall and regrowth included: the plants worked every minute, and every plant every hour;
-- walking follows the land: each walking minute's grade is the rise towards where it walked, its speed Tobler's for that grade, its terrain factor the ground's where it set out, its climb the rise it made, and every second is charged the Pandolf rate with Santee's correction for that load, speed, grade and ground;
-- sight follows the land: a forager looks round by long sight exactly when it stands in a new place by day or has not for an hour, and what it then records, sites spotted, places seen, logs and stones, lies in places visible from its own; close sight records the same within 25 m every minute;
-- the layout follows the ground: every site and plant lies on grass or dirt, every stone spot lies on stone, and no forager starts on stone;
-- food is taken only within reach of a bush, hazel or the shore, only while the source is worth working, at no more than its rate at the stock there;
-- turns, seconds, speeds, work only in daylight on something within reach, groups, fires and gifts, warmth, huts, axes, promises and sales, as in Life 9.7.
+The minute checker retains food, energy, wood, log, stone, tool, practice, group, fire and exchange accounting. It additionally checks:
 
-Unit tests cover configuration, the terrain (determinism, independent landform streams, feature counts and drumlin proportions, bounded relief, 0 along the shore and never below, irregular capped kettles, interpolation, and a flat land), the grass, dirt and stone ground and which surfaces carry plants, the observer's sampled display surface, Tobler's table, grades, the Pandolf rate on slopes and each ground, Naismith's estimate, sight over flat ground and blocked by relief, chunks of two sizes giving the same run, the checker catching a walk at a grade the land does not give, and the rules of Life 9.7 on a flat land. Three fingerprint files check that Life 10 runs exactly as recorded over 30 days on three seeds for seven configurations. Experiments are left for a later, stable version of the Life engine; the specification lists the [questions for later](LIFE10_SPEC.md#questions-for-later).
+- unique lake/reach membership, cell areas, depths, outlets, contributing areas and an acyclic downstream graph with non-rising surfaces;
+- dry resource/start/structure placement, observed dry routes, diagonal/connector safety, segment endpoints, grade, speed, terrain cost and summed climb;
+- water observations against visibility and an independently replayed cell/bank memory;
+- each body's `initial + growth - catch = stock`, its exact growth remainder and source-specific fishing attempts;
+- each person's `initial deficit + loss - drink = deficit`, per-second loss and hysteresis, bank access, action seconds and immediate death;
+- external withdrawals globally and by source, with no further metabolism, work or exchange after death.
 
-## The land against real young moraine country
+Small analytic tests cover a slope, bowl/spill, flat and confluence; exact fish arithmetic including large products and zero capacity; 2,000 ml resting loss per day and 440 ml extra from four hours picking; drinking before loss and the fatal second; known routes around water and blocked diagonal corners. Integration tests cover night drinking, independent fish bodies, a first attempt at a fishless pool, corruption of water/fish/death records and dry observer interpolation. Existing rules use explicit surveyed-ground/water fixtures where those details are outside the rule under test. Fixture waits are bounded so death cannot turn a test into an endless search for later work.
 
-`landStats` in `src/valley/theory.ts` measures the canonical land (seed 20260813):
+The existing 21 fingerprints remain checked 30-day runs, partitioned by configuration for parallel validation: three seeds for canonical, together, no-practice, craft-talent, twelve-person, equal-skill and flat configurations. Geography and thirst intentionally change trajectories in this step. Fingerprints are recorded only with the checker enabled, after the rule checks pass; they are never a substitute for those checks.
 
-| Measure | Life 10 |
-| --- | --- |
-| Height above the lake | 0 m to 36.91 m |
-| Ground | grass 81.07%, dirt 16.15%, stone 2.78% |
-| Area steeper than 5%, 10%, 20% | 56.10%, 18.85%, 6.42% |
-| Mean absolute height difference at 15 m, 60 m, 240 m | 0.84 m, 2.53 m, 4.10 m |
-| Landforms | 3 moraine belts, 56 drumlins, 18 kames, 240 hummocks and 2 tunnel valleys |
-| Kettles | 76, radii 15.22 m to 193.84 m, depth capped at 12 m |
+`waterStats` reports water area, lake sizes/depths, represented river length, drainage density and exits. One-cell channels are a 5 m resolution limit, and filled depressions assume saturated land. These dimensions are estimates pending comparison with a selected mapped reference window. River fish calibration, dehydration thresholds and food moisture remain unresolved. No multi-seed calibration sweep, long experiment or claimed year-scale benchmark is added during feature building.
 
-The checks against real measurements remain qualitative: relief is in the tens of metres of young-moraine country, the centre contains an aligned drumlin train rather than a chance flat gap, the kettle distribution contains both small hollows and larger basins, and Tobler's speeds and Pandolf's costs are the published equations. The next quantitative check is explicitly defined: sample several 4 km windows from official Danish DHM/Terræn and compare elevation distribution, multi-baseline roughness, slope, curvature, feature orientation and depression geometry. Counts, dimensions and exposure thresholds remain evidence-informed estimates until then.
-
-## A year of the canonical land
-
-The earlier one-year observation was invalidated by the new relief, routes and sight lines. It was not rerun during this feature refinement: the fast unit tests and the 21 recorded 30-day fingerprints cover the implementation, while longer observations remain for the later stable engine as the project workflow requires.
+The browser acceptance check inspects lake and river contact, a drinking person, routing/interpolation and the console. Camera, arrows and shading do not change simulation state.

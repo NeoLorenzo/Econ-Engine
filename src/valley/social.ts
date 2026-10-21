@@ -2,6 +2,9 @@ import { ringOffset } from './config'
 import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
 import { nearestSeen } from './sight'
+import { knownRoute, knownDryFootprint } from './routes'
+import { cellOf } from './terrain'
+import { frontier } from './waterKnowledge'
 import { chooseSite, siteCentre } from './sites'
 import type {
   ActionReason,
@@ -197,6 +200,7 @@ export const newGroup = (id: number, flag: Point, minute: number): Group => ({
   foundedMinute: minute,
   dissolvedMinute: null,
   members: [],
+  hearthSlots: [],
   fireWood: 0,
   fireLit: false,
   given: [],
@@ -217,15 +221,29 @@ export function startingGroups(config: ValleyConfig, layout: ValleyLayout, forag
     {
       ...newGroup(0, layout.camp, 0),
       members: foragers.map((f) => f.id),
+      hearthSlots: foragers.map((f) => f.id),
       given: foragers.map(() => 0),
     },
   ]
 }
 
-const join = (config: ValleyConfig, group: Group, forager: Forager, minute: number) => {
+function availableSlot(config: ValleyConfig, group: Group, forager: Forager) {
+  const maximumRing = Math.ceil(config.perceptionRadiusCm / config.hutRingCm)
+  const maximumSlots = 4 * maximumRing * (maximumRing + 1)
+  for (let slot = 0; slot < maximumSlots; slot += 1) {
+    if (group.hearthSlots.includes(slot)) continue
+    const point = hearthAround(config, group.flag, slot)
+    if (knownDryFootprint(forager.groundKnowledge, point) && knownRoute(forager.groundKnowledge, forager, point))
+      return slot
+  }
+  return null
+}
+
+const join = (config: ValleyConfig, group: Group, forager: Forager, minute: number, slot: number) => {
   forager.groupId = group.id
   forager.joinedMinute = minute
-  forager.hearth = hearthAround(config, group.flag, group.members.length)
+  forager.hearth = hearthAround(config, group.flag, slot)
+  group.hearthSlots = [...group.hearthSlots, slot]
   group.members = [...group.members, forager.id]
   group.given = [...group.given, 0]
   if (!forager.knownFlags.includes(group.id)) forager.knownFlags = [...forager.knownFlags, group.id]
@@ -242,7 +260,10 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Grou
   const other = nearestOther(forager, state.foragers, config.talkRadiusCm)
   if (!other) return null
   if (other.groupId !== null) {
-    join(config, state.groups[other.groupId]!, forager, minute)
+    const group = state.groups[other.groupId]!
+    const slot = availableSlot(config, group, forager)
+    if (slot === null) return null
+    join(config, group, forager, minute, slot)
     return {
       kind: 'join',
       minute,
@@ -253,10 +274,19 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Grou
     }
   }
   const flag = { x: Math.floor((forager.x + other.x) / 2), y: Math.floor((forager.y + other.y) / 2) }
+  if (state.layout.terrain.water.body[cellOf(state.layout.terrain, flag.x, flag.y)]! >= 0) return null
   const group = newGroup(state.groups.length, flag, minute)
+  if (!knownDryFootprint(forager.groundKnowledge, flag, 100) || !knownDryFootprint(other.groundKnowledge, flag, 100))
+    return null
+  const firstSlot = availableSlot(config, group, forager)
+  if (firstSlot === null) return null
+  group.hearthSlots = [firstSlot]
+  const otherSlot = availableSlot(config, group, other)
+  group.hearthSlots = []
+  if (otherSlot === null) return null
   state.groups.push(group)
-  join(config, group, forager, minute)
-  join(config, group, other, minute)
+  join(config, group, forager, minute, firstSlot)
+  join(config, group, other, minute, otherSlot)
   return {
     kind: 'found',
     minute,
@@ -347,6 +377,10 @@ function exploreGoal(state: ValleyState, forager: Forager, minute: number, seeki
   if (place !== null)
     return { ...placeCentre(config, place), reason: seeking ?? 'exploring', placeId: place, siteId: null }
   const site = chooseSite(config, layout, forager, minute, 'check', null)
-  if (site === null) return null
+  if (site === null) {
+    const route = frontier(forager, forager, (point) => reachableAndBack(config, forager, point.x, point.y, minute))
+    const point = route?.at(-1)
+    return point ? { ...point, reason: seeking ?? 'exploring', placeId: null, siteId: null } : null
+  }
   return { ...siteCentre(config, layout, site), reason: seeking ?? 'checking', placeId: null, siteId: site }
 }

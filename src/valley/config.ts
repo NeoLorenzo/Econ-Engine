@@ -1,19 +1,35 @@
 import { isqrt } from './geometry'
+import { waterThresholds } from './hydration'
+import { terrainOf } from './terrain'
+import { fishCapacity } from './fish'
 import type { Point, ValleyConfig } from './types'
 
 /**
- * The canonical Life 10 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
+ * The canonical Life 11 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
  * fall of up to 30 m with broken moraine fronts, drumlins, kames, clustered hummocks, kettle hollows and tunnel
- * valleys, falling to a lake of 150 hectares along
- * its north edge. Its grassland surface is grass, dirt or stone, and each plant grows on suitable ground: 800
+ * valleys, lakes in hollows and connected downhill river reaches. Its grassland surface is grass, dirt or stone, and each plant grows on suitable ground: 800
  * thickets of 60 berry
  * bushes, 800 hazel thickets of 40 hazels, 300 stands of 12 trees and 100 outcrops of stones, as dense as Life 9.7's
  * valley. A band of 8 born with foraging skills from 75% to 125% starts scattered over the middle 800 m. Slopes slow
  * walking by Tobler's hiking function and cost energy by the Pandolf equation's grade term; the ground sets its
  * terrain factor; hills block long sight. Every member wants a hut of 23 logs, cut from felled trees with a ground
- * stone axe it makes or buys. Every physical number is set from real measurements, sourced in docs/CALIBRATION.md.
+ * stone axe it makes or buys. Measurements and explicit estimates are sourced in docs/CALIBRATION.md.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
+  riverCatchmentM2: 250_000,
+  riverDepthCm: 50,
+  drinkBankHeightCm: 100,
+  fishMinAreaM2: 1_000,
+  fishKgPerHectare: 100,
+  fishGrowthPercentPerYear: 40,
+  waterBaseMlPerDay: 2_000,
+  waterExtraMlPerKcal: 1,
+  thirstBodyPerMille: 10,
+  urgentThirstBodyPerMille: 30,
+  fatalWaterLossBodyPerMille: 100,
+  initialWaterDeficitMl: 0,
+  drinkStopMl: 100,
+  drinkMlPerSecond: 10,
   seed: 20260813,
   valleySizeCm: 400_000,
   terrainCellCm: 500,
@@ -67,7 +83,6 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   microCoarseAmplitudeCm: 250,
   microFineWavelengthCm: 1_500,
   microFineAmplitudeCm: 70,
-  shoreRampCm: 40_000,
   dirtSlopePercent: 10,
   stoneSlopePercent: 30,
   dirtCurvatureCm: 40,
@@ -94,9 +109,6 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   nutKcalPerHour: 3_500,
   nutKcalPerKg: 2_500,
   nutShelfLifeHours: 4_380,
-  lakeHectares: 150,
-  lakeFishKgPerHectare: 100,
-  lakeGrowthPercentPerYear: 40,
   fishKcalPerHour: 600,
   fishKcalPerKg: 600,
   fishShelfLifeHours: 24,
@@ -189,7 +201,6 @@ export const FLAT_LAND: Partial<ValleyConfig> = {
   hazelThicketCount: 32,
   standCount: 12,
   outcropCount: 4,
-  lakeHectares: 30,
   reliefCm: 0,
   moraineBeltCount: 0,
   drumlinCount: 0,
@@ -208,9 +219,11 @@ export const FLAT_LAND: Partial<ValleyConfig> = {
 const BOOLEAN_KEYS = new Set(['scattered', 'axeTrade', 'craftPractice'])
 
 /** The most fish the lake holds, in kilocalories: its area times its fish a hectare. */
-export const lakeCapacityKcal = (
-  config: Pick<ValleyConfig, 'lakeHectares' | 'lakeFishKgPerHectare' | 'fishKcalPerKg'>,
-) => config.lakeHectares * config.lakeFishKgPerHectare * config.fishKcalPerKg
+export const fishCapacityKcal = (config: ValleyConfig) =>
+  terrainOf(config).water.bodies.reduce(
+    (sum, body) => sum + fishCapacity(body.areaM2, config.fishMinAreaM2, config.fishKgPerHectare, config.fishKcalPerKg),
+    0,
+  )
 
 /** The points of the square spiral around the camp: the 8 of the first ring, then the 16 of the second, and so on. */
 export function spiralOffsets(count: number) {
@@ -265,8 +278,43 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     if (BOOLEAN_KEYS.has(key)) {
       if (typeof value !== 'boolean') errors.push(`${key} must be true or false`)
     } else if (!Number.isInteger(value)) errors.push(`${key} must be an integer`)
+    else if (!Number.isSafeInteger(value)) errors.push(`${key} must be a safe integer`)
   }
   if (errors.length) return errors
+  const thresholds = waterThresholds(config)
+  if (Object.values(thresholds).some((value) => !Number.isSafeInteger(value)))
+    errors.push('Body water thresholds exceed safe integer limits')
+  const maxFish =
+    (BigInt(config.valleySizeCm) ** 2n * BigInt(Math.max(0, config.fishKgPerHectare)) * BigInt(config.fishKcalPerKg)) /
+    100_000_000n
+  if (maxFish * 876_000n > BigInt(Number.MAX_SAFE_INTEGER))
+    errors.push('Fish capacity exceeds supported stock/remainder limits')
+  if (!(
+    0 <= config.initialWaterDeficitMl &&
+    config.initialWaterDeficitMl < thresholds.thirsty &&
+    0 <= config.drinkStopMl &&
+    config.drinkStopMl < thresholds.thirsty &&
+    thresholds.thirsty < thresholds.urgent &&
+    thresholds.urgent < thresholds.fatal
+  ))
+    errors.push('Water deficit and rounded body thresholds must be ordered')
+  for (const key of [
+    'riverCatchmentM2',
+    'riverDepthCm',
+    'fishMinAreaM2',
+    'waterBaseMlPerDay',
+    'drinkMlPerSecond',
+  ] as const)
+    if (config[key] <= 0) errors.push(`${key} must be positive`)
+  for (const key of [
+    'drinkBankHeightCm',
+    'fishKgPerHectare',
+    'fishGrowthPercentPerYear',
+    'waterExtraMlPerKcal',
+  ] as const)
+    if (config[key] < 0) errors.push(`${key} must not be negative`)
+  if (config.terrainCellCm % 100 !== 0 || config.valleySizeCm / config.terrainCellCm > 2_000)
+    errors.push('Water grids support whole-metre cells and at most 2000 cells per side')
   const positive: (keyof ValleyConfig)[] = [
     'valleySizeCm',
     'thicketCount',
@@ -279,8 +327,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'hazelCapacityKcal',
     'nutKcalPerHour',
     'nutKcalPerKg',
-    'lakeHectares',
-    'lakeFishKgPerHectare',
     'fishKcalPerHour',
     'fishKcalPerKg',
     'standRadiusCm',
@@ -359,7 +405,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'tunnelValleyMaxControlCm',
     'microCoarseWavelengthCm',
     'microFineWavelengthCm',
-    'shoreRampCm',
     'eyeHeightCm',
     'sightStepCm',
     'startAreaCm',
@@ -373,7 +418,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'hazelsPerThicket',
     'hazelRegrowthKcalPerYear',
     'nutShelfLifeHours',
-    'lakeGrowthPercentPerYear',
     'fishShelfLifeHours',
     'standCount',
     'treesPerStand',
@@ -416,9 +460,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   if (config.initialHazelKcal < 0 || config.initialHazelKcal > config.hazelCapacityKcal)
     errors.push('initialHazelKcal must be between 0 and hazelCapacityKcal')
   // The lake's growth is owed in exact integers: what is owed at the most must stay a safe integer.
-  const lake = lakeCapacityKcal(config)
-  if (100 * lake * 8_760 + config.lakeGrowthPercentPerYear * Math.ceil(lake / 2) ** 2 > Number.MAX_SAFE_INTEGER)
-    errors.push('The lake is too large for its growth to be counted exactly')
   if (config.initialTreeWood < 0 || config.initialTreeWood > config.treeCapacityWood)
     errors.push('initialTreeWood must be between 0 and treeCapacityWood')
   if (config.initialBushWood < 0 || config.initialBushWood > config.bushCapacityWood)
@@ -479,7 +520,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   if (config.kettleDepthPerMille > 1_000) errors.push('kettleDepthPerMille must be at most 1,000')
   if (config.dirtSlopePercent > config.stoneSlopePercent)
     errors.push('dirtSlopePercent must not exceed stoneSlopePercent')
-  if (config.shoreRampCm > config.valleySizeCm) errors.push('shoreRampCm must not exceed the land’s width')
   if (config.sightStepCm > config.placeCm) errors.push('sightStepCm must not exceed placeCm')
   if (config.startAreaCm > config.valleySizeCm) errors.push('startAreaCm must not exceed the land’s width')
   // Heights times the lattice's interpolation weights must stay exact integers.
@@ -491,8 +531,16 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     config.hummockMaxHeightCm +
     config.microCoarseAmplitudeCm +
     config.microFineAmplitudeCm
-  if (highestTerrain * Math.max(config.shoreRampCm, config.terrainCellCm ** 2) > 2 ** 52)
+  if (highestTerrain * config.terrainCellCm ** 2 > 2 ** 52)
     errors.push('The terrain is too high to be computed exactly')
+  const depthBound =
+    config.kettleMaxDepthCm +
+    config.tunnelValleyMaxDepthCm +
+    config.microCoarseAmplitudeCm +
+    config.microFineAmplitudeCm +
+    config.riverDepthCm
+  if (highestTerrain > 2_147_483_647 || depthBound > 2_147_483_647)
+    errors.push('Terrain or channel heights exceed Int32 limits')
   if (config.reliefCm * (config.reliefWavelengthCm / config.terrainCellCm) ** 3 > 2 ** 52)
     errors.push('The broad relief is too high or too long to be computed exactly')
   const logSpeed =
@@ -544,6 +592,46 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   )
     errors.push('A site must fit in close sight to be checked: perceptionRadiusCm > every site radius')
   if (2 * config.siteMarginCm >= config.valleySizeCm) errors.push('siteMarginCm must leave room for sites')
+  if ((config.valleySizeCm / config.terrainCellCm) ** 2 * config.bandSize * 5 > 512_000_000)
+    errors.push('Observed-ground memories exceed the supported 512 MB allocation')
+  if (config.valleySizeCm > Math.floor(Math.sqrt(2 ** 51)))
+    errors.push('Land coordinates exceed exact squared-distance limits')
+  const plants = [
+    config.thicketCount * config.bushesPerThicket,
+    config.hazelThicketCount * config.hazelsPerThicket,
+    config.standCount * config.treesPerStand,
+    config.outcropCount * config.stonesPerOutcrop,
+  ]
+  if (plants.some((count) => !Number.isSafeInteger(count)) || plants.reduce((a, b) => a + b, 0) > 2_000_000)
+    errors.push('Plant and stone allocations exceed the supported two million records')
+  for (const key of [
+    'bushCapacityKcal',
+    'initialBushKcal',
+    'hazelCapacityKcal',
+    'initialHazelKcal',
+    'treeCapacityWood',
+    'initialTreeWood',
+    'bushCapacityWood',
+    'initialBushWood',
+    'stonesPerSpot',
+    'logsPerTree',
+  ] as const)
+    if (config[key] > 2_147_483_647) errors.push(`${key} exceeds Int32 stock limits`)
+  const waterActivityBound =
+    config.waterExtraMlPerKcal *
+    Math.max(
+      1_000_000,
+      config.pickKcalPerHour,
+      config.gatherKcalPerHour,
+      config.chopKcalPerHour,
+      config.makeKcalPerHour,
+    )
+  if (
+    !Number.isSafeInteger(waterActivityBound) ||
+    waterActivityBound > Number.MAX_SAFE_INTEGER - 3599 ||
+    config.waterBaseMlPerDay > Number.MAX_SAFE_INTEGER - 86_399
+  )
+    errors.push('Water-loss numerators exceed supported exact integer limits')
   return errors
 }
 

@@ -1,10 +1,10 @@
 import { isDaylight } from './forager'
 import { distance, distanceSq } from './geometry'
-import { seesShore } from './lake'
+import { observeGround } from './waterKnowledge'
 import { forEachPlantWithin } from './layout'
 import { siteGeometry } from './sites'
 import { observePlaces, placeBounds, placeCount, placesPerSide } from './social'
-import { heightAt, type Terrain } from './terrain'
+import { heightAt, cellOf, type Terrain } from './terrain'
 import type { Forager, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } from './types'
 
 // Long sight over the land. Hills block it: by day a forager sees, within `sightRadiusCm` of the centre of the place it
@@ -13,6 +13,11 @@ import type { Forager, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } 
 // every `sightStepCm` along it. What each place sees is worked out the first time someone stands in it by day, and
 // kept outside the state for the run. Close sight is never blocked.
 
+/** Water surfaces, rather than submerged beds, are the visible surface crossed by sight rays. */
+function sightHeightAt(terrain: Terrain, x: number, y: number) {
+  const cell = cellOf(terrain, x, y)
+  return terrain.water.body[cell]! >= 0 ? terrain.water.level[cell]! : heightAt(terrain, x, y)
+}
 /** The place holding a point. */
 export function placeOf(config: ValleyConfig, x: number, y: number) {
   const n = placesPerSide(config)
@@ -32,15 +37,15 @@ export function lineClear(config: ValleyConfig, terrain: Terrain, from: Point, t
   const d = distance(from.x, from.y, to.x, to.y)
   const steps = Math.ceil(d / config.sightStepCm)
   if (steps <= 1) return true
-  const h0 = heightAt(terrain, from.x, from.y) + config.eyeHeightCm
-  const h1 = heightAt(terrain, to.x, to.y) + config.eyeHeightCm
+  const h0 = sightHeightAt(terrain, from.x, from.y) + config.eyeHeightCm
+  const h1 = sightHeightAt(terrain, to.x, to.y) + config.eyeHeightCm
   const dx = to.x - from.x
   const dy = to.y - from.y
   const dh = h1 - h0
   for (let k = 1; k < steps; k += 1) {
     const x = from.x + Math.trunc((dx * k) / steps)
     const y = from.y + Math.trunc((dy * k) / steps)
-    if (heightAt(terrain, x, y) > h0 + Math.floor((dh * k) / steps)) return false
+    if (sightHeightAt(terrain, x, y) > h0 + Math.floor((dh * k) / steps)) return false
   }
   return true
 }
@@ -61,7 +66,6 @@ export interface PlaceView {
   trees: Int32Array
   stones: Int32Array
   /** Whether a point of the lake's shore is within sight in a visible place. */
-  shore: boolean
 }
 
 /** The things of one kind in each place, as offsets into one list of IDs. */
@@ -142,7 +146,7 @@ function castRays(config: ValleyConfig, terrain: Terrain, cache: SightCache, cen
   const r = config.sightRadiusCm
   const size = config.valleySizeCm
   const eye = config.eyeHeightCm
-  const h0 = heightAt(terrain, centre.x, centre.y) + eye
+  const h0 = sightHeightAt(terrain, centre.x, centre.y) + eye
   const reach = Math.ceil(r / config.placeCm) + 1
   const span = reach * config.placeCm
   const steps = Math.floor(r / step)
@@ -167,7 +171,7 @@ function castRays(config: ValleyConfig, terrain: Terrain, cache: SightCache, cen
         x = Math.max(0, Math.min(size, x))
         y = Math.max(0, Math.min(size, y))
       }
-      const ground = heightAt(terrain, x, y)
+      const ground = sightHeightAt(terrain, x, y)
       if (run === 0 || (ground + eye - h0) * run >= rise * d) seen[placeOf(config, x, y)] = 1
       if (run === 0 || (ground - h0) * run > rise * d) {
         rise = ground - h0
@@ -201,7 +205,6 @@ function computeView(config: ValleyConfig, layout: ValleyLayout, cache: SightCac
   const sites: number[] = []
   const trees: number[] = []
   const stones: number[] = []
-  let shore = false
   const collect = (lists: PlaceLists, points: Plants, q: number, into: number[]) => {
     for (let k = lists.start[q]!; k < lists.start[q + 1]!; k += 1) {
       const id = lists.ids[k]!
@@ -227,7 +230,6 @@ function computeView(config: ValleyConfig, layout: ValleyLayout, cache: SightCac
       collect(cache.trees, layout.trees, q, trees)
       collect(cache.stones, layout.stones, q, stones)
       // The nearest point of the shore in a place of the first row lies straight north of the centre, or at a corner.
-      if (qr === 0 && distanceSq(nx, 0, centre.x, centre.y) <= r2) shore = true
     }
   const sorted = (ids: number[]) => Int32Array.from(ids).sort()
   return {
@@ -237,7 +239,6 @@ function computeView(config: ValleyConfig, layout: ValleyLayout, cache: SightCac
     sites: sorted(sites),
     trees: sorted(trees),
     stones: sorted(stones),
-    shore,
   }
 }
 
@@ -284,7 +285,7 @@ export function observeAround(state: ValleyState, forager: Forager, minute: numb
       forager.siteChecked[site] = minute
   })
   observePlaces(config, forager, minute)
-  if (seesShore(y, close)) forager.lakeKnown = true
+  observeGround(config, layout, forager, minute, forager, close, () => true)
   const day = isDaylight(config, minute)
   if (!day) forager.farPlace = -1
   else {
@@ -299,7 +300,17 @@ export function observeAround(state: ValleyState, forager: Forager, minute: numb
           forager.placeSeen[seen] = minute
           forager.placesSeen += 1
         }
-      if (view.shore) forager.lakeKnown = true
+      const visiblePlaces = new Set(view.visible)
+      observeGround(
+        config,
+        layout,
+        forager,
+        minute,
+        placeCentreOf(config, place),
+        config.sightRadiusCm,
+        (point) => visiblePlaces.has(placeOf(config, point.x, point.y)),
+        true,
+      )
       forager.farPlace = place
       forager.farMinute = minute
     }

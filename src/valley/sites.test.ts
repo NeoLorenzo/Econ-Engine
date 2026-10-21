@@ -1,6 +1,7 @@
+import { createSurveyedValley as createValley } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
-import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
+import { cloneValley, lastEventOf, stepValley } from './engine'
 import { ValleyChecker } from './invariants'
 import { observeAround } from './sight'
 import { chooseSite, siteCentre, siteCount, siteHolds, siteKind, sightOf, siteWanted } from './sites'
@@ -168,8 +169,6 @@ describe('searching', () => {
     state.foragers[0]!.foodMemory.stock.fill(0)
     state.foragers[0]!.foodMemory.seen[1_000] = 1
     // It has fished the lake and found it empty.
-    state.foragers[0]!.lakeKnown = true
-    state.foragers[0]!.lakeStock = 0
     const ground = lastEventOf(stepValley(state), 0)!
     expect(ground.reason).toBe('seeking food')
     expect(ground.targetId).toBe(1_000)

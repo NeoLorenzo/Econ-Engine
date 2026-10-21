@@ -1,24 +1,24 @@
-import { lakeCapacityKcal } from './config'
 import type { FoodKind, FoodLot, Forager, ValleyConfig, ValleyLayout } from './types'
 
-/** The target that stands for the lake among food sources, where a food plant's ID would be. */
-export const LAKE_ID = -1
-
-/** The food a source gives: berries from a bush, nuts from a hazel, fish from the lake. */
+/** Negative source IDs encode encountered bank IDs; nonnegative IDs identify food plants. */
 export const foodOfSource = (layout: ValleyLayout, source: number): FoodKind =>
-  source === LAKE_ID ? 'fish' : source < layout.bushes.count ? 'berries' : 'nuts'
+  source < 0 ? 'fish' : source < layout.bushes.count ? 'berries' : 'nuts'
 
 /** The most a source holds. */
-export const capacityOf = (config: ValleyConfig, food: FoodKind) =>
-  food === 'berries' ? config.bushCapacityKcal : food === 'nuts' ? config.hazelCapacityKcal : lakeCapacityKcal(config)
+export const capacityOf = (config: ValleyConfig, food: FoodKind) => {
+  if (food === 'fish') throw new Error('Fish capacity requires a particular water body')
+  return food === 'berries' ? config.bushCapacityKcal : config.hazelCapacityKcal
+}
 
 /** A forager's hourly rate for a food at a full source, for the day. */
 export const fullRateOf = (forager: Forager, food: FoodKind) =>
   food === 'berries' ? forager.forageRate : food === 'nuts' ? forager.nutRate : forager.fishRate
 
 /** An hourly rate at a source holding `stock`: the full rate times the share of the source still there, rounded down. */
-export const rateAtStock = (config: ValleyConfig, full: number, food: FoodKind, stock: number) =>
-  Math.floor((full * stock) / capacityOf(config, food))
+export const rateAtStock = (config: ValleyConfig, full: number, food: FoodKind, stock: number) => {
+  const capacity = capacityOf(config, food)
+  return capacity > 0 ? Math.floor((full * stock) / capacity) : 0
+}
 
 /** A source is worth working while an hour there brings more than the hour costs. */
 export const worthWorking = (config: ValleyConfig, rate: number) => rate > config.pickKcalPerHour

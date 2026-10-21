@@ -29,7 +29,6 @@ const SMALL: Partial<ValleyConfig> = {
   hazelThicketCount: 30,
   standCount: 12,
   outcropCount: 4,
-  lakeHectares: 45,
   reliefWavelengthCm: 60_000,
   startAreaCm: 60_000,
   smallKettleCount: 6,
@@ -58,9 +57,9 @@ describe('the height field', () => {
       expect((drumlin.length * 1_000) / drumlin.width).toBeGreaterThanOrEqual(config.drumlinMinAspectPerMille)
   })
 
-  it('meets the lake at height 0 along the shore and is never below it', () => {
-    for (let x = 0; x <= config.valleySizeCm; x += 5_000) expect(heightAt(terrain, x, 0)).toBe(0)
-    expect(Math.min(...terrain.height)).toBe(0)
+  it('retains signed relief and has no artificial north-shore ramp', () => {
+    expect(Array.from(terrain.height.slice(0, terrain.cells + 1)).some((h) => h !== 0)).toBe(true)
+    expect(Math.min(...terrain.height)).toBeLessThan(0)
     expect(Math.max(...terrain.height)).toBeLessThanOrEqual(
       config.reliefCm +
         config.moraineMaxHeightCm +
@@ -90,11 +89,10 @@ describe('the height field', () => {
       tunnelValleyCount: 0,
       microCoarseAmplitudeCm: 0,
       microFineAmplitudeCm: 0,
-      shoreRampCm: 1,
     })
     const kettle = flat.kettles.find((k) => k.y > k.radius && k.x > k.radius)!
     const centre = heightAt(flat, kettle.x, kettle.y)
-    expect(centre).toBe(0)
+    expect(centre).toBeLessThan(0)
     expect(heightAt(flat, kettle.x + kettle.radius + 500, kettle.y)).toBe(0)
   })
 
@@ -113,6 +111,10 @@ describe('the height field', () => {
         terrain.height[(j + 1) * points + i + 1]!,
       ]
       const h = heightAt(terrain, i * cell + 137, j * cell + 251)
+      if (terrain.water.body[j * terrain.cells + i]! >= 0) {
+        expect(h).toBe(terrain.water.bed[j * terrain.cells + i])
+        continue
+      }
       expect(h).toBeGreaterThanOrEqual(Math.min(...corners))
       expect(h).toBeLessThanOrEqual(Math.max(...corners))
       expect(heightAt(terrain, i * cell, j * cell)).toBe(corners[0])
@@ -151,7 +153,7 @@ describe('the ground', () => {
     const stats = landStats(layout)
     const shares = Object.values(stats.groundShares).reduce((a, b) => a + b, 0)
     expect(shares).toBeCloseTo(1, 10)
-    expect(stats.lowestCm).toBe(0)
+    expect(stats.lowestCm).toBeLessThan(0)
     expect(stats.steeperThan5).toBeGreaterThanOrEqual(stats.steeperThan10)
   })
 })

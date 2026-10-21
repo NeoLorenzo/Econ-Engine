@@ -1,4 +1,4 @@
 import { checkFingerprints } from './fingerprintRuns'
 
-// Life 10's fingerprints, split over three files so they run in parallel; see `fingerprintRuns.ts`.
-checkFingerprints(['noPractice', 'talent'])
+// Life 11's fingerprints, split by configuration for parallel checks; see `fingerprintRuns.ts`.
+checkFingerprints(['noPractice'])

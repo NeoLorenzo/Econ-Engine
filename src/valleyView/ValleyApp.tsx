@@ -141,6 +141,8 @@ export default function ValleyApp() {
   const [initialPair] = useState(() => startPair(DEFAULT_SETUP))
   const pairRef = useRef<DisplayPair>(initialPair)
   const [running, setRunning] = useState(true)
+  const [showFlow, setShowFlow] = useState(false)
+  const flowRef = useRef(false)
   const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX)
   const [selected, setSelected] = useState<ValleySelection | null>(null)
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
@@ -169,12 +171,13 @@ export default function ValleyApp() {
   // The animation loop reads the latest controls through refs, so changing them never restarts it.
   useEffect(() => {
     runningRef.current = running
+    flowRef.current = showFlow
     speedRef.current = VALLEY_SPEEDS[speedIndex]!
     selectedRef.current = selected
     highlightedRef.current = highlightedId
     followedRef.current = followedId
     followingRef.current = following
-  }, [running, speedIndex, selected, highlightedId, followedId, following])
+  }, [running, speedIndex, selected, highlightedId, followedId, following, showFlow])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -222,6 +225,7 @@ export default function ValleyApp() {
             pairRef.current = { previous, next, alpha: clock.alpha }
           }
           scene.draw(pairRef.current, {
+            showFlow: flowRef.current,
             interpolate: speed.interpolate,
             selected: selectedRef.current,
             highlightedId: highlightedRef.current,
@@ -339,7 +343,7 @@ export default function ValleyApp() {
     selected && (selected.kind === 'bush' || selected.kind === 'hazel' || selected.kind === 'tree')
       ? plantInspection(state, selected.kind, selected.id, followed)
       : null
-  const lake = selected?.kind === 'lake' ? lakeInspection(state, followed) : null
+  const lake = selected?.kind === 'lake' ? lakeInspection(state, followed, selected.id) : null
   const stone = selected?.kind === 'stone' ? stoneInspection(state, selected.id, followed) : null
   const hut = selected?.kind === 'hut' && state.huts[selected.id] ? hutInspection(state, selected.id) : null
   const group = selected?.kind === 'group' && state.groups[selected.id] ? groupInspection(pair, selected.id) : null
@@ -361,7 +365,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 10 · terrain</span>
+        <span className="life-title">Life 11 · water</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -382,6 +386,14 @@ export default function ValleyApp() {
             onClick={stepMinute}
           >
             <Icon name="step" />
+          </button>
+          <button
+            type="button"
+            aria-pressed={showFlow}
+            onClick={() => setShowFlow((value) => !value)}
+            title="Downstream direction; no discharge or velocity is simulated"
+          >
+            Flow
           </button>
           <select
             className="speed"
@@ -460,6 +472,29 @@ export default function ValleyApp() {
         <p className={`life-activity${forager.alive ? '' : ' is-dead'}`} aria-live="polite">
           {describeActivity(pair, followed)}
         </p>
+        <p>
+          Water deficit: {forager.waterDeficitMl.toLocaleString()} ml (
+          {((100 * forager.waterDeficitMl) / (config.bodyKg * 1000)).toFixed(2)}% of body mass) ·{' '}
+          {forager.waterDeficitMl >= config.bodyKg * config.urgentThirstBodyPerMille
+            ? 'Severely thirsty'
+            : forager.thirsty
+              ? 'Thirsty'
+              : 'Hydrated'}
+        </p>
+        <p>
+          Drunk today: {state.today.drinkingMlById[followed]!.toLocaleString()} ml · net loss today:{' '}
+          {state.today.waterLossMlById[followed]!.toLocaleString()} ml
+          {forager.deathCauses.length > 0 && ` · ${forager.deathCauses.join(' and ')}`}
+        </p>
+        {forager.alive && forager.route.length > 0 && (
+          <p>
+            {state.lastEvents.find((event) => event.foragerId === followed)?.reason === 'seeking water'
+              ? 'Drinking destination'
+              : 'Destination'}
+            : {Math.round(forager.route.at(-1)!.x / 100)} m east, {Math.round(forager.route.at(-1)!.y / 100)} m south ·
+            gold line shows the known dry route; blue dots mark remembered banks.
+          </p>
+        )}
         <div className="life-energy">
           <div className="life-energy-head">
             <span>Energy reserve</span>
@@ -552,7 +587,7 @@ export default function ValleyApp() {
           </dd>
           <dt>Ground</dt>
           <dd className="num">
-            {summary.ground}, {summary.heightM.toFixed(1)} m above the lake
+            {summary.ground}, {summary.heightM.toFixed(1)} m above the datum
             {summary.walk &&
               ` · walking ${summary.walk.gradePercent > 0 ? 'up' : summary.walk.gradePercent < 0 ? 'down' : 'on'} a ${Math.abs(summary.walk.gradePercent)}% slope at ${summary.walk.speedKmh.toFixed(1)} km/h`}
             {` · climbed ${Math.round(summary.climbedTodayM)} m today`}
@@ -703,7 +738,7 @@ export default function ValleyApp() {
           <dl>
             <dt>Fish</dt>
             <dd className="num">
-              {formatKcal(lake.stock)}, {Math.round((100 * lake.stock) / lake.capacity)}% of a full lake
+              {formatKcal(lake.stock)}, {Math.round((100 * lake.stock) / Math.max(1, lake.capacity))}% of a full lake
             </dd>
             <dt>{name} found</dt>
             <dd className="num">
@@ -711,11 +746,11 @@ export default function ValleyApp() {
                 ? lake.known
                   ? 'never fished here; expects it full'
                   : 'has not seen the lake'
-                : `${Math.round((100 * lake.remembered) / lake.capacity)}% of a full lake, ${lake.fished}`}
+                : `${Math.round((100 * lake.remembered) / Math.max(1, lake.capacity))}% of a full lake, ${lake.fished}`}
             </dd>
           </dl>
           <p className="life-note">
-            {`A lake of ${lake.hectares} hectares beyond the north shore. Fish cannot be seen: a fisher learns the stock by what it catches. A full or empty lake gains no fish; a lake fished to half its stock gains most.`}
+            {`A water body of ${lake.hectares} hectares. Water levels are fixed; drinking is recorded as an external withdrawal. Fish cannot be seen: a fisher learns the stock by what it catches. A full or empty lake gains no fish; a lake fished to half its stock gains most.`}
           </p>
         </section>
       )}
@@ -1031,7 +1066,12 @@ export default function ValleyApp() {
                 domain={[0, 100]}
                 series={[
                   { key: 'hazelPercent', name: 'Nuts on the hazels, % of full', color: palette.accent },
-                  { key: 'lakePercent', name: 'Fish in the lake, % of full', color: palette.household, dashed: true },
+                  {
+                    key: 'fishPercent',
+                    name: 'Fish in inland water, % of full',
+                    color: palette.household,
+                    dashed: true,
+                  },
                 ]}
               />
             </>
@@ -1069,7 +1109,7 @@ export default function ValleyApp() {
           <p className="life-note">
             Running seed {setup.seed}: {setup.bandSize} foragers on a stretch of glacial land{' '}
             {config.valleySizeCm / 100} m across, with broken moraine fronts, flow-aligned drumlins, clustered hummocks,
-            irregular hollows and broad dry valleys, sloping down to a lake,{' '}
+            irregular hollows, lakes and connected river reaches,{' '}
             {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
             knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, but not through hills, and
             berries and firewood up close. The whole land is grassland, with grass, exposed dirt and stone; slopes slow
@@ -1085,9 +1125,9 @@ export default function ValleyApp() {
               ? `of ${setup.skillMinPercent}%`
               : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
             , which grow with practice over {setup.practiceDays} days from {setup.practiceMinPercent}% towards{' '}
-            {setup.practiceMaxPercent}%. They pick berries bush by bush, gather hazelnuts and fish the lake beyond the
-            north shore, taking less an hour as a source thins, and go where an hour brings most food for the walk. They
-            gather sticks from bushes and dead branches from under trees, bringing them home in loads of{' '}
+            {setup.practiceMaxPercent}%. They pick berries bush by bush, gather hazelnuts and fish discovered water at
+            discovered banks, taking less an hour as a source thins, and go where an hour brings most food for the walk.
+            They gather sticks from bushes and dead branches from under trees, bringing them home in loads of{' '}
             {formatKg(setup.woodLoad)}. Each is coloured by what wood costs it, from{' '}
             <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
@@ -1097,9 +1137,9 @@ export default function ValleyApp() {
             follow them, a bush, hazel, tree or the lake to inspect it, and a flag, badge or group to see the group.
           </p>
           <p className="life-note">
-            Every physical number, from what a bush yields to how long a hut lasts, is set from real measurements; the{' '}
+            Measurements, derived quantities and explicit estimates are distinguished in the{' '}
             <a href="https://github.com/NeoLorenzo/Econ-Engine/blob/main/docs/CALIBRATION.md">calibration document</a>{' '}
-            gives the source of each.
+            with the source and trust of each choice.
           </p>
         </details>
       </section>

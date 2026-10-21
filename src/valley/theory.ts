@@ -1,11 +1,30 @@
 import { askOf } from './axes'
-import { lakeCapacityKcal } from './config'
+import { fishCapacityKcal } from './config'
 import { speedForLoad } from './forager'
 import { placeCount } from './social'
 import { siteCount } from './sites'
 import { GROUND_NAMES, cellSlopePercent, speedOnGrade, walkCost as landWalkCost } from './terrain'
 import { nightHours, nightWood, woodTarget } from './trade'
 import type { ValleyConfig, ValleyLayout } from './types'
+
+/** Measurements of fixed water geography; none of these aggregates drives decisions. */
+export function waterStats(layout: ValleyLayout) {
+  const water = layout.terrain.water
+  const lakes = water.bodies.filter((body) => body.kind === 'lake')
+  const rivers = water.bodies.filter((body) => body.kind === 'river')
+  const riverLengthM = rivers.reduce((sum, body) => sum + (body.cells.length * water.cellCm) / 100, 0)
+  return {
+    areaM2: water.bodies.reduce((sum, body) => sum + body.areaM2, 0),
+    lakes: lakes.length,
+    lakeAreasM2: lakes.map((body) => body.areaM2),
+    lakeDepthsCm: lakes.map((body) => body.maxDepthCm),
+    riverReaches: rivers.length,
+    riverLengthM,
+    drainageDensityMPerKm2: riverLengthM / ((water.cells * water.cellCm) / 100_000) ** 2,
+    boundaryExits: water.parent.reduce((sum, parent, id) => sum + (parent === -1 && water.body[id]! >= 0 ? 1 : 0), 0),
+    representedChannelWidthCm: water.cellCm,
+  }
+}
 
 /**
  * The generated land, measured at several scales: relief, surface shares, slopes, roughness and landform dimensions.
@@ -103,8 +122,8 @@ export function valleyTheory(config: ValleyConfig) {
     g * forageHoursPerDay(g, gatherHours, walkHours)
   const yearlyBerriesKcal = config.thicketCount * config.bushesPerThicket * config.bushRegrowthKcalPerYear
   const yearlyNutsKcal = config.hazelThicketCount * config.hazelsPerThicket * config.hazelRegrowthKcalPerYear
-  /** The lake's fish grow fastest at half its stock: `lakeGrowthPercentPerYear / 400` of a full lake a year. */
-  const yearlyFishKcal = (lakeCapacityKcal(config) * config.lakeGrowthPercentPerYear) / 400
+  /** The lake's fish grow fastest at half its stock: `fishGrowthPercentPerYear / 400` of a full lake a year. */
+  const yearlyFishKcal = (fishCapacityKcal(config) * config.fishGrowthPercentPerYear) / 400
   /** What the valley can give every year: berries, nuts, and the lake's fish held at its most productive stock. */
   const yearlyRegrowthKcal = yearlyBerriesKcal + yearlyNutsKcal + yearlyFishKcal
   const dailyRegrowthKcal = yearlyRegrowthKcal / 365
@@ -150,7 +169,7 @@ export function valleyTheory(config: ValleyConfig) {
     initialFoodKcal:
       config.thicketCount * config.bushesPerThicket * config.initialBushKcal +
       config.hazelThicketCount * config.hazelsPerThicket * config.initialHazelKcal +
-      lakeCapacityKcal(config),
+      fishCapacityKcal(config),
     /** How many foragers the valley could feed if each needed `need` kilocalories a day. */
     carryingCapacity: (need: number) => dailyRegrowthKcal / need,
     nightWood: nightWood(config),
