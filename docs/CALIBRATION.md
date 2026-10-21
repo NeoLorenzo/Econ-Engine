@@ -1,6 +1,6 @@
 # Calibration of the Life core
 
-This document compares every physical parameter of the Life core with real-world measurements, records the sources, and proposes realistic values. Nothing in it is implemented yet; the next Life specification will apply it. It follows [design rule 15](../SIMULATION_DESIGN_RULES.md#15-do-not-calibrate-by-aesthetics): parameters come from documented measurements, not from how the run looks.
+This document records measurements, derivations, estimates and proposals for the Life core. The current specification gives implemented defaults; earlier tables retain the context in which their evidence was gathered. It follows [design rule 15](../SIMULATION_DESIGN_RULES.md#15-do-not-calibrate-by-aesthetics): parameters come from documented measurements, not from how the run looks.
 
 Each real-world figure is marked by how far it can be trusted:
 
@@ -129,9 +129,8 @@ Added in Life 9.7, after every forager starved in Life 9.6's valley of berries a
 | `hazelCapacityKcal` | 1,875, half a year's nuts | Fallen nuts lie for months, but rodents take many | Estimate |
 | `nutKcalPerHour` | 3,500 at a full bush | Hand collection from the ground 4.5 to 8 kg an hour in orchards [33]; wild bushes are sparser, and the nuts must be cracked. About 1.4 kg in their shells an hour, gathered and cracked | Derived from orchard rates, then estimate |
 | `nutShelfLifeHours` | 4,380, half a year | Dry hazelnuts in their shells keep for months | Estimate |
-| `lakeHectares` | 30, the water along the valley's north shore, 800 m by 375 m | | Choice |
-| `lakeFishKgPerHectare` | 100 kg a hectare, 1,800,000 kcal for the lake | Perch alone 16 to 44 kg a hectare in a Finnish lake [34]; a whole fish community up to about 540 kg a hectare in a rich reservoir [34] | Measured, then estimate |
-| Fish yield | `lakeGrowthPercentPerYear` 40: at most 10 kg a hectare a year, at half the stock | 166 northern Finnish lakes yielded 0.2 to 43 kg a hectare a year [29] | Measured, then derived |
+| `fishKgPerHectare` | 100 kg a hectare, 1,800,000 kcal for the lake | Perch alone 16 to 44 kg a hectare in a Finnish lake [34]; a whole fish community up to about 540 kg a hectare in a rich reservoir [34] | Measured, then estimate |
+| Fish yield | `fishGrowthPercentPerYear` 40: at most 10 kg a hectare a year, at half the stock | 166 northern Finnish lakes yielded 0.2 to 43 kg a hectare a year [29] | Measured, then derived |
 | `fishKcalPerKg` | 600 kcal a kg of whole fish | Raw perch and pike flesh about 900 kcal a kg [27]; about two thirds of a fish is eaten with its roe and liver | Measured, then estimate |
 | `fishKcalPerHour` | 600 at a full lake, 1 kg of fish | Anglers after perch catch 4 to 7 fish an hour [35], about 0.5 to 1 kg | Measured, then derived |
 | `fishShelfLifeHours` | 24 | Fresh fish spoils within a day unchilled | Estimate |
@@ -142,22 +141,20 @@ Lakes in a northern climate yield little fish for their area, so the lake gives 
 
 ## Terrain
 
-Added in Life 10, which merges the roadmap's scale and terrain steps. The valley becomes a generated stretch of young moraine country 4 km square, falling to a lake along its north edge, with every kind of site as dense by the hectare as in Life 9.7.
+Added in Life 10, which merges the roadmap's scale and terrain steps. The valley becomes a generated stretch of young moraine country 4 km square, with every kind of site as dense by the hectare as in Life 9.7. Life 11 retains those landforms with signed datum heights and terrain-derived water.
 
 | Parameter | Value | Real world | Trust |
 | --- | --- | --- | --- |
 | `valleySizeCm` | 400,000: 4 km square, 1,600 hectares | A few kilometres across, as the roadmap asks | Choice |
 | Site counts | 800 berry thickets, 800 hazel thickets, 300 stands, 100 outcrops | 25 times Life 9.7's, as dense by the hectare | Derived |
-| `lakeHectares` | 150, along the whole north edge, 4 km by 375 m | | Choice, until water arrives at step 11 |
 | `reliefCm`, `reliefWavelengthCm` | 3,500 over 120,000: broad relief up to 35 m, varying over 1.2 km | Young moraine country has irregular relief of end moraines, kames, till plains and meltwater valleys, with numerous lakes [36]; Denmark's highest point is 171 m | Estimate; the planned DHM/Terræn comparison will test it |
 | Ice flow and moraine belts | A 1 km direction lattice; 3 broken belts, half-width 50 m to 180 m and height 8 m to 22 m | End moraines form long, irregular fronts transverse to ice movement [36, 44] | Structure from mapped geology; dimensions are estimates |
 | Drumlins and kames | 56 drumlins 200 m to 700 m long, 5 m to 18 m high and at least 3:1, the first 12 in an offset central train; 18 irregular kames 40 m to 120 m in radius and 5 m to 15 m high | Streamlined subglacial hills align with ice flow; kames interrupt dead-ice terrain [44, 45] | Form from literature; counts and ranges are estimates |
 | Dead-ice hummocks | 4 clusters containing 240 hummocks, 15 m to 50 m wide and 2 m to 7 m high | Hummocky moraine forms clustered knobs and kettles rather than uniform noise [36, 45] | Upper tail widened for legibility at the 5 m lattice |
 | Small and large kettles | 64 at 15 m to 55 m radius and 12 at 60 m to 200 m | 39,712 depressions mapped in Schleswig-Holstein, about 2.5 a km², 64% of them 1 ha or less, mainly in young moraine [37] | Mixed sizes correct the earlier all-small distribution; counts are estimates |
 | Kettle depth | One eighth of radius, capped at 12 m | The kettle lake Ukleisee averages 7.5 m deep [38] | Estimate |
-| Tunnel valleys | 2 broad dry valleys, 120 m to 350 m wide and 6 m to 20 m deep | Meltwater valleys are a characteristic large-scale element of the assemblage [36, 44] | Count and dimensions are estimates; water waits for Step 11 |
+| Tunnel valleys | 2 broad dry valleys, 120 m to 350 m wide and 6 m to 20 m deep | Meltwater valleys are a characteristic large-scale element of the assemblage [36, 44] | Count and dimensions are estimates; Life 11 adds drainage and water |
 | Microrelief | Linearly interpolated 60 m / 2.5 m and 15 m / 0.7 m noise scales | Realistic terrain retains structure at several spatial scales rather than one smooth octave [46, 47] | Visual and structural choice, to be tested against DHM/Terræn [48] |
-| `shoreRampCm` | 40,000: the land rises over 400 m from the lake | The lake remains at the low edge until water arrives at step 11 | Estimate |
 | `dirtSlopePercent`, `stoneSlopePercent`, `dirtCurvatureCm` | 10, 30 and 40 cm | Fine soil is exposed on disturbed slopes and sharp local breaks; stone is rare | Estimate |
 | `grassTerrainPercent`, `dirtTerrainPercent` | 120, 120 | Pandolf terrain factor for light brush is 1.2 [39] | Grass measured as light brush; dirt held equal until evidence supports a difference |
 | `stoneTerrainPercent` | 150 | Pandolf's heavy-brush factor is 1.5 [39]; rough stony ground lies between firm ground and loose sand | Estimate |
@@ -171,6 +168,24 @@ For a 60 kg forager unloaded on grass, the integer rule gives 125 cm a second an
 
 The land is rich: as dense by the hectare as Life 9.7's valley, it grows about 164 million kcal a year, enough for about 180 people, against a band of 8. Real Mesolithic densities were far lower, about 0.1 to 1 person a square kilometre, because of winter, which this land does not yet have. Seasons, at step 12, bring the hungry months.
 
+## Water and drinking — Life 11
+
+Permanent water now follows the generated land. The former north-edge lake area and terrain ramp are removed. Existing lake biomass/growth evidence is retained per body, while applying it to river reaches is explicitly provisional. The earlier 30 ha example above is a historical calculation, not a fixed current lake.
+
+| Parameter or mechanism | Current value | Evidence and limits | Trust |
+| --- | --- | --- | --- |
+| Lakes and drainage | Priority-Flood, four cardinal neighbours, open boundary outlets; connected filled cells at one spill level form a lake | [Priority-Flood, Barnes et al. 2014](https://rbarnes.org/sci/2014_depressions.pdf) establishes drainage connectivity. Filling every depression assumes saturated land; it is not a groundwater or rainfall model. | Algorithmic reference plus explicit physical approximation |
+| Glacial water setting | Lakes in hollows and connected downhill reaches | [GEUS Sakskøbing map and description](https://eng.geus.dk/media/13287/map6_p01-42.pdf) supports the regional setting. Generated sizes/depths still need a selected real comparison window. | Geographic basis; dimensions uncalibrated |
+| `riverCatchmentM2`, `riverDepthCm` | 250,000 m²; 50 cm prescribed depth | [Danish stream research](https://www2.dmu.dk/1_Viden/2_Publikationer/3_ovrige/rapporter/PhD_MLP_Web.pdf) supplies stream/habitat context. The threshold and depth are not measured discharge or fitted channel dimensions. | Choice and estimate |
+| Represented width | One 5 m terrain cell | Many real streams are narrower. Width is a resolution limit; channels block walking because there is no wading yet. | Explicit discretisation limit |
+| `fishMinAreaM2` | 1,000 m² | Smaller pools remain water but contain no modelled fish stock. Eligible bodies start full; empty stocks are not reseeded. | Choice |
+| `fishKgPerHectare`, `fishGrowthPercentPerYear` | 100; 40 | Existing northern-lake evidence above supports the order of magnitude. A separate stock belongs to each lake/reach. River values remain provisional. | Lake estimates, provisionally extended |
+| `waterBaseMlPerDay` | 2,000 ml net resting replacement | [EFSA 2010](https://efsa.onlinelibrary.wiley.com/doi/abs/10.2903/j.efsa.2010.1459) gives adequate total intake of 2.0 L/day for adult women and 2.5 L/day for adult men under moderate conditions, including food moisture. Those values do not directly establish this net drinking requirement. | Reference range plus model estimate |
+| `waterExtraMlPerKcal` | 1 ml per kcal above resting expenditure | Food moisture and metabolic water are absorbed into the net requirement; heat and humidity are not modelled. Four hours picking instead of resting add 440 ml. | Estimate and exact model consequence |
+| Thirst, urgent thirst, fatal deficit | 10, 30, 100 per mille of body mass: 600, 1,800, 6,000 ml for 60 kg | Coarse behavioural/death thresholds, not clinically validated boundaries or guaranteed survival times. | Model choices |
+| `drinkMlPerSecond`, `drinkStopMl`, `drinkBankHeightCm` | 10 ml/s; stop at 100 ml deficit; bank at most 100 cm above water | Drinking takes action time and records an external withdrawal without lowering fixed levels. | Estimates and hysteresis choice |
+
+`waterStats` reports generated water area, lake area/depth distribution, river length/density and exits. These are measurements of this model, not empirical validation. Rainfall, evaporation, groundwater, seasonal water, infection, containers and fish migration remain outside this step. No survival-driven placement or lake-size fitting is used.
 ## What realistic numbers imply
 
 These are worked out from the proposals above, not from runs.

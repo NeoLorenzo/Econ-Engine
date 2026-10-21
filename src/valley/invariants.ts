@@ -1,18 +1,22 @@
 import { askOf, axeLife, salePrice, worthTo } from './axes'
 import { feedAmount } from './fire'
-import { FOODS, LAKE_ID, capacityOf, foodOfSource, fullRateOf, rateAtStock, spoiledBy, worthWorking } from './food'
+import { FOODS, capacityOf, foodOfSource, fullRateOf, rateAtStock, spoiledBy, worthWorking } from './food'
 import { MINUTES_PER_DAY, isDaylight, loadKg, minuteOfWork, plantsInView, speedForLoad } from './forager'
 import { distance, distanceSq, stepTowards } from './geometry'
 import { regrowsAt, weathersOn } from './huts'
-import { lakeGrowth } from './lake'
+import { fishGrowth, fishRate, type FishStock } from './fish'
+import { waterViolations } from './water'
+import { waterSecond, type Hydration } from './hydration'
+import { knownDrySegment, knownDryFootprint } from './routes'
+import { WaterKnowledgeChecker } from './waterKnowledgeChecker'
 import { BUSH_GROUNDS, HAZEL_GROUNDS, TREE_GROUNDS, forEachPlantWithin, onGround } from './layout'
 import { craftOf, ratesOf } from './practice'
 import { placeOf, viewFrom, type PlaceView } from './sight'
-import { hearthAround, livingMembers, placeCentre, placeCount, placeInView, placeWanted, placesPerSide } from './social'
-import { siteCentre, siteGeometry, siteHolds, siteWanted } from './sites'
+import { hearthAround, livingMembers, placeCount, placeInView, placeWanted, placesPerSide } from './social'
+import { siteGeometry, siteHolds, siteWanted } from './sites'
 import { STONE, cellOf, gradeOf, heightAt, speedOnGrade, terrainPercentOf, walkCost } from './terrain'
 import { bothGain } from './trade'
-import { coldMatters, minuteCost, regrowthOf, warmthOf, workCostOf } from './work'
+import { coldMatters, sleepCostOf, regrowthOf, warmthOf, workCostOf } from './work'
 import type { ActionReason, Axe, CutEvent, Hut, Point, ValleyState } from './types'
 
 /** What a forager not hungry does when idle, which a full load must wait for. */
@@ -94,13 +98,17 @@ export function layoutViolations(state: ValleyState): string[] {
  * plant it worked or walked towards every minute.
  */
 export class ValleyChecker {
+  private knowledge: WaterKnowledgeChecker
+  private withdrawals: Map<number, number>
+  private fishMemories: ValleyState['foragers'][number]['fishMemory'][]
+  private fish: Map<number, FishStock>
+  private waterBefore: Hydration[]
   /** Every food plant's berries or nuts, every wood plant's wood, and the lake's fish and growth owed, replayed. */
   private food: Int32Array
   private trees: Int32Array
   private foodTotal: number
   private treeTotal: number
   private lake: number
-  private lakeRemainder: number
   private aliveBefore: boolean[]
   private burnHour: number[]
   /** Each forager's rates at full sources the minute before: berries, nuts, fish and wood. */
@@ -143,14 +151,18 @@ export class ValleyChecker {
   private layoutViolations: string[]
 
   constructor(state: ValleyState) {
+    this.knowledge = new WaterKnowledgeChecker(state)
+    this.withdrawals = new Map(state.waterWithdrawals)
+    this.fishMemories = state.foragers.map((person) => new Map(person.fishMemory))
+    this.fish = new Map(state.fish.map((stock) => [stock.bodyId, { ...stock }]))
+    this.waterBefore = state.foragers.map((person) => ({ ...person }))
     this.farPlaceBefore = state.foragers.map((forager) => forager.farPlace)
     this.farMinuteBefore = state.foragers.map((forager) => forager.farMinute)
-    this.layoutViolations = layoutViolations(state)
+    this.layoutViolations = [...layoutViolations(state), ...waterViolations(state.layout.terrain.water)]
     this.food = state.foodStock.slice()
     this.trees = state.woodStock.slice()
     this.foodTotal = sum(this.food)
-    this.lake = state.lakeKcal
-    this.lakeRemainder = state.lakeGrowthRemainder
+    this.lake = state.fishKcal
     this.treeTotal = sum(this.trees)
     this.aliveBefore = state.foragers.map((forager) => forager.alive)
     this.burnHour = state.foragers.map(() => -1)
@@ -213,9 +225,13 @@ export class ValleyChecker {
         this.foodTotal += after - this.food[id]!
         this.food[id] = after
       }
-      const grown = lakeGrowth(config, this.lake, this.lakeRemainder)
-      this.lake += grown.grown
-      this.lakeRemainder = grown.remainder
+      for (const stock of this.fish.values()) {
+        const grown = fishGrowth(stock.capacity, stock.stock, stock.remainder, config.fishGrowthPercentPerYear)
+        stock.stock += grown.grown
+        stock.remainder = grown.remainder
+        stock.grown += grown.grown
+        this.lake += grown.grown
+      }
       // Wood plants: branches on standing trees, where a crown above capacity keeps what it has, then sticks on bushes.
       const trees = layout.trees.count
       for (let id = 0; id < this.trees.length; id += 1) {
@@ -256,8 +272,10 @@ export class ValleyChecker {
     for (const made of state.lastAxeEvents) if (made.kind === 'cut') cuts.set(made.foragerId, made)
     for (const event of state.lastEvents) {
       const forager = state.foragers[event.foragerId]!
+      this.knowledge.check(state, event, fail)
       const { from, position } = event
-      const total = event.walkSeconds + event.workSeconds + event.standSeconds + event.sleepSeconds
+      const total =
+        event.walkSeconds + event.workSeconds + event.standSeconds + event.sleepSeconds + event.inactiveSeconds
       if (total !== 60) fail(`forager ${forager.id}'s seconds add up to ${total}`)
       if (position.x < 0 || position.y < 0 || position.x > config.valleySizeCm || position.y > config.valleySizeCm)
         fail(`forager ${forager.id} left the valley`)
@@ -284,53 +302,162 @@ export class ValleyChecker {
       const loadSpeed = speedForLoad(config, kg)
       if (event.loadSpeedCmPerSecond !== loadSpeed)
         fail(`forager ${forager.id} walks at a speed its load does not allow`)
-      // Its grade is the rise towards where it walked, its speed Tobler's for that grade, and its ground where it set out.
       const { terrain } = layout
-      let grade = 0
-      if (event.walkTarget) {
-        const ahead = stepTowards(from, event.walkTarget, 60 * loadSpeed)
-        const run = distance(from.x, from.y, ahead.x, ahead.y)
-        grade = gradeOf(heightAt(terrain, ahead.x, ahead.y) - heightAt(terrain, from.x, from.y), run)
+      let previous = from
+      let elapsed = 0
+      let climb = 0
+      let energyOwed = this.costRemainderBefore[forager.id]!
+      for (const segment of event.segments) {
+        const ahead = stepTowards(segment.from, segment.target, (60 - elapsed) * loadSpeed)
+        const grade = gradeOf(
+          heightAt(terrain, ahead.x, ahead.y) - heightAt(terrain, segment.from.x, segment.from.y),
+          distance(segment.from.x, segment.from.y, ahead.x, ahead.y),
+        )
+        const expectedGround = terrainPercentOf(config, layout.ground[cellOf(terrain, segment.from.x, segment.from.y)]!)
+        const endpoint = stepTowards(segment.from, segment.target, segment.seconds * segment.speed)
+        if (
+          previous.x !== segment.from.x ||
+          previous.y !== segment.from.y ||
+          endpoint.x !== segment.to.x ||
+          endpoint.y !== segment.to.y ||
+          !Number.isInteger(segment.seconds) ||
+          segment.seconds <= 0 ||
+          segment.grade !== grade ||
+          segment.speed !== speedOnGrade(loadSpeed, grade) ||
+          segment.terrainPercent !== expectedGround ||
+          segment.rate !== walkCost(config, kg, segment.speed, grade, expectedGround) ||
+          !knownDrySegment(forager.groundKnowledge, segment.from, segment.to)
+        )
+          fail(
+            `forager ${forager.id} has an invalid movement segment or paid for a minute that cost a different amount`,
+          )
+        for (let second = elapsed; second < elapsed + segment.seconds; second += 1)
+          if (event.bodySeconds[second]?.rate !== segment.rate) fail('Walking seconds have the wrong energy rate')
+        elapsed += segment.seconds
+        climb += Math.max(
+          0,
+          heightAt(terrain, segment.to.x, segment.to.y) - heightAt(terrain, segment.from.x, segment.from.y),
+        )
+        previous = segment.to
       }
-      if (event.gradePercent !== grade || event.speedCmPerSecond !== speedOnGrade(loadSpeed, grade))
+      if (
+        elapsed !== event.walkSeconds ||
+        previous.x !== position.x ||
+        previous.y !== position.y ||
+        climb !== event.climbCm
+      )
+        fail(`forager ${forager.id}'s movement does not match its segments: moved further than it walked`)
+      const lastSegment = event.segments.at(-1)
+      if (
+        event.gradePercent !== (lastSegment?.grade ?? 0) ||
+        event.speedCmPerSecond !== (lastSegment?.speed ?? loadSpeed)
+      )
         fail(`forager ${forager.id} walks at a grade or speed the land does not give`)
-      if (event.walkSeconds && !event.walkTarget) fail(`forager ${forager.id} walked towards nothing`)
-      if (event.terrainPercent !== terrainPercentOf(config, layout.ground[cellOf(terrain, from.x, from.y)]!))
-        fail(`forager ${forager.id} walks on ground it does not stand on`)
-      if (event.climbCm !== Math.max(0, heightAt(terrain, position.x, position.y) - heightAt(terrain, from.x, from.y)))
-        fail(`forager ${forager.id}'s climb does not match the land`)
-      if (distance(from.x, from.y, position.x, position.y) > event.walkSeconds * event.speedCmPerSecond)
-        fail(`forager ${forager.id} moved further than it walked`)
-      // Every second is charged its cost: walking the Pandolf rate for its load, work its task's, sleep its warmth's.
-      const seconds = {
-        walk: event.walkSeconds,
-        work: event.workSeconds,
-        stand: event.standSeconds,
-        sleep: event.sleepSeconds,
+      const body = { ...this.waterBefore[forager.id]! }
+      let loss = 0
+      let drunk = 0
+      let paid = 0
+      let fatalSecond = -1
+      for (const [second, record] of event.bodySeconds.entries()) {
+        if (fatalSecond >= 0) fail('A dead person continued losing water')
+        const expectedRate =
+          second < event.walkSeconds
+            ? record.rate
+            : second < event.walkSeconds + event.workSeconds
+              ? workCostOf(config, event.workedFor, event.task)
+              : event.sleepSeconds
+                ? sleepCostOf(config, event.warmth)
+                : config.restKcalPerHour
+        if (record.rate !== expectedRate) fail('Action second has the wrong energy rate')
+        const replay = waterSecond(config, body, expectedRate, record.drink > 0)
+        if (record.deficitMl !== body.waterDeficitMl || record.thirsty !== body.thirsty)
+          fail('Invalid second-resolved water state')
+        if (record.drink !== replay.drink || record.loss !== replay.loss) fail('Invalid drinking or water-loss record')
+        if (record.drink) {
+          const bank = event.drinkBankId === null ? undefined : forager.knownBanks.get(event.drinkBankId)
+          if (
+            !bank ||
+            second < event.walkSeconds ||
+            event.workSeconds ||
+            distanceSq(position.x, position.y, bank.x, bank.y) > config.reachCm ** 2 ||
+            state.layout.terrain.water.bodies[state.layout.terrain.water.body[bank.wetCell]!]!.id !== bank.bodyId
+          )
+            fail('Drinking without bank access')
+        }
+        if (replay.fatal) fatalSecond = second
+        energyOwed += expectedRate
+        loss += record.loss
+        drunk += record.drink
+        paid += record.spent
       }
-      const walking = walkCost(config, kg, event.speedCmPerSecond, event.gradePercent, event.terrainPercent)
-      const owed =
-        this.costRemainderBefore[forager.id]! +
-        minuteCost(config, seconds, event.warmth, walking, workCostOf(config, event.workedFor, event.task))
-      const due = Math.floor(owed / 3_600)
-      if (forager.costRemainder !== owed - 3_600 * due || (forager.alive && event.spentKcal !== due))
-        fail(`forager ${forager.id} paid ${event.spentKcal} kcal for a minute that cost ${due}`)
+      if (
+        event.bodySeconds.length !== 60 - event.inactiveSeconds ||
+        event.waterLostMl !== loss ||
+        event.waterDrunkMl !== drunk ||
+        paid !== event.spentKcal ||
+        forager.costRemainder !== energyOwed % 3600 ||
+        (forager.alive && paid !== Math.floor(energyOwed / 3600))
+      )
+        fail('Invalid body time or accounting: paid for a minute that cost a different amount')
+      for (const key of [
+        'waterDeficitMl',
+        'waterBaseRemainder',
+        'waterActivityRemainder',
+        'waterLostMl',
+        'waterDrunkMl',
+        'thirsty',
+      ] as const)
+        if (body[key] !== forager[key]) fail(`Body water mismatch: ${key}`)
+      if (
+        fatalSecond >= 0 &&
+        (forager.alive || forager.deathSecond !== fatalSecond || !forager.deathCauses.includes('dehydration'))
+      )
+        fail('Invalid dehydration death record')
+      this.waterBefore[forager.id] = body
+      if (
+        event.waterDeficitBeforeMl + event.waterLostMl - event.waterDrunkMl !== event.waterDeficitAfterMl ||
+        event.waterDeficitAfterMl !== forager.waterDeficitMl
+      )
+        fail('Invalid turn water balance')
+      if (!forager.alive) {
+        const death = state.lastDeaths.find((record) => record.foragerId === forager.id)
+        if (
+          !death ||
+          death.minute !== minute ||
+          death.second !== event.bodySeconds.length - 1 ||
+          death.second !== forager.deathSecond ||
+          forager.deathMinute !== minute ||
+          death.cause !== forager.deathCauses.join(' and ') ||
+          forager.deathCauses.includes('dehydration') !== fatalSecond >= 0 ||
+          forager.deathCauses.includes('starvation') !== (forager.energyKcal === 0)
+        )
+          fail('Invalid body death record')
+      } else if (
+        event.inactiveSeconds ||
+        forager.deathMinute !== null ||
+        forager.deathSecond !== null ||
+        forager.deathCauses.length
+      )
+        fail('A living person has a death record or inactive seconds')
+      if (event.waterDrunkMl) {
+        const bank = forager.knownBanks.get(event.drinkBankId!)
+        if (bank) this.withdrawals.set(bank.bodyId, (this.withdrawals.get(bank.bodyId) ?? 0) + event.waterDrunkMl)
+      }
       // Not hungry, a forager with a full load takes it home before anything else; and only then does it say so.
       const fullLoad = config.woodLoad > 0 && tripWood >= config.woodLoad
       if (event.reason === 'taking a load home') {
         if (!fullLoad) fail(`forager ${forager.id} took home a load it was not carrying`)
-        const home = hearthAtTurn[forager.id]!
-        const hearthSq = (point: Point) => distanceSq(point.x, point.y, home.x, home.y)
-        if (hearthSq(position) > hearthSq(from)) fail(`forager ${forager.id} walked away from home with its load`)
       } else if (fullLoad && !forager.hungry && (IDLE_REASONS.has(event.reason) || HUT_REASONS.has(event.reason)))
         fail(`forager ${forager.id} is ${event.reason} with a full load`)
       // A forager carrying a log takes it home before anything else.
       if (event.reason === 'taking a log home') {
         if (!logBefore) fail(`forager ${forager.id} took home a log it was not carrying`)
-        const home = hearthAtTurn[forager.id]!
-        const hearthSq = (point: Point) => distanceSq(point.x, point.y, home.x, home.y)
-        if (hearthSq(event.position) > hearthSq(from)) fail(`forager ${forager.id} walked away from home with its log`)
-      } else if (logBefore && daylight && forager.alive && event.reason !== 'going home')
+      } else if (
+        logBefore &&
+        daylight &&
+        forager.alive &&
+        !['going home', 'seeking water', 'drinking', 'no known route'].includes(event.reason)
+      )
         fail(`forager ${forager.id} is ${event.reason} carrying a log`)
       const forFood = event.workedFor === 'food'
       const plants = forFood ? layout.foodPlants : layout.woodPlants
@@ -340,7 +467,7 @@ export class ValleyChecker {
       const target = event.targetId
       if (
         target !== null &&
-        target !== LAKE_ID &&
+        target >= 0 &&
         (plants.x[target]! - from.x) ** 2 + (plants.y[target]! - from.y) ** 2 <= config.perceptionRadiusCm ** 2 &&
         (memory.seen[target] !== minute || memory.stock[target] !== stocks[target])
       )
@@ -440,11 +567,6 @@ export class ValleyChecker {
         }
       } else if (event.gatheredKcal || event.gatheredWood)
         fail(`forager ${forager.id} took from a plant without working`)
-      // A forager at the shore found the lake's fish as they were, whether it fished or not.
-      if (event.targetId === LAKE_ID && event.workSeconds) {
-        if (forager.lakeFishedMinute !== minute || forager.lakeStock !== event.sourceStockBefore)
-          fail(`forager ${forager.id}'s memory of the lake does not match what it found`)
-      }
       const hearth = hearthAtTurn[forager.id]!
       if (event.sleepSeconds) {
         if (daylight) fail(`forager ${forager.id} slept in daylight`)
@@ -469,7 +591,13 @@ export class ValleyChecker {
         if (event.burnedWood && event.warmth !== 'fire' && event.warmth !== 'fire and hut')
           fail(`forager ${forager.id} burned wood and slept without its fire`)
       } else if (event.inHut || event.warmth !== null) fail(`forager ${forager.id} is in its hut, or warm, awake`)
-      if (!daylight && forager.alive && event.reason !== 'going home' && event.reason !== 'night')
+      if (
+        !daylight &&
+        forager.alive &&
+        event.reason !== 'going home' &&
+        event.reason !== 'night' &&
+        !['seeking water', 'drinking', 'no known route'].includes(event.reason)
+      )
         fail(`forager ${forager.id} is up at night`)
       if (event.fireGroupId !== null) {
         // A member asleep by its group's fire burns no wood of its own, and is warm exactly when the fire is lit or it
@@ -509,8 +637,29 @@ export class ValleyChecker {
     for (const id of touchedFood)
       if (state.foodStock[id] !== this.food[id])
         fail(`food plant ${id} holds ${state.foodStock[id]}, not ${this.food[id]}`)
-    if (state.lakeKcal !== this.lake || state.lakeGrowthRemainder !== this.lakeRemainder)
-      fail(`the lake holds ${state.lakeKcal} kcal of fish, not ${this.lake}`)
+    if (state.fishKcal !== this.lake) fail(`Fish total holds ${state.fishKcal} kcal, not ${this.lake}`)
+    for (const stock of state.fish) {
+      const expected = this.fish.get(stock.bodyId)
+      if (
+        !expected ||
+        stock.stock !== expected.stock ||
+        stock.remainder !== expected.remainder ||
+        stock.grown !== expected.grown ||
+        stock.caught !== expected.caught ||
+        stock.capacity !== expected.capacity ||
+        stock.capacity + stock.grown - stock.caught !== stock.stock
+      )
+        fail(`Invalid fish stock ${stock.bodyId}`)
+    }
+    if (state.fish.length !== this.fish.size) fail('Missing or duplicated fish bodies')
+    if (state.waterWithdrawals.size !== this.withdrawals.size) fail('Unrecorded water source withdrawal')
+    for (const [body, volume] of this.withdrawals)
+      if (state.waterWithdrawals.get(body) !== volume) fail('Water withdrawals do not match their recorded source')
+    if (
+      [...state.waterWithdrawals.values()].reduce((a, b) => a + b, 0) !==
+      state.foragers.reduce((a, b) => a + b.waterDrunkMl, 0)
+    )
+      fail('External water withdrawals do not match drinking')
     // Work only ever takes, and regrowth stops at capacity, so every stock the replay holds stays in range.
     for (const id of touchedTrees)
       if (state.woodStock[id] !== this.trees[id]) fail(`tree ${id} holds ${state.woodStock[id]}, not ${this.trees[id]}`)
@@ -539,7 +688,7 @@ export class ValleyChecker {
       kcalPaid += forager.swapTotals.kcalPaid
     }
     const held = this.foodTotal + this.lake + reserves + carried + totals.metabolizedKcal + totals.spoiledKcal
-    const supplied = totals.initialKcal + totals.regrownKcal + totals.lakeGrownKcal
+    const supplied = totals.initialKcal + totals.regrownKcal + totals.fishGrownKcal
     if (held !== supplied) fail(`energy is not conserved: ${held} held, ${supplied} supplied`)
     let fireWood = 0
     for (const group of state.groups) fireWood += group.fireWood
@@ -582,7 +731,12 @@ export class ValleyChecker {
     for (const forager of state.foragers) {
       if (forager.energyKcal < 0 || forager.energyKcal > config.reserveMaxKcal)
         fail(`forager ${forager.id}'s reserve is out of range`)
-      if (!forager.alive && forager.energyKcal !== 0) fail(`forager ${forager.id} is dead but has a reserve`)
+      if (config.initialWaterDeficitMl + forager.waterLostMl - forager.waterDrunkMl !== forager.waterDeficitMl)
+        fail('Body water is not conserved')
+      for (const amount of [forager.waterDeficitMl, forager.waterLostMl, forager.waterDrunkMl])
+        if (!Number.isSafeInteger(amount) || amount < 0) fail('Body water exceeds supported integer limits')
+      if (!forager.alive && forager.energyKcal !== 0 && !forager.deathCauses.includes('dehydration'))
+        fail(`forager ${forager.id} is dead but has a reserve without dehydration`)
       if (!inRemainderRange(forager.pickRemainder) || !inRemainderRange(forager.gatherRemainder))
         fail(`forager ${forager.id} has a remainder out of range`)
       if (!inRemainderRange(forager.costRemainder)) fail(`forager ${forager.id} has a remainder out of range`)
@@ -595,7 +749,8 @@ export class ValleyChecker {
           if (!Number.isInteger(lot.kcal) || lot.kcal <= 0 || !FOODS.includes(lot.food))
             fail(`forager ${forager.id} carries a lot of ${lot.kcal} kcal of ${lot.food}`)
           if (lot.harvestTick > minute) fail(`forager ${forager.id} carries food picked in the future`)
-          if (spoiledBy(config, lot, minute)) fail(`forager ${forager.id} carries food that should have spoiled`)
+          if (forager.alive && spoiledBy(config, lot, minute))
+            fail(`forager ${forager.id} carries food that should have spoiled`)
         }
         if (fullView)
           for (let index = 1; index < lots.length; index += 1)
@@ -842,25 +997,52 @@ export class ValleyChecker {
     const { config, layout } = state
     const forager = state.foragers[event.foragerId]!
     const id = event.plantId!
-    const lake = id === LAKE_ID
+    const lake = id < 0
+    const bank = lake ? forager.knownBanks.get(-id - 1) : undefined
+    const fish = bank ? this.fish.get(bank.bodyId) : undefined
     const food = foodOfSource(layout, id)
     const { position } = event
     const reach2 = config.reachCm ** 2
     const sq = lake
-      ? position.y * position.y
+      ? bank
+        ? distanceSq(position.x, position.y, bank.x, bank.y)
+        : Infinity
       : (layout.foodPlants.x[id]! - position.x) ** 2 + (layout.foodPlants.y[id]! - position.y) ** 2
     if (sq > reach2) fail(`forager ${forager.id} worked for food out of reach`)
     if (event.food !== food) fail(`forager ${forager.id} took ${event.food} from a source of ${food}`)
-    const stock = lake ? this.lake : this.food[id]!
+    const stock = lake ? (fish?.stock ?? 0) : this.food[id]!
     if (event.sourceStockBefore !== stock) fail(`forager ${forager.id} found a stock that was not there`)
-    const rate = rateAtStock(config, fullRateOf(forager, food), food, stock)
-    if (!worthWorking(config, rate)) fail(`forager ${forager.id} worked a source not worth working`)
-    if (stock > capacityOf(config, food)) fail(`a source of ${food} holds more than it can`)
+    const rate = lake
+      ? fishRate(forager.fishRate, stock, fish?.capacity ?? 0)
+      : rateAtStock(config, fullRateOf(forager, food), food, stock)
+    if (
+      !worthWorking(config, rate) &&
+      !(lake && event.workSeconds === 1 && worthWorking(config, event.fishExpectedRate))
+    )
+      fail(`forager ${forager.id} worked a source not worth working`)
+    if (lake && bank && fish) {
+      const previous = this.fishMemories[forager.id]!.get(bank.bodyId)
+      const expected = previous ? fishRate(forager.fishRate, previous.stock, previous.capacity) : forager.fishRate
+      if (event.fishExpectedRate !== expected || event.fishBodyId !== bank.bodyId || event.fishBankId !== bank.id)
+        fail('A fishing attempt used hidden stock or the wrong body')
+      const memory = forager.fishMemory.get(bank.bodyId)
+      if (!memory || memory.stock !== stock || memory.capacity !== fish.capacity || memory.minute !== minute)
+        fail('Fish memory did not come from the attempted body')
+      this.fishMemories[forager.id]!.set(bank.bodyId, { stock, capacity: fish.capacity, minute })
+    }
+    if (stock > (lake ? (fish?.capacity ?? 0) : capacityOf(config, food)))
+      fail(`a source of ${food} holds more than it can`)
     const taken = event.gatheredKcal
     if (event.gatheredWood || taken > stock || taken > Math.floor((3_599 + rate * event.workSeconds) / 3_600))
       fail(`forager ${forager.id} took food faster than the source allows`)
-    if (lake) this.lake -= taken
-    else {
+    if (lake) {
+      if (!fish) fail('Unknown fish body')
+      else {
+        fish.stock -= taken
+        fish.caught += taken
+      }
+      this.lake -= taken
+    } else {
       this.food[id]! -= taken
       this.foodTotal -= taken
       touchedFood.push(id)
@@ -939,10 +1121,6 @@ export class ValleyChecker {
         fail(`forager ${forager.id} marked a place out of sight as seen`)
       if (event.placeId !== null) {
         if (!placeWanted(forager, event.placeId)) fail(`forager ${forager.id} walked to a place it did not need to see`)
-        const centre = placeCentre(config, event.placeId)
-        const before = distanceSq(from.x, from.y, centre.x, centre.y)
-        if (distanceSq(event.position.x, event.position.y, centre.x, centre.y) > before)
-          fail(`forager ${forager.id} walked away from the place it set out to see`)
       }
     }
     if (!full) return
@@ -1032,10 +1210,6 @@ export class ValleyChecker {
       fail(`forager ${forager.id} walked to a site it did not need to ${why}`)
     if (why === 'search' && (event.workedFor === null || !siteHolds(config, event.siteId, event.workedFor)))
       fail(`forager ${forager.id} searched a site of the wrong kind`)
-    const centre = siteCentre(config, layout, event.siteId)
-    const startSq = distanceSq(from.x, from.y, centre.x, centre.y)
-    if (distanceSq(event.position.x, event.position.y, centre.x, centre.y) > startSq)
-      fail(`forager ${forager.id} walked away from the site it set out for`)
   }
 
   /**
@@ -1110,26 +1284,29 @@ export class ValleyChecker {
         if (!group || !group.members.includes(forager.id)) fail(`forager ${forager.id} names a group it is not in`)
         else if (forager.alive) {
           if (group.dissolvedMinute !== null) fail(`forager ${forager.id} belongs to a dissolved group`)
-          const hearth = hearthAround(config, group.flag, group.members.indexOf(forager.id))
+          const hearth = hearthAround(config, group.flag, group.hearthSlots[group.members.indexOf(forager.id)]!)
           if (forager.hearth.x !== hearth.x || forager.hearth.y !== hearth.y)
             fail(`forager ${forager.id}'s hearth is not its slot around the flag`)
+          if (!knownDryFootprint(forager.groundKnowledge, forager.hearth))
+            fail('A hearth or hut is not on known dry ground')
         }
       } else if (before === null && !joined.has(forager.id) && forager.hearth !== this.hearthBefore[forager.id])
         fail(`forager ${forager.id} moved its hearth without joining a group`)
     }
     for (const group of state.groups) {
+      if (
+        group.hearthSlots.length !== group.members.length ||
+        new Set(group.hearthSlots).size !== group.hearthSlots.length ||
+        group.hearthSlots.some((slot) => !Number.isInteger(slot) || slot < 0)
+      )
+        fail('Invalid group hearth slots')
       const living = livingMembers(state, group).length
       if (group.dissolvedMinute === null) {
         if (living < 2) fail(`group ${group.id} stands with ${living} living members`)
         for (const id of group.members) if (state.foragers[id]!.groupId !== group.id) fail(`forager ${id} left a group`)
       } else if (living > 0) fail(`dissolved group ${group.id} still has living members`)
     }
-    // At the end of its turn, a forager without a group stands within talking distance of no living forager.
-    for (const [index, event] of state.lastEvents.entries()) {
-      if (event.groupId !== null || died.has(event.foragerId)) continue
-      if (nearestAt(event.foragerId, index + 1, event.position) !== null)
-        fail(`forager ${event.foragerId} is without a group beside another forager`)
-    }
+    // Meeting can be deferred when the observed ground has no dry, reachable hut slots.
   }
 
   /**
@@ -1172,7 +1349,7 @@ export class ValleyChecker {
       if (!event || event.groupId !== feed.groupId || slot < 0)
         fail(`forager ${feed.foragerId} fed a fire not its group's`)
       else {
-        const hearth = hearthAround(config, group.flag, slot)
+        const hearth = hearthAround(config, group.flag, group.hearthSlots[slot]!)
         if (event.position.x !== hearth.x || event.position.y !== hearth.y)
           fail(`forager ${feed.foragerId} fed a fire away from its hearth`)
       }

@@ -2,6 +2,17 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE11-Water-052] - (2026-10-21)
+
+### Changed
+
+- **Water follows the land:** deterministic drainage fills hollows to their spills and cuts river channels, replacing the external north-edge lake and shore ramp. Each lake and river reach has its own fish stock.
+- **People need to drink:** observed dry banks supply water, resting and work cause exact integer water losses, and severe thirst interrupts sleep or returning home. Drinking, withdrawals and dehydration deaths are recorded and checked every tick.
+- **Known dry routes:** people walk around water using observed ground, explore incomplete routes and occupy dry camps without teleporting when groups form. Starts have separate named random streams.
+- **The observer shows the new world:** exact wet footprints, optional downstream arrows, remembered banks, planned routes, segmented movement, drinking and water-body inspection. Hydration and death causes appear in the person panel.
+- The current specification, calibration limits, architecture, validation and README describe Life 11. Earlier specifications remain in Git history.
+- Validation: `npm run agent:check` passed, including all 21 refreshed 30-day fingerprints; browser checks passed. Large-map routing remains slow.
+
 ## [LIFE10-GlacialRelief-051.2] - (2026-10-20)
 
 ### Changed

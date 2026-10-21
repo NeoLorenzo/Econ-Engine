@@ -1,10 +1,11 @@
+import { createSurveyedValley as createValley, addTestLake } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { describe, expect, it } from 'vitest'
-import { lakeCapacityKcal } from './config'
-import { cloneValley, createValley, lastEventOf, stepValley } from './engine'
-import { LAKE_ID, rateAtStock, spoil, spoilsIn } from './food'
+import { fishCapacity, fishGrowth, fishRate } from './fish'
+import { cloneValley, lastEventOf, stepValley } from './engine'
+import { rateAtStock, spoil, spoilsIn } from './food'
 import { ValleyChecker } from './invariants'
-import { lakeGrowth } from './lake'
+
 import { HOURS_PER_YEAR } from './work'
 import type { Forager, ValleyState } from './types'
 
@@ -29,27 +30,27 @@ function hungryAt(change: (forager: Forager, state: ValleyState) => void) {
 
 /** Forager 0 on the shore, knowing the lake and remembering no food on any plant. */
 const onTheShore = () =>
-  hungryAt((forager) => {
-    forager.y = 50
-    forager.lakeKnown = true
+  hungryAt((forager, state) => {
+    const bank = addTestLake(state)
+    forager.x = bank.x
+    forager.y = bank.y
   })
-
 describe('the lake', () => {
   const { config } = createValley(FLAT_LAND)
-  const capacity = lakeCapacityKcal(config)
+  const capacity = fishCapacity(300_000, 1_000, config.fishKgPerHectare, config.fishKcalPerKg)
 
   it('holds 30 hectares of fish at 100 kg a hectare and 600 kcal a kilogram', () => {
     expect(capacity).toBe(1_800_000)
   })
 
   it('grows nothing full or empty, most at half, and loses nothing to rounding', () => {
-    expect(lakeGrowth(config, capacity, 0).grown).toBe(0)
-    expect(lakeGrowth(config, 0, 0).grown).toBe(0)
+    expect(fishGrowth(capacity, capacity, 0, config.fishGrowthPercentPerYear).grown).toBe(0)
+    expect(fishGrowth(capacity, 0, 0, config.fishGrowthPercentPerYear).grown).toBe(0)
     const yearFrom = (start: number) => {
       let stock = start
       let remainder = 0
       for (let hour = 0; hour < HOURS_PER_YEAR; hour += 1) {
-        const grown = lakeGrowth(config, stock, remainder)
+        const grown = fishGrowth(capacity, stock, remainder, config.fishGrowthPercentPerYear)
         stock += grown.grown
         remainder = grown.remainder
       }
@@ -70,7 +71,7 @@ describe('food that comes more slowly as a source thins', () => {
     expect(rateAtStock(config, 1_200, 'berries', 52)).toBe(1_200)
     expect(rateAtStock(config, 1_200, 'berries', 26)).toBe(600)
     expect(rateAtStock(config, 3_500, 'nuts', 1_875)).toBe(3_500)
-    expect(rateAtStock(config, 600, 'fish', 900_000)).toBe(300)
+    expect(fishRate(600, 900_000, 1_800_000)).toBe(300)
   })
 
   it('picks a thin bush at its slower rate', () => {
@@ -79,7 +80,6 @@ describe('food that comes more slowly as a source thins', () => {
       forager.x = bushes.x[0]! - 50
       forager.y = bushes.y[0]!
       // Every other food plant bare, and the lake found fished out, so the thin bush is the best it can find.
-      forager.lakeStock = 0
       for (const stock of valley.foodStock) valley.totals.initialKcal -= stock
       valley.foodStock.fill(0)
       valley.totals.initialKcal += 20
@@ -98,15 +98,27 @@ describe('food that comes more slowly as a source thins', () => {
     const forager = state.foragers[0]!
     const after = stepValley(state)
     const event = lastEventOf(after, 0)!
-    expect(event).toMatchObject({ reason: 'fishing', food: 'fish', plantId: LAKE_ID, position: { y: 50 } })
+    expect(event).toMatchObject({
+      reason: 'fishing',
+      food: 'fish',
+      plantId: -[...forager.knownBanks.keys()][0]! - 1,
+      position: { y: 450 },
+    })
     expect(event.gatheredKcal).toBe(Math.floor((forager.fishRate * 60) / 3_600))
-    expect(after.lakeKcal).toBe(state.lakeKcal - event.gatheredKcal)
-    expect(after.foragers[0]!).toMatchObject({ lakeStock: state.lakeKcal, lakeFishedMinute: TEN_AM })
+    expect(after.fishKcal).toBe(state.fishKcal - event.gatheredKcal)
+    expect(after.foragers[0]!.fishMemory.get(state.fish[0]!.bodyId)).toMatchObject({
+      stock: state.fishKcal,
+      minute: TEN_AM,
+    })
   })
 
   it('does not fish a lake it has found too thin to be worth it', () => {
     const state = onTheShore()
-    state.foragers[0]!.lakeStock = lakeCapacityKcal(state.config) / 10
+    state.foragers[0]!.fishMemory.set(state.fish[0]!.bodyId, {
+      stock: state.fishKcal / 10,
+      capacity: state.fish[0]!.capacity,
+      minute: TEN_AM,
+    })
     expect(lastEventOf(stepValley(state), 0)!.food).not.toBe('fish')
   })
 })
@@ -141,9 +153,9 @@ describe('the checker', () => {
   it('catches fish made from nothing, food taken too fast and a forager on the water', () => {
     expect(
       damaged(onTheShore(), (after) => {
-        after.lakeKcal += 5
+        after.fishKcal += 5
       }),
-    ).toContain('the lake holds')
+    ).toContain('Fish total holds')
     expect(
       damaged(onTheShore(), (after) => {
         after.lastEvents.find((event) => event.foragerId === 0)!.gatheredKcal += 100

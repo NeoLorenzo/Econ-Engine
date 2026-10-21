@@ -25,7 +25,7 @@ function landImage(layout: ValleyState['layout']) {
       const h = height[j * points + i]!
       const slope = (height[(j + 1) * points + i + 1]! - h) / terrain.cellCm
       const light = Math.max(0.55, Math.min(1.35, 0.75 + (0.45 * h) / highest - 4 * slope))
-      const colour = MAP_GROUND[ground[j * cells + i]!]!
+      const colour = terrain.water.body[j * cells + i]! >= 0 ? [46, 93, 120] : MAP_GROUND[ground[j * cells + i]!]!
       const at = (py * MAP_SIZE + px) * 4
       image.data[at] = colour[0]! * light
       image.data[at + 1] = colour[1]! * light
@@ -58,7 +58,6 @@ export function LandMap({
     context.putImageData(image, 0, 0)
     const scale = MAP_SIZE / size
     context.fillStyle = 'rgb(46, 93, 120)'
-    context.fillRect(0, 0, MAP_SIZE, 2)
     for (const group of state.groups) {
       if (group.dissolvedMinute !== null) continue
       context.fillStyle = groupColor(group.id)

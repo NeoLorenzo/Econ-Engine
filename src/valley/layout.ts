@@ -17,7 +17,8 @@ export const PLACEMENT_DRAWS = 10_000
 export const deriveLayoutSeed = (seed: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ LAYOUT_STREAM_SALT) >>> 0))
 
-export const deriveStartSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ START_STREAM_SALT) >>> 0))
+export const deriveStartSeed = (seed: number, foragerId = 0) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ START_STREAM_SALT ^ mixSeed(foragerId + 1)) >>> 0))
 
 export const deriveSkillSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ SKILL_STREAM_SALT) >>> 0))
 
@@ -101,7 +102,7 @@ class Draws {
  * `startSpacingCm` from the earlier ones and always on grass or dirt.
  */
 export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(config).ground): Point[] {
-  const draws = new Draws(deriveStartSeed(config.seed))
+  let draws = new Draws(deriveStartSeed(config.seed, 0))
   const terrain = terrainOf(config)
   const origin = Math.floor((config.valleySizeCm - config.startAreaCm) / 2)
   const starts: Point[] = []
@@ -109,9 +110,10 @@ export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(
   while (starts.length < config.bandSize) {
     const x = origin + draws.int(config.startAreaCm + 1)
     const y = origin + draws.int(config.startAreaCm + 1)
-    const habitable = ground[cellOf(terrain, x, y)] !== STONE
+    const habitable = circleOnGround(terrain, ground, x, y, 40, BUSH_GROUNDS)
     if (habitable && starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
       starts.push({ x, y })
+      draws = new Draws(deriveStartSeed(config.seed, starts.length))
       failed = 0
     } else if ((failed += 1) >= PLACEMENT_DRAWS) throw new LayoutError('The foragers’ starts cannot all be placed')
   }
@@ -127,7 +129,7 @@ export const OUTCROP_GROUNDS = grows(GRASS, DIRT, STONE)
 
 /** Whether a point's ground is one of `grounds`. */
 export const onGround = (terrain: Terrain, ground: Uint8Array, x: number, y: number, grounds: number) =>
-  ((grounds >> ground[cellOf(terrain, x, y)]!) & 1) === 1
+  terrain.water.body[cellOf(terrain, x, y)]! < 0 && ((grounds >> ground[cellOf(terrain, x, y)]!) & 1) === 1
 
 /** Whether the cell holding a point, and every cell whose centre lies within `radius` of it, is one of `grounds`. */
 export function circleOnGround(
@@ -138,17 +140,26 @@ export function circleOnGround(
   radius: number,
   grounds: number,
 ) {
+  const size = terrain.cells * terrain.cellCm
+  if (x - radius < 0 || y - radius < 0 || x + radius > size || y + radius > size) return false
   if (!onGround(terrain, ground, x, y, grounds)) return false
   const { cellCm, cells } = terrain
-  const half = Math.floor(cellCm / 2)
   const i0 = Math.max(0, Math.floor((x - radius) / cellCm))
   const i1 = Math.min(cells - 1, Math.floor((x + radius) / cellCm))
   const j0 = Math.max(0, Math.floor((y - radius) / cellCm))
   const j1 = Math.min(cells - 1, Math.floor((y + radius) / cellCm))
   for (let j = j0; j <= j1; j += 1)
     for (let i = i0; i <= i1; i += 1)
-      if (distanceSq(i * cellCm + half, j * cellCm + half, x, y) <= radius * radius)
-        if (((grounds >> ground[j * cells + i]!) & 1) === 0) return false
+      if (
+        distanceSq(
+          Math.max(i * cellCm, Math.min((i + 1) * cellCm, x)),
+          Math.max(j * cellCm, Math.min((j + 1) * cellCm, y)),
+          x,
+          y,
+        ) <=
+        radius * radius
+      )
+        if (terrain.water.body[j * cells + i]! >= 0 || ((grounds >> ground[j * cells + i]!) & 1) === 0) return false
   return true
 }
 
@@ -241,7 +252,32 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const base = terrain.ground
   const on = (grounds: number) => (x: number, y: number) => onGround(terrain, base, x, y, grounds)
   const size = config.valleySizeCm
-  const camp = { x: Math.floor(size / 2), y: Math.floor(size / 2) }
+  let camp = { x: Math.floor(size / 2), y: Math.floor(size / 2) }
+  if (!config.scattered) {
+    const candidates = Array.from({ length: terrain.cells ** 2 }, (_, id) => id)
+    const point = (id: number) => ({
+      x: (id % terrain.cells) * terrain.cellCm + terrain.cellCm / 2,
+      y: Math.floor(id / terrain.cells) * terrain.cellCm + terrain.cellCm / 2,
+    })
+    candidates.sort((a, b) => {
+      const pa = point(a)
+      const pb = point(b)
+      return distanceSq(pa.x, pa.y, camp.x, camp.y) - distanceSq(pb.x, pb.y, camp.x, camp.y) || a - b
+    })
+    const valid = candidates.find((id) => {
+      const p = point(id)
+      return circleOnGround(
+        terrain,
+        base,
+        p.x,
+        p.y,
+        config.hutRingCm * Math.ceil(Math.sqrt(config.bandSize)) + 200,
+        BUSH_GROUNDS,
+      )
+    })
+    if (valid === undefined) throw new LayoutError('No dry camp with room for the initial hearth slots')
+    camp = point(valid)
+  }
   const centres: Point[] = []
   const span = size - 2 * config.siteMarginCm + 1
   let failed = 0
@@ -352,6 +388,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
         const index = j * terrain.cells + i
         if (
           ground[index] === STONE &&
+          !stoneSites.some((spots) => spots.some((stone) => cellOf(terrain, stone.x, stone.y) === index)) &&
           distanceSq(
             i * terrain.cellCm + terrain.cellCm / 2,
             j * terrain.cellCm + terrain.cellCm / 2,

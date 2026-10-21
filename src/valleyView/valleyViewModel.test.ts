@@ -1,7 +1,8 @@
+import { createSurveyedValley as createValley, addTestLake } from '../valley/ruleFixtures'
 import { FLAT_LAND } from '../valley/config'
 import { describe, expect, it } from 'vitest'
-import { cloneValley, createValley, stepValley } from '../valley/engine'
-import { meet, placeCount } from '../valley/social'
+import { cloneValley, stepValley } from '../valley/engine'
+import { meet } from '../valley/social'
 import type { ValleyState } from '../valley/types'
 import {
   CAMERA_LIMITS,
@@ -50,12 +51,13 @@ describe('fishing', () => {
     const state: ValleyState = cloneValley(createValley(FLAT_LAND))
     state.minute = 600
     const forager = state.foragers[0]!
-    Object.assign(forager, { y: 50, energyKcal: 63_000, hungry: true, lakeKnown: true })
+    const bank = addTestLake(state)
+    Object.assign(forager, { x: bank.x, y: bank.y, energyKcal: 63_000, hungry: true })
     forager.siteKnown.fill(1)
     forager.siteChecked.fill(5)
     state.foodStock.fill(0)
     const pair = { previous: state, next: stepValley(state), alpha: 0.5 }
-    expect(foragerPose(pair, 0)).toMatchObject({ gesture: 'fish', heading: Math.atan2(0, -1) })
+    expect(foragerPose(pair, 0)).toMatchObject({ gesture: 'fish', heading: Math.atan2(0, 1) })
     expect(describeActivity(pair, 0)).toBe('Fishing from the shore')
   })
 })
@@ -228,10 +230,10 @@ describe('groups and what a forager knows', () => {
   it('shades ground never seen dark and ground seen at any time clear', () => {
     const checking = founded()
     checking.minute = 2_001
-    checking.foragers[0]!.placeSeen.fill(-1)
-    checking.foragers[0]!.placeSeen[1] = 2_000 - 24 * 60
+    checking.foragers[0]!.groundKnowledge.observed.fill(0)
+    checking.foragers[0]!.groundKnowledge.observed[1] = 1
     const known = knowledgeShades(checking, 0)
-    expect(known).toHaveLength(placeCount(checking.config))
+    expect(known).toHaveLength(checking.layout.terrain.cells ** 2)
     expect([known[0], known[1]]).toEqual([150, 0])
   })
 

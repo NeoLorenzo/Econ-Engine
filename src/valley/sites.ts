@@ -1,5 +1,4 @@
-import { isDaylight, reachableAndBack, walkSpeed } from './forager'
-import { distanceSq } from './geometry'
+import { estimateKnownWalk, isDaylight, reachableAndBack, walkSpeed } from './forager'
 import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
 
 // Thickets, hazel thickets, stands and outcrops as sites, which a forager spots from afar, checks up close, and walks
@@ -90,7 +89,7 @@ export function siteWanted(config: ValleyConfig, forager: Forager, site: number,
 
 /**
  * The nearest site a forager wants to check or search, of the good's kind when one is given, among those it can reach
- * and return home from before dusk, by the distance to its centre, ties to the lowest ID; or null.
+ * and return home from before dusk, by estimated known-route travel time, ties to the lowest ID; or null.
  */
 export function chooseSite(
   config: ValleyConfig,
@@ -100,17 +99,43 @@ export function chooseSite(
   why: SiteSearch,
   good: Good | null,
 ): number | null {
+  return nearestKnownSite(
+    config,
+    layout,
+    forager,
+    minute,
+    (site) => (good === null || siteHolds(config, site, good)) && siteWanted(config, forager, site, minute, why),
+  )
+}
+
+/** Search nearby candidates first; the Chebyshev bound cannot overestimate an eight-neighbour route. */
+export function nearestKnownSite(
+  config: ValleyConfig,
+  layout: ValleyLayout,
+  forager: Forager,
+  minute: number,
+  wanted: (site: number) => boolean,
+): number | null {
   const speed = walkSpeed(config, forager)
   let best: number | null = null
-  let bestSq = Infinity
+  let bestTime = Infinity
+  const candidates = []
   for (let site = 0; site < siteCount(config); site += 1) {
-    if (good !== null && !siteHolds(config, site, good)) continue
-    if (!siteWanted(config, forager, site, minute, why)) continue
+    if (!forager.siteKnown[site] || !wanted(site)) continue
     const centre = siteCentre(config, layout, site)
-    const sq = distanceSq(forager.x, forager.y, centre.x, centre.y)
-    if (sq < bestSq && reachableAndBack(config, forager, centre.x, centre.y, minute, speed)) {
+    const lower = Math.ceil(Math.max(Math.abs(forager.x - centre.x), Math.abs(forager.y - centre.y)) / speed)
+    candidates.push({ site, centre, lower })
+  }
+  candidates.sort((a, b) => a.lower - b.lower || a.site - b.site)
+  for (const { site, centre, lower } of candidates) {
+    if (lower > bestTime) break
+    const time = estimateKnownWalk(config, forager, forager, centre, speed)
+    if (
+      (time < bestTime || (time === bestTime && site < best!)) &&
+      reachableAndBack(config, forager, centre.x, centre.y, minute, speed)
+    ) {
       best = site
-      bestSq = sq
+      bestTime = time
     }
   }
   return best

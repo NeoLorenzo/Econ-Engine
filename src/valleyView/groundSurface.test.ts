@@ -7,11 +7,14 @@ describe('the observer ground surface', () => {
   const terrain = terrainOf(resolveValleyConfig({ ...FLAT_LAND, reliefCm: 2_000, microCoarseAmplitudeCm: 400 }))
   const surface = groundSurface(terrain, 40)
 
-  it('uses the exact heights of every displayed mesh vertex', () => {
+  it('uses exact dry mesh heights and recorded wet-cell beds', () => {
     const points = terrain.cells + 1
     for (const j of surface.columns)
-      for (const i of surface.columns)
-        expect(surfaceHeightAt(surface, i * terrain.cellCm, j * terrain.cellCm)).toBe(terrain.height[j * points + i])
+      for (const i of surface.columns) {
+        const cell = Math.min(j, terrain.cells - 1) * terrain.cells + Math.min(i, terrain.cells - 1)
+        const expected = terrain.water.body[cell]! >= 0 ? terrain.water.bed[cell] : terrain.height[j * points + i]
+        expect(surfaceHeightAt(surface, i * terrain.cellCm, j * terrain.cellCm)).toBe(expected)
+      }
   })
 
   it('interpolates within the four visible vertices around a point', () => {

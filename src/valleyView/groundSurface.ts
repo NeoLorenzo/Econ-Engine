@@ -5,6 +5,7 @@ import type { Terrain } from '../valley/terrain'
  * ground-contact query, so an object cannot be positioned against detail that the visible mesh does not contain.
  */
 export interface GroundSurface {
+  water: Terrain['water']
   columns: readonly number[]
   heights: Int32Array
   along: number
@@ -24,6 +25,7 @@ export function groundSurface(terrain: Terrain, maximumSquares: number): GroundS
   for (const [row, j] of columns.entries())
     for (const [column, i] of columns.entries()) heights[row * along + column] = terrain.height[j * sourcePoints + i]!
   return {
+    water: terrain.water,
     columns,
     heights,
     along,
@@ -46,6 +48,10 @@ function interval(columns: readonly number[], coordinate: number) {
 
 /** Bilinear height of the visible mesh at simulation coordinates, in centimetres. */
 export function surfaceHeightAt(surface: GroundSurface, x: number, y: number) {
+  const cell =
+    Math.min(surface.cells - 1, Math.max(0, Math.floor(y / surface.cellCm))) * surface.cells +
+    Math.min(surface.cells - 1, Math.max(0, Math.floor(x / surface.cellCm)))
+  if (surface.water.body[cell]! >= 0) return surface.water.bed[cell]!
   const px = Math.max(0, Math.min(surface.sizeCm, x))
   const py = Math.max(0, Math.min(surface.sizeCm, y))
   const cellX = px / surface.cellCm

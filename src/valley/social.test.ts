@@ -1,7 +1,8 @@
+import { createSurveyedValley as createValley } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { observeAround } from './sight'
 import { describe, expect, it } from 'vitest'
-import { cloneValley, createValley, lastEventOf, runValley, stepValley } from './engine'
+import { cloneValley, lastEventOf, runValley, stepValley } from './engine'
 import { ValleyChecker } from './invariants'
 import {
   choosePlace,
@@ -25,7 +26,7 @@ const SHORT_SIGHT = { sightRadiusCm: 2_500 }
 
 /** A copy of the valley with short sight at minute `minute`, with every forager changed by `change`. */
 function valleyAt(minute: number, change: (state: ValleyState) => void = () => {}) {
-  const state = cloneValley(createValley({ ...FLAT_LAND, ...SHORT_SIGHT }))
+  const state = cloneValley(createValley({ ...FLAT_LAND, ...SHORT_SIGHT }, true))
   state.minute = minute
   change(state)
   return state
@@ -37,7 +38,7 @@ const put = (forager: Forager, x: number, y: number) => {
 }
 
 describe('places', () => {
-  const { config } = createValley({ ...FLAT_LAND, ...SHORT_SIGHT })
+  const { config } = createValley({ ...FLAT_LAND, ...SHORT_SIGHT }, true)
 
   it('divides the valley into 729 places of 30 m, the last row and column cut at the edge', () => {
     expect(placesPerSide(config)).toBe(27)
@@ -50,7 +51,7 @@ describe('places', () => {
     expect(placeInView(config, 28, 4_500, 4_500)).toBe(true)
     // 21.2 m to the far corners from the centre; 6 m off centre, the far corners lie beyond 25 m.
     expect(placeInView(config, 28, 5_100, 4_500)).toBe(false)
-    const forager = createValley({ ...FLAT_LAND, ...SHORT_SIGHT }).foragers[0]!
+    const forager = createValley({ ...FLAT_LAND, ...SHORT_SIGHT }, true).foragers[0]!
     put(forager, 4_500, 4_500)
     observePlaces(config, forager, 7)
     expect(forager.placeSeen[28]).toBe(7)
@@ -106,6 +107,7 @@ describe('searching', () => {
       forager.hungry = true
       forager.foodMemory.seen.fill(5)
       forager.foodMemory.stock.fill(0)
+      forager.knownBanks.clear()
     })
     const searching = lastEventOf(stepValley(state), 0)!
     expect(searching.reason).toBe('searching')
@@ -213,10 +215,11 @@ describe('groups in a run', () => {
     damage: (state: ValleyState) => void,
     ready: (state: ValleyState) => boolean = () => true,
   ) => {
-    const base = createValley({ ...FLAT_LAND, ...SHORT_SIGHT })
+    const base = createValley({ ...FLAT_LAND, ...SHORT_SIGHT }, true)
     const check = new ValleyChecker(base)
     let after = stepValley(runValley(base, minutes, { onMinute: (state) => check.assert(state) }))
     while (!ready(after)) {
+      if (after.minute > minutes + 3 * 1440) throw new Error('Rule fixture never reached the group under test')
       check.assert(after)
       after = stepValley(after)
     }
@@ -226,7 +229,7 @@ describe('groups in a run', () => {
   const grouped = (state: ValleyState) => state.groups.length > 0
 
   it('lets a band without groups form them, keeping every invariant', () => {
-    const start = createValley({ ...FLAT_LAND, ...SHORT_SIGHT })
+    const start = createValley({ ...FLAT_LAND, ...SHORT_SIGHT }, true)
     const checker = new ValleyChecker(start)
     const end = runValley(start, 1_440, { onMinute: (state) => checker.assert(state) })
     expect(end.groups.length).toBeGreaterThan(0)
@@ -284,6 +287,6 @@ describe('groups in a run', () => {
         first.position = { ...second.from }
         first.groupId = null
       }),
-    ).toMatch('without a group beside another forager')
+    ).toMatch('movement does not match its segments')
   })
 })

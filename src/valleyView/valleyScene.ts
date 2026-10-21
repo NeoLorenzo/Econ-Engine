@@ -3,16 +3,17 @@ import type {
   Group,
   InstancedMesh,
   LineLoop,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
   Sprite,
 } from 'three'
-import { LAKE_ID } from '../valley/food'
+
 import { isDaylight } from '../valley/forager'
 import { siteCount } from '../valley/sites'
-import { livingMembers, placesPerSide } from '../valley/social'
+import { livingMembers } from '../valley/social'
 import { TiledInstances } from './tiledInstances'
 import { groundSurface, surfaceHeightAt, type GroundSurface } from './groundSurface'
 import { woodTarget } from '../valley/trade'
@@ -72,7 +73,6 @@ const PLANT_TILE_M = 400
 /** Bushes and hazels are drawn within this many metres of the camera's target, more when it is further away. */
 const PLANT_DRAW_M = 500
 /** The canonical 4 km land is drawn at its full 5 m terrain lattice, so its 15-60 m relief is not averaged away. */
-const GROUND_SQUARES = 800
 const LEAF = 0x2f7a3c
 const BERRY = 0xc8243f
 const HAZEL_LEAF = 0x4c8a35
@@ -117,6 +117,7 @@ export type ValleyPlant = { kind: 'bush' | 'hazel' | 'tree' | 'stone' | 'hut' | 
 export type ValleySelection = ValleyPlant | { kind: 'group'; id: number }
 
 export interface DrawOptions {
+  showFlow: boolean
   interpolate: boolean
   selected: ValleySelection | null
   /** A member of the selected group to pick out, as the viewer points at it in the group card. */
@@ -306,7 +307,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   /**
-   * The ground as a mesh: the height field sampled at most `GROUND_SQUARES` times along each side, each vertex
+   * The ground as a mesh: the height field sampled at most at every lattice point, each vertex
    * coloured by the ground of its cell, with a little shading by height so the hills read from above.
    */
   function terrainMeshGeometry(state: ValleyState, sampled: GroundSurface) {
@@ -356,6 +357,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const indices: number[] = []
     for (let row = 0; row < along - 1; row += 1)
       for (let column = 0; column < along - 1; column += 1) {
+        if (state.layout.terrain.water.body[columns[row]! * cells + columns[column]!]! >= 0) continue
         const a = row * along + column
         indices.push(a, a + along, a + 1, a + 1, a + along, a + along + 1)
       }
@@ -481,6 +483,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let hazelStems: TiledInstances | null = null
   let nutMesh: TiledInstances | null = null
   let lake: Mesh | null = null
+  let flow: LineSegments | null = null
   let trunks: InstancedMesh | null = null
   let crowns: InstancedMesh | null = null
   let stumps: InstancedMesh | null = null
@@ -514,6 +517,16 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
   const followRing = accentRing(0.95)
   const targetRing = accentRing(0.85)
+  const plannedRoute = new THREE.LineSegments(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xffdf8c, transparent: true, opacity: 0.85 }),
+  )
+  const rememberedBanks = new THREE.Points(
+    new THREE.BufferGeometry(),
+    new THREE.PointsMaterial({ color: 0x9be4f4, size: 0.55, depthWrite: false }),
+  )
+  scene.add(plannedRoute, rememberedBanks)
+  let routeKey = ''
   const selectRing = new THREE.Mesh(
     ringGeometry.clone(),
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }),
@@ -1011,6 +1024,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   function clearWorld() {
+    if (flow) {
+      flow.geometry.dispose()
+      ;(flow.material as InstanceType<Three['LineBasicMaterial']>).dispose()
+      world.remove(flow)
+      flow = null
+    }
     for (const figure of figures) {
       figure.material.dispose()
       figure.skin.dispose()
@@ -1038,6 +1057,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
     siteLoops = []
     if (knowledge) {
+      for (const child of knowledge.children) (child as Mesh).geometry.dispose()
       knowledge.geometry.dispose()
       ;(knowledge.material as MeshBasicMaterial).dispose()
       knowledgeTexture?.dispose()
@@ -1055,6 +1075,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     for (const mesh of [ground, outside, lake]) {
       if (!mesh) continue
       mesh.geometry.dispose()
+      for (const child of mesh.children) {
+        const part = child as Mesh
+        part.geometry.dispose()
+        ;(part.material as MeshStandardMaterial).dispose()
+      }
       ;(mesh.material as MeshStandardMaterial).dispose()
       world.remove(mesh)
     }
@@ -1220,7 +1245,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     clearWorld()
     config = state.config
     layout = state.layout
-    surface = groundSurface(state.layout.terrain, GROUND_SQUARES)
+    surface = groundSurface(state.layout.terrain, state.layout.terrain.cells)
     const size = state.config.valleySizeCm / 100
     const terrainGeometry = terrainMeshGeometry(state, surface)
     ground = new THREE.Mesh(
@@ -1234,16 +1259,97 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       new THREE.MeshStandardMaterial({ color: OUTSIDE, roughness: 1 }),
     )
     outside.rotation.x = -Math.PI / 2
-    outside.position.y = -0.05
+    outside.position.y = state.layout.terrain.height.reduce((min, h) => Math.min(min, h), 0) / 100 - 1
     // The lake beyond the north edge: as wide as the valley, and as deep as its area makes it.
-    const lakeDepth = (state.config.lakeHectares * 10_000) / size
+    const water = state.layout.terrain.water
+    const vertices: number[] = []
+    const bedVertices: number[] = []
+    const quad = (into: number[], a: number[], b: number[], c: number[], d: number[]) =>
+      into.push(...a, ...c, ...b, ...b, ...c, ...d)
+    for (let id = 0; id < water.body.length; id += 1) {
+      if (water.body[id]! < 0) continue
+      const x = ((id % water.cells) * water.cellCm) / 100 - size / 2
+      const z = (Math.floor(id / water.cells) * water.cellCm) / 100 - size / 2
+      const width = water.cellCm / 100
+      const level = water.level[id]! / 100
+      const bed = water.bed[id]! / 100
+      quad(vertices, [x, level, z], [x + width, level, z], [x, level, z + width], [x + width, level, z + width])
+      quad(bedVertices, [x, bed, z], [x + width, bed, z], [x, bed, z + width], [x + width, bed, z + width])
+      const corners = [
+        [x, z],
+        [x + width, z],
+        [x + width, z + width],
+        [x, z + width],
+      ]
+      for (let edge = 0; edge < 4; edge += 1) {
+        const neighbour = [id - water.cells, id + 1, id + water.cells, id - 1][edge]!
+        if (neighbour >= 0 && neighbour < water.body.length && water.body[neighbour]! >= 0) continue
+        const a = corners[edge]!
+        const b = corners[(edge + 1) % 4]!
+        quad(
+          bedVertices,
+          [a[0]!, bed, a[1]!],
+          [b[0]!, bed, b[1]!],
+          [a[0]!, groundY(a[0]!, a[1]!), a[1]!],
+          [b[0]!, groundY(b[0]!, b[1]!), b[1]!],
+        )
+      }
+    }
+    const waterGeometry = new THREE.BufferGeometry()
+    waterGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+    waterGeometry.computeVertexNormals()
     lake = new THREE.Mesh(
-      new THREE.PlaneGeometry(size, lakeDepth),
+      waterGeometry,
       new THREE.MeshStandardMaterial({ color: WATER, roughness: 0.25, metalness: 0.1 }),
     )
-    lake.rotation.x = -Math.PI / 2
-    lake.position.set(0, -0.02, -size / 2 - lakeDepth / 2)
     lake.receiveShadow = true
+    const arrows: number[] = []
+    for (const body of water.bodies) {
+      if (body.kind !== 'river') continue
+      for (const cell of body.cells) {
+        const parent = water.parent[cell]!
+        if (parent < 0) continue
+        const x = (((cell % water.cells) + 0.5) * water.cellCm) / 100 - size / 2
+        const z = ((Math.floor(cell / water.cells) + 0.5) * water.cellCm) / 100 - size / 2
+        const dx = (parent % water.cells) - (cell % water.cells)
+        const dz = Math.floor(parent / water.cells) - Math.floor(cell / water.cells)
+        const h = water.level[cell]! / 100 + 0.08
+        const length = water.cellCm / 350
+        const tx = x + dx * length
+        const tz = z + dz * length
+        arrows.push(
+          x - dx * length,
+          h,
+          z - dz * length,
+          tx,
+          h,
+          tz,
+          tx,
+          h,
+          tz,
+          tx - (dx * length) / 2 + (dz * length) / 3,
+          h,
+          tz - (dz * length) / 2 - (dx * length) / 3,
+          tx,
+          h,
+          tz,
+          tx - (dx * length) / 2 - (dz * length) / 3,
+          h,
+          tz - (dz * length) / 2 + (dx * length) / 3,
+        )
+      }
+    }
+    const arrowGeometry = new THREE.BufferGeometry()
+    arrowGeometry.setAttribute('position', new THREE.Float32BufferAttribute(arrows, 3))
+    flow = new THREE.LineSegments(arrowGeometry, new THREE.LineBasicMaterial({ color: 0xd6f5ff }))
+    flow.visible = false
+    world.add(flow)
+    const beds = new THREE.BufferGeometry()
+    beds.setAttribute('position', new THREE.Float32BufferAttribute(bedVertices, 3))
+    beds.computeVertexNormals()
+    lake.add(
+      new THREE.Mesh(beds, new THREE.MeshStandardMaterial({ color: 0x635749, side: THREE.DoubleSide, roughness: 1 })),
+    )
     world.add(outside, ground, lake)
 
     // Bushes: three leafy lobes each, with berries on their upper sides. Bushes and hazels are drawn in tiles of the
@@ -1380,11 +1486,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     figures = state.foragers.map((forager) => makeFigure(forager.id))
 
     // The ground the followed forager knows: one texel per place, laid over the grass.
-    const n = placesPerSide(state.config)
+    const n = state.layout.terrain.cells
     knowledgeTexture = new THREE.DataTexture(new Uint8Array(n * n * 4), n, n, THREE.RGBAFormat)
     knowledgeTexture.magFilter = THREE.NearestFilter
     knowledgeTexture.minFilter = THREE.NearestFilter
-    const placesSize = (n * state.config.placeCm) / 100
+    const placesSize = size
     // Laid over the ground itself, so it follows the hills; its texture coordinates span the places, which may run a
     // little past the land's far edges.
     const draped = terrainGeometry.clone()
@@ -1406,6 +1512,15 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         polygonOffsetUnits: -4,
       }),
     )
+    const wetShade = waterGeometry.clone()
+    const wetPositions = wetShade.getAttribute('position')
+    const wetUv = new Float32Array(wetPositions.count * 2)
+    for (let index = 0; index < wetPositions.count; index += 1) {
+      wetUv[index * 2] = (wetPositions.getX(index) + size / 2) / size
+      wetUv[index * 2 + 1] = 1 - (wetPositions.getZ(index) + size / 2) / size
+    }
+    wetShade.setAttribute('uv', new THREE.BufferAttribute(wetUv, 2))
+    knowledge.add(new THREE.Mesh(wetShade, knowledge.material))
     knowledge.position.y = 0.03
     knowledge.renderOrder = 1
     world.add(knowledge)
@@ -1512,17 +1627,17 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       // Both hands swing the axe from over the shoulder down into the trunk.
       bend = 0.15 + 0.15 * Math.max(0, Math.sin(phase * 6))
       reach = -1.6 + 1.3 * Math.sin(phase * 6)
-    } else if (pose.gesture === 'make') {
+    } else if (pose.gesture === 'make' || pose.gesture === 'drink') {
       // Kneeling over its work, knocking the stone into shape.
       bend = 0.7
       reach = -0.9 + 0.25 * Math.sin(phase * 9)
     }
-    const kneel = pose.gesture === 'make'
+    const kneel = pose.gesture === 'make' || pose.gesture === 'drink'
     figure.legs[0].rotation.x = kneel ? -1.4 : legSwing
     figure.legs[1].rotation.x = kneel ? -0.2 : -legSwing
     figure.hips.position.y = kneel ? 0.55 : 0.92
     figure.torso.rotation.x = bend
-    if (pose.gesture === 'chop' || pose.gesture === 'make') {
+    if (pose.gesture === 'chop' || pose.gesture === 'make' || pose.gesture === 'drink') {
       figure.arms[0].rotation.x = reach
       figure.arms[1].rotation.x = reach
     } else if (pose.gesture === 'pick' || pose.gesture === 'gather' || pose.gesture === 'fish') {
@@ -1539,6 +1654,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   function draw(pair: DisplayPair, options: DrawOptions) {
+    if (flow) flow.visible = options.showFlow
     if (!config || !layout) return
     const { interpolate, nowMs, followedId } = options
     const state = pair.next
@@ -1719,9 +1835,35 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
     // Shades the ground for what the followed forager knows, redrawn only when the minute or forager changes.
     const key = `${followedId}:${state.minute}`
+    if (key !== routeKey && followed) {
+      routeKey = key
+      const vertices: number[] = []
+      let from = { x: followed.x, y: followed.y }
+      for (const to of followed.route) {
+        // Drape every segment on the same contact surface as the person.
+        const pieces = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 100))
+        for (let piece = 0; piece < pieces; piece += 1)
+          for (const t of [piece / pieces, (piece + 1) / pieces]) {
+            const p = at(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t)
+            vertices.push(p.x, groundY(p.x, p.z) + 0.12, p.z)
+          }
+        from = to
+      }
+      plannedRoute.geometry.dispose()
+      plannedRoute.geometry = new THREE.BufferGeometry()
+      plannedRoute.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+      const banks: number[] = []
+      for (const bank of followed.knownBanks.values()) {
+        const p = at(bank.x, bank.y)
+        banks.push(p.x, groundY(p.x, p.z) + 0.15, p.z)
+      }
+      rememberedBanks.geometry.dispose()
+      rememberedBanks.geometry = new THREE.BufferGeometry()
+      rememberedBanks.geometry.setAttribute('position', new THREE.Float32BufferAttribute(banks, 3))
+    }
     if (knowledgeTexture && key !== knowledgeKey && followed) {
       knowledgeKey = key
-      const n = placesPerSide(config)
+      const n = layout!.terrain.cells
       const shades = knowledgeShades(state, followedId)
       const data = knowledgeTexture.image.data as Uint8Array
       for (let place = 0; place < shades.length; place += 1) {
@@ -1901,7 +2043,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const targetPlant =
       followed && event?.workedFor === 'wood' && followed.targetWoodId !== null
         ? { kind: 'tree' as const, id: followed.targetWoodId }
-        : event?.workedFor === 'food' && foodTarget !== null && foodTarget !== LAKE_ID
+        : event?.workedFor === 'food' && foodTarget !== null && foodTarget >= 0
           ? { kind: foodTarget < layout.bushes.count ? ('bush' as const) : ('hazel' as const), id: foodTarget }
           : null
     const ringAt = (ring: Mesh, chosen: ValleySelection | null) => {
@@ -1947,8 +2089,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   /** The plant an instance of a bush's or tree's mesh belongs to. */
-  function plantOf(object: unknown, instance: number | undefined): ValleyPlant | null {
-    if (object === lake) return { kind: 'lake', id: 0 }
+  function plantOf(object: unknown, instance: number | undefined, face?: number): ValleyPlant | null {
+    if (object === lake && face !== undefined) {
+      const wet = layout!.terrain.water.body.filter((id) => id >= 0)
+      return { kind: 'lake', id: wet[Math.floor(face / 2)]! }
+    }
     if (instance === undefined) return null
     const bushes = layout!.bushes.count
     for (const [mesh, kind, per] of [
@@ -2054,7 +2199,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           ? { kind: 'group', id: groupId }
           : hutId !== undefined
             ? { kind: 'hut', id: hutId }
-            : plantOf(hit?.object, hit?.instanceId),
+            : plantOf(hit?.object, hit?.instanceId, hit?.faceIndex ?? undefined),
     )
   }
   const onWheel = (event: WheelEvent) => {
@@ -2182,6 +2327,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         ring.geometry.dispose()
         ;(ring.material as InstanceType<Three['MeshBasicMaterial']>).dispose()
       }
+      plannedRoute.geometry.dispose()
+      plannedRoute.material.dispose()
+      rememberedBanks.geometry.dispose()
+      rememberedBanks.material.dispose()
       for (const line of memberLines) {
         line.geometry.dispose()
         ;(line.material as InstanceType<Three['LineBasicMaterial']>).dispose()

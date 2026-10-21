@@ -11,6 +11,11 @@ const TEST_SECONDS: Record<string, number> = {
   'fingerprints.test.ts': 130,
   'fingerprintsSkills.test.ts': 130,
   'fingerprintsBand.test.ts': 130,
+  // New Life 11 partitions inherit the fingerprint scheduling weight until CI records their own timings.
+  'fingerprintsTogether.test.ts': 130,
+  'fingerprintsTalent.test.ts': 130,
+  'fingerprintsAlike.test.ts': 130,
+  'fingerprintsFlat.test.ts': 130,
   'wagesProfits.test.ts': 20,
   'performance.test.ts': 20,
   'competitionGridExperiment.test.ts': 16,

@@ -1,6 +1,7 @@
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { distanceSq } from './geometry'
 import type { ValleyConfig } from './types'
+import { deriveWater, cardinalCells, type WaterGrid } from './water'
 
 // The immutable young-moraine landscape. Its landforms share an ice-flow field and occur in coherent zones rather
 // than as unrelated geometric bumps. All simulation heights remain whole centimetres.
@@ -82,6 +83,7 @@ export interface TunnelValley {
 
 /** The land's heights and ground. It never changes during a run. */
 export interface Terrain {
+  water: WaterGrid
   cellCm: number
   /** Cells along each side; lattice points along each side are one more. */
   cells: number
@@ -102,6 +104,8 @@ export interface Terrain {
 
 /** The configuration that decides the terrain; two configurations that agree on these share one terrain. */
 const TERRAIN_KEYS = [
+  'riverCatchmentM2',
+  'riverDepthCm',
   'seed',
   'valleySizeCm',
   'terrainCellCm',
@@ -154,7 +158,6 @@ const TERRAIN_KEYS = [
   'microCoarseAmplitudeCm',
   'microFineWavelengthCm',
   'microFineAmplitudeCm',
-  'shoreRampCm',
   'dirtSlopePercent',
   'stoneSlopePercent',
   'dirtCurvatureCm',
@@ -615,25 +618,20 @@ export function generateTerrain(config: ValleyConfig): Terrain {
   )
   const height = new Int32Array(points * points)
   for (let j = 0; j < points; j += 1) {
-    const y = j * cellCm
-    const ramp = Math.min(y, config.shoreRampCm)
     for (let i = 0; i < points; i += 1) {
       const index = j * points + i
       height[index] = Math.floor(
-        ((broad[index]! +
+        broad[index]! +
           moraineHeight[index]! +
           drumlinHeight[index]! +
           localHeight[index]! +
           microCoarse[index]! +
           microFine[index]! -
           kettleDepth[index]! -
-          valleyDepth[index]!) *
-          ramp) /
-          config.shoreRampCm,
+          valleyDepth[index]!,
       )
     }
   }
-  for (let index = 0; index < height.length; index += 1) if (height[index]! < 0) height[index] = 0
   const centres = new Int32Array(cells * cells)
   for (let j = 0; j < cells; j += 1)
     for (let i = 0; i < cells; i += 1)
@@ -663,7 +661,24 @@ export function generateTerrain(config: ValleyConfig): Terrain {
       else if (slope >= config.dirtSlopePercent || curvature >= config.dirtCurvatureCm) kind = DIRT
       ground[j * cells + i] = kind
     }
+  const water = deriveWater(cells, cellCm, centres, config.riverCatchmentM2, config.riverDepthCm)
+  for (let id = 0; id < centres.length; id += 1) {
+    if (water.body[id]! >= 0) continue
+    const adjacent = cardinalCells(cells, id)
+    if (!adjacent.some((next) => water.body[next]! >= 0)) continue
+    const bankSlope = adjacent.reduce(
+      (slope, next) => Math.max(slope, Math.floor((100 * Math.abs(centres[id]! - water.bed[next]!)) / cellCm)),
+      0,
+    )
+    const curvature = Math.abs(
+      centres[id]! - Math.floor(adjacent.reduce((sum, next) => sum + water.bed[next]!, 0) / adjacent.length),
+    )
+    if (bankSlope >= config.stoneSlopePercent) ground[id] = STONE
+    else if (bankSlope >= config.dirtSlopePercent || curvature >= config.dirtCurvatureCm)
+      ground[id] = Math.max(ground[id]!, DIRT)
+  }
   return {
+    water,
     cellCm,
     cells,
     height,
@@ -695,6 +710,7 @@ export function heightAt(terrain: Terrain, x: number, y: number) {
   const py = y < 0 ? 0 : y > size ? size : y
   const i = Math.min(cells - 1, Math.floor(px / cellCm))
   const j = Math.min(cells - 1, Math.floor(py / cellCm))
+  if (terrain.water.body[j * cells + i]! >= 0) return terrain.water.bed[j * cells + i]!
   const fx = px - i * cellCm
   const fy = py - j * cellCm
   const points = cells + 1

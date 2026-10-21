@@ -44,7 +44,6 @@ describe('valley configuration', () => {
       'smallKettleMinRadiusCm must not exceed smallKettleMaxRadiusCm',
     )
     expect(errorsWith({ kettleDepthPerMille: 1_001 })).toContain('kettleDepthPerMille must be at most 1,000')
-    expect(errorsWith({ shoreRampCm: 500_000 })).toContain('shoreRampCm must not exceed the land’s width')
     expect(errorsWith({ sightStepCm: 4_000 })).toContain('sightStepCm must not exceed placeCm')
     expect(errorsWith({ startAreaCm: 500_000 })).toContain('startAreaCm must not exceed the land’s width')
   })
@@ -95,8 +94,10 @@ describe('valley configuration', () => {
     expect(errorsWith({ initialHazelKcal: 2_000 })).toContain(
       'initialHazelKcal must be between 0 and hazelCapacityKcal',
     )
-    expect(errorsWith({ lakeHectares: 3_000 })).toContain('The lake is too large for its growth to be counted exactly')
-    expect(errorsWith({ lakeHectares: 0 })).toContain('lakeHectares must be positive')
+    expect(errorsWith({ fishKgPerHectare: Number.MAX_SAFE_INTEGER })).toContain(
+      'Fish capacity exceeds supported stock/remainder limits',
+    )
+    expect(errorsWith({ riverCatchmentM2: 0 })).toContain('riverCatchmentM2 must be positive')
   })
 
   it('refuses plants that cannot hold a minute of work at the fastest rate', () => {
@@ -136,7 +137,6 @@ describe('valley configuration', () => {
       createValley({
         ...FLAT_LAND,
         valleySizeCm: 20_000,
-        shoreRampCm: 20_000,
         startAreaCm: 20_000,
         reliefWavelengthCm: 20_000,
         thicketCount: 40,

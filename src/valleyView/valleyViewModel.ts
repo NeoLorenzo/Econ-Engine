@@ -1,14 +1,14 @@
 import { askOf, expectedQuality, usableAsk } from '../valley/axes'
-import { LAKE_ID, capacityOf, carriedByFood, carriedKcal, spoilsIn } from '../valley/food'
+import { carriedByFood, carriedKcal, spoilsIn } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
-import { ringOf } from '../valley/config'
+import { ringOf, fishCapacityKcal } from '../valley/config'
 import { lastEventOf } from '../valley/engine'
 import { campfireBurn } from '../valley/fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
 import { practicePercents } from '../valley/practice'
 import { siteCentre, siteCount, siteKindOf, siteRadius, sitesKnown } from '../valley/sites'
-import { livingMembers, placeCount, placesPerSide } from '../valley/social'
+import { livingMembers, placeCount } from '../valley/social'
 import { GROUND_NAMES, cellOf, heightAt } from '../valley/terrain'
 import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
 import type { ActionEvent, Group, SwapEvent, ValleyConfig, ValleyState } from '../valley/types'
@@ -78,7 +78,7 @@ export const toMetres = (config: ValleyConfig, x: number, y: number) => ({
   z: (y - config.valleySizeCm / 2) / 100,
 })
 
-export type Gesture = 'walk' | 'pick' | 'fish' | 'gather' | 'chop' | 'make' | 'stand' | 'sleep' | 'dead'
+export type Gesture = 'walk' | 'pick' | 'fish' | 'drink' | 'gather' | 'chop' | 'make' | 'stand' | 'sleep' | 'dead'
 
 export interface ForagerPose {
   /** Its position in valley centimetres. */
@@ -111,13 +111,21 @@ export function foragerPose(pair: DisplayPair, foragerId: number, interpolate = 
   const lying = lyingBefore === lyingAfter ? (lyingAfter ? 1 : 0) : lyingAfter ? transition : 1 - transition
   if (!event) return { x: after.x, y: after.y, heading: null, gesture: after.alive ? 'stand' : 'dead', lying }
   const seconds = alpha * 60
-  const { from, position } = event
+  const { position } = event
+  if (!after.alive && seconds >= event.bodySeconds.length)
+    return { ...position, heading: null, gesture: 'dead', lying: 1 }
   if (event.walkSeconds > 0 && seconds < event.walkSeconds) {
-    const t = seconds / event.walkSeconds
+    let elapsed = 0
+    const segment = event.segments.find((part) => {
+      if (seconds < elapsed + part.seconds) return true
+      elapsed += part.seconds
+      return false
+    })!
+    const t = (seconds - elapsed) / segment.seconds
     return {
-      x: lerp(from.x, position.x, t),
-      y: lerp(from.y, position.y, t),
-      heading: headingOf(position.x - from.x, position.y - from.y),
+      x: lerp(segment.from.x, segment.to.x, t),
+      y: lerp(segment.from.y, segment.to.y, t),
+      heading: headingOf(segment.to.x - segment.from.x, segment.to.y - segment.from.y),
       gesture: 'walk',
       lying,
     }
@@ -126,14 +134,22 @@ export function foragerPose(pair: DisplayPair, foragerId: number, interpolate = 
   const plants = event.workedFor === 'food' ? layout.foodPlants : layout.woodPlants
   const toward = (xs: Int32Array, ys: Int32Array, id: number | null) =>
     id === null ? null : headingOf(xs[id]! - position.x, ys[id]! - position.y)
-  const fishing = event.plantId === LAKE_ID
+  const fishing = event.plantId !== null && event.plantId < 0
+  const waterBankId = event.drinkBankId ?? (fishing ? -event.plantId! - 1 : null)
+  const bank = waterBankId === null ? undefined : after.knownBanks.get(waterBankId)
+  const wetX = bank ? ((bank.wetCell % after.groundKnowledge.cells) + 0.5) * after.groundKnowledge.cellCm : position.x
+  const wetY = bank
+    ? (Math.floor(bank.wetCell / after.groundKnowledge.cells) + 0.5) * after.groundKnowledge.cellCm
+    : position.y
+  if (event.drinkSeconds && seconds < event.walkSeconds + event.drinkSeconds)
+    return { ...position, heading: headingOf(wetX - position.x, wetY - position.y), gesture: 'drink', lying }
   const facing =
     event.task === 'cut'
       ? toward(layout.trees.x, layout.trees.y, event.treeId)
       : event.task === 'stone'
         ? toward(layout.stones.x, layout.stones.y, event.stoneId)
         : fishing
-          ? headingOf(0, -1)
+          ? headingOf(wetX - position.x, wetY - position.y)
           : toward(plants.x, plants.y, event.plantId)
   const gesture: Gesture = event.workSeconds
     ? event.task === 'cut'
@@ -308,7 +324,7 @@ export const hazelName = (state: ValleyState, id: number) =>
   `a hazel in hazel thicket ${state.layout.foodPlants.site[id]! + 1}`
 /** A food source by name: a bush, a hazel, or the lake. */
 export const foodSourceName = (state: ValleyState, id: number) =>
-  id === LAKE_ID ? 'the lake' : id < state.layout.bushes.count ? bushName(state, id) : hazelName(state, id)
+  id < 0 ? `water bank ${-id - 1}` : id < state.layout.bushes.count ? bushName(state, id) : hazelName(state, id)
 export const treeName = (state: ValleyState, id: number) => `a tree in stand ${state.layout.trees.site[id]! + 1}`
 export const stoneName = (state: ValleyState, id: number) => `outcrop ${state.layout.stones.site[id]! + 1}`
 /** A site by name, as bushes and trees name theirs: thickets, stands and outcrops each counted from 1. */
@@ -333,8 +349,13 @@ export const groupColor = (id: number) => GROUP_COLORS[id % GROUP_COLORS.length]
 export function describeActivity(pair: DisplayPair, foragerId: number) {
   const event = currentEvent(pair, foragerId)
   const state = pair.next
-  if (!state.foragers[foragerId]!.alive && !event) return 'Dead of starvation'
+  if (!state.foragers[foragerId]!.alive && !event)
+    return `Dead of ${state.foragers[foragerId]!.deathCauses.join(' and ')}`
   if (!event) return 'Waiting to start'
+  if (!state.foragers[foragerId]!.alive) return `Dead of ${state.foragers[foragerId]!.deathCauses.join(' and ')}`
+  if (event.reason === 'drinking') return `Drinking at bank ${event.drinkBankId}`
+  if (event.reason === 'seeking water') return 'Seeking drinking water on known ground'
+  if (event.reason === 'no known route') return 'No known route; resting and looking for access'
   const toSwap = event.forTrade ? ' to swap' : ''
   if (event.reason === 'going home') return 'Walking home to its hearth'
   if (event.reason === 'taking a load home') return `Taking ${event.loadWood} kg of firewood home`
@@ -479,18 +500,20 @@ export function plantInspection(state: ValleyState, kind: PlantKind, id: number,
 }
 
 /** What the inspector shows for the lake: its fish, beside what the followed forager found when it last fished. */
-export function lakeInspection(state: ValleyState, foragerId: number) {
+export function lakeInspection(state: ValleyState, foragerId: number, bodyIndex = 0) {
   const forager = state.foragers[foragerId]!
-  const capacity = capacityOf(state.config, 'fish')
+  const body = state.layout.terrain.water.bodies[bodyIndex]
+  const stock = state.fish[bodyIndex]
+  const memory = body ? forager.fishMemory.get(body.id) : undefined
   return {
-    name: 'The lake',
-    stock: state.lakeKcal,
-    capacity,
-    hectares: state.config.lakeHectares,
-    known: forager.lakeKnown,
+    name: body ? `${body.kind === 'lake' ? 'Lake' : 'River reach'} ${body.id}` : 'Water',
+    stock: stock?.stock ?? 0,
+    capacity: stock?.capacity ?? 0,
+    hectares: (body?.areaM2 ?? 0) / 10_000,
+    known: [...forager.knownBanks.values()].some((bank) => bank.bodyId === body?.id),
     /** Null if it has never fished here. */
-    remembered: forager.lakeStock < 0 ? null : forager.lakeStock,
-    fished: seenLabel(state, forager.lakeFishedMinute),
+    remembered: memory?.stock ?? null,
+    fished: seenLabel(state, memory?.minute ?? -1),
   }
 }
 
@@ -909,7 +932,7 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
     hazelPercent:
       (100 * day.hazelStockKcal) /
       Math.max(1, (state.layout.foodPlants.count - state.layout.bushes.count) * state.config.hazelCapacityKcal),
-    lakePercent: (100 * day.lakeKcal) / capacityOf(state.config, 'fish'),
+    fishPercent: (100 * day.fishKcal) / Math.max(1, fishCapacityKcal(state.config)),
     berriesTaken: day.gatheredBerriesKcal,
     nutsTaken: day.gatheredNutsKcal,
     fishTaken: day.gatheredFishKcal,
@@ -927,8 +950,9 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
  */
 export function knowledgeShades(state: ValleyState, foragerId: number) {
   const forager = state.foragers[foragerId]!
-  const shades = new Uint8Array(placesPerSide(state.config) ** 2)
-  for (let place = 0; place < shades.length; place += 1) shades[place] = forager.placeSeen[place]! < 0 ? 150 : 0
+  const shades = new Uint8Array(forager.groundKnowledge.observed.length)
+  for (let cell = 0; cell < shades.length; cell += 1)
+    shades[cell] = forager.groundKnowledge.observed[cell] === 0 ? 150 : 0
   return shades
 }
 
