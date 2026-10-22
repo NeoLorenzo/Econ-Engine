@@ -5,13 +5,14 @@ import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
 import { VALLEY_DEFAULT_CONFIG, valleyConfigErrors } from '../valley/config'
-import { createValley, runValley, stepValley } from '../valley/engine'
+import { createValley, stepValley } from '../valley/engine'
 import { isDaylight } from '../valley/forager'
 import { layoutError } from '../valley/layout'
 import type { ValleyConfig } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
 import {
   advanceClock,
+  advancePlayback,
   aliveCount,
   clearView,
   clockLabel,
@@ -186,6 +187,7 @@ export default function ValleyApp() {
     let frame = 0
     let lastFrame = performance.now()
     let lastHud = 0
+    let lastStepMs = 0
     const onPick = (pick: ValleyPick | null) => {
       if (pick?.kind === 'forager') {
         followedRef.current = pick.id
@@ -216,13 +218,9 @@ export default function ValleyApp() {
           const speed = speedRef.current
           if (runningRef.current) {
             const clock = advanceClock(pairRef.current.alpha, elapsed, speed.minutesPerSecond)
-            let { previous, next } = pairRef.current
-            if (clock.steps > 0) {
-              // Only the last minute is drawn between two states; any before it run in one go.
-              previous = clock.steps > 1 ? runValley(next, clock.steps - 1, { recordEvents: false }) : next
-              next = stepValley(previous)
-            }
-            pairRef.current = { previous, next, alpha: clock.alpha }
+            const advanced = advancePlayback(pairRef.current, clock.steps, clock.alpha, lastStepMs)
+            pairRef.current = advanced.pair
+            lastStepMs = advanced.lastStepMs
           }
           scene.draw(pairRef.current, {
             showFlow: flowRef.current,

@@ -1,5 +1,6 @@
-import { estimateKnownWalk, isDaylight, reachableAndBack, walkSpeed } from './forager'
+import { daylightSecondsLeft, estimateKnownWalk, isDaylight, walkLowerBound, walkSpeed } from './forager'
 import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
+import type { GroundKnowledge } from './routes'
 
 // Thickets, hazel thickets, stands and outcrops as sites, which a forager spots from afar, checks up close, and walks
 // to when it checks what it knows or searches for food or wood.
@@ -80,6 +81,9 @@ export function siteGeometry(config: ValleyConfig, layout: ValleyLayout): SiteGe
 /** Checking goes to known sites not checked for `exploreAfterHours` or never; searching only to sites never checked. */
 export type SiteSearch = 'check' | 'search'
 
+// Previous winners are only an evaluation-order hint. Every remaining contender is still checked against an exact bound.
+const siteHints = new WeakMap<GroundKnowledge, number[]>()
+
 export function siteWanted(config: ValleyConfig, forager: Forager, site: number, minute: number, why: SiteSearch) {
   if (!forager.siteKnown[site]) return false
   const checked = forager.siteChecked[site]!
@@ -117,27 +121,41 @@ export function nearestKnownSite(
   wanted: (site: number) => boolean,
 ): number | null {
   const speed = walkSpeed(config, forager)
+  const left = daylightSecondsLeft(config, minute)
   let best: number | null = null
   let bestTime = Infinity
-  const candidates = []
+  const candidates: { site: number; centre: Point; lower: number }[] = []
   for (let site = 0; site < siteCount(config); site += 1) {
     if (!forager.siteKnown[site] || !wanted(site)) continue
     const centre = siteCentre(config, layout, site)
-    const lower = Math.ceil(Math.max(Math.abs(forager.x - centre.x), Math.abs(forager.y - centre.y)) / speed)
+    const lower = walkLowerBound(forager, centre, speed)
+    const homeFloor = walkLowerBound(centre, forager.hearth, speed)
+    if (lower + homeFloor > left) continue
     candidates.push({ site, centre, lower })
   }
   candidates.sort((a, b) => a.lower - b.lower || a.site - b.site)
-  for (const { site, centre, lower } of candidates) {
-    if (lower > bestTime) break
-    const time = estimateKnownWalk(config, forager, forager, centre, speed)
-    if (
-      (time < bestTime || (time === bestTime && site < best!)) &&
-      reachableAndBack(config, forager, centre.x, centre.y, minute, speed)
-    ) {
+  const consider = ({ site, centre, lower }: (typeof candidates)[number]) => {
+    if (lower > bestTime) return
+    // The stable hearth-rooted search is shared across moving positions and candidate sites.
+    const home = estimateKnownWalk(config, forager, centre, forager.hearth, speed, left - lower)
+    if (lower + home > left) return
+    const time = estimateKnownWalk(config, forager, forager, centre, speed, Math.min(bestTime, left - home))
+    if ((time < bestTime || (time === bestTime && site < best!)) && time + home <= left) {
       best = site
       bestTime = time
     }
   }
+  const hints = siteHints.get(forager.groundKnowledge) ?? []
+  const preferred = hints
+    .map((site) => candidates.find((candidate) => candidate.site === site))
+    .find((candidate) => candidate !== undefined)
+  if (preferred) consider(preferred)
+  for (const candidate of candidates) {
+    if (candidate.lower > bestTime) break
+    if (candidate !== preferred) consider(candidate)
+  }
+  if (best !== null)
+    siteHints.set(forager.groundKnowledge, [best, ...hints.filter((site) => site !== best)].slice(0, 4))
   return best
 }
 

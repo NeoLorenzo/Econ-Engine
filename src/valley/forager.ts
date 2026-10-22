@@ -1,9 +1,10 @@
 import { carriedByFood, carriedKcal, foodKg, foodOfSource, fullRateOf, rateAtStock, worthWorking } from './food'
 import { fishRate } from './fish'
-import { knownWalkSeconds } from './routes'
+import { knownWalkSeconds, routeCell } from './routes'
+import { knownBanksInChunks } from './waterKnowledge'
 import { nearestKnownSite, siteCentre, siteKind, type SiteKind } from './sites'
 import { distance, distanceSq, walkSeconds } from './geometry'
-import { forEachPlantWithin, forEachRingOutwards, nearestPlant } from './layout'
+import { forEachPlantWithin, forEachRingOutwards } from './layout'
 import { heightAt, terrainOf } from './terrain'
 import { SECONDS_PER_HOUR } from './practice'
 import { buyingPays, knownTerms, sellingPays, spareWood, wantedWood } from './trade'
@@ -224,9 +225,7 @@ export function reachableInTime(
   daylightLeft: number,
   speed = walkSpeed(config, forager),
 ) {
-  const there = estimateKnownWalk(config, forager, forager, { x: px, y: py }, speed)
-  const home = estimateKnownWalk(config, forager, { x: px, y: py }, forager.hearth, speed)
-  return there + 60 + home <= daylightLeft
+  return canWalkAndReturn(config, forager, { x: px, y: py }, daylightLeft - 60, speed)
 }
 
 /** Whether a point can be walked to and home from before dusk, from the start of minute `minute`, at speed `speed`. */
@@ -238,15 +237,59 @@ export function reachableAndBack(
   minute: number,
   speed = walkSpeed(config, forager),
 ) {
-  const there = estimateKnownWalk(config, forager, forager, { x, y }, speed)
-  const home = estimateKnownWalk(config, forager, { x, y }, forager.hearth, speed)
-  return there + home <= daylightSecondsLeft(config, minute)
+  return canWalkAndReturn(config, forager, { x, y }, daylightSecondsLeft(config, minute), speed)
 }
 
-/** Away from its hearth, and it is night or walking home takes every daylight second left. */
-export function estimateKnownWalk(config: ValleyConfig, person: Forager, from: Point, to: Point, speed: number) {
+/** Every integer route segment costs at least its Chebyshev displacement divided by speed. */
+export const walkLowerBound = (from: Point, to: Point, speed: number) =>
+  Math.ceil(Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) / speed)
+
+function canWalkAndReturn(config: ValleyConfig, forager: Forager, point: Point, seconds: number, speed: number) {
+  if (forager.groundKnowledge.observed[routeCell(forager.groundKnowledge, point)] !== 1) return false
+  const homeFloor = walkLowerBound(point, forager.hearth, speed)
+  const outwardFloor = walkLowerBound(forager, point, speed)
+  if (outwardFloor + homeFloor > seconds) return false
+  const home = estimateKnownWalk(config, forager, point, forager.hearth, speed, seconds - outwardFloor)
+  if (!Number.isFinite(home) || outwardFloor + home > seconds) return false
+  const there = estimateKnownWalk(config, forager, forager, point, speed, seconds - home)
+  return there + home <= seconds
+}
+
+interface WalkEstimateCache {
+  revision: number
+  terrain: ReturnType<typeof terrainOf>
+  times: Map<string, { seconds: number; rejectedThrough: number }>
+}
+const walkEstimates = new WeakMap<Forager['groundKnowledge'], WalkEstimateCache>()
+
+/** Immutable scalar results remain valid on a cloned knowledge snapshot. */
+export function cloneWalkEstimates(from: Forager['groundKnowledge'], to: Forager['groundKnowledge']) {
+  const cached = walkEstimates.get(from)
+  if (cached) walkEstimates.set(to, cached)
+  const idle = idleReachability.get(from)
+  if (idle) idleReachability.set(to, new Map(idle))
+}
+
+/** Exact estimates and budget rejection proofs depend on endpoints, load, ascent and observed ground. */
+export function estimateKnownWalk(
+  config: ValleyConfig,
+  person: Pick<Forager, 'groundKnowledge' | 'hearth'>,
+  from: Point,
+  to: Point,
+  speed: number,
+  maxSeconds = Infinity,
+) {
   const terrain = terrainOf(config)
-  return knownWalkSeconds(
+  const grid = person.groundKnowledge
+  let cached = walkEstimates.get(grid)
+  if (cached?.revision !== grid.revision || cached.terrain !== terrain) {
+    cached = { revision: grid.revision, terrain, times: new Map() }
+    walkEstimates.set(grid, cached)
+  }
+  const key = `${from.x},${from.y}:${to.x},${to.y}:${person.hearth.x},${person.hearth.y}:${speed}:${config.climbSecondsPerMetre}`
+  const previous = cached.times.get(key)
+  if (previous && (Number.isFinite(previous.seconds) || maxSeconds <= previous.rejectedThrough)) return previous.seconds
+  const seconds = knownWalkSeconds(
     person.groundKnowledge,
     from,
     to,
@@ -254,7 +297,11 @@ export function estimateKnownWalk(config: ValleyConfig, person: Forager, from: P
     config.climbSecondsPerMetre,
     (point) => heightAt(terrain, point.x, point.y),
     person.hearth,
+    maxSeconds,
   )
+  if (!previous && cached.times.size >= 4096) cached.times.delete(cached.times.keys().next().value!)
+  cached.times.set(key, { seconds, rejectedThrough: maxSeconds })
+  return seconds
 }
 
 export function mustGoHome(config: ValleyConfig, forager: Forager, minute: number) {
@@ -301,7 +348,9 @@ export function choosePlant(
       (floor) => floor <= left * speed && Math.ceil(floor / speed) <= bestSeconds,
       (id) => {
         if (!wanted(id)) return
-        const time = estimateKnownWalk(config, forager, forager, { x: points.x[id]!, y: points.y[id]! }, speed)
+        const point = { x: points.x[id]!, y: points.y[id]! }
+        const budget = Math.min(bestSeconds, left - 60 - walkLowerBound(point, forager.hearth, speed))
+        const time = estimateKnownWalk(config, forager, forager, point, speed, budget)
         if (time > bestSeconds || (time === bestSeconds && best !== null && id >= best) || !reachable(id)) return
         best = id
         bestSeconds = time
@@ -447,7 +496,11 @@ export function foodGoal(
       (rate * bestTime < bestRate * lowerBound || (rate * bestTime === bestRate * lowerBound && !earlier(goal, best)))
     )
       return
-    const time = estimateKnownWalk(config, forager, forager, point, speed) + SECONDS_PER_HOUR
+    const budget = Math.min(
+      left - 60 - walkLowerBound(point, forager.hearth, speed),
+      best === null ? Infinity : Math.ceil((rate * bestTime) / bestRate) - SECONDS_PER_HOUR,
+    )
+    const time = estimateKnownWalk(config, forager, forager, point, speed, budget) + SECONDS_PER_HOUR
     if (
       best !== null &&
       (rate * bestTime < bestRate * time || (rate * bestTime === bestRate * time && !earlier(goal, best)))
@@ -477,7 +530,12 @@ export function foodGoal(
     const y = plants.y[id]!
     const lowerBound = Math.ceil(Math.max(Math.abs(forager.x - x), Math.abs(forager.y - y)) / speed) + SECONDS_PER_HOUR
     if (best !== null && rate * bestTime < bestRate * lowerBound) return
-    const time = estimateKnownWalk(config, forager, forager, { x, y }, speed) + SECONDS_PER_HOUR
+    const point = { x, y }
+    const budget = Math.min(
+      left - 60 - walkLowerBound(point, forager.hearth, speed),
+      best === null ? Infinity : Math.ceil((rate * bestTime) / bestRate) - SECONDS_PER_HOUR,
+    )
+    const time = estimateKnownWalk(config, forager, forager, point, speed, budget) + SECONDS_PER_HOUR
     if (best !== null) {
       const ours = rate * bestTime
       const theirs = bestRate * time
@@ -508,11 +566,12 @@ export function foodGoal(
     const site = uncheckedSite(config, layout, forager, minute, kind)
     if (site !== null) consider({ site }, siteCentre(config, layout, site), fullRateOf(forager, food))
   }
-  for (const bank of [...forager.knownBanks.values()].sort(
-    (a, b) =>
-      distanceSq(forager.x, forager.y, a.x, a.y) - distanceSq(forager.x, forager.y, b.x, b.y) ||
-      a.bodyId - b.bodyId ||
-      a.id - b.id,
+  const fullFishRate = fullRateOf(forager, 'fish')
+  for (const bank of knownBanksInChunks(
+    forager,
+    (floor) =>
+      floor <= left * speed &&
+      (best === null || fullFishRate * bestTime >= bestRate * (Math.ceil(floor / speed) + SECONDS_PER_HOUR)),
   )) {
     const source = -bank.id - 1
     if (worth(source)) consider({ source }, bank, expectedRate(config, layout, forager, source))
@@ -536,6 +595,20 @@ function uncheckedSite(config: ValleyConfig, layout: ValleyLayout, forager: Fora
   )
 }
 
+const idleReachability = new WeakMap<
+  Forager['groundKnowledge'],
+  Map<
+    Plants,
+    {
+      revision: number
+      terrain: object
+      key: string
+      rejectedThrough: number
+      witness: number | null
+    }
+  >
+>()
+
 /** The reason recorded when no plant of the good can be reached: too late in the day, or nothing worth the walk. */
 export function idleReason(
   config: ValleyConfig,
@@ -548,6 +621,36 @@ export function idleReason(
   const left = daylightSecondsLeft(config, minute)
   const speed = walkSpeed(config, forager)
   const reachable = (id: number) => reachableInTime(config, forager, plants.x[id]!, plants.y[id]!, left, speed)
-  const some = nearestPlant(chunks, plants, forager.x, forager.y, reachable, left * speed)
-  return some === null ? 'too late to set out' : 'waiting for regrowth'
+  let some = false
+  let cache = idleReachability.get(forager.groundKnowledge)
+  if (!cache) idleReachability.set(forager.groundKnowledge, (cache = new Map()))
+  const key = `${forager.x}:${forager.y}:${forager.hearth.x}:${forager.hearth.y}:${speed}:${config.climbSecondsPerMetre}`
+  const terrain = terrainOf(config)
+  const previous = cache.get(plants)
+  if (previous?.revision === forager.groundKnowledge.revision && previous.terrain === terrain && previous.key === key) {
+    if (left <= previous.rejectedThrough) return 'too late to set out'
+    if (previous.witness !== null && reachable(previous.witness)) return 'waiting for regrowth'
+  }
+  let witness: number | null = null
+  const range = left * speed
+  forEachRingOutwards(
+    chunks,
+    forager.x,
+    forager.y,
+    (floor) => !some && floor <= range,
+    (id) => {
+      if (!some && distanceSq(plants.x[id]!, plants.y[id]!, forager.x, forager.y) <= range * range && reachable(id)) {
+        some = true
+        witness = id
+      }
+    },
+  )
+  cache.set(plants, {
+    revision: forager.groundKnowledge.revision,
+    terrain,
+    key,
+    rejectedThrough: some ? -1 : left,
+    witness,
+  })
+  return some ? 'waiting for regrowth' : 'too late to set out'
 }

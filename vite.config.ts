@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import { loadEnv } from 'vite'
 import { BaseSequencer, type TestSpecification } from 'vitest/node'
 import react from '@vitejs/plugin-react'
 
@@ -25,6 +26,7 @@ const TEST_SECONDS: Record<string, number> = {
   'government.test.ts': 11,
 }
 const SHORT_TEST_SECONDS = 2
+const prTests = loadEnv('test', '.', 'ECON_TEST_').ECON_TEST_PROFILE === 'pr'
 
 const secondsOf = (file: TestSpecification) => TEST_SECONDS[file.moduleId.split(/[\\/]/).at(-1)!] ?? SHORT_TEST_SECONDS
 
@@ -56,6 +58,7 @@ class CostSequencer extends BaseSequencer {
 }
 
 export default defineConfig({
+  define: { PR_TEST_PROFILE: prTests },
   plugins: [react()],
   base: './',
   build: {
@@ -67,6 +70,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Other fingerprint partitions are retained for local/manual full runs. The PR profile keeps the canonical file.
+    exclude: prTests ? ['src/valley/fingerprints[A-Z]*.test.ts'] : [],
     // The valley experiments run in parallel and load every core, so a test that takes a second alone can take several
     // in the full suite. The default of 5 seconds failed tests that were only slowed down.
     testTimeout: 60_000,

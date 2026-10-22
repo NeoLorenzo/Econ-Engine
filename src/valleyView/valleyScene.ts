@@ -527,6 +527,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   )
   scene.add(plannedRoute, rememberedBanks)
   let routeKey = ''
+  let banksKey = ''
   const selectRing = new THREE.Mesh(
     ringGeometry.clone(),
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }),
@@ -1242,6 +1243,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   function setWorld(state: ValleyState) {
+    routeKey = ''
+    banksKey = ''
     clearWorld()
     config = state.config
     layout = state.layout
@@ -1852,6 +1855,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       plannedRoute.geometry.dispose()
       plannedRoute.geometry = new THREE.BufferGeometry()
       plannedRoute.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+    }
+    const bankKey = `${followedId}:${followed?.knownBanks.size}`
+    if (bankKey !== banksKey && followed) {
+      banksKey = bankKey
       const banks: number[] = []
       for (const bank of followed.knownBanks.values()) {
         const p = at(bank.x, bank.y)
@@ -1861,8 +1868,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       rememberedBanks.geometry = new THREE.BufferGeometry()
       rememberedBanks.geometry.setAttribute('position', new THREE.Float32BufferAttribute(banks, 3))
     }
-    if (knowledgeTexture && key !== knowledgeKey && followed) {
-      knowledgeKey = key
+    const groundKey = `${followedId}:${followed?.groundKnowledge.revision}`
+    if (knowledgeTexture && groundKey !== knowledgeKey && followed) {
+      knowledgeKey = groundKey
       const n = layout!.terrain.cells
       const shades = knowledgeShades(state, followedId)
       const data = knowledgeTexture.image.data as Uint8Array

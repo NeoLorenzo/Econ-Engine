@@ -4,6 +4,9 @@ import { createValley, runValley } from './engine'
 import { ValleyChecker } from './invariants'
 import type { ValleyConfig } from './types'
 
+// Both file selection and seed selection use the same test-profile value supplied by Vite.
+declare const PR_TEST_PROFILE: boolean
+
 // Life 11 runs exactly as recorded: the daily summaries and totals of 30 days on three seeds, for the canonical land,
 // each configuration the experiments use and the flat land, match fingerprints recorded from Life 11's code. A change
 // that alters any trajectory, even a refactor or a speed-up meant to change nothing, fails here.
@@ -160,7 +163,10 @@ const RECORDED = [
 /** Checks the recorded runs of the given configurations. */
 export function checkFingerprints(configs: readonly string[]) {
   describe('Life 11 runs exactly as recorded', () => {
-    for (const recorded of RECORDED.filter((row) => configs.includes(row.config))) {
+    for (const recorded of RECORDED.filter(
+      (row) =>
+        configs.includes(row.config) && (!PR_TEST_PROFILE || (row.config === 'canonical' && row.seed === 20260813)),
+    )) {
       it(
         `for the ${recorded.config} land on seed ${recorded.seed}`,
         () => {

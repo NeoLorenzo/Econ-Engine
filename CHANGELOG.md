@@ -2,6 +2,27 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE11-Performance-053.1] - (2026-10-22)
+
+### Changed
+
+- PR CI runs correctness tests and one canonical 30-day fingerprint, with the required `browser-check` status preserved.
+- Merging runs only the Pages build and browser smoke check before deployment; it no longer repeats the simulation suite.
+- Manual validation and local full commands retain all 21 fingerprints. Added `test:ci` and `agent:check -- --ci` for the PR profile.
+- Validation: the PR-profile gate passed lint, typecheck, 489 tests and build; tests took 4m 32s locally. Selection checks retain all 488 non-fingerprint tests and all 21 fingerprints in full mode. Workflow YAML checks passed; hosted CI awaits a push.
+
+## [LIFE11-Performance-053] - (2026-10-21)
+
+### Changed
+
+- Reuse observed-ground frontiers and travel-cost buffers instead of repeatedly scanning or clearing the whole map. Reject unknown or too-distant destinations before calculating return journeys.
+- Bound trip and food-score searches, check shared homeward routes first, and reuse exact travel estimates and failed-budget proofs. Search remembered shores through spatial rings.
+- Reuse canonical route subpaths, skip observed cells through a compact bit index, and remember completed distant ground views. Cache idle reachability witnesses and budget proofs; previous site winners establish bounds without changing selection.
+- Keep fast playback responsive by budgeting batches between completed minutes and running one tick per frame after a slow tick. Simulation time still advances through consecutive real states.
+- Refresh the observer's ground overlay and remembered banks only when their underlying knowledge changes, and avoid rescanning unchanged hourly ground views.
+- Life 11's rules, random streams, integer accounting and recorded fingerprints remain unchanged.
+- Validation: npm run agent:check passed with all 21 fingerprints unchanged. The test stage took 957.3 seconds (15m 57s), down from the first pass's 29m 44s and Life 11's original 53m 14s. The two-day canonical profile fell from roughly 35 seconds to 21.3 seconds with unchanged output. Maximum-speed browser controls passed with a clean console.
+
 ## [LIFE11-Water-052] - (2026-10-21)
 
 ### Changed

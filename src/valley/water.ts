@@ -24,55 +24,88 @@ export interface WaterGrid {
 
 /** A stable integer-priority heap, shared by drainage and route search. */
 export class CellHeap {
-  private entries: { id: number; priority: number }[] = []
+  private ids = new Uint32Array(64)
+  private priorities = new Float64Array(64)
+  private count = 0
 
   get length() {
-    return this.entries.length
+    return this.count
   }
 
   get minPriority() {
-    return this.entries[0]?.priority ?? Infinity
+    return this.count ? this.priorities[0]! : Infinity
+  }
+
+  clear() {
+    this.count = 0
   }
 
   reprioritize(priorityOf: (id: number) => number | undefined) {
-    const ids = new Set(this.entries.map((entry) => entry.id))
-    this.entries = []
+    const ids = new Set<number>()
+    for (let index = 0; index < this.count; index += 1) ids.add(this.ids[index]!)
+    this.clear()
     for (const id of ids) {
       const priority = priorityOf(id)
       if (priority !== undefined) this.push(id, priority)
     }
   }
 
-  private before(a: { id: number; priority: number }, b: { id: number; priority: number }) {
-    return a.priority < b.priority || (a.priority === b.priority && a.id < b.id)
-  }
-
   push(id: number, priority: number) {
-    const entry = { id, priority }
-    let i = this.entries.length
-    this.entries.push(entry)
+    if (this.count === this.ids.length) {
+      const ids = new Uint32Array(2 * this.count)
+      const priorities = new Float64Array(2 * this.count)
+      ids.set(this.ids)
+      priorities.set(this.priorities)
+      this.ids = ids
+      this.priorities = priorities
+    }
+    const ids = this.ids
+    const priorities = this.priorities
+    let i = this.count++
     while (i > 0) {
       const p = (i - 1) >> 1
-      if (!this.before(entry, this.entries[p]!)) break
-      this.entries[i] = this.entries[p]!
+      const parentPriority = priorities[p]!
+      if (priority > parentPriority || (priority === parentPriority && id >= ids[p]!)) break
+      ids[i] = ids[p]!
+      priorities[i] = parentPriority
       i = p
     }
-    this.entries[i] = entry
+    ids[i] = id
+    priorities[i] = priority
   }
 
   pop() {
-    const first = this.entries[0]!
-    const last = this.entries.pop()!
-    if (this.entries.length) {
+    const priority = this.minPriority
+    return { id: this.popId(), priority }
+  }
+
+  /** Numeric searches read minPriority before popping, avoiding an allocation per visited cell. */
+  popId() {
+    if (!this.count) throw new Error('Cannot pop an empty cell heap')
+    const ids = this.ids
+    const priorities = this.priorities
+    const first = ids[0]!
+    this.count -= 1
+    const lastId = ids[this.count]!
+    const lastPriority = priorities[this.count]!
+    if (this.count) {
       let i = 0
-      while (2 * i + 1 < this.entries.length) {
+      while (2 * i + 1 < this.count) {
         let child = 2 * i + 1
-        if (child + 1 < this.entries.length && this.before(this.entries[child + 1]!, this.entries[child]!)) child += 1
-        if (!this.before(this.entries[child]!, last)) break
-        this.entries[i] = this.entries[child]!
+        if (
+          child + 1 < this.count &&
+          (priorities[child + 1]! < priorities[child]! ||
+            (priorities[child + 1] === priorities[child] && ids[child + 1]! < ids[child]!))
+        )
+          child += 1
+        const childPriority = priorities[child]!
+        if (childPriority > lastPriority || (childPriority === lastPriority && ids[child]! >= lastId)) break
+        ids[i] = ids[child]!
+        priorities[i] = childPriority
         i = child
       }
-      this.entries[i] = last
+      ids[i] = lastId
+      priorities[i] = lastPriority
     }
     return first
   }
@@ -125,7 +158,7 @@ export function deriveWater(
   }
   let nextRank = 0
   while (heap.length) {
-    const { id } = heap.pop()
+    const id = heap.popId()
     rank[id] = nextRank
     order[nextRank++] = id
     for (const neighbour of cardinalCells(cells, id)) {

@@ -1,0 +1,21 @@
+name: Browser smoke check
+description: Check fast-mode playback and Pause against an already built production bundle.
+runs:
+  using: composite
+  steps:
+    - name: Install Chromium
+      shell: bash
+      run: npx playwright install --with-deps chromium
+    - name: Check production preview
+      shell: bash
+      run: |
+        npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/econ-preview.log 2>&1 &
+        preview_pid=$!
+        trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+        ready=false
+        for i in {1..30}; do
+          if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then ready=true; break; fi
+          sleep 1
+        done
+        if [ "$ready" != true ]; then cat /tmp/econ-preview.log; exit 1; fi
+        node scripts/validate-fast-mode.mjs

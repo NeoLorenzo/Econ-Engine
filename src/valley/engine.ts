@@ -4,11 +4,12 @@ import { resolveValleyConfig } from './config'
 import { fishCapacity, fishGrowth, fishRate } from './fish'
 import { newHydration, updateThirst, waterSecond, waterThresholds } from './hydration'
 import { cloneGroundKnowledge, knownRoute } from './routes'
-import { frontier, observeGround, nearestKnownBanks } from './waterKnowledge'
-import { observeAround } from './sight'
+import { cloneKnownBanks, frontier, observeGround, nearestKnownBanks } from './waterKnowledge'
+import { observeAround, cloneGroundViews } from './sight'
 import { cellOf, gradeOf, heightAt, speedOnGrade, terrainPercentOf, walkCost } from './terrain'
 import {
   MINUTES_PER_DAY,
+  cloneWalkEstimates,
   daylightSecondsLeft,
   estimateKnownWalk,
   reachableAndBack,
@@ -362,34 +363,39 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   }
 }
 
-const cloneForager = (forager: Forager): Forager => ({
-  ...forager,
-  waterObservations: [...forager.waterObservations],
-  groundKnowledge: cloneGroundKnowledge(forager.groundKnowledge),
-  knownBanks: new Map(forager.knownBanks),
-  fishMemory: new Map(forager.fishMemory),
-  route: [...forager.route],
-  deathCauses: [...forager.deathCauses],
-  carried: [...forager.carried],
-  foodMemory: { stock: forager.foodMemory.stock.slice(), seen: forager.foodMemory.seen.slice() },
-  woodMemory: { stock: forager.woodMemory.stock.slice(), seen: forager.woodMemory.seen.slice() },
-  logMemory: { stock: forager.logMemory.stock.slice(), seen: forager.logMemory.seen.slice() },
-  stoneMemory: { stock: forager.stoneMemory.stock.slice(), seen: forager.stoneMemory.seen.slice() },
-  practiceLog: {
-    forage: [...forager.practiceLog.forage],
-    gather: [...forager.practiceLog.gather],
-    make: [...forager.practiceLog.make],
-  },
-  axeTotals: { ...forager.axeTotals },
-  secondsToday: { ...forager.secondsToday },
-  loggedSeconds: { ...forager.loggedSeconds },
-  secondsWorked: { ...forager.secondsWorked },
-  swapTotals: { ...forager.swapTotals },
-  placeSeen: forager.placeSeen.slice(),
-  knownFlags: [...forager.knownFlags],
-  siteKnown: forager.siteKnown.slice(),
-  siteChecked: forager.siteChecked.slice(),
-})
+const cloneForager = (forager: Forager): Forager => {
+  const groundKnowledge = cloneGroundKnowledge(forager.groundKnowledge)
+  cloneWalkEstimates(forager.groundKnowledge, groundKnowledge)
+  cloneGroundViews(forager.groundKnowledge, groundKnowledge)
+  return {
+    ...forager,
+    waterObservations: [...forager.waterObservations],
+    groundKnowledge,
+    knownBanks: cloneKnownBanks(forager.knownBanks),
+    fishMemory: new Map(forager.fishMemory),
+    route: [...forager.route],
+    deathCauses: [...forager.deathCauses],
+    carried: [...forager.carried],
+    foodMemory: { stock: forager.foodMemory.stock.slice(), seen: forager.foodMemory.seen.slice() },
+    woodMemory: { stock: forager.woodMemory.stock.slice(), seen: forager.woodMemory.seen.slice() },
+    logMemory: { stock: forager.logMemory.stock.slice(), seen: forager.logMemory.seen.slice() },
+    stoneMemory: { stock: forager.stoneMemory.stock.slice(), seen: forager.stoneMemory.seen.slice() },
+    practiceLog: {
+      forage: [...forager.practiceLog.forage],
+      gather: [...forager.practiceLog.gather],
+      make: [...forager.practiceLog.make],
+    },
+    axeTotals: { ...forager.axeTotals },
+    secondsToday: { ...forager.secondsToday },
+    loggedSeconds: { ...forager.loggedSeconds },
+    secondsWorked: { ...forager.secondsWorked },
+    swapTotals: { ...forager.swapTotals },
+    placeSeen: forager.placeSeen.slice(),
+    knownFlags: [...forager.knownFlags],
+    siteKnown: forager.siteKnown.slice(),
+    siteChecked: forager.siteChecked.slice(),
+  }
+}
 
 const cloneDay = (day: DaySummary): DaySummary => ({
   ...day,
@@ -1380,6 +1386,8 @@ export const stepValley = (previous: ValleyState) => advance(cloneValley(previou
 export interface RunOptions {
   /** Called after every minute with the state as it then stands, which the caller must not keep or change. */
   onMinute?: (state: ValleyState) => void
+  /** End this batch after a completed minute, without changing that minute's rules or retaining its mutable state. */
+  stopAfterMinute?: () => boolean
   /** Stop early once every forager is dead. */
   stopWhenAllDead?: boolean
   /**
@@ -1399,6 +1407,7 @@ export function runValley(state: ValleyState, minutes: number, options: RunOptio
     if (options.stopWhenAllDead && !current.foragers.some((forager) => forager.alive)) break
     advance(current, options.recordEvents ?? true)
     options.onMinute?.(current)
+    if (options.stopAfterMinute?.()) break
   }
   return current
 }
