@@ -1,6 +1,7 @@
 import { isDaylight } from './forager'
 import { distance, distanceSq } from './geometry'
 import { observeGround } from './waterKnowledge'
+import type { GroundKnowledge } from './routes'
 import { forEachPlantWithin } from './layout'
 import { siteGeometry } from './sites'
 import { observePlaces, placeBounds, placeCount, placesPerSide } from './social'
@@ -100,6 +101,13 @@ interface SightCache {
 }
 
 const caches = new WeakMap<ValleyLayout, SightCache>()
+const groundViews = new WeakMap<GroundKnowledge, { layout: ValleyLayout; places: ReadonlySet<number> }>()
+
+/** Ground is static: returning to an already observed view cannot reveal another footprint. */
+export function cloneGroundViews(from: GroundKnowledge, to: GroundKnowledge) {
+  const views = groundViews.get(from)
+  if (views) groundViews.set(to, views)
+}
 /** Views kept at once; the one used longest ago goes first. */
 const VIEW_LIMIT = 4_096
 
@@ -290,6 +298,7 @@ export function observeAround(state: ValleyState, forager: Forager, minute: numb
   if (!day) forager.farPlace = -1
   else {
     const place = placeOf(config, x, y)
+    const repeatedView = place === forager.farPlace
     if (place !== forager.farPlace || minute - forager.farMinute >= 60) {
       const view = viewFrom(config, layout, place)
       for (const id of view.trees) recordTree(id)
@@ -300,17 +309,22 @@ export function observeAround(state: ValleyState, forager: Forager, minute: numb
           forager.placeSeen[seen] = minute
           forager.placesSeen += 1
         }
-      const visiblePlaces = new Set(view.visible)
-      observeGround(
-        config,
-        layout,
-        forager,
-        minute,
-        placeCentreOf(config, place),
-        config.sightRadiusCm,
-        (point) => visiblePlaces.has(placeOf(config, point.x, point.y)),
-        true,
-      )
+      const previousGroundViews = groundViews.get(forager.groundKnowledge)
+      const places = previousGroundViews?.layout === layout ? previousGroundViews.places : new Set<number>()
+      if (!repeatedView && !places.has(place)) {
+        const visiblePlaces = new Set(view.visible)
+        observeGround(
+          config,
+          layout,
+          forager,
+          minute,
+          placeCentreOf(config, place),
+          config.sightRadiusCm,
+          (point) => visiblePlaces.has(placeOf(config, point.x, point.y)),
+          true,
+        )
+        groundViews.set(forager.groundKnowledge, { layout, places: new Set([...places, place]) })
+      }
       forager.farPlace = place
       forager.farMinute = minute
     }

@@ -10,7 +10,7 @@ mkdirSync(logDir, { recursive: true })
 const stages = [
   ['Lint', 'lint.log', 'lint'],
   ['Typecheck', 'typecheck.log', 'typecheck'],
-  ['Tests', 'tests.log', 'test:run'],
+  ['Tests', 'tests.log', process.argv.includes('--ci') ? 'test:ci' : 'test:run'],
   ['Build', 'build.log', 'build'],
 ]
 

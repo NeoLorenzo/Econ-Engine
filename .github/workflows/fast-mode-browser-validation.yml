@@ -3,21 +3,24 @@ name: Validate fast-mode browser responsiveness
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# The tests, split three ways, and the browser check run side by side. `browser-check`, the status main requires,
-# passes only when all of them do.
+# Cancel superseded PR checks. Manual full validation has its own branch-based group.
+concurrency:
+  group: validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# PRs run fast correctness tests and one canonical fingerprint. Run this workflow manually for the full suite,
+# split three ways. `browser-check`, the status main requires, still waits for tests and the browser check.
 jobs:
   tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Each shard is a third of the test files, dealt by their cost in `vite.config.ts`; together they run every test.
-        shard: [1, 2, 3]
+        shard: ${{ github.event_name == 'workflow_dispatch' && fromJSON('[1,2,3]') || fromJSON('[1]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,7 +28,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx vitest run --shard=${{ matrix.shard }}/3
+      - name: PR correctness tests and canonical fingerprint
+        if: github.event_name == 'pull_request'
+        run: npm run test:ci
+      - name: Full validation shard
+        if: github.event_name == 'workflow_dispatch'
+        run: npx vitest run --shard=${{ matrix.shard }}/3
 
   browser:
     runs-on: ubuntu-latest
@@ -39,19 +47,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Start production preview
-        run: |
-          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/econ-preview.log 2>&1 &
-          for i in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat /tmp/econ-preview.log
-          exit 1
-      - name: Validate canonical fast mode
-        run: node scripts/validate-fast-mode.mjs
+      - uses: ./.github/actions/browser-smoke
 
   # A skipped job counts as passing for a required check, so this one always runs and fails unless both succeeded.
   browser-check:

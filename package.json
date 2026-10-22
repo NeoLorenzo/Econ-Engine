@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:ci": "node scripts/test-pr.mjs",
     "typecheck": "tsc -b --pretty false",
     "lint": "oxlint --deny-warnings && prettier --check src scripts .github \"*.{json,ts,mjs,html}\" \".*.json\"",
     "format": "prettier --write src scripts .github \"*.{json,ts,mjs,html}\" \".*.json\"",

@@ -45,10 +45,14 @@ npm run dev
 npm run lint      # oxlint and the Prettier check
 npm run format    # apply Prettier
 npm run test:run
+npm run test:ci   # PR profile: correctness tests plus one canonical Life fingerprint
 npm run typecheck
 npm run build
 npm run check     # lint, typecheck, tests, and build
+npm run agent:check -- --ci # the PR profile through the logged validation gate
 ```
+
+In PowerShell, use `npm.cmd run agent:check -- --ci` to preserve the profile argument.
 
 ## Model at a glance
 
@@ -69,7 +73,9 @@ Read the current [MVP 8 specification](docs/MVP8_SPEC.md), [architecture notes](
 
 ## Deployment
 
-Pushes to `main` are validated, and once validation passes the static Vite bundle is deployed to [GitHub Pages](https://neolorenzo.github.io/Econ-Engine/).
+PRs run correctness tests, one canonical 30-day Life fingerprint, lint, typecheck, build and the browser smoke check. After merging, `main` is built and smoke-tested before deployment to [GitHub Pages](https://neolorenzo.github.io/Econ-Engine/); the simulation suite is not repeated.
+
+For thorough validation, open **Actions → Validate fast-mode browser responsiveness → Run workflow**. A manual run checks the full suite, including all 21 Life fingerprints, across three test shards. Local `npm run test:run`, `npm run check` and `npm run agent:check` also retain the full suite. Other-seed or configuration-specific regressions may therefore be found during thorough validation rather than on every PR.
 
 ## Current limits
 
@@ -82,6 +88,8 @@ A separate Life core runs beside the frozen MVP9 economy. **Life 11 · water** i
 Water blocks walking. People route through ground they have observed, discover further access by exploring, and can die of dehydration even with food left. Severe thirst can wake a sleeper. Each lake and river reach has its own fish stock. Fixed water levels are an explicit approximation; rainfall, seasons, swimming, water storage and waterborne illness come later. Evidence and estimates are distinguished in the [calibration document](docs/CALIBRATION.md).
 
 **[▶ Open Life 11](https://neolorenzo.github.io/Econ-Engine/life.html)**. Pause, step one minute or change speed; drag to pan, scroll to zoom, and use the whole-land map to move the camera. Follow a person to inspect food, hydration, route, tools, hut and group. Click water to compare its true fish stock with the person's last fishing observation. The knowledge overlay shows observed cells, and **Flow** toggles downstream arrows. People interpolate along recorded route segments, so the display cannot draw a crossing through blocked water.
+
+Fast speeds are best effort: playback yields between minutes to keep the camera and controls responsive. Every minute still follows the same simulation rules.
 
 Details are in the [Life 11 specification](docs/LIFE11_SPEC.md), [validation notes](docs/VALIDATION.md#life-11) and [lab notes](LAB_NOTES.md).
 ## Direction

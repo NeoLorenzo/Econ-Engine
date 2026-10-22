@@ -3,7 +3,7 @@ import { deriveWater, waterViolations } from './water'
 import { fishCapacity, fishGrowth } from './fish'
 import { newHydration, waterSecond, type HydrationConfig } from './hydration'
 import { distance, stepTowards } from './geometry'
-import { nearestKnownBanks } from './waterKnowledge'
+import { cloneKnownBanks, knownBanksInChunks, nearestKnownBanks } from './waterKnowledge'
 import type { BankMemory } from './types'
 import {
   cloneGroundKnowledge,
@@ -268,5 +268,44 @@ describe('Life 11 water rules', () => {
       }
       expect(selected).toBe(expected.id)
     }
+  })
+
+  it('keeps banks across chunk edges and rebuilds a shared index after a clone learns another shore', () => {
+    const grid: GroundKnowledge = {
+      cells: 100,
+      cellCm: 500,
+      observed: new Uint8Array(10_000).fill(1),
+      heights: new Int32Array(10_000),
+      revision: 0,
+    }
+    const bank = (id: number, x: number): BankMemory => ({
+      id,
+      x,
+      y: 7999,
+      dryCell: 15 * 100 + Math.floor(x / 500),
+      wetCell: 0,
+      bodyId: 0,
+      minute: 0,
+    })
+    const person = {
+      x: 7999,
+      y: 7999,
+      groundKnowledge: grid,
+      knownBanks: new Map([bank(1, 7900), bank(2, 8001), bank(3, 40000)].map((b) => [b.id, b])),
+    }
+    let limit = Infinity
+    let winner = -1
+    for (const candidate of nearestKnownBanks(person, () => limit)) {
+      const cm = Math.abs(candidate.x - person.x)
+      if (cm < limit) {
+        limit = cm
+        winner = candidate.id
+      }
+    }
+    expect(winner).toBe(2)
+    const cloned = { ...person, knownBanks: cloneKnownBanks(person.knownBanks) }
+    cloned.knownBanks.set(4, bank(4, 7999))
+    expect([...knownBanksInChunks(cloned, () => true)].map((b) => b.id).sort()).toEqual([1, 2, 3, 4])
+    expect([...knownBanksInChunks(person, () => true)].map((b) => b.id).sort()).toEqual([1, 2, 3])
   })
 })

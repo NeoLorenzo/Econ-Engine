@@ -1,12 +1,9 @@
 name: Deploy Econ-Engine to Pages
 
-# The site deploys a commit on main once "Validate fast-mode browser responsiveness" has passed on it: that workflow
-# runs lint, the typecheck, the build, the browser check and every test, so they are not run again here. A manual run
-# deploys the commit it is run on.
+# PR checks gate merging. After a merge, build and smoke-test the actual main commit before publishing it;
+# do not repeat the simulation suite. A manual run deploys the commit it is run on after the same smoke check.
 on:
-  workflow_run:
-    workflows: [Validate fast-mode browser responsiveness]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -20,10 +17,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Deploy only a commit validated on a push to main that is still main's newest commit, so a late or re-run validation
-  # of an older commit cannot put an older site back up.
+  # A late re-run of an older push must not replace a newer site.
   check:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
@@ -32,13 +27,13 @@ jobs:
       - id: commit
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          SHA: ${{ github.sha }}
         run: |
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)" = "$SHA" ]; then
             echo newest=true >> "$GITHUB_OUTPUT"
           else
-            echo "Not deploying $SHA: main has moved on since it was validated."
+            echo "Not deploying $SHA: main has moved on."
             echo newest=false >> "$GITHUB_OUTPUT"
           fi
 
@@ -56,6 +51,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - uses: ./.github/actions/browser-smoke
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

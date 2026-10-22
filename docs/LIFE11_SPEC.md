@@ -251,6 +251,8 @@ The person panel shows water deficit in ml and as a share of body mass, thirst, 
 
 Do not animate flow at an invented physical speed or show floating people. Interpolate through the recorded movement segments, not across the straight chord between minute endpoints. Camera, cosmetic ripples and lighting do not mutate simulation state. Check a lake shore, river, drinking person and route around water in a visible preview, using Step when the pane is hidden, and inspect the console once.
 
+High-speed playback budgets its work between completed minutes and uses one minute per frame after a slow tick. Speeds are best effort under load. The displayed pair remains two adjacent real states; the playback budget changes only how many consecutive ticks run before rendering and handling input.
+
 ## Code layout
 
 - `src/valley/types.ts`, `config.ts`: water geography, per-body fish stocks, hydration state/events, defaults, removal of edge-lake configuration and validation.
@@ -262,6 +264,8 @@ Do not animate flow at an invented physical speed or show floating people. Inter
 - `src/valleyView/groundSurface.ts`, `valleyScene.ts`, `valleyViewModel.ts`, `LandMap.tsx`, `ValleyApp.tsx`: water surfaces, bank contact, segmented interpolation, map and inspection.
 
 Keep immutable geography and reproducible memoisation outside mutable state; cache warmth or history must never change results. No changes to the frozen MVP9 core, except continuing to import its pure RNG helpers.
+
+Performance maintenance may reuse observed-ground frontiers and an unknown-cell bit index, lazily invalidate travel-cost entries and reject destinations already excluded by known-ground or time bounds. Exact travel estimates and failed-budget proofs may be reused only for matching endpoints, hearth, speed, ascent coefficient, terrain and knowledge revision. Check the shared homeward trip first; previous site winners may establish an early exact bound but must not change the final comparison. Spatial bank indexes contain only remembered banks, and their pruning bounds must include every possible winner. Repeated sight from an already observed place must refresh resource memories but need not rescan immutable ground. A forward canonical shortest path may supply contiguous subpaths and their exact per-edge travel sums until knowledge changes; direct shortcuts and endpoint connectors are still checked first. Idle classification may reuse a reachable plant witness or a proof that none is reachable under the same terrain, position, hearth, speed, climb and knowledge, with a no-larger daylight budget. Reachability searches may stop when their admissible distance bound exceeds the remaining travel-time budget, preserving the unfinished frontier for a later query. Such changes must preserve exact routes, per-edge rounding, tie ordering and all recorded Life 11 fingerprints. Observer knowledge textures and bank geometry need refreshing only when their source knowledge changes.
 
 ## Tests and implementation acceptance
 

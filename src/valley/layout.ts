@@ -228,7 +228,7 @@ function plantsOf(sites: readonly Point[][]): Plants {
 
 /** An index of the plants with IDs from `from` up to, not including, `to`; by default every plant. */
 export function buildIndex(
-  plants: Plants,
+  plants: Pick<Plants, 'count' | 'x' | 'y'>,
   cellCm: number,
   valleySizeCm: number,
   from = 0,

@@ -2,7 +2,7 @@ import { askOf, expectedQuality, usableAsk } from '../valley/axes'
 import { carriedByFood, carriedKcal, spoilsIn } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { ringOf, fishCapacityKcal } from '../valley/config'
-import { lastEventOf } from '../valley/engine'
+import { lastEventOf, runValley, stepValley } from '../valley/engine'
 import { campfireBurn } from '../valley/fire'
 import { MINUTES_PER_DAY, isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
@@ -58,6 +58,32 @@ export function advanceClock(alpha: number, elapsedSeconds: number, minutesPerSe
   const target = alpha + Math.min(MAX_FRAME_SECONDS, Math.max(0, elapsedSeconds)) * minutesPerSecond
   const steps = Math.floor(target)
   return { steps, alpha: target - steps }
+}
+
+/** High speeds are best effort: yield between minutes so the controls and renderer can run. */
+export const SIMULATION_FRAME_BUDGET_MS = 8
+
+export function advancePlayback(
+  pair: DisplayPair,
+  steps: number,
+  alpha: number,
+  lastStepMs: number,
+  now: () => number = () => performance.now(),
+) {
+  if (!steps) return { pair: { ...pair, alpha }, lastStepMs }
+  const started = now()
+  // Keep batch cloning cheap, but reserve the final adjacent state for interpolation. A slow atomic tick is
+  // allowed to finish; the following frame then runs only one tick instead of starting another large batch.
+  const previous =
+    steps > 1 && lastStepMs < SIMULATION_FRAME_BUDGET_MS
+      ? runValley(pair.next, steps - 1, {
+          recordEvents: false,
+          stopAfterMinute: () => now() - started >= SIMULATION_FRAME_BUDGET_MS - lastStepMs,
+        })
+      : pair.next
+  const stepStarted = now()
+  const next = stepValley(previous)
+  return { pair: { previous, next, alpha }, lastStepMs: now() - stepStarted }
 }
 
 const lerp = (from: number, to: number, t: number) => from + (to - from) * t
