@@ -1,6 +1,6 @@
 import { carriedByFood, carriedKcal, foodKg, foodOfSource, fullRateOf, rateAtStock, worthWorking } from './food'
 import { fishRate } from './fish'
-import { knownWalkSeconds, routeCell } from './routes'
+import { knownWalkSeconds, routeAnchor } from './routes'
 import { knownBanksInChunks } from './waterKnowledge'
 import { nearestKnownSite, siteCentre, siteKind, type SiteKind } from './sites'
 import { distance, distanceSq, walkSeconds } from './geometry'
@@ -245,7 +245,7 @@ export const walkLowerBound = (from: Point, to: Point, speed: number) =>
   Math.ceil(Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) / speed)
 
 function canWalkAndReturn(config: ValleyConfig, forager: Forager, point: Point, seconds: number, speed: number) {
-  if (forager.groundKnowledge.observed[routeCell(forager.groundKnowledge, point)] !== 1) return false
+  if (forager.groundKnowledge.observed[routeAnchor(forager.groundKnowledge, point)] !== 1) return false
   const homeFloor = walkLowerBound(point, forager.hearth, speed)
   const outwardFloor = walkLowerBound(forager, point, speed)
   if (outwardFloor + homeFloor > seconds) return false

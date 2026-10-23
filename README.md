@@ -85,11 +85,11 @@ Government is deliberately narrow and stylized: one flat cash-wealth tax, one Gi
 
 A separate Life core runs beside the frozen MVP9 economy. **Life 11 · water** is the current step of the [roadmap](docs/ROADMAP.md): eight adult foragers live on a generated 4 km square of Mesolithic young-moraine country. Lakes fill hollows and rivers follow the land downhill. People discover banks, drink, fish, gather berries, nuts and wood, form groups, keep shared fires, build huts and make or exchange axes. Every decision uses their own needs, observations and memories.
 
-Water blocks walking. People route through ground they have observed, discover further access by exploring, and can die of dehydration even with food left. Severe thirst can wake a sleeper. Each lake and river reach has its own fish stock. Fixed water levels are an explicit approximation; rainfall, seasons, swimming, water storage and waterborne illness come later. Evidence and estimates are distinguished in the [calibration document](docs/CALIBRATION.md).
+Continuous banks follow the land rather than outlining square cells. Rendering, water access and movement collision share their surface. Water blocks walking. People route through ground they have observed, discover further access by exploring, and can die of dehydration even with food left. Severe thirst can wake a sleeper. Each lake and river reach has its own fish stock. Fixed water levels are an explicit approximation; rainfall, seasons, swimming, water storage and waterborne illness come later. Evidence and estimates are distinguished in the [calibration document](docs/CALIBRATION.md).
 
 **[▶ Open Life 11](https://neolorenzo.github.io/Econ-Engine/life.html)**. Pause, step one minute or change speed; drag to pan, scroll to zoom, and use the whole-land map to move the camera. Follow a person to inspect food, hydration, route, tools, hut and group. Click water to compare its true fish stock with the person's last fishing observation. The knowledge overlay shows observed cells, and **Flow** toggles downstream arrows. People interpolate along recorded route segments, so the display cannot draw a crossing through blocked water.
 
-Fast speeds are best effort: playback yields between minutes to keep the camera and controls responsive. Every minute still follows the same simulation rules.
+Fast speeds are best effort: playback yields between minutes to keep the camera and controls responsive. Every minute still follows the same simulation rules. Terrain and vegetation use spatial culling; gestures, flags and fire follow simulation time and freeze when paused.
 
 Details are in the [Life 11 specification](docs/LIFE11_SPEC.md), [validation notes](docs/VALIDATION.md#life-11) and [lab notes](LAB_NOTES.md).
 ## Direction

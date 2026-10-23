@@ -1,3 +1,4 @@
+import { triangleHeight } from './banks'
 import { describe, expect, it } from 'vitest'
 import { FLAT_LAND, resolveValleyConfig } from './config'
 import { cloneValley, createValley, lastEventOf, runValley, stepValley } from './engine'
@@ -111,6 +112,11 @@ describe('the height field', () => {
         terrain.height[(j + 1) * points + i + 1]!,
       ]
       const h = heightAt(terrain, i * cell + 137, j * cell + 251)
+      const patch = terrain.water.shore?.patches.get(j * terrain.cells + i)
+      if (patch) {
+        expect(h).toBe(Math.floor(triangleHeight(patch.ground, i * cell + 137, j * cell + 251)!))
+        continue
+      }
       if (terrain.water.body[j * terrain.cells + i]! >= 0) {
         expect(h).toBe(terrain.water.bed[j * terrain.cells + i])
         continue

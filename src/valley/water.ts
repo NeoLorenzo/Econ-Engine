@@ -1,3 +1,6 @@
+import { bankViolations } from './banks'
+import type { BankGeometry } from './banks'
+
 /** Immutable drainage. Cell IDs increase across rows; all boundary cells are open outlets. */
 export interface WaterBody {
   id: number
@@ -9,6 +12,8 @@ export interface WaterBody {
 }
 
 export interface WaterGrid {
+  /** Present after terrain assembly; standalone drainage fixtures may supply explicit rectangular water. */
+  shore?: BankGeometry
   cells: number
   cellCm: number
   bed: Int32Array
@@ -246,7 +251,7 @@ export function deriveWater(
 
 /** Independent structural checks; called once for immutable geography. */
 export function waterViolations(grid: WaterGrid): string[] {
-  const errors: string[] = []
+  const errors: string[] = grid.shore ? bankViolations(grid.shore, grid) : []
   const { cells, parent, rank, level, bed, body, bodies } = grid
   const membership = new Int32Array(body.length).fill(-1)
   const ranks = new Uint8Array(body.length)
@@ -288,7 +293,8 @@ export function waterViolations(grid: WaterGrid): string[] {
       for (let cell = 1; cell < water.cells.length; cell += 1)
         if (parent[water.cells[cell - 1]!] !== water.cells[cell]) errors.push(`Disconnected reach ${water.id}`)
     }
-    if (water.areaM2 !== water.cells.length * (grid.cellCm / 100) ** 2) errors.push(`Invalid area ${water.id}`)
+    if (!grid.shore && water.areaM2 !== water.cells.length * (grid.cellCm / 100) ** 2)
+      errors.push(`Invalid area ${water.id}`)
     for (const cell of water.cells) {
       if (membership[cell] !== -1 || body[cell] !== index || bed[cell]! >= level[cell]!)
         errors.push(`Invalid wet membership ${cell}`)

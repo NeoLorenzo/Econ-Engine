@@ -1,8 +1,11 @@
+import { bankCircleWet, bankSegmentWet, type BankGeometry } from './banks'
 import { CellHeap } from './water'
 import type { Point } from './types'
 import { distance } from './geometry'
 
 export interface GroundKnowledge {
+  /** Immutable geometry is consulted only after every traversed cell has been observed. */
+  shore?: BankGeometry
   cells: number
   cellCm: number
   /** 0 unknown, 1 observed dry, 2 observed wet. */
@@ -206,10 +209,13 @@ export function knownDryFootprint(grid: GroundKnowledge, point: Point, radiusCm 
     ) {
       const nx = Math.max(x * grid.cellCm, Math.min((x + 1) * grid.cellCm, point.x))
       const ny = Math.max(y * grid.cellCm, Math.min((y + 1) * grid.cellCm, point.y))
-      if ((nx - point.x) ** 2 + (ny - point.y) ** 2 <= radiusCm ** 2 && grid.observed[y * grid.cells + x] !== 1)
+      if (
+        (nx - point.x) ** 2 + (ny - point.y) ** 2 <= radiusCm ** 2 &&
+        (grid.shore ? grid.observed[y * grid.cells + x] === 0 : grid.observed[y * grid.cells + x] !== 1)
+      )
         return false
     }
-  return true
+  return !grid.shore || !bankCircleWet(grid.shore, point, radiusCm)
 }
 
 /** Exact grid traversal, including both sides when the segment touches an edge or corner. */
@@ -226,8 +232,14 @@ export function knownDrySegment(grid: GroundKnowledge, a: Point, b: Point) {
   let y = Math.floor(a.y / c)
   const endX = Math.floor(b.x / c)
   const endY = Math.floor(b.y / c)
-  const dry = (i: number, j: number) =>
-    i < 0 || j < 0 || i >= grid.cells || j >= grid.cells || grid.observed[j * grid.cells + i] === 1
+  let needsWater = false
+  const dry = (i: number, j: number) => {
+    if (i < 0 || j < 0 || i >= grid.cells || j >= grid.cells) return true
+    const cell = j * grid.cells + i,
+      observed = grid.observed[cell]
+    if (grid.shore && (observed === 2 || grid.shore.patchMask[cell])) needsWater = true
+    return observed === 1 || (grid.shore !== undefined && observed === 2)
+  }
   const atPoint = (p: Point) => {
     const i = Math.floor(p.x / c)
     const j = Math.floor(p.y / c)
@@ -243,7 +255,7 @@ export function knownDrySegment(grid: GroundKnowledge, a: Point, b: Point) {
   let nextY = sy > 0 ? (y + 1) * c - a.y : a.y - y * c
   for (let step = 0; step <= 2 * grid.cells + 2; step += 1) {
     if (!dry(x, y) || (!dx && a.x % c === 0 && !dry(x - 1, y)) || (!dy && a.y % c === 0 && !dry(x, y - 1))) return false
-    if (x === endX && y === endY) return true
+    if (x === endX && y === endY) return !needsWater || !grid.shore || !bankSegmentWet(grid.shore, a, b)
     const tx = dx ? nextX * ay : Infinity
     const ty = dy ? nextY * ax : Infinity
     if (tx === ty) {
@@ -261,6 +273,36 @@ export function knownDrySegment(grid: GroundKnowledge, a: Point, b: Point) {
     }
   }
   return false
+}
+function safeKnownSegment(grid: GroundKnowledge, a: Point, b: Point) {
+  return (
+    knownDrySegment(grid, a, b) &&
+    (!grid.shore?.patches.size ||
+      [-1, 1].every((dx) =>
+        [-1, 1].every((dy) => knownDrySegment(grid, { x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy })),
+      ))
+  )
+}
+/** Bank approaches may lie in the dry part of an observed shore cell. The graph stays on dry centres. */
+export function routeAnchor(grid: GroundKnowledge, point: Point) {
+  const cell = routeCell(grid, point)
+  if (cell < 0 || grid.observed[cell] === 0) return -1
+  if (grid.observed[cell] === 1) return cell
+  if (!grid.shore || !knownDrySegment(grid, point, point)) return -1
+  const x = cell % grid.cells,
+    y = Math.floor(cell / grid.cells)
+  const candidates: { id: number; distance: number }[] = []
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++) {
+      if (x + dx < 0 || y + dy < 0 || x + dx >= grid.cells || y + dy >= grid.cells) continue
+      const id = (y + dy) * grid.cells + x + dx
+      if (grid.observed[id] !== 1) continue
+      const centre = routeCentre(grid, id)
+      if (knownDrySegment(grid, point, centre))
+        candidates.push({ id, distance: (centre.x - point.x) ** 2 + (centre.y - point.y) ** 2 })
+    }
+  candidates.sort((a, b) => a.distance - b.distance || a.id - b.id)
+  return candidates[0]?.id ?? -1
 }
 interface RouteTree {
   token: object
@@ -395,7 +437,7 @@ function expandTo(grid: GroundKnowledge, tree: RouteTree, target: number, limitC
       for (let dx = -1; dx <= 1; dx += 1) {
         if ((!dx && !dy) || x + dx < 0 || y + dy < 0 || x + dx >= grid.cells || y + dy >= grid.cells) continue
         const next = (y + dy) * grid.cells + x + dx
-        if (grid.observed[next] !== 1) continue
+        if (grid.observed[next] !== 1 || (grid.shore?.blocked.get(id) ?? 0) & (1 << ((dy + 1) * 3 + dx + 1))) continue
         if (
           dx &&
           dy &&
@@ -425,8 +467,8 @@ interface SavedPath {
 const savedPaths = new WeakMap<GroundKnowledge, SavedPath>()
 
 function planRoute(grid: GroundKnowledge, start: Point, end: Point, reverse: boolean, limitCm = Infinity) {
-  const first = routeCell(grid, start)
-  const last = routeCell(grid, end)
+  const first = routeAnchor(grid, start)
+  const last = routeAnchor(grid, end)
   if (first < 0 || last < 0 || grid.observed[first] !== 1 || grid.observed[last] !== 1) return null
   // Integer movement may round a point by less than one centimetre in either axis. Keep that envelope dry too.
   if (
@@ -442,7 +484,7 @@ function planRoute(grid: GroundKnowledge, start: Point, end: Point, reverse: boo
   if (rootOf(connectivity, first) !== rootOf(connectivity, last)) return null
   const fromCentre = routeCentre(grid, first)
   const toCentre = routeCentre(grid, last)
-  if (!knownDrySegment(grid, start, fromCentre) || !knownDrySegment(grid, toCentre, end)) return null
+  if (!safeKnownSegment(grid, start, fromCentre) || !safeKnownSegment(grid, toCentre, end)) return null
   const saved = savedPaths.get(grid)
   if (!reverse && saved?.token === tokenOf(grid)) {
     const fromIndex = saved.indices.get(first)
@@ -604,8 +646,8 @@ export function cloneGroundKnowledge(grid: GroundKnowledge): GroundKnowledge {
 
 /** Cache identity includes exact connector endpoints and the observer's knowledge revision. */
 export function knownRoute(grid: GroundKnowledge, start: Point, end: Point, home?: Point): readonly Point[] | null {
-  const first = routeCell(grid, start)
-  const last = routeCell(grid, end)
+  const first = routeAnchor(grid, start)
+  const last = routeAnchor(grid, end)
   if (first < 0 || last < 0 || grid.observed[first] !== 1 || grid.observed[last] !== 1) return null
   let cache = routeCache.get(grid)
   if (cache?.revision !== grid.revision) {

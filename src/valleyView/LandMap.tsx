@@ -1,3 +1,4 @@
+import { bankWaterHeight } from '../valley/banks'
 import { useEffect, useMemo, useRef } from 'react'
 import type { ValleyState } from '../valley/types'
 import { groupColor } from './valleyViewModel'
@@ -25,7 +26,17 @@ function landImage(layout: ValleyState['layout']) {
       const h = height[j * points + i]!
       const slope = (height[(j + 1) * points + i + 1]! - h) / terrain.cellCm
       const light = Math.max(0.55, Math.min(1.35, 0.75 + (0.45 * h) / highest - 4 * slope))
-      const colour = terrain.water.body[j * cells + i]! >= 0 ? [46, 93, 120] : MAP_GROUND[ground[j * cells + i]!]!
+      const wet = terrain.water.shore
+        ? bankWaterHeight(
+            terrain.water.shore,
+            {
+              x: ((px + 0.5) * cells * terrain.cellCm) / MAP_SIZE,
+              y: ((py + 0.5) * cells * terrain.cellCm) / MAP_SIZE,
+            },
+            terrain.water.level,
+          ) !== null
+        : terrain.water.body[j * cells + i]! >= 0
+      const colour = wet ? [46, 93, 120] : MAP_GROUND[ground[j * cells + i]!]!
       const at = (py * MAP_SIZE + px) * 4
       image.data[at] = colour[0]! * light
       image.data[at + 1] = colour[1]! * light

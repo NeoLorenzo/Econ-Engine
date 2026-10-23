@@ -230,7 +230,6 @@ export default function ValleyApp() {
             clear: clearRef.current,
             followedId: followedRef.current,
             following: followingRef.current,
-            nowMs: now,
             elapsedSeconds: elapsed,
           })
           if (now - lastHud >= HUD_INTERVAL_MS) {

@@ -1,3 +1,4 @@
+import { buildBanks, triangleHeight } from './banks'
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { distanceSq } from './geometry'
 import type { ValleyConfig } from './types'
@@ -662,6 +663,8 @@ export function generateTerrain(config: ValleyConfig): Terrain {
       ground[j * cells + i] = kind
     }
   const water = deriveWater(cells, cellCm, centres, config.riverCatchmentM2, config.riverDepthCm)
+  water.shore = buildBanks(water, height)
+  for (const [index, body] of water.bodies.entries()) body.areaM2 = Math.floor(water.shore.area2[index]! / 20_000)
   for (let id = 0; id < centres.length; id += 1) {
     if (water.body[id]! >= 0) continue
     const adjacent = cardinalCells(cells, id)
@@ -710,6 +713,8 @@ export function heightAt(terrain: Terrain, x: number, y: number) {
   const py = y < 0 ? 0 : y > size ? size : y
   const i = Math.min(cells - 1, Math.floor(px / cellCm))
   const j = Math.min(cells - 1, Math.floor(py / cellCm))
+  const patch = terrain.water.shore?.patches.get(j * cells + i)
+  if (patch) return Math.floor(triangleHeight(patch.ground, px, py) ?? terrain.water.bed[j * cells + i]!)
   if (terrain.water.body[j * cells + i]! >= 0) return terrain.water.bed[j * cells + i]!
   const fx = px - i * cellCm
   const fy = py - j * cellCm
