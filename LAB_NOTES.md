@@ -6,6 +6,16 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE12-Settings-060] - (2026-10-23)
+
+The second re-foundation pull request adds the run settings and the forty founders.
+
+**Settings.** The page no longer builds a valley on load. It shows the five run settings with their ranges, and Start builds the valley behind the existing loading card. Once a run starts its settings cannot change; New run discards it. The owner chose to drop Life 11's setup form, since the specification names only five run settings and the project is building features, not experiments. The page allows at most 100 founders, Life 11's observer limit, because every person is drawn as a figure; the engine still accepts 1,000.
+
+**World size.** Measured on the first pull request's code, worlds of 1, 2 and 3 km were refused: the fixed counts of 800 thickets, 800 hazel thickets, 300 stands, 100 outcrops and the landforms cannot be placed in them. The settings now scale every one of those counts by the world's area, rounded, with at least one of each. At 4 km the configuration is exactly the default, and a 1 km world has 50 thickets and 19 stands. The engine is unchanged. Creating a 4 km valley takes about 9 s and a 10 km valley about 66 s in Node; the loading card says large worlds take up to a minute or more.
+
+**Forty founders.** The eight-person fingerprint configurations now name `founders: 8`, and the flat test land carries eight. Their 21 hashes are unchanged, since each run sees the same configuration as before. The forty-founder default has one recorded run on seed 20260813. It passed the checker at every daily interval and takes about 45 s. A ninety-day year of forty takes about 64 s of simulation in Node, eight times the eight-founder year and far from the specification's "about a second". In the browser the map speeds run much slower than their labels. The owner accepted that this pull request has no performance pass.
+
 ## [LIFE12-Loading-059] - (2026-10-23)
 
 Generating the valley blocks the page for 5 to 12 seconds, and without a sign of work the page looks frozen. The page now carries a static loading card that shows before any script runs; React replaces it once the first valley exists. Reset shows the same card, waits for it to be painted, then checks the layout and builds the valley. The spinner turns with a transform animation, which the browser runs off the main thread, so it keeps turning while the valley is built. In development, strict mode built the first valley twice; it is now built once. The engine and the fingerprints are unchanged.

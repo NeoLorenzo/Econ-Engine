@@ -9,7 +9,7 @@ import type { Point, ValleyConfig } from './types'
  * fall of up to 30 m with broken moraine fronts, drumlins, kames, clustered hummocks, kettle hollows and tunnel
  * valleys, lakes in hollows and connected downhill river reaches. Its grassland surface is grass, dirt or stone.
  * Resources are places with one stock each: 800 berry thickets, 800 hazel thickets, 300 stands of 36 logs and 100
- * outcrops of 60 stones. Eight founders born with foraging skills from 75% to 125% start scattered over the middle
+ * outcrops of 60 stones. Forty founders born with foraging skills from 75% to 125% start scattered over the middle
  * 800 m. Slopes fall into three classes that slow walking and raise its cost; the ground sets its terrain factor.
  * Every member wants a hut of 23 logs, cut from felled trees with a ground stone axe it makes or buys. A year has
  * `daysPerYear` days. Measurements and explicit estimates are sourced in docs/CALIBRATION.md.
@@ -142,7 +142,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   initialReserveKcal: 66_000,
   hungryBelowKcal: 64_000,
   satiatedAtKcal: 68_000,
-  founders: 8,
+  founders: 40,
   berryShelfLifeHours: 48,
   fireWoodPerHour: 1,
   fireSleepKcalPerHour: 70,
@@ -183,9 +183,10 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
 
 /**
  * A flat grassy land the size of Life 9.7's valley, 800 m square with its sites and lake: no relief or landforms.
- * Tests of rules that do not need the terrain run on it.
+ * Tests of rules that do not need the terrain run on it, with Life 11's eight founders.
  */
 export const FLAT_LAND: Partial<ValleyConfig> = {
+  founders: 8,
   valleySizeCm: 80_000,
   thicketCount: 32,
   hazelThicketCount: 32,

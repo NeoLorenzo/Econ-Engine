@@ -9,7 +9,8 @@ declare const PR_TEST_PROFILE: boolean
 
 // Life 12 runs exactly as recorded: the daily summaries and totals of 30 days on three seeds, for the canonical land,
 // each configuration the experiments use and the flat land, match fingerprints recorded from Life 12's code. A change
-// that alters any trajectory, even a refactor or a speed-up meant to change nothing, fails here.
+// that alters any trajectory, even a refactor or a speed-up meant to change nothing, fails here. Those configurations
+// were recorded with the first pull request's eight founders and keep them; the forty-founder default has one run.
 
 function fingerprintOf(value: unknown) {
   let hash = 0x811c9dc5
@@ -18,14 +19,17 @@ function fingerprintOf(value: unknown) {
   return `${(hash >>> 0).toString(16)}:${text.length}`
 }
 
+const EIGHT = { founders: 8 }
+
 const CONFIGS: Record<string, Partial<ValleyConfig>> = {
-  canonical: {},
-  together: { scattered: false },
-  noPractice: { craftPractice: false },
-  talent: { craftSkillMinPercent: 50, craftSkillMaxPercent: 150 },
+  canonical: EIGHT,
+  together: { ...EIGHT, scattered: false },
+  noPractice: { ...EIGHT, craftPractice: false },
+  talent: { ...EIGHT, craftSkillMinPercent: 50, craftSkillMaxPercent: 150 },
   twelve: { founders: 12 },
-  alike: { skillMinPercent: 100, skillMaxPercent: 100 },
+  alike: { ...EIGHT, skillMinPercent: 100, skillMaxPercent: 100 },
   flat: FLAT_LAND,
+  forty: {},
 }
 
 /** Water and observed-ground checks depend on the size of the discovered region; allow slower CI workers. */
@@ -157,6 +161,12 @@ const RECORDED = [
     seed: 2,
     days: 'ac996379:59559',
     totals: 'bcb6cd61:437',
+  },
+  {
+    config: 'forty',
+    seed: 20260813,
+    days: 'ed527c99:158838',
+    totals: 'a334791:475',
   },
 ] as const
 

@@ -12,8 +12,8 @@ const damaged = (base: ValleyState, damage: (s: ValleyState) => void, to = base.
   return checker.check(after)
 }
 describe('interval checker', () => {
-  it('accepts thirty canonical days with all founders alive', () => {
-    let s = createValley()
+  it('accepts thirty canonical days with all eight founders alive', () => {
+    let s = createValley({ founders: 8 })
     const checker = new ValleyChecker(s)
     for (let day = 1; day <= 30; day++) {
       s = stepValley(s, day * 1440)

@@ -1,14 +1,10 @@
 import { LandMap } from './LandMap'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SpecializationChart } from './SpecializationChart'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
-import { VALLEY_DEFAULT_CONFIG, valleyConfigErrors } from '../valley/config'
-import { createValley } from '../valley/engine'
 import { isDaylight } from '../valley/forager'
-import { layoutError } from '../valley/layout'
-import type { ValleyConfig } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
 import {
   advanceDisplay,
@@ -37,7 +33,6 @@ import {
   plantInspection,
   stoneInspection,
   specializationPoints,
-  startDisplay,
   stepDisplay,
   stepFollowed,
   taskSummary,
@@ -46,66 +41,6 @@ import {
   type ClearView,
   type Display,
 } from './valleyViewModel'
-
-type NumericSetup = Pick<
-  ValleyConfig,
-  | 'seed'
-  | 'founders'
-  | 'woodLoad'
-  | 'skillMinPercent'
-  | 'skillMaxPercent'
-  | 'practiceDays'
-  | 'practiceHalfHours'
-  | 'practiceMinPercent'
-  | 'practiceMaxPercent'
-  | 'exploreAfterHours'
-  | 'sightRadiusCm'
-  | 'campfireWoodPerHour'
-  | 'craftSkillMinPercent'
-  | 'craftSkillMaxPercent'
->
-type SwitchKey = 'scattered' | 'axeTrade' | 'craftPractice'
-type Setup = NumericSetup & Pick<ValleyConfig, SwitchKey>
-
-/** A field is typed in its own unit: `unit` of the configuration's units make one of it. */
-const SETUP_FIELDS: { key: keyof NumericSetup; label: string; unit?: number }[] = [
-  { key: 'seed', label: 'Seed' },
-  { key: 'founders', label: 'Foragers' },
-  { key: 'woodLoad', label: 'Load, kg' },
-  { key: 'skillMinPercent', label: 'Skill from, %' },
-  { key: 'skillMaxPercent', label: 'Skill to, %' },
-  { key: 'practiceDays', label: 'Practice, days' },
-  { key: 'practiceHalfHours', label: 'Half way, h' },
-  { key: 'practiceMinPercent', label: 'Practice from, %' },
-  { key: 'practiceMaxPercent', label: 'Practice to, %' },
-  { key: 'exploreAfterHours', label: 'Check after, h' },
-  { key: 'sightRadiusCm', label: 'Sight, m', unit: 100 },
-  { key: 'campfireWoodPerHour', label: 'Group fire, kg/h' },
-  { key: 'craftSkillMinPercent', label: 'Craft from, %' },
-  { key: 'craftSkillMaxPercent', label: 'Craft to, %' },
-]
-
-const SETUP_SWITCHES: { key: SwitchKey; label: string }[] = [
-  { key: 'scattered', label: 'Start scattered' },
-  { key: 'axeTrade', label: 'Axes can be sold' },
-  { key: 'craftPractice', label: 'Craft grows with practice' },
-]
-
-const DEFAULT_SETUP = Object.fromEntries(
-  [...SETUP_FIELDS, ...SETUP_SWITCHES].map(({ key }) => [key, VALLEY_DEFAULT_CONFIG[key]]),
-) as Setup
-
-/** Every forager is drawn as its own figure, which stays smooth up to about this many. */
-const MAX_BAND = 100
-
-const startPair = (setup: Setup): Display => startDisplay(createValley(setup))
-
-/** The first valley, built once: development's strict mode runs state initialisers twice, and building takes seconds. */
-let firstPair: Display | null = null
-const startFirstPair = () => (firstPair ??= startPair(DEFAULT_SETUP))
-
-/** Runs `work` after the browser has painted, so a loading screen shown just before it is on screen meanwhile. */
-const afterPaint = (work: () => void) => requestAnimationFrame(() => setTimeout(work, 0))
 
 /** What the HUD shows, refreshed a few times a second rather than every frame. */
 interface Snapshot {
@@ -144,10 +79,11 @@ function measureClear(mount: HTMLElement | null): ClearView | null {
 const fireLabel = (fire: { lit: boolean; wood: number; nights: number }, daylight: boolean) =>
   `${fire.lit ? 'burning' : daylight && fire.wood > 0 ? 'banked for the night' : 'out'}, ${formatKg(fire.wood)} of wood${fire.wood ? ` (${fire.nights.toFixed(1)} nights)` : ''}`
 
-export default function ValleyApp() {
+/** Plays the run that `start` begins; its settings are fixed, and `onNewRun` leaves it for the settings screen. */
+export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRun: () => void }) {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<ValleyScene | null>(null)
-  const [initialPair] = useState(startFirstPair)
+  const [initialPair] = useState(start)
   const pairRef = useRef<Display>(initialPair)
   const [running, setRunning] = useState(true)
   const [showFlow, setShowFlow] = useState(false)
@@ -158,15 +94,8 @@ export default function ValleyApp() {
   const [followedId, setFollowedId] = useState(0)
   const [following, setFollowing] = useState(true)
   const [mapView, setMapView] = useState<ReturnType<ValleyScene['view']> | null>(null)
-  const [setup, setSetup] = useState<Setup>(DEFAULT_SETUP)
-  const [draft, setDraft] = useState<Record<keyof NumericSetup, string>>(() => stringify(DEFAULT_SETUP))
-  const [switches, setSwitches] = useState<Pick<Setup, SwitchKey>>(
-    () => Object.fromEntries(SETUP_SWITCHES.map(({ key }) => [key, DEFAULT_SETUP[key]])) as Pick<Setup, SwitchKey>,
-  )
-  const [setupError, setSetupError] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0))
   const [sceneError, setSceneError] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
 
   const runningRef = useRef(running)
@@ -261,17 +190,6 @@ export default function ValleyApp() {
     }
   }, [])
 
-  const reset = useCallback((nextSetup: Setup) => {
-    pairRef.current = startPair(nextSetup)
-    sceneRef.current?.setWorld(pairRef.current.state)
-    setSelected(null)
-    followedRef.current = 0
-    followingRef.current = true
-    setFollowedId(0)
-    setFollowing(true)
-    setSnapshot(snap(pairRef.current, 0))
-  }, [])
-
   const follow = useCallback((id: number) => {
     followedRef.current = id
     followingRef.current = true
@@ -316,41 +234,6 @@ export default function ValleyApp() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const applySetup = (event: FormEvent) => {
-    event.preventDefault()
-    const parsed = {
-      ...(Object.fromEntries(
-        SETUP_FIELDS.map(({ key, unit = 1 }) => [key, Number(draft[key]) * unit]),
-      ) as NumericSetup),
-      ...switches,
-    }
-    setLoading(true)
-    afterPaint(() => {
-      try {
-        build(parsed)
-      } finally {
-        setLoading(false)
-      }
-    })
-  }
-
-  const build = (parsed: Setup) => {
-    const config = { ...VALLEY_DEFAULT_CONFIG, ...parsed }
-    const errors = valleyConfigErrors(config)
-    if (!errors.length && parsed.founders > MAX_BAND) errors.push(`The observer shows at most ${MAX_BAND} foragers`)
-    if (!errors.length) {
-      const unplaceable = layoutError(config)
-      if (unplaceable) errors.push(unplaceable)
-    }
-    if (errors.length) {
-      setSetupError(errors[0]!)
-      return
-    }
-    setSetupError(null)
-    setSetup(parsed)
-    reset(parsed)
-  }
-
   const { pair, energyKcal, minutes, followed } = snapshot
   const state = pair.state
   const task = taskSummary(state, followed)
@@ -374,15 +257,6 @@ export default function ValleyApp() {
 
   return (
     <div className="life-app">
-      {loading && (
-        <div className="life-loading" role="status" aria-live="polite">
-          <div className="life-loading-card">
-            <span className="life-loading-spinner" aria-hidden="true" />
-            <p className="life-loading-title">Generating the valley</p>
-            <p className="life-loading-note">Terrain, water and routes take about ten seconds to build.</p>
-          </div>
-        </div>
-      )}
       <main className="life-world" ref={mountRef}>
         {sceneError && <p className="life-fallback">The 3D view needs WebGL, which this browser could not start.</p>}
       </main>
@@ -1021,7 +895,7 @@ export default function ValleyApp() {
 
       <section className="life-card life-history" aria-label="History">
         <details open={historyOpen} onToggle={(toggle) => setHistoryOpen(toggle.currentTarget.open)}>
-          <summary>History and setup</summary>
+          <summary>History and settings</summary>
           <SpecializationChart points={specializationPoints(state)} config={config} followed={followed} woodUnit="kg" />
           {days.length > 1 ? (
             <>
@@ -1107,57 +981,39 @@ export default function ValleyApp() {
           ) : (
             <p className="life-note">The charts over time start after the first full day.</p>
           )}
-          <form className="life-setup" onSubmit={applySetup}>
-            {SETUP_FIELDS.map(({ key, label }) => (
-              <label key={key}>
-                {label}
-                <input
-                  inputMode="numeric"
-                  value={draft[key]}
-                  onChange={(change) => setDraft({ ...draft, [key]: change.target.value })}
-                />
-              </label>
-            ))}
-            {SETUP_SWITCHES.map(({ key, label }) => (
-              <label key={key} className="life-switch">
-                <input
-                  type="checkbox"
-                  checked={switches[key]}
-                  onChange={(change) => setSwitches({ ...switches, [key]: change.target.checked })}
-                />
-                {label}
-              </label>
-            ))}
-            <button type="submit">Reset</button>
-          </form>
-          {setupError && (
-            <p className="life-error" role="alert">
-              {setupError}
+          <div className="life-run">
+            <p className="life-note">
+              The settings are fixed for this run: seed {config.seed}, {config.daysPerYear} days a year, a world{' '}
+              {config.valleySizeCm / 100_000} km across and {config.founders} founders who start{' '}
+              {config.scattered ? 'scattered' : 'together'}.
             </p>
-          )}
+            <button type="button" onClick={onNewRun}>
+              New run
+            </button>
+          </div>
           <p className="life-note">
-            Running seed {setup.seed}: {setup.founders} foragers on a stretch of glacial land{' '}
+            Running seed {config.seed}: {config.founders} foragers on a stretch of glacial land{' '}
             {config.valleySizeCm / 100} m across, with broken moraine fronts, flow-aligned drumlins, clustered hummocks,
             irregular hollows, lakes and connected river reaches,{' '}
-            {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
-            knowing only what they have seen. By day they see {setup.sightRadiusCm / 100} m, but not through hills, and
+            {config.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
+            knowing only what they have seen. By day they see {config.sightRadiusCm / 100} m, but not through hills, and
             berries and firewood up close. The whole land is grassland, with grass, exposed dirt and stone; slopes slow
             them and cost them energy, and stone is harder going. When their needs are met they explore ground they have
             never seen, then check the thickets and stands they have not checked for{' '}
-            {formatHours(setup.exploreAfterHours)}. A load costs them energy and slows them a little, and they take a
+            {formatHours(config.exploreAfterHours)}. A load costs them energy and slows them a little, and they take a
             full load home before anything else. Those without a group look for company: two who meet found a group and
             plant its flag, and anyone who meets a member joins. Members sleep on a ring round their flag and swap wood
             for food only with each other, telling each other their terms.{' '}
-            {`Each group keeps one fire at its flag, burning ${formatKg(setup.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs on the ring round the fire, cut from trees it fells with an axe it makes from a stone and wood${setup.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${setup.craftPractice ? 'grows with practice' : 'stays fixed'}. A hut keeps its sleeper a little warm, the fire more, and both together most.`}{' '}
+            {`Each group keeps one fire at its flag, burning ${formatKg(config.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs on the ring round the fire, cut from trees it fells with an axe it makes from a stone and wood${config.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${config.craftPractice ? 'grows with practice' : 'stays fixed'}. A hut keeps its sleeper a little warm, the fire more, and both together most.`}{' '}
             They are born with skills{' '}
-            {setup.skillMinPercent === setup.skillMaxPercent
-              ? `of ${setup.skillMinPercent}%`
-              : `from ${setup.skillMinPercent}% to ${setup.skillMaxPercent}%`}
-            , which grow with practice over {setup.practiceDays} days from {setup.practiceMinPercent}% towards{' '}
-            {setup.practiceMaxPercent}%. They pick berries bush by bush, gather hazelnuts and fish discovered water at
+            {config.skillMinPercent === config.skillMaxPercent
+              ? `of ${config.skillMinPercent}%`
+              : `from ${config.skillMinPercent}% to ${config.skillMaxPercent}%`}
+            , which grow with practice over {config.practiceDays} days from {config.practiceMinPercent}% towards{' '}
+            {config.practiceMaxPercent}%. They pick berries bush by bush, gather hazelnuts and fish discovered water at
             discovered banks, taking less an hour as a source thins, and go where an hour brings most food for the walk.
             They gather sticks from bushes and dead branches from under trees, bringing them home in loads of{' '}
-            {formatKg(setup.woodLoad)}. Each is coloured by what wood costs it, from{' '}
+            {formatKg(config.woodLoad)}. Each is coloured by what wood costs it, from{' '}
             <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
             <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
             group’s colour; each group’s base has a fire, a flag, coloured ground and a lettered badge. Ground the
@@ -1182,13 +1038,6 @@ function carriedPhrase(food: { berries: number; nuts: number; fish: number }) {
   return parts
     .map((kind, index) => `${index === 0 ? formatKcal(food[kind]) : food[kind].toLocaleString('en-US')} of ${kind}`)
     .join(' and ')
-}
-
-function stringify(setup: Setup) {
-  return Object.fromEntries(SETUP_FIELDS.map(({ key, unit = 1 }) => [key, String(setup[key] / unit)])) as Record<
-    keyof NumericSetup,
-    string
-  >
 }
 
 function snap(pair: Display, followed: number, minutesPerSecond = 0): Snapshot {

@@ -120,8 +120,8 @@ Use `npm run agent:check` as the implementation gate. On memory-constrained mach
 
 Rule tests use small explicit fixtures. A canonical thirty-day run is checked at daily intervals with all eight founders alive. Observer tests check that people are drawn on their recorded route at every displayed minute, that the drawn minute stays within the minute the state has reached, that the step allowance grows and shrinks with the frame budget, and that map speeds hide people.
 
-The 21 fingerprints are checked thirty-day runs, partitioned by configuration for parallel validation: three seeds each for canonical, together, no-practice, craft-talent, twelve-person, equal-skill and flat configurations. They were re-recorded once for the wake-up engine, after its rule and checker tests passed. A refactor or speed-up must leave them unchanged.
+The 22 fingerprints are checked thirty-day runs, partitioned by configuration for parallel validation: three seeds each for the eight-person canonical, together, no-practice, craft-talent, equal-skill and flat configurations and the twelve-person one, and one run of the forty-founder default on seed 20260813 (about 45 s). The 21 were re-recorded once for the wake-up engine, after its rule and checker tests passed; the eight-person configurations name `founders: 8`, so the forty-founder default left them unchanged. A refactor or speed-up must leave them all unchanged. `runSettings.test.ts` checks the page's ranges, including 7 and 366 days rejected, and that a 1 km world can be laid out.
 
-`node scripts/time-life.mjs 90 batch` times a canonical ninety-day year with eight founders; creation is reported separately. The benchmark excludes rendering and invariant checking.
+`node scripts/time-life.mjs 90 batch` times a canonical ninety-day year with the default forty founders; creation is reported separately. The benchmark excludes rendering and invariant checking.
 
-The browser check looks at walking at 1 min / s, stepping, the task panel and the map at month-per-second speed, and the console.
+The browser check looks at the settings screen rejecting 7 and 366 days, Start showing the loading card, walking at 1 min / s, stepping, the task panel and the map at month-per-second speed, and the console.

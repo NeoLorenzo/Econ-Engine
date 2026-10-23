@@ -2,6 +2,19 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Settings-060] - (2026-10-23)
+
+### Added
+
+- The Life page opens on a settings screen: seed, days per year (8 to 365), world size (1 to 10 km), founders (1 to 100) and a scattered or together start, each with its range, and a Start button. Start shows the loading card while the valley is built. The settings are fixed for the run; the history panel states them, and New run returns to the settings screen, prefilled.
+- A world of another size than 4 km scales its counts of places and landforms with its area, so worlds of 1 to 3 km can be laid out.
+- Record a fingerprint for the forty-founder default on seed 20260813.
+
+### Changed
+
+- Forty founders by default. The eight-person fingerprint configurations and the flat test land name eight founders, so their 21 fingerprints are unchanged.
+- Remove Life 11's setup form and Reset; its other parameters are configuration only.
+
 ## [LIFE12-Loading-059] - (2026-10-23)
 
 ### Added

@@ -19,7 +19,7 @@ This step changes how time, space and plants are represented. It does not change
 
 | Measure | Evidence and comparison | Status |
 | --- | --- | --- |
-| Speed | A year of eight people in well under a second and of forty in about a second, on an ordinary laptop in Node, measured by the existing validation timings. | Pattern target, not a benchmark; no sweep. Not met by the first pull request: a canonical year of eight takes about 5 to 8 seconds, and creating the valley 5 to 12 more (see the lab notes). |
+| Speed | A year of eight people in well under a second and of forty in about a second, on an ordinary laptop in Node, measured by the existing validation timings. | Pattern target, not a benchmark; no sweep. Not met: a canonical year of eight takes about 5 to 8 seconds and a year of forty about 64, and creating the valley 5 to 12 more at 4 km and about a minute at 10 km (see the lab notes). |
 | Survival and settlement | Over Life 11's canonical year, the share of founders alive, the number of groups and the number of finished huts are of the same order as Life 11's. | Pattern comparison; an exact match is impossible and not sought. |
 | Continuity | At a minute a second, no person jumps: every displayed position lies on a recorded route between recorded minutes. | Observer check. |
 | Lazy bodies | Energy and water at any minute, computed from the task, equal what stepping the task minute by minute would give. | Unit test. |
@@ -136,7 +136,7 @@ Travel estimates for choosing targets use straight-line distance at flat speed p
 
 Each person is one object: position, task record, energy and water with their remainders, carried food lots, carried wood, carried log, stones, axe, hut, group, born skills, practice and alive. Its memories (places, their stocks and check times, route-lattice nodes, people met) are typed arrays and maps inside it, never read by the checker as truth. Column storage indexed by id is left until a later step needs it.
 
-Founders are `founders` people, 8 by default in the first pull request and 40 from the second, placed from their own streams within the central `startAreaCm` (800 m) on dry grass or dirt with Life 11's spacing when `scattered`, or at the nearest valid dry camp with room for their hearth slots when together. Born foraging and wood skill range from 75% to 125%; born craft is 100%. Everyone starts with 66,000 kcal, no water deficit, nothing carried and no relationships: the people they have met is an empty list.
+Founders are `founders` people, 40 by default (the first pull request ran Life 11's 8), placed from their own streams within the central `startAreaCm` (800 m) on dry grass or dirt with Life 11's spacing when `scattered`, or at the nearest valid dry camp with room for their hearth slots when together. Born foraging and wood skill range from 75% to 125%; born craft is 100%. Everyone starts with 66,000 kcal, no water deficit, nothing carried and no relationships: the people they have met is an empty list.
 
 ## Tasks
 
@@ -194,8 +194,10 @@ Run settings, read from the Life page before the first minute and otherwise from
 | `seed` | 20260813 | any integer |
 | `daysPerYear` | 90 | 8 to 365 |
 | `worldKm` | 4 | 1 to 10 |
-| `founders` | 8 (40 from the second pull request) | 1 to 1,000 |
+| `founders` | 40 | 1 to 1,000; the page allows 1 to 100 |
 | `scattered` | true | |
+
+`worldKm` sets `valleySizeCm`. A world of another size than 4 km keeps the density of places and landforms: every count of thickets, hazel thickets, stands, outcrops and landforms is scaled by the area, rounded, with at least one of each, so 4 km is exactly the default configuration. With the counts fixed, worlds of 1 to 3 km could not place them. The page draws every person as a figure, which stays smooth to about 100, so it allows at most 100 founders; the engine accepts 1,000.
 
 New and changed parameters:
 
@@ -227,7 +229,7 @@ Events: task start and end with produced amounts, walk with its route id, observ
 
 ## Observer
 
-Label the page **Life 12 · strangers**. The header shows the day, year and season name (the four quarters of the year). The run settings with their ranges and a Start button, fixed after the first minute, arrive with the second pull request; the first keeps Life 11’s setup form and Reset.
+Label the page **Life 12 · strangers**. The header shows the day, year and season name (the four quarters of the year). The page opens on a settings screen: the five run settings with their ranges and a Start button. Start shows a loading card while the valley is built, then the run. The settings are fixed from then on; the history panel states them, and **New run** returns to the settings screen, prefilled, discarding the run. Life 11's setup form is gone: its other parameters are configuration only.
 
 Playback runs from one minute a second upward. The view keeps one state and a continuous displayed minute within the minute that state has reached: every wake-up up to the drawn minute has run and none after it, so each person is drawn from the task under way, at the position its route gives, never along the chord. Each frame runs the engine once; the minutes a frame may run double while steps fit the frame budget and halve when they do not, because copying the state is a fixed cost of every step. From `mapSpeedMinutesPerSecond` (a day a second) up, the view stops drawing people and gestures and shows the map with places, stocks, groups and huts. Places are drawn as decoration, a fixed number of bushes, hazels, trees or rocks per place that share out its stock in turn, so what is drawn stays in proportion to what is there; the decoration uses no simulation stream.
 
@@ -242,13 +244,13 @@ The person panel shows the current task, its start and expected end, the route, 
 - `routes.ts`: the 20 m lattice, known-dry A*, slope classes, segment times; `walkEstimates.ts` and `sight.ts` are removed. New `perception.ts`: observation at wake-ups and chunk arrival. `waterKnowledge.ts` folds into memory.
 - `forager.ts`: priorities and food choice, reading memory. `work.ts`, `food.ts`, `fire.ts`, `huts.ts`, `axes.ts`, `trade.ts`, `social.ts`, `practice.ts`: as Life 11, called from wake-ups.
 - `invariants.ts`, `theory.ts`: replay of intervals, lazy-body checks, analytic examples.
-- `src/valleyView/`: a settings panel, positions by displayed minute, route interpolation, the map mode above the threshold speed, per-place stock drawing, calendar in the header.
+- `src/valleyView/`: a settings screen (`runSettings.ts`, `RunSettingsScreen.tsx`, `LifePage.tsx`), positions by displayed minute, route interpolation, the map mode above the threshold speed, per-place stock drawing, calendar in the header.
 
 The MVP9 core is unchanged. Immutable geography and caches live outside mutable state; cache warmth never changes a result.
 
 ## Tests and implementation acceptance
 
-The Life 11 fingerprint suite passes before engine edits. The first pull request records new fingerprints for the eight-person canonical configurations; the second adds the forty-founder canonical run and the settings. Fingerprints are not updated to conceal a failed rule.
+The Life 11 fingerprint suite passes before engine edits. The first pull request records new fingerprints for the eight-person canonical configurations; the second adds the forty-founder canonical run on seed 20260813 and the settings. The eight-person configurations name `founders: 8`, so the forty-founder default leaves their fingerprints unchanged. Fingerprints are not updated to conceal a failed rule.
 
 Unit fixtures:
 
