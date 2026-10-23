@@ -2,6 +2,13 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Review-056] - (2026-10-23)
+
+- Cache shoreline connectors, index estimated bank candidates, bound real water-route searches to three, and reuse immutable perception/route calculations.
+- Reject founder draws without a route connector and choose sources connected through observed ground. All eight canonical founders survive thirty and ninety days; no thirst thresholds or resource amounts are relaxed.
+- Restore retained Life 11 fire, hut, social, food, carrying and water rule coverage, including the daily fire-contribution counter it exposed. List every deliberate removal and replacement in the lab notes.
+- Before Task 8, the canonical 90-day simulation takes 4.371 s (48.57 ms/day averaged); creation takes 7.264 s separately. The specification's subsecond goal remains unmet.
+
 ## [LIFE12-Refoundation-055] - (2026-10-23, Task 7 checkpoint)
 
 ### Changed

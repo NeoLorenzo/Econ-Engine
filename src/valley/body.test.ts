@@ -59,3 +59,16 @@ describe('lazy bodies', () => {
       expect(waterAt(task, minute).ml).toBe(Math.floor((2_000 * minute) / 1_440) + Math.floor((110 * minute) / 60))
   })
 })
+
+it('adds 440 millilitres for four hours picking to the two-litre resting day', () => {
+  const s = createValley(FLAT_LAND),
+    p = s.foragers[0]!,
+    task = startTask(s.config, p, 'pick', 0, 240, 0, -1, 'foraging'),
+    first = waterAt(task, 240)
+  p.waterDeficitMl = first.ml
+  p.waterBaseRemainder = first.remainder
+  p.waterActivityRemainder = first.activityRemainder
+  p.waterTimeRemainder = first.timeRemainder
+  const rest = startTask(s.config, p, 'rest', 240, 1440, -1, -1, 'satiated')
+  expect(waterAt(rest, 1440).ml).toBe(2440)
+})

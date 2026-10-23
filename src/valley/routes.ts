@@ -1,8 +1,9 @@
-import { bankCircleWet, bankSegmentWet, buildBanks, type BankGeometry } from './banks'
+import { indexBanks, type BankIndex } from './bankSearch'
+import { bankApproach, bankCircleWet, bankSegmentWet, buildBanks, type BankGeometry } from './banks'
 import { CellHeap } from './water'
 import { cellOf, heightAt, terrainPercentOf, type Ground, type Terrain } from './terrain'
 import { distance, distanceSq } from './geometry'
-import type { Point, ValleyConfig } from './types'
+import type { BankMemory, Point, ValleyConfig } from './types'
 
 /** Fixed-point duration, not a second simulation clock. Only wake-up minutes advance state. */
 export const TIME_UNITS_PER_MINUTE = 60_000
@@ -14,11 +15,17 @@ export interface RouteLattice {
   dry: Uint8Array
   edges: Uint8Array
   banks: BankGeometry
+  accessBanks: BankMemory[]
+  bankChunks: Map<number, BankMemory[]>
+  bankIndex: BankIndex
+  components: Int32Array
 }
 export interface Knowledge {
   nodes: Uint8Array
   revision: number
   fullyKnown?: Uint8Array
+  banksKnown?: Uint8Array
+  views?: Set<string>
 }
 export type SlopeClass = 0 | 1 | 2
 export interface RouteSegment {
@@ -84,6 +91,10 @@ export function buildLattice(
     dry: new Uint8Array(cells * cells),
     edges: new Uint8Array(cells * cells),
     banks,
+    bankIndex: { all: null, bodies: new Map() },
+    accessBanks: [],
+    bankChunks: new Map(),
+    components: new Int32Array(cells * cells).fill(-1),
   }
   for (let id = 0; id < lattice.dry.length; id += 1) {
     const p = nodePoint(lattice, id),
@@ -105,6 +116,47 @@ export function buildLattice(
       if (drySegment(banks, a, nodePoint(lattice, next))) lattice.edges[id] |= 1 << d
     }
   }
+  let component = 0
+  for (let root = 0; root < lattice.dry.length; root++) {
+    if (!lattice.dry[root] || lattice.components[root]! >= 0) continue
+    const todo = [root]
+    lattice.components[root] = component
+    for (let i = 0; i < todo.length; i++) {
+      const id = todo[i]!
+      for (let d = 0; d < directions.length; d++)
+        if (lattice.edges[id]! & (1 << d)) {
+          const [dx, dy] = directions[d]!,
+            next = id + dy * cells + dx
+          if (lattice.components[next]! < 0) {
+            lattice.components[next] = component
+            todo.push(next)
+          }
+        }
+    }
+    component++
+  }
+  const all = { nodes: lattice.dry, revision: 0 }
+  for (const segment of banks.segments.values()) {
+    const point = bankApproach(
+      banks,
+      segment,
+      config.reachCm,
+      config.drinkBankHeightCm,
+      (x, y) => cachedHeight(terrain, x, y),
+      terrain.water.bodies[segment.body]!.id,
+      0,
+    )
+    if (!point) continue
+    const connectorNode = routeNode(lattice, all, point)
+    if (connectorNode < 0) continue
+    const bank = { ...point, connectorNode }
+    lattice.accessBanks.push(bank)
+    const chunk = chunkOf(lattice, bank),
+      list = lattice.bankChunks.get(chunk) ?? []
+    list.push(bank)
+    lattice.bankChunks.set(chunk, list)
+  }
+  lattice.bankIndex = indexBanks(lattice.accessBanks, terrain)
   return lattice
 }
 
@@ -114,7 +166,7 @@ export function slopeClassOf(
   a: Point,
   b: Point,
 ): { slope: SlopeClass; uphill: boolean } {
-  const rise = heightAt(terrain, b.x, b.y) - heightAt(terrain, a.x, a.y)
+  const rise = cachedHeight(terrain, b.x, b.y) - cachedHeight(terrain, a.x, a.y)
   const length = Math.max(1, distance(a.x, a.y, b.x, b.y))
   const slope: SlopeClass = Math.abs(rise) * 100 < length * 10 ? 0 : Math.abs(rise) * 100 <= length * 30 ? 1 : 2
   return { slope, uphill: rise > 0 }
@@ -154,32 +206,75 @@ export const estimateMinutes = (
   Math.ceil(distance(from.x, from.y, to.x, to.y) / speedCmPerMinute) +
   Math.ceil((config.climbMinutesPerMetre * Math.max(0, climbCm)) / 100)
 
-/** The nearest observed dry anchor with a dry connector; ties by id. Unknown ground is never a shortcut. */
-export function routeNode(lattice: RouteLattice, knowledge: Knowledge, point: Point): number {
-  let best = -1,
-    bestSq = Infinity
+const heightCache = new WeakMap<Terrain, Map<number, number>>()
+export function cachedHeight(terrain: Terrain, x: number, y: number) {
+  let cache = heightCache.get(terrain)
+  if (!cache) {
+    cache = new Map()
+    heightCache.set(terrain, cache)
+  }
+  const key = x * (terrain.cells * terrain.cellCm + 1) + y
+  let value = cache.get(key)
+  if (value === undefined) {
+    value = heightAt(terrain, x, y)
+    cache.set(key, value)
+  }
+  return value
+}
+const connectors = new WeakMap<RouteLattice, Map<string, { ids: number[]; dry: Map<number, boolean> }>>()
+/** Geometry is immutable; knowledge filters cached connectors without changing them. */
+export function routeNode(
+  lattice: RouteLattice,
+  knowledge: Knowledge,
+  point: Point & { connectorNode?: number },
+): number {
+  if (point.connectorNode !== undefined) return knowledge.nodes[point.connectorNode] ? point.connectorNode : -1
   const col = Math.floor(point.x / lattice.cellCm),
     row = Math.floor(point.y / lattice.cellCm)
-  // A connector is local to the point's cell or its immediate neighbours. A distant anchor could cross unseen land.
-  for (let y = Math.max(0, row - 1); y <= Math.min(lattice.cells - 1, row + 1); y += 1)
-    for (let x = Math.max(0, col - 1); x <= Math.min(lattice.cells - 1, col + 1); x += 1) {
-      const id = y * lattice.cells + x
-      if (!knowledge.nodes[id] || !lattice.dry[id]) continue
-      const anchor = nodePoint(lattice, id),
-        sq = distanceSq(point.x, point.y, anchor.x, anchor.y)
-      if ((sq < bestSq || (sq === bestSq && id < best)) && drySegment(lattice.banks, point, anchor)) {
-        best = id
-        bestSq = sq
-      }
+  const centre = row * lattice.cells + col
+  if (point.x === (col + 0.5) * lattice.cellCm && point.y === (row + 0.5) * lattice.cellCm && lattice.dry[centre])
+    return knowledge.nodes[centre] ? centre : -1
+  let cache = connectors.get(lattice)
+  if (!cache) {
+    cache = new Map()
+    connectors.set(lattice, cache)
+  }
+  const key = `${point.x},${point.y}`
+  let record = cache.get(key)
+  if (!record) {
+    const ids: number[] = []
+    for (let y = Math.max(0, row - 1); y <= Math.min(lattice.cells - 1, row + 1); y++)
+      for (let x = Math.max(0, col - 1); x <= Math.min(lattice.cells - 1, col + 1); x++)
+        if (lattice.dry[y * lattice.cells + x]) ids.push(y * lattice.cells + x)
+    ids.sort((a, b) => {
+      const pa = nodePoint(lattice, a),
+        pb = nodePoint(lattice, b)
+      return distanceSq(point.x, point.y, pa.x, pa.y) - distanceSq(point.x, point.y, pb.x, pb.y) || a - b
+    })
+    record = { ids, dry: new Map() }
+    cache.set(key, record)
+  }
+  for (const id of record.ids) {
+    if (!knowledge.nodes[id]) continue
+    let dry = record.dry.get(id)
+    if (dry === undefined) {
+      dry = drySegment(lattice.banks, point, nodePoint(lattice, id))
+      record.dry.set(id, dry)
     }
-  return best
+    if (dry) return id
+  }
+  return -1
 }
+const searchBuffers = new WeakMap<
+  RouteLattice,
+  { costs: Float64Array; parents: Int32Array; seen: Uint32Array; closed: Uint32Array; stamp: number }
+>()
 export function knownRoute(
   lattice: RouteLattice,
   knowledge: Knowledge,
   terrain: Terrain,
   ground: Uint8Array,
-  banks: BankGeometry,
+  _banks: BankGeometry,
   config: ValleyConfig,
   loadKg: number,
   from: Point,
@@ -189,10 +284,20 @@ export function knownRoute(
     last = routeNode(lattice, knowledge, to)
   if (first < 0 || last < 0) return null
   if (from.x === to.x && from.y === to.y) return { segments: [], minutes: 0, timeUnits: 0, kcal: 0 }
-  const size = lattice.dry.length,
-    costs = new Float64Array(size).fill(Infinity),
-    parents = new Int32Array(size).fill(-1),
-    closed = new Uint8Array(size)
+  let buffers = searchBuffers.get(lattice)
+  if (!buffers) {
+    const n = lattice.dry.length
+    buffers = {
+      costs: new Float64Array(n),
+      parents: new Int32Array(n),
+      seen: new Uint32Array(n),
+      closed: new Uint32Array(n),
+      stamp: 0,
+    }
+    searchBuffers.set(lattice, buffers)
+  }
+  const { costs, parents, seen, closed } = buffers,
+    stamp = ++buffers.stamp
   const heap = new CellHeap(),
     n = lattice.cells,
     diagonal = Math.floor(Math.sqrt(2 * lattice.cellCm ** 2))
@@ -203,26 +308,28 @@ export function knownRoute(
     return common * diagonal + (Math.max(dx, dy) - common) * lattice.cellCm
   }
   costs[first] = 0
+  seen[first] = stamp
   heap.push(first, heuristic(first))
   while (heap.length) {
     const id = heap.popId()
-    if (closed[id]) continue
-    closed[id] = 1
+    if (closed[id] === stamp) continue
+    closed[id] = stamp
     if (id === last) break
     for (const [direction, [dx, dy]] of directions.entries()) {
       if (!(lattice.edges[id]! & (1 << direction))) continue
       const next = id + dy * n + dx
       if (dx && dy && (!knowledge.nodes[id + dx] || !knowledge.nodes[id + dy * n])) continue
-      if (!knowledge.nodes[next] || closed[next]) continue
+      if (!knowledge.nodes[next] || closed[next] === stamp) continue
       const cost = costs[id]! + (dx && dy ? diagonal : lattice.cellCm)
-      if (cost < costs[next]! || (cost === costs[next] && id < parents[next]!)) {
+      if (seen[next] !== stamp || cost < costs[next]! || (cost === costs[next] && id < parents[next]!)) {
         costs[next] = cost
+        seen[next] = stamp
         parents[next] = id
         heap.push(next, cost + heuristic(next))
       }
     }
   }
-  if (!closed[last]) return null
+  if (closed[last] !== stamp) return null
   const nodes = [last]
   while (nodes[nodes.length - 1] !== first) nodes.push(parents[nodes[nodes.length - 1]!]!)
   nodes.reverse()
@@ -242,7 +349,6 @@ export function knownRoute(
       b = points[i]!,
       lengthCm = distance(a.x, a.y, b.x, b.y)
     if (!lengthCm) continue
-    if (!drySegment(banks, a, b)) return null
     const { slope, uphill } = slopeClassOf(config, terrain, a, b)
     const groundClass = ground[cellOf(terrain, a.x, a.y)]! as Ground
     const duration = segmentTimeUnits(config, lengthCm, slope, uphill, groundClass, speed)
@@ -288,7 +394,15 @@ export function positionAlong(route: Route, elapsedMinutes: number): Point {
   }
   return { x: last.x1, y: last.y1 }
 }
+const frontierCache = new WeakMap<Knowledge, Map<string, Point | null>>()
 export function nearestFrontier(lattice: RouteLattice, knowledge: Knowledge, from: Point): Point | null {
+  let cache = frontierCache.get(knowledge)
+  if (!cache) {
+    cache = new Map()
+    frontierCache.set(knowledge, cache)
+  }
+  const key = `${from.x},${from.y}:${knowledge.revision}`
+  if (cache.has(key)) return cache.get(key)!
   const first = routeNode(lattice, knowledge, from)
   if (first < 0) return null
   const seen = new Uint8Array(lattice.dry.length),
@@ -322,5 +436,7 @@ export function nearestFrontier(lattice: RouteLattice, knowledge: Knowledge, fro
       }
     }
   }
-  return best < 0 ? null : nodePoint(lattice, best)
+  const result = best < 0 ? null : nodePoint(lattice, best)
+  cache.set(key, result)
+  return result
 }

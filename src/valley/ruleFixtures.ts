@@ -1,4 +1,5 @@
-import { buildLattice } from './routes'
+import { indexBanks } from './bankSearch'
+import { buildLattice, routeNode } from './routes'
 import { reindexPeople } from './perception'
 import { bankWaterHeight } from './banks'
 import { createValley } from './engine'
@@ -75,7 +76,16 @@ export function addTestLake(state: ValleyState, two = false) {
     x: 750,
     y: 1_050,
     minute: state.minute,
+    connectorNode: -1,
   }
+  bank.connectorNode = routeNode(
+    state.layout.lattice,
+    { nodes: state.layout.lattice.dry, revision: 0 },
+    { x: bank.x, y: bank.y },
+  )
+  // Register the explicit analytic access point in the same index used by production layouts.
+  state.layout.lattice.accessBanks.push(bank)
+  state.layout.lattice.bankIndex = indexBanks(state.layout.lattice.accessBanks, state.layout.terrain)
   for (const person of state.foragers) {
     person.knowledge.nodes.fill(1)
     person.knowledge.revision += 1

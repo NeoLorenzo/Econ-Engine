@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createSurveyedValley, addTestLake } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { bankSegmentWet } from './banks'
+import * as bankGeometry from './banks'
 import { buildLattice, knownRoute, positionAlong, segmentMinutes, segmentKcal, type Knowledge } from './routes'
 
 describe('known route lattice', () => {
@@ -15,6 +16,19 @@ describe('known route lattice', () => {
       knownRoute(lattice, knowledge, terrain, ground, lattice.banks, state.config, 0, from, to)
     return { state, lattice, knowledge, route }
   }
+  it('reuses exact-point connectors without shoreline tests during route searches', () => {
+    const { route } = fixture(true)
+    const from = { x: 250, y: 750 },
+      to = { x: 23_000, y: 750 }
+    expect(route(from, to)).not.toBeNull()
+    const spy = vi.spyOn(bankGeometry, 'bankSegmentWet')
+    try {
+      expect(route(from, to)).not.toBeNull()
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
   it('bends around a known lake without crossing water', () => {
     const { lattice, route } = fixture(true)
     const path = route({ x: 250, y: 750 }, { x: 23_000, y: 750 })!

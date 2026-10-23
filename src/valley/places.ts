@@ -35,7 +35,16 @@ export const capacityOf = (config: ValleyConfig, kind: PlaceKind): number =>
         ? config.standWoodKg
         : config.outcropStones
 
+const vicinityCache = new WeakMap<ValleyLayout, Map<string, number[]>>()
 export function placesWithin(layout: ValleyLayout, x: number, y: number, radiusCm: number): number[] {
+  let cache = vicinityCache.get(layout)
+  if (!cache) {
+    cache = new Map()
+    vicinityCache.set(layout, cache)
+  }
+  const key = `${x},${y}:${radiusCm}`,
+    saved = cache.get(key)
+  if (saved) return saved
   const { places, placeIndex } = layout
   const { cellCm, cells } = placeIndex
   const ids: number[] = []
@@ -51,7 +60,9 @@ export function placesWithin(layout: ValleyLayout, x: number, y: number, radiusC
     )
       for (const id of layout.placeChunks[row * cells + col]!)
         if ((places.x[id]! - x) ** 2 + (places.y[id]! - y) ** 2 <= radiusCm ** 2) ids.push(id)
-  return ids.sort((a, b) => a - b)
+  ids.sort((a, b) => a - b)
+  cache.set(key, ids)
+  return ids
 }
 
 export function placeAt(layout: ValleyLayout, x: number, y: number): number {

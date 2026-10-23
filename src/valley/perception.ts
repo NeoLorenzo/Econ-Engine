@@ -1,8 +1,6 @@
-import { bankApproach } from './banks'
 import { waterThresholds } from './body'
 import { placesWithin, placeAt } from './places'
 import { chunkOf, nodePoint, TIME_UNITS_PER_MINUTE, type Route, type RouteLattice } from './routes'
-import { heightAt } from './terrain'
 import { positionAt } from './tasks'
 import type { BankMemory, Forager, Point, ValleyState } from './types'
 
@@ -27,35 +25,6 @@ export function reindexPeople(state: ValleyState, minute: number): void {
       buckets[chunkOf(state.layout.lattice, point)]!.push(person.id)
     }
   state.peopleByChunk = buckets.map((ids) => Int32Array.from(ids))
-}
-const bankCache = new WeakMap<ValleyState['layout'], { banks: BankMemory[]; chunks: Map<number, BankMemory[]> }>()
-function banksOf(state: ValleyState) {
-  let cached = bankCache.get(state.layout)
-  if (cached) return cached
-  const { lattice, terrain } = state.layout,
-    { config } = state
-  const banks: BankMemory[] = [],
-    chunks = new Map<number, BankMemory[]>()
-  for (const segment of lattice.banks.segments.values()) {
-    const bank = bankApproach(
-      lattice.banks,
-      segment,
-      config.reachCm,
-      config.drinkBankHeightCm,
-      (x, y) => heightAt(terrain, x, y),
-      terrain.water.bodies[segment.body]!.id,
-      0,
-    )
-    if (!bank) continue
-    banks.push(bank)
-    const chunk = chunkOf(lattice, bank),
-      list = chunks.get(chunk) ?? []
-    list.push(bank)
-    chunks.set(chunk, list)
-  }
-  cached = { banks, chunks }
-  bankCache.set(state.layout, cached)
-  return cached
 }
 export function observeAt(state: ValleyState, person: Forager, minute: number): ObservationEvent {
   const { layout, config } = state,
@@ -97,42 +66,58 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
     }
   }
   const full = (person.knowledge.fullyKnown ??= new Uint8Array(lattice.chunkCells ** 2))
-  const banks = banksOf(state)
-  for (
-    let cy = Math.max(0, Math.floor((origin.y - radius) / lattice.chunkCm));
-    cy <= Math.min(lattice.chunkCells - 1, Math.floor((origin.y + radius) / lattice.chunkCm));
-    cy += 1
-  )
+  const banks = lattice.bankChunks
+  const banksKnown = (person.knowledge.banksKnown ??= new Uint8Array(lattice.chunkCells ** 2))
+  const views = (person.knowledge.views ??= new Set<string>())
+  const viewKey = `${origin.x},${origin.y}:${radius}`
+  const seenView = views.has(viewKey)
+  views.add(viewKey)
+  if (!seenView)
     for (
-      let cx = Math.max(0, Math.floor((origin.x - radius) / lattice.chunkCm));
-      cx <= Math.min(lattice.chunkCells - 1, Math.floor((origin.x + radius) / lattice.chunkCm));
-      cx += 1
-    ) {
-      const chunk = cy * lattice.chunkCells + cx
-      for (const bank of banks.chunks.get(chunk) ?? [])
-        if (!person.knownBanks.has(bank.id) && (bank.x - origin.x) ** 2 + (bank.y - origin.y) ** 2 <= sq) {
-          const memory = { ...bank, minute }
-          person.knownBanks.set(bank.id, memory)
-          observation.banks.push(memory)
-        }
-      if (full[chunk]) continue
-      const firstX = (cx * lattice.chunkCm) / lattice.cellCm,
-        firstY = (cy * lattice.chunkCm) / lattice.cellCm
-      const lastX = Math.min(lattice.cells, firstX + lattice.chunkCm / lattice.cellCm),
-        lastY = Math.min(lattice.cells, firstY + lattice.chunkCm / lattice.cellCm)
-      let complete = true
-      for (let y = firstY; y < lastY; y += 1)
-        for (let x = firstX; x < lastX; x += 1) {
-          const id = y * lattice.cells + x
-          if (person.knowledge.nodes[id]) continue
-          const point = nodePoint(lattice, id)
-          if ((point.x - origin.x) ** 2 + (point.y - origin.y) ** 2 <= sq) {
-            person.knowledge.nodes[id] = 1
-            observation.nodes.push(id)
-          } else complete = false
-        }
-      if (complete) full[chunk] = 1
-    }
+      let cy = Math.max(0, Math.floor((origin.y - radius) / lattice.chunkCm));
+      cy <= Math.min(lattice.chunkCells - 1, Math.floor((origin.y + radius) / lattice.chunkCm));
+      cy += 1
+    )
+      for (
+        let cx = Math.max(0, Math.floor((origin.x - radius) / lattice.chunkCm));
+        cx <= Math.min(lattice.chunkCells - 1, Math.floor((origin.x + radius) / lattice.chunkCm));
+        cx += 1
+      ) {
+        const chunk = cy * lattice.chunkCells + cx
+        if (!banksKnown[chunk])
+          for (const bank of banks.get(chunk) ?? [])
+            if (!person.knownBanks.has(bank.id) && (bank.x - origin.x) ** 2 + (bank.y - origin.y) ** 2 <= sq) {
+              const memory = { ...bank, minute }
+              person.knownBanks.set(bank.id, memory)
+              observation.banks.push(memory)
+            }
+        const dx = Math.max(
+          Math.abs(cx * lattice.chunkCm - origin.x),
+          Math.abs(Math.min(config.valleySizeCm, (cx + 1) * lattice.chunkCm) - origin.x),
+        )
+        const dy = Math.max(
+          Math.abs(cy * lattice.chunkCm - origin.y),
+          Math.abs(Math.min(config.valleySizeCm, (cy + 1) * lattice.chunkCm) - origin.y),
+        )
+        if (dx * dx + dy * dy <= sq) banksKnown[chunk] = 1
+        if (full[chunk]) continue
+        const firstX = (cx * lattice.chunkCm) / lattice.cellCm,
+          firstY = (cy * lattice.chunkCm) / lattice.cellCm
+        const lastX = Math.min(lattice.cells, firstX + lattice.chunkCm / lattice.cellCm),
+          lastY = Math.min(lattice.cells, firstY + lattice.chunkCm / lattice.cellCm)
+        let complete = true
+        for (let y = firstY; y < lastY; y += 1)
+          for (let x = firstX; x < lastX; x += 1) {
+            const id = y * lattice.cells + x
+            if (person.knowledge.nodes[id]) continue
+            const point = nodePoint(lattice, id)
+            if ((point.x - origin.x) ** 2 + (point.y - origin.y) ** 2 <= sq) {
+              person.knowledge.nodes[id] = 1
+              observation.nodes.push(id)
+            } else complete = false
+          }
+        if (complete) full[chunk] = 1
+      }
   if (observation.nodes.length) person.knowledge.revision += 1
   // The index records each person's last wake-up; route entry notifications keep moving entries local.
   const talk = config.sightRadiusCm

@@ -1,10 +1,10 @@
 import { measureTask } from './summary'
 import type { WakeEntry, WakeKind } from './clock'
 import { MINUTES_PER_DAY, minuteOfDay } from './calendar'
-import { atHearth, chooseTask, isDaylight, routeFor, routeKey, nextHungry } from './forager'
+import { atHearth, chooseTask, isDaylight, routeFor, routeKey, nextHungry, walkSpeed } from './forager'
 import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body'
 import { startTask, positionAt } from './tasks'
-import { nearestFrontier, chunkOf } from './routes'
+import { nearestFrontier, chunkOf, estimateMinutes } from './routes'
 import { observeAt, reindexPeople, scheduleArrivals, peopleInChunk } from './perception'
 import { carriedKcal, spoil, addLots, eatCarried } from './food'
 import { takeFrom } from './places'
@@ -39,7 +39,7 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
     routeId = -1
   let end = minute + 60
   if (choice.kind === 'walk' && choice.target) {
-    let route = routeFor(state, person, choice.target)
+    let route = choice.route ?? routeFor(state, person, choice.target)
     if (!route) {
       const frontier = nearestFrontier(state.layout.lattice, person.knowledge, person)
       if (frontier) {
@@ -86,7 +86,9 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
           )
     const net = choice.kind === 'gather' ? rate : rate - state.config.pickKcalPerHour
     const duration = Math.min(Math.ceil((stock * 60) / Math.max(1, rate)), Math.ceil((room * 60) / Math.max(1, net)))
-    const home = atHearth(person) ? 0 : (routeFor(state, person, person.hearth)?.minutes ?? 0)
+    const home = atHearth(person)
+      ? 0
+      : estimateMinutes(state.config, person, person.hearth, walkSpeed(state.config, person) * 60, 0)
     end = minute + Math.max(1, Math.min(duration, state.config.duskHour * 60 - minuteOfDay(minute) - home))
   }
   const beforeEvents: ValleyEvent[] = []
@@ -109,7 +111,9 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
         1,
         Math.min(
           Math.ceil((logCut(state.config) - person.chopRemainder) / (person.axe!.quality * 60)),
-          state.config.duskHour * 60 - minuteOfDay(minute) - (routeFor(state, person, person.hearth)?.minutes ?? 0),
+          state.config.duskHour * 60 -
+            minuteOfDay(minute) -
+            estimateMinutes(state.config, person, person.hearth, walkSpeed(state.config, person) * 60, 0),
         ),
       )
   if (choice.kind === 'gather' && state.layout.places.kind[choice.placeId] === 3) end = minute + 1
@@ -393,7 +397,10 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
       events.push({ kind: 'delivery', minute, foragerId: id, logs, hutId: person.hutId })
     if (person.groupId !== null) {
       const fed = feedFire(state, state.groups[person.groupId]!, person, minute)
-      if (fed) events.push(fed)
+      if (fed) {
+        events.push(fed)
+        state.today.fireGivenById[id]! += fed.wood
+      }
     }
   }
   person.hungry = nextHungry(state.config, person.energyKcal, person.hungry)

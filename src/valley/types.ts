@@ -28,6 +28,7 @@ import type { FishStock } from './fish'
 import type { WakeQueue } from './clock'
 
 export interface BankMemory extends Point {
+  connectorNode?: number
   segmentId?: number
   id: number
   bodyId: number

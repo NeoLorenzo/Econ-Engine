@@ -1,4 +1,4 @@
-import { buildLattice } from './routes'
+import { buildLattice, routeNode, type RouteLattice } from './routes'
 import { buildPlaces } from './places'
 import { bankCircleWet, bankWaterHeight } from './banks'
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
@@ -87,7 +87,7 @@ export function drawCraftSkills(config: ValleyConfig): number[] {
   return skills
 }
 
-class LayoutError extends Error {}
+export class LayoutError extends Error {}
 
 /** Draws whole centimetres from the layout stream, in order. */
 class Draws {
@@ -104,7 +104,11 @@ class Draws {
  * uniformly over the square `startAreaCm` wide round the land's centre in forager ID order, each at least
  * `startSpacingCm` from the earlier ones and always on grass or dirt.
  */
-export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(config).ground): Point[] {
+export function drawStarts(
+  config: ValleyConfig,
+  ground: Uint8Array = terrainOf(config).ground,
+  lattice?: RouteLattice,
+): Point[] {
   let draws = new Draws(deriveStartSeed(config.seed, 0))
   const terrain = terrainOf(config)
   const origin = Math.floor((config.valleySizeCm - config.startAreaCm) / 2)
@@ -114,7 +118,12 @@ export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(
     const x = origin + draws.int(config.startAreaCm + 1)
     const y = origin + draws.int(config.startAreaCm + 1)
     const habitable = circleOnGround(terrain, ground, x, y, 40, BUSH_GROUNDS)
-    if (habitable && starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
+    const connected = !lattice || routeNode(lattice, { nodes: lattice.dry, revision: 0 }, { x, y }) >= 0
+    if (
+      habitable &&
+      connected &&
+      starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)
+    ) {
       starts.push({ x, y })
       draws = new Draws(deriveStartSeed(config.seed, starts.length))
       failed = 0
@@ -343,8 +352,9 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const trees = plantsOf(treeSites)
   const stones = plantsOf(stoneSites)
   const woodPlants = woodPlantsOf(trees, bushes)
+  const lattice = buildLattice(config, terrain)
   const hearths = config.scattered
-    ? drawStarts(config, ground)
+    ? drawStarts(config, ground, lattice)
     : Array.from({ length: config.bandSize }, (_, slot) => {
         const offset = ringOffset(config, slot)
         return { x: camp.x + offset.x, y: camp.y + offset.y }
@@ -354,7 +364,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const placeIndex = buildIndex(places, config.chunkCm, size)
   return {
     places,
-    lattice: buildLattice(config, terrain),
+    lattice,
     placeIndex,
     placeChunks: placeIndex.buckets,
     camp,

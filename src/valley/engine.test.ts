@@ -142,3 +142,13 @@ describe('food, water and wood tasks', () => {
     expect(body(runs[0]!)).toEqual(body(runs[1]!))
   }, 120_000)
 })
+
+it('keeps all eight canonical founders alive without thirst deaths for thirty days', () => {
+  const state = stepValley(createValley(), 30 * 1_440)
+  expect(
+    state.foragers
+      .filter((p) => p.deathCauses.includes('dehydration'))
+      .map((p) => ({ id: p.id, minute: p.deathMinute })),
+  ).toEqual([])
+  expect(state.foragers.every((p) => p.alive)).toBe(true)
+}, 120_000)

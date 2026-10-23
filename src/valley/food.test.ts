@@ -1,3 +1,8 @@
+import { addTestLake } from './ruleFixtures'
+import { bandAt } from './ruleTestFixtures'
+import { stepValley } from './engine'
+import { chooseTask, foodGoal, chooseWork, loadOf, loadKg, speedForLoad } from './forager'
+import { observeAt } from './perception'
 import { describe, expect, it } from 'vitest'
 import { createValley } from './engine'
 import { FLAT_LAND } from './config'
@@ -54,4 +59,107 @@ it('retains the stock-dependent thicket slowdown', () => {
   expect(rateAtStock(config, 1200, 'berries', 1560)).toBe(600)
   expect(rateAtStock(config, 3500, 'nuts', 75000)).toBe(3500)
   expect(fishRate(600, 900000, 1800000)).toBe(300)
+})
+
+describe('ported food and load choices', () => {
+  it('picks a thin thicket at the remembered stock-dependent rate', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.x = s.layout.places.x[0]!
+    p.y = s.layout.places.y[0]!
+    p.energyKcal = 59000
+    p.hungry = true
+    p.foragingSkill = 100
+    p.forageRate = 1200
+    s.foodStock.fill(0)
+    s.foodStock[0] = 1560
+    p.placeStock.set(s.foodStock)
+    observeAt(s, p, 600)
+    const n = stepValley(s, 601)
+    expect(n.foragers[0]!.task).toMatchObject({ kind: 'pick', productionPerHour: 600 })
+    const end = n.foragers[0]!.task!.endMinute
+    const after = stepValley(n, end)
+    expect(after.totals.gatheredKcal).toBeGreaterThan(0)
+    expect(after.foodStock[0]).toBeGreaterThanOrEqual(0)
+  })
+  it('does not fish remembered stock too thin to be worth working', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.knownPlaces.fill(-1)
+    const bank = addTestLake(s)
+    p.fishMemory.set(bank.bodyId, { stock: 1, capacity: 10000, minute: 600 })
+    expect(foodGoal(s, p, 600)).toBeNull()
+  })
+  it('fills a started wood load despite holding its stock target', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.wood = 25
+    p.tripWood = 1
+    p.hungry = false
+    p.shortOfWood = false
+    expect(chooseWork(s.config, p, 600)).toMatchObject({ good: 'wood', forTrade: false })
+  })
+  it('leaves an unfinished wood load when hungry', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.tripWood = 15
+    p.hungry = true
+    expect(chooseWork(s.config, p, 600)).toMatchObject({ good: 'food' })
+  })
+  it('stops counting a load once home', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.tripWood = 15
+    expect(stepValley(s, 601).foragers[0]!.tripWood).toBe(0)
+  })
+  it('counts trip wood, all foods and the carried log in load mass', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.wood = 40
+    p.tripWood = 3
+    p.log = 1
+    p.carried = [{ food: 'berries', kcal: 600, harvestTick: 0 }]
+    expect(loadKg(s.config, loadOf(p))).toBe(3 + 1 + s.config.logKg)
+    expect(speedForLoad(s.config, 24)).toBeGreaterThan(s.config.walkCmPerSecond * 0.95)
+    expect(speedForLoad(s.config, 24)).toBeLessThan(s.config.walkCmPerSecond)
+  })
+  it('prioritises food while hungry even with a full load', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.hungry = true
+    p.energyKcal = 59000
+    p.tripWood = 30
+    p.wood = 30
+    expect(chooseTask(s, p, 600).reason).not.toBe('taking a load home')
+    expect(chooseWork(s.config, p, 600)).toMatchObject({ good: 'food' })
+  })
+  it('chooses the nearer source at equal hourly returns and leaves sources below work cost', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.knownPlaces.fill(-1)
+    p.knownPlaces[0] = 0
+    p.knownPlaces[1] = 0
+    p.x = s.layout.places.x[0]!
+    p.y = s.layout.places.y[0]!
+    expect(foodGoal(s, p, 600)?.placeId).toBe(0)
+    p.placeStock[0] = 1
+    p.placeStock[1] = 0
+    expect(foodGoal(s, p, 600)).toBeNull()
+  })
+})
+
+it('fishes an observed lake optimistically, withdraws its stock and remembers it', () => {
+  const s = bandAt(600, { fishMinAreaM2: 1 }),
+    p = s.foragers[0]!,
+    bank = addTestLake(s)
+  p.knownPlaces.fill(-1)
+  p.placeStock.fill(0)
+  p.x = bank.x
+  p.y = bank.y
+  p.energyKcal = 59000
+  p.hungry = true
+  expect(foodGoal(s, p, 600)?.kind).toBe('fish')
+  const next = stepValley(s, 602)
+  expect(next.totals.gatheredKcal).toBeGreaterThan(0)
+  expect(next.foragers[0]!.fishMemory.get(bank.bodyId)?.stock).toBeLessThan(next.fish[0]!.capacity)
 })

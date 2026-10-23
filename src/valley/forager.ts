@@ -1,9 +1,10 @@
+import { nearestBanks, knownBodies, knownComponents } from './bankSearch'
 import { planHut, salePrice, worthTo } from './axes'
 import { waterThresholds } from './body'
 import { capacityOf as foodCapacity, fullRateOf, rateAtStock, carriedKcal } from './food'
 import { knownTerms, buyingPays, sellingPays, wantedWood, spareWood } from './trade'
-import { nearestFrontier, estimateMinutes } from './routes'
-import { heightAt } from './terrain'
+import { nearestFrontier, estimateMinutes, routeNode } from './routes'
+import { cachedHeight } from './routes'
 import { carriedByFood, foodKg } from './food'
 import { minuteOfDay } from './calendar'
 import { knownRoute, type Route } from './routes'
@@ -76,6 +77,7 @@ export function routeFor(state: ValleyState, person: Forager, target: Point): Ro
   )
 }
 export interface TaskChoice {
+  route?: Route
   productionPerHour?: number
   expectedStock?: number
   desiredCarriedKcal?: number
@@ -93,8 +95,8 @@ export const restChoice = (reason: ActionReason = 'satiated'): TaskChoice => ({
 export function mustGoHome(state: ValleyState, person: Forager, minute: number) {
   if (atHearth(person)) return false
   if (!isDaylight(state.config, minute)) return true
-  const home = routeFor(state, person, person.hearth)
-  return home !== null && home.minutes >= state.config.duskHour * 60 - minuteOfDay(minute)
+  const home = estimate(state, person, person.hearth)
+  return home >= state.config.duskHour * 60 - minuteOfDay(minute)
 }
 function estimate(state: ValleyState, person: Forager, point: Point) {
   return estimateMinutes(
@@ -102,7 +104,7 @@ function estimate(state: ValleyState, person: Forager, point: Point) {
     person,
     point,
     walkSpeed(state.config, person) * 60,
-    heightAt(state.layout.terrain, point.x, point.y) - heightAt(state.layout.terrain, person.x, person.y),
+    cachedHeight(state.layout.terrain, point.x, point.y) - cachedHeight(state.layout.terrain, person.x, person.y),
   )
 }
 function workAt(
@@ -134,35 +136,52 @@ function explore(state: ValleyState, person: Forager, reason: ActionReason): Tas
   return point ? { kind: 'walk', placeId: -1, target: point, reason } : restChoice('no known route')
 }
 function waterGoal(state: ValleyState, person: Forager, minute: number, severe: boolean): TaskChoice {
-  const banks = [...person.knownBanks.values()].sort(
-    (a, b) => estimate(state, person, a) - estimate(state, person, b) || a.id - b.id,
+  const banks = nearestBanks(
+    state.layout.lattice,
+    state.layout.terrain,
+    state.config,
+    person,
+    walkSpeed(state.config, person) * 60,
+    3,
   )
-  for (const bank of banks) {
+  let searches = 0
+  for (const { bank, minutes } of banks) {
     const here = (person.x - bank.x) ** 2 + (person.y - bank.y) ** 2 <= state.config.reachCm ** 2
     if (here) return workAt(state, person, bank.id, 'drink', 'drinking', 0, 0)
-    const route = routeFor(state, person, bank)
-    if (!route) continue
     if (
       !severe &&
-      route.minutes + estimateMinutes(state.config, bank, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 >
+      minutes + estimateMinutes(state.config, bank, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 >
         state.config.duskHour * 60 - minuteOfDay(minute)
     )
       continue
-    return workAt(state, person, bank.id, 'drink', 'seeking water', 0, 0)
+    if (searches++ >= 3) break
+    const route = routeFor(state, person, bank)
+    if (!route) continue
+    return { ...workAt(state, person, bank.id, 'drink', 'seeking water', 0, 0), route }
   }
   return explore(state, person, 'seeking water')
+}
+function reachablePoint(state: ValleyState, person: Forager, point: Point) {
+  const lattice = state.layout.lattice,
+    first = routeNode(lattice, person.knowledge, person),
+    last = routeNode(lattice, person.knowledge, point)
+  if (first < 0 || last < 0) return false
+  const labels = knownComponents(lattice, person.knowledge)
+  return labels[first] === labels[last]
 }
 export function foodGoal(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
   let best: TaskChoice | null = null,
     bestScore = -1,
     bestId = Infinity
   const consider = (id: number, kind: 'pick' | 'nuts' | 'fish', target: Point, rate: number, stock: number) => {
-    if (rate <= state.config.pickKcalPerHour) return
+    if (rate <= state.config.pickKcalPerHour || rate < bestScore) return
+    const lowerTravel = estimateMinutes(state.config, person, target, walkSpeed(state.config, person) * 60, 0)
+    if ((3600 * rate) / (lowerTravel * 60 + 3600) < bestScore) return
     const travel = estimate(state, person, target)
     const home = estimateMinutes(state.config, target, person.hearth, walkSpeed(state.config, person) * 60, 0)
     if (travel + home + 1 > state.config.duskHour * 60 - minuteOfDay(minute)) return
     const score = (3_600 * rate) / (travel * 60 + 3_600)
-    if (score > bestScore || (score === bestScore && id < bestId)) {
+    if ((score > bestScore || (score === bestScore && id < bestId)) && reachablePoint(state, person, target)) {
       bestScore = score
       bestId = id
       best = workAt(
@@ -190,15 +209,34 @@ export function foodGoal(state: ValleyState, person: Forager, minute: number): T
       stock,
     )
   }
-  for (const bank of person.knownBanks.values()) {
-    const memory = person.fishMemory.get(bank.bodyId)
-    const rate = memory
-      ? memory.capacity
-        ? Math.floor((person.fishRate * memory.stock) / memory.capacity)
-        : 0
-      : person.fishRate
-    consider(bank.id, 'fish', bank, rate, memory?.stock ?? Math.floor(rate / 60))
-  }
+  if (person.fishRate > bestScore)
+    for (const bodyId of knownBodies(person.knownBanks)) {
+      const remembered = person.fishMemory.get(bodyId)
+      const possibleRate = remembered
+        ? remembered.capacity
+          ? Math.floor((person.fishRate * remembered.stock) / remembered.capacity)
+          : 0
+        : person.fishRate
+      if (possibleRate <= bestScore) continue
+      const candidate = nearestBanks(
+        state.layout.lattice,
+        state.layout.terrain,
+        state.config,
+        person,
+        walkSpeed(state.config, person) * 60,
+        1,
+        bodyId,
+      )[0]
+      if (!candidate) continue
+      const bank = candidate.bank,
+        memory = person.fishMemory.get(bodyId)
+      const rate = memory
+        ? memory.capacity
+          ? Math.floor((person.fishRate * memory.stock) / memory.capacity)
+          : 0
+        : person.fishRate
+      consider(bank.id, 'fish', bank, rate, memory?.stock ?? Math.floor(rate / 60))
+    }
   return best
 }
 function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
@@ -218,6 +256,7 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
     if (stock <= 0) continue
     const target = { x: state.layout.places.x[id]!, y: state.layout.places.y[id]! },
       travel = estimate(state, person, target)
+    if (!reachablePoint(state, person, target)) continue
     if (
       travel + estimateMinutes(state.config, target, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 >
       state.config.duskHour * 60 - minuteOfDay(minute)
@@ -264,21 +303,20 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
               (a[1].y - person.y) ** 2 -
               ((b[1].x - person.x) ** 2 + (b[1].y - person.y) ** 2) || a[0] - b[0],
         )
-      for (const [, point] of seen)
-        if (
-          (point.x - person.x) ** 2 + (point.y - person.y) ** 2 > state.config.talkRadiusCm ** 2 &&
-          routeFor(state, person, point)
-        )
-          return { kind: 'walk', placeId: -1, target: point, reason: 'seeking company' }
-      for (const id of person.knownFlags) {
-        const group = state.groups[id]
-        if (group && group.dissolvedMinute === null) {
-          const route = routeFor(state, person, group.flag)
-          if (route)
-            return route.segments.length
-              ? { kind: 'walk', placeId: -1, target: group.flag, reason: 'seeking company' }
-              : restChoice('waiting for company')
-        }
+      const company = seen.find(
+        ([, point]) => (point.x - person.x) ** 2 + (point.y - person.y) ** 2 > state.config.talkRadiusCm ** 2,
+      )
+      if (company) return { kind: 'walk', placeId: -1, target: company[1], reason: 'seeking company' }
+      const flags = person.knownFlags
+        .map((id) => state.groups[id])
+        .filter((g) => g && g.dissolvedMinute === null)
+        .map((g) => ({ group: g!, minutes: estimate(state, person, g!.flag) }))
+        .sort((a, b) => a.minutes - b.minutes || a.group.id - b.group.id)
+      if (flags.length) {
+        const flag = flags[0]!.group.flag
+        return person.x === flag.x && person.y === flag.y
+          ? restChoice('waiting for company')
+          : { kind: 'walk', placeId: -1, target: flag, reason: 'seeking company' }
       }
     } else {
       if (!person.axe && person.spareAxe) {

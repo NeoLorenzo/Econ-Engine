@@ -4,7 +4,7 @@ import { MINUTES_PER_DAY, dayOf } from './calendar'
 import { resolveValleyConfig } from './config'
 import { fishCapacity } from './fish'
 import { newHydration } from './body'
-import { drawCraftSkills, drawSkills, generateLayout, layoutError } from './layout'
+import { drawCraftSkills, drawSkills, generateLayout, LayoutError } from './layout'
 import { craftOf, noTaskSeconds, ratesOf, startingLog } from './practice'
 import { startingGroups } from './social'
 import { siteCount } from './sites'
@@ -135,9 +135,14 @@ function emptyDay(
 /** Creates the valley at minute 0. Throws on a configuration that breaks a rule or whose layout cannot be drawn. */
 export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState {
   const config = resolveValleyConfig(overrides)
-  const unplaceable = layoutError(config)
-  if (unplaceable) throw new Error(`Invalid valley configuration: ${unplaceable}`)
-  const layout = generateLayout(config)
+  let layout
+  try {
+    layout = generateLayout(config)
+  } catch (error) {
+    if (error instanceof LayoutError)
+      throw new Error(`Invalid valley configuration: ${error.message}`, { cause: error })
+    throw error
+  }
   const foodStock = new Int32Array(layout.places.count)
   const woodStock = new Int32Array(layout.places.count)
   const treeLogs = new Int32Array(layout.places.count)
@@ -379,6 +384,8 @@ const cloneForager = (forager: Forager): Forager => {
       ...forager.knowledge,
       nodes: forager.knowledge.nodes.slice(),
       fullyKnown: forager.knowledge.fullyKnown?.slice(),
+      banksKnown: forager.knowledge.banksKnown?.slice(),
+      views: forager.knowledge.views ? new Set(forager.knowledge.views) : undefined,
     },
     routeCache: new Map(forager.routeCache),
     waterObservations: [...forager.waterObservations],
