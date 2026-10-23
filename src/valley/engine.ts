@@ -1,4 +1,5 @@
 import { regrowPlaces } from './places'
+import { WakeQueue } from './clock'
 import { beginAxe, cutAt, exchangeAxes, planHut, workAxe } from './axes'
 import { carriedKcal, foodOfSource, fullRateOf, rateAtStock, spoil, worthWorking } from './food'
 import { resolveValleyConfig } from './config'
@@ -315,6 +316,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const partial = { foragers, foodStock, layout, fishKcal, woodStock, groups, huts: [], config }
   return {
     fish,
+    queue: new WakeQueue(),
+    lastInterval: [],
     waterWithdrawals: new Map(),
     config,
     layout,
@@ -447,6 +450,8 @@ const cloneDay = (day: DaySummary): DaySummary => ({
 export function cloneValley(state: ValleyState): ValleyState {
   return {
     ...state,
+    queue: state.queue.clone(),
+    lastInterval: [...state.lastInterval],
     fish: state.fish.map((stock) => ({ ...stock })),
     waterWithdrawals: new Map(state.waterWithdrawals),
     foodStock: state.foodStock.slice(),
@@ -1400,7 +1405,29 @@ function advance(state: ValleyState, recordEvents = true) {
 }
 
 /** Runs one minute. It never changes `previous`: it copies it and advances the copy. */
-export const stepValley = (previous: ValleyState) => advance(cloneValley(previous))
+export function stepValley(previous: ValleyState, toMinute = previous.minute + 1): ValleyState {
+  if (!Number.isSafeInteger(toMinute) || toMinute < previous.minute)
+    throw new Error('Target minute must be a safe integer at or after the current minute')
+  const state = cloneValley(previous)
+  state.lastInterval = []
+  while (state.minute < toMinute) {
+    advance(state)
+    state.lastInterval.push(
+      ...state.lastEvents,
+      ...state.lastWaterEvents,
+      ...state.lastDeaths,
+      ...state.lastSwaps,
+      ...state.lastQuotes,
+      ...state.lastGroupEvents,
+      ...state.lastFires,
+      ...state.lastFeeds,
+      ...state.lastAxeEvents,
+      ...state.lastHutEvents,
+      ...state.lastPractice,
+    )
+  }
+  return state
+}
 
 export interface RunOptions {
   /** Called after every minute with the state as it then stands, which the caller must not keep or change. */

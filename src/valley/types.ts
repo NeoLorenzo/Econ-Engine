@@ -2,6 +2,7 @@ import type { Terrain } from './terrain'
 import type { Hydration, HydrationConfig } from './hydration'
 import type { GroundKnowledge } from './routes'
 import type { FishStock } from './fish'
+import type { WakeQueue } from './clock'
 
 export interface BankMemory extends Point {
   segmentId?: number
@@ -1085,6 +1086,8 @@ export interface ValleyTotals {
 }
 
 export interface ValleyState {
+  queue: WakeQueue
+  lastInterval: ValleyEvent[]
   logStock: Int32Array
   felledMinute: Int32Array
   lastWaterEvents: WaterEvent[]
