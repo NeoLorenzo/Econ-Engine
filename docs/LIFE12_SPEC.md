@@ -19,7 +19,7 @@ This step changes how time, space and plants are represented. It does not change
 
 | Measure | Evidence and comparison | Status |
 | --- | --- | --- |
-| Speed | A year of eight people in well under a second and of forty in about a second, on an ordinary laptop in Node, measured by the existing validation timings. | Pattern target, not a benchmark; no sweep. |
+| Speed | A year of eight people in well under a second and of forty in about a second, on an ordinary laptop in Node, measured by the existing validation timings. | Pattern target, not a benchmark; no sweep. Not met by the first pull request: a canonical year of eight takes about 5 to 8 seconds, and creating the valley 5 to 12 more (see the lab notes). |
 | Survival and settlement | Over Life 11's canonical year, the share of founders alive, the number of groups and the number of finished huts are of the same order as Life 11's. | Pattern comparison; an exact match is impossible and not sought. |
 | Continuity | At a minute a second, no person jumps: every displayed position lies on a recorded route between recorded minutes. | Observer check. |
 | Lazy bodies | Energy and water at any minute, computed from the task, equal what stepping the task minute by minute would give. | Unit test. |
@@ -128,13 +128,15 @@ Routes run on a lattice of `routeCellCm` (20 m) nodes. A node is dry if its foot
 
 A route is a polyline of node centres with a connector at each end. Each segment has a length, a slope class from the terrain heights at its ends (flat below 10%, moderate to 30%, steep above), a ground class, and a speed. Flat loaded speed is `max(1, floor(walkCmPerSecond * (1,000*bodyKg - loadSlowdownPerMille*loadKg) / (1,000*bodyKg)))`; moderate slopes divide it by `moderateSlowdownPerMille/1,000` uphill and cost nothing extra downhill; steep slopes halve it uphill and divide by `steepDownSlowdownPerMille/1,000` downhill. Ground multiplies time by Life 11's terrain percentages. Walking costs `walkKcalPerHour` on the flat, one and a half times that on moderate uphill and twice on steep; downhill costs the flat rate. Route edges retain integer fixed-point fractions of a minute; their travel time is accumulated and the journey's end is rounded up once. The owner approved preserving the configured walking pace during implementation on 2026-10-23: rounding each 20 m edge up to a minute would make a flat 1 km grass walk take 50 minutes rather than 16. The route retains every edge for collision and interpolation. The fraction between physical arrival and the rounded wake-up is standing time. Energy and activity-water accounting carry the additional integer duration remainders.
 
+A walk’s duration is summed over its segments in integer 1/60,000-minute units and rounded up to a whole minute only at its end, so the 20 m edges do not each round up and slow people; the fraction after arrival is charged at the standing rate.
+
 Travel estimates for choosing targets use straight-line distance at flat speed plus a climb allowance of `climbMinutesPerMetre`, as a lower bound; the chosen target's real route is then searched. There is no per-second accounting, no grade table and no energy equation.
 
 ## People
 
-Person state lives in typed arrays indexed by id: position, chunk, task kind, task start minute, route id, energy, energy remainder, water deficit, water remainder, carried food lots, carried wood, carried log, stones, axe, hut, group, born skills, practice seconds per task, alive. Memory per person is a separate structure, never read by the checker as truth.
+Each person is one object: position, task record, energy and water with their remainders, carried food lots, carried wood, carried log, stones, axe, hut, group, born skills, practice and alive. Its memories (places, their stocks and check times, route-lattice nodes, people met) are typed arrays and maps inside it, never read by the checker as truth. Column storage indexed by id is left until a later step needs it.
 
-Founders are `founders` people, 40 by default, placed from their own streams within the central `startAreaCm` (800 m) on dry grass or dirt with Life 11's spacing when `scattered`, or at the nearest valid dry camp with room for their hearth slots when together. Born foraging and wood skill range from 75% to 125%; born craft is 100%. Everyone starts with 66,000 kcal, no water deficit, nothing carried and no relationships: the people they have met is an empty list.
+Founders are `founders` people, 8 by default in the first pull request and 40 from the second, placed from their own streams within the central `startAreaCm` (800 m) on dry grass or dirt with Life 11's spacing when `scattered`, or at the nearest valid dry camp with room for their hearth slots when together. Born foraging and wood skill range from 75% to 125%; born craft is 100%. Everyone starts with 66,000 kcal, no water deficit, nothing carried and no relationships: the people they have met is an empty list.
 
 ## Tasks
 
@@ -192,7 +194,7 @@ Run settings, read from the Life page before the first minute and otherwise from
 | `seed` | 20260813 | any integer |
 | `daysPerYear` | 90 | 8 to 365 |
 | `worldKm` | 4 | 1 to 10 |
-| `founders` | 40 | 1 to 1,000 |
+| `founders` | 8 (40 from the second pull request) | 1 to 1,000 |
 | `scattered` | true | |
 
 New and changed parameters:
@@ -206,7 +208,7 @@ New and changed parameters:
 | `treeRegrowthYears` | 20 | Replaces `treeRegrowthDays`. |
 | Thicket, stand and outcrop stocks | the sums above | Replace per-bush, per-hazel, per-tree and per-stone capacities, initial stocks and regrowth. |
 
-Removed: `terrainCellCm` as a movement resolution (it remains the hydrology lattice), `eyeHeightCm`, `sightStepCm`, `climbSecondsPerMetre`, `treeRegrowthDays`, `bushesPerThicket`, `hazelsPerThicket`, `treesPerStand`, `stonesPerOutcrop`, `bushSpacingCm`, `hazelSpacingCm`, `treeSpacingCm`, `stoneSpacingCm`, `stonesPerSpot`, and the Tobler and Pandolf tables. `bandSize` becomes `founders`. All other Life 11 defaults are retained with their values.
+Removed: `terrainCellCm` as a movement resolution (it remains the hydrology lattice), `eyeHeightCm`, `sightStepCm`, `climbSecondsPerMetre`, `treeRegrowthDays`, `bushesPerThicket`, `hazelsPerThicket`, `treesPerStand`, `stonesPerOutcrop`, `bushSpacingCm`, `hazelSpacingCm`, `treeSpacingCm`, `stoneSpacingCm`, `stonesPerSpot`, and the Tobler and Pandolf tables. `bandSize` becomes `founders`. `logsPerTree` (3) is kept: a stand’s log stock counts in bundles of three logs, each a former tree with its own felling minute and regrowth, and the first cut of a bundle adds its crown wood. All other Life 11 defaults are retained with their values.
 
 Validation rejects non-integers, non-finite values and unsafe products; settings outside their ranges; `routeCellCm` not a multiple of `terrainCellCm` and `chunkCm` not a multiple of `routeCellCm`; negative stocks, rates or counts; invalid threshold ordering; impossible placement; and more founders than the start area can hold at the start spacing, with a specific message. Year-anchored amounts are converted with exact arithmetic and carried remainders; no per-day amount is rounded before accumulation.
 
@@ -225,9 +227,9 @@ Events: task start and end with produced amounts, walk with its route id, observ
 
 ## Observer
 
-Label the page **Life 12 · strangers**. Before the first minute the page shows the run settings with their ranges and a Start button; after it, they are fixed and shown in the header with day, year and season name (the four quarters of the year).
+Label the page **Life 12 · strangers**. The header shows the day, year and season name (the four quarters of the year). The run settings with their ranges and a Start button, fixed after the first minute, arrive with the second pull request; the first keeps Life 11’s setup form and Reset.
 
-Playback runs from one minute a second upward. The view asks the simulation for every living person's position at the displayed minute and draws it; walks are interpolated along recorded routes, never along the chord. Above `mapSpeedMinutesPerSecond` (a day a second) the view stops drawing people and gestures and shows the map with places, stocks, groups and huts, updated at the end of each advanced interval. Stocks are drawn per place as density, not per bush.
+Playback runs from one minute a second upward. The view keeps one state and a continuous displayed minute within the minute that state has reached: every wake-up up to the drawn minute has run and none after it, so each person is drawn from the task under way, at the position its route gives, never along the chord. Each frame runs the engine once; the minutes a frame may run double while steps fit the frame budget and halve when they do not, because copying the state is a fixed cost of every step. From `mapSpeedMinutesPerSecond` (a day a second) up, the view stops drawing people and gestures and shows the map with places, stocks, groups and huts. Places are drawn as decoration, a fixed number of bushes, hazels, trees or rocks per place that share out its stock in turn, so what is drawn stays in proportion to what is there; the decoration uses no simulation stream.
 
 The person panel shows the current task, its start and expected end, the route, energy, water deficit and thirst, carried lots, skills, group, hut, the last wake-up's reason and the next scheduled one. The group card and the land map keep Life 11's content. Labels stay the observer's: "group" is a measurement of flags and members, and the engine stores no name for anything above the person.
 

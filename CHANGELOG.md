@@ -2,6 +2,16 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Refoundation-058] - (2026-10-23)
+
+### Changed
+
+- Remove the per-minute representation: the old configuration keys, movement segments, per-second body records, plant memories and the Tobler and Pandolf tables. Validate the founders' range and start area, stands holding whole trees, and a minute's work at every place.
+- Port the observer to the wake-up engine. People are drawn from their task records at the displayed minute, which stays within the minute the state has reached. Map speeds, from a day a second, hide people. Places are drawn as decoration sharing out their stock. The person panel shows the task, its reason and the next wake-up, and the header shows the calendar. The page is **Life 12 · strangers**.
+- Each frame runs the engine once, and the minutes a frame may run double or halve with the frame budget.
+- Fix two checker faults found by the fingerprint runs: a cut started and interrupted in the same minute was credited with the previous cut's log, and a dead member of a group that later dissolved was reported as having no standing group.
+- Record new fingerprints for all 21 configurations and seeds. Delete the Life 11 specification, and update the architecture, validation, calibration and README documents for Life 12.
+
 ## [LIFE12-Ledger-057] - (2026-10-23)
 
 - Replace the minute checker with interval replay of bodies, stocks, observations, tools, huts and external water withdrawals, plus physical routes, queues, event order, group/fire and regrowth checks.

@@ -49,21 +49,9 @@ With realistic production, the valley's 36 hectares of berries would feed one or
 
 ## Carrying loads
 
-Now a load slows the walker and costs nothing extra: speed falls to `bodyKg / (bodyKg + L)`, so a 30 kg load slows a 60 kg forager by a third, and walking costs 300 kcal an hour whatever the load.
+Real people barely slow down under a load: in a 2022 study walkers carrying 20% of their body mass kept the same pace, and at 40% slowed by only 3% [8]. The load costs energy instead; Pandolf's equation [10] puts a 60 kg walker at about 220 kcal an hour unloaded and about 330 kcal an hour with 30 kg, on the low side for heavy loads.
 
-Real people barely slow down. In a 2022 study, walkers carrying 20% of their body mass kept the same pace, and at 40% slowed by only 3% [8]. The load costs energy instead. The Pandolf equation [10] gives the metabolic rate `M` in watts for body mass `W`, load `L`, speed `V` in m/s and terrain factor `η` (1.2 for light brush):
-
-`M = 1.5 W + 2.0 (W + L) (L / W)² + η (W + L) (1.5 V²)`
-
-For a 60 kg forager at 1.25 m/s in light brush, converted at 0.86 kcal per watt-hour:
-
-| Load | Now: speed, cost | Pandolf: speed, cost |
-| --- | --- | --- |
-| None | 125 cm/s, 300 kcal/h | 125 cm/s, **223 kcal/h** |
-| 20 kg log | 93 cm/s, 300 kcal/h | about 125 cm/s, **286 kcal/h** |
-| 30 kg of wood | 83 cm/s, 300 kcal/h | about 122 cm/s, **334 kcal/h** |
-
-**Proposal:** walking costs follow Pandolf, computed in integers, and speed falls only slightly, about 3% at 40% of body mass. A load then costs food, not time. Pandolf is known to underpredict somewhat for heavy loads [10], so these costs are on the low side.
+Life 12 keeps these magnitudes without the equation (realism rule 2). Walking costs `walkKcalPerHour`, 250 kcal an hour, on the flat, the middle of that range. A load slows the walker slightly: speed falls by `loadSlowdownPerMille`, 75 per mille of the load's share of body mass, about 3% at 40% of body mass, as measured.
 
 ## Warmth at night
 
@@ -158,17 +146,15 @@ Added in Life 10, which merges the roadmap's scale and terrain steps. The valley
 | `dirtSlopePercent`, `stoneSlopePercent`, `dirtCurvatureCm` | 10, 30 and 40 cm | Fine soil is exposed on disturbed slopes and sharp local breaks; stone is rare | Estimate |
 | `grassTerrainPercent`, `dirtTerrainPercent` | 120, 120 | Pandolf terrain factor for light brush is 1.2 [39] | Grass measured as light brush; dirt held equal until evidence supports a difference |
 | `stoneTerrainPercent` | 150 | Pandolf's heavy-brush factor is 1.5 [39]; rough stony ground lies between firm ground and loose sand | Estimate |
-| Speed on slopes | Speed on the flat times `exp(−3.5 · |G / 100 + 0.05|) / exp(−0.175)`, as a table of thousandths | Tobler's hiking function: 5 km an hour on the flat, fastest, 6 km an hour, on a 5% descent [40] | Measured |
-| Energy on slopes | Pandolf's grade term `η (W + L) · 0.35 V G` watts [10], less Santee's correction on descents | Santee's correction for downhill walking [41]; walking costs least at about −10% [42] | Measured |
-| `climbSecondsPerMetre` | 6 | Naismith's rule: an hour for every 5 km, and an hour more for every 600 m climbed [43] | Measured, a rule of thumb |
-| `eyeHeightCm`, `sightStepCm` | 160, 3,000 | The eye of an adult standing; the step resolves hills 200 m apart | Measured; the step is a choice |
 | `startAreaCm` | 80,000: starts within the middle 800 m | The size of Life 9.7's valley, so the band still meets | Choice |
 
-For a 60 kg forager unloaded on grass, the integer rule gives 125 cm a second and 222 kcal an hour on the flat, 88 cm a second and 340 kcal an hour up a 10% slope, and 125 cm a second and 165 kcal an hour down one. A kilometre costs about 49 kcal on the flat, 107 up a 10% slope and 37 down it.
+Walking speed and cost come in three slope classes instead of Tobler's and Pandolf's grade terms [40, 10]: flat below 10%, moderate to 30%, steep above. People walk about 4.5 km an hour on flat grass (125 cm a second, slowed by the ground's terrain percentage). A moderate climb divides the speed by 1.3 and costs one and a half times as much; a steep climb halves it and costs twice as much; descents cost nothing extra and a steep one is slowed by 1.3, as Santee's downhill correction and the cost minimum near −10% suggest [41, 42]. Choosing a target allows `climbMinutesPerMetre`, a minute a metre of climb, close to Naismith's hour per 600 m [43]. Routes run on a 20 m lattice of known dry ground.
 
 The land is rich: as dense by the hectare as Life 9.7's valley, it grows about 164 million kcal a year, enough for about 180 people, against a band of 8. Real Mesolithic densities were far lower, about 0.1 to 1 person a square kilometre, because of winter, which this land does not yet have. Seasons, at step 12, bring the hungry months.
 
-## Water and drinking — Life 11
+## Water and drinking
+
+Added in Life 11 and kept unchanged by Life 12; drinking now happens in whole-minute tasks at the same rate.
 
 Permanent water now follows the generated land. The former north-edge lake area and terrain ramp are removed. Existing lake biomass/growth evidence is retained per body, while applying it to river reaches is explicitly provisional. The earlier 30 ha example above is a historical calculation, not a fixed current lake.
 
