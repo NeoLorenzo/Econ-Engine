@@ -1,50 +1,86 @@
 import { describe, expect, it } from 'vitest'
 import { FLAT_LAND } from '../valley/config'
-import { cloneValley, runValley, stepValley } from '../valley/engine'
 import { createSurveyedValley } from '../valley/ruleFixtures'
-import { advancePlayback, type DisplayPair } from './valleyViewModel'
+import {
+  advanceDisplay,
+  foragerPose,
+  mapSpeedMinutesPerSecond,
+  routePoints,
+  startDisplay,
+  VALLEY_SPEEDS,
+  type Display,
+} from './valleyViewModel'
 
-const startPair = (): DisplayPair => {
-  const previous = createSurveyedValley({ ...FLAT_LAND, founders: 1 })
-  return { previous, next: stepValley(previous), alpha: 0 }
+const start = () => startDisplay(createSurveyedValley({ ...FLAT_LAND, founders: 2 }))
+
+/** The distance from `point` to the nearest segment of the polyline `points`. */
+function distanceToPath(point: { x: number; y: number }, points: readonly { x: number; y: number }[]) {
+  let best = Infinity
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1]!,
+      b = points[i]!
+    const dx = b.x - a.x,
+      dy = b.y - a.y
+    const length = dx * dx + dy * dy
+    const t = length === 0 ? 0 : Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length))
+    best = Math.min(best, Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy)))
+  }
+  return best
 }
 
-const clock = (...values: number[]) => {
-  let index = 0
-  return () => values[Math.min(index++, values.length - 1)]!
-}
-
-describe('responsive Life playback', () => {
-  it('ends an overloaded batch between real minutes and preserves its exact simulation prefix', () => {
-    const pair = startPair()
-    const unchanged = cloneValley(pair.next)
-    const advanced = advancePlayback(pair, 300, 0.25, 2, clock(0, 7, 8, 10))
-    const previous = runValley(pair.next, 1, { recordEvents: false })
-    expect(advanced.pair.previous).toEqual(previous)
-    expect(advanced.pair.next).toEqual(stepValley(previous))
-    expect(advanced.pair.alpha).toBe(0.25)
-    expect(advanced.lastStepMs).toBe(2)
-    expect(pair.next).toEqual(unchanged)
+describe('drawing people from task records', () => {
+  it('draws within the minute the state has reached, and never goes back', () => {
+    let display: Display = start()
+    for (const elapsed of [0.016, 0.1, 0.25, 3, 0.033, 0.2]) {
+      const before = display.minute
+      display = advanceDisplay(display, elapsed, { minutesPerSecond: 10 })
+      expect(display.minute).toBeGreaterThanOrEqual(before)
+      expect(display.state.minute).toBe(Math.floor(display.minute))
+    }
   })
 
-  it('runs just one minute after a slow tick instead of blocking on hundreds more', () => {
-    const pair = startPair()
-    const advanced = advancePlayback(pair, 300, 0.5, 20, clock(0, 1, 21))
-    expect(advanced.pair.previous).toBe(pair.next)
-    expect(advanced.pair.next).toEqual(stepValley(pair.next))
-    expect(advanced.pair.next.minute - advanced.pair.previous.minute).toBe(1)
+  it('positions lie on the recorded route at every displayed minute', () => {
+    let display: Display = start()
+    let walked = 0
+    for (let frame = 0; frame < 6_000 && walked < 40; frame += 1) {
+      // Three-tenths of a minute a frame, from midnight through the first morning's walks.
+      display = advanceDisplay(display, 0.1, { minutesPerSecond: 3 })
+      for (const id of [0, 1]) {
+        const task = display.state.foragers[id]!.task
+        if (task?.kind !== 'walk' || display.minute < task.startMinute) continue
+        const points = routePoints(display.state, id)
+        expect(distanceToPath(foragerPose(display, id), points)).toBeLessThanOrEqual(1)
+        walked += 1
+      }
+    }
+    expect(walked).toBeGreaterThan(0)
   })
 
-  it('completes affordable batches and advances only interpolation when no minute is due', () => {
-    const pair = startPair()
-    let elapsed = 0
-    const advanced = advancePlayback(pair, 4, 0.75, 1, () => elapsed++)
-    const previous = runValley(pair.next, 3, { recordEvents: false })
-    expect(advanced.pair.previous).toEqual(previous)
-    expect(advanced.pair.next).toEqual(stepValley(previous))
-    const interpolated = advancePlayback(advanced.pair, 0, 0.9, advanced.lastStepMs)
-    expect(interpolated.pair.previous).toBe(advanced.pair.previous)
-    expect(interpolated.pair.next).toBe(advanced.pair.next)
-    expect(interpolated.pair.alpha).toBe(0.9)
+  it('doubles the minutes a frame runs while steps fit the budget, and halves them, to one at least, when not', () => {
+    const fast = (() => {
+      let t = 0
+      return () => (t += 5)
+    })()
+    let display: Display = start()
+    for (let frame = 0; frame < 4; frame += 1)
+      display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, fast)
+    expect(display.minute).toBe(1 + 2 + 4 + 8)
+    expect(display.allowance).toBe(16)
+    const slow = (() => {
+      let t = 0
+      return () => (t += 100)
+    })()
+    display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, slow)
+    expect(display.minute).toBe(15 + 16)
+    expect(display.allowance).toBe(8)
+    for (let frame = 0; frame < 6; frame += 1)
+      display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, slow)
+    expect(display.allowance).toBe(1)
+  })
+
+  it('stops drawing people from map speeds up', () => {
+    for (const speed of VALLEY_SPEEDS) expect(speed.map).toBe(speed.minutesPerSecond >= mapSpeedMinutesPerSecond)
+    expect(VALLEY_SPEEDS.at(-1)!.map).toBe(true)
+    expect(VALLEY_SPEEDS[0]!.map).toBe(false)
   })
 })

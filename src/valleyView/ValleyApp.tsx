@@ -5,23 +5,22 @@ import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
 import { VALLEY_DEFAULT_CONFIG, valleyConfigErrors } from '../valley/config'
-import { createValley, stepValley } from '../valley/engine'
+import { createValley } from '../valley/engine'
 import { isDaylight } from '../valley/forager'
 import { layoutError } from '../valley/layout'
 import type { ValleyConfig } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
 import {
-  advanceClock,
-  advancePlayback,
+  advanceDisplay,
   aliveCount,
   clearView,
+  calendarLabel,
   clockLabel,
   daySeries,
   daysOfFoodLeft,
   DEFAULT_SPEED_INDEX,
   describeActivity,
   displayedEnergy,
-  displayMinutes,
   fireSaving,
   foragerColor,
   foragerName,
@@ -38,11 +37,14 @@ import {
   plantInspection,
   stoneInspection,
   specializationPoints,
+  startDisplay,
+  stepDisplay,
   stepFollowed,
+  taskSummary,
   TERMS_COLORS,
   VALLEY_SPEEDS,
   type ClearView,
-  type DisplayPair,
+  type Display,
 } from './valleyViewModel'
 
 type NumericSetup = Pick<
@@ -96,14 +98,13 @@ const DEFAULT_SETUP = Object.fromEntries(
 /** Every forager is drawn as its own figure, which stays smooth up to about this many. */
 const MAX_BAND = 100
 
-const startPair = (setup: Setup): DisplayPair => {
-  const previous = createValley(setup)
-  return { previous, next: stepValley(previous), alpha: 0 }
-}
+const startPair = (setup: Setup): Display => startDisplay(createValley(setup))
 
 /** What the HUD shows, refreshed a few times a second rather than every frame. */
 interface Snapshot {
-  pair: DisplayPair
+  pair: Display
+  /** Simulated minutes per wall-clock second, measured over the last second. */
+  minutesPerSecond: number
   followed: number
   energyKcal: number
   minutes: number
@@ -140,7 +141,7 @@ export default function ValleyApp() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<ValleyScene | null>(null)
   const [initialPair] = useState(() => startPair(DEFAULT_SETUP))
-  const pairRef = useRef<DisplayPair>(initialPair)
+  const pairRef = useRef<Display>(initialPair)
   const [running, setRunning] = useState(true)
   const [showFlow, setShowFlow] = useState(false)
   const flowRef = useRef(false)
@@ -156,7 +157,7 @@ export default function ValleyApp() {
     () => Object.fromEntries(SETUP_SWITCHES.map(({ key }) => [key, DEFAULT_SETUP[key]])) as Pick<Setup, SwitchKey>,
   )
   const [setupError, setSetupError] = useState<string | null>(null)
-  const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0, true))
+  const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0))
   const [sceneError, setSceneError] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
 
@@ -187,7 +188,7 @@ export default function ValleyApp() {
     let frame = 0
     let lastFrame = performance.now()
     let lastHud = 0
-    let lastStepMs = 0
+    let rate = { atMs: performance.now(), minute: pairRef.current.minute, perSecond: 0 }
     const onPick = (pick: ValleyPick | null) => {
       if (pick?.kind === 'forager') {
         followedRef.current = pick.id
@@ -211,20 +212,15 @@ export default function ValleyApp() {
       .then((scene) => {
         if (disposed) return scene.dispose()
         sceneRef.current = scene
-        scene.setWorld(pairRef.current.next)
+        scene.setWorld(pairRef.current.state)
         const loop = (now: number) => {
           const elapsed = (now - lastFrame) / 1000
           lastFrame = now
           const speed = speedRef.current
-          if (runningRef.current) {
-            const clock = advanceClock(pairRef.current.alpha, elapsed, speed.minutesPerSecond)
-            const advanced = advancePlayback(pairRef.current, clock.steps, clock.alpha, lastStepMs)
-            pairRef.current = advanced.pair
-            lastStepMs = advanced.lastStepMs
-          }
+          if (runningRef.current) pairRef.current = advanceDisplay(pairRef.current, elapsed, speed)
           scene.draw(pairRef.current, {
             showFlow: flowRef.current,
-            interpolate: speed.interpolate,
+            drawPeople: !speed.map,
             selected: selectedRef.current,
             highlightedId: highlightedRef.current,
             clear: clearRef.current,
@@ -235,7 +231,13 @@ export default function ValleyApp() {
           if (now - lastHud >= HUD_INTERVAL_MS) {
             lastHud = now
             clearRef.current = measureClear(mount)
-            setSnapshot(snap(pairRef.current, followedRef.current, speed.interpolate))
+            if (now - rate.atMs >= 1_000)
+              rate = {
+                atMs: now,
+                minute: pairRef.current.minute,
+                perSecond: ((pairRef.current.minute - rate.minute) * 1_000) / (now - rate.atMs),
+              }
+            setSnapshot(snap(pairRef.current, followedRef.current, rate.perSecond))
             setMapView(scene.view())
           }
           frame = requestAnimationFrame(loop)
@@ -253,13 +255,13 @@ export default function ValleyApp() {
 
   const reset = useCallback((nextSetup: Setup) => {
     pairRef.current = startPair(nextSetup)
-    sceneRef.current?.setWorld(pairRef.current.next)
+    sceneRef.current?.setWorld(pairRef.current.state)
     setSelected(null)
     followedRef.current = 0
     followingRef.current = true
     setFollowedId(0)
     setFollowing(true)
-    setSnapshot(snap(pairRef.current, 0, true))
+    setSnapshot(snap(pairRef.current, 0))
   }, [])
 
   const follow = useCallback((id: number) => {
@@ -267,7 +269,7 @@ export default function ValleyApp() {
     followingRef.current = true
     setFollowedId(id)
     setFollowing(true)
-    setSnapshot(snap(pairRef.current, id, true))
+    setSnapshot(snap(pairRef.current, id))
   }, [])
 
   /** Selects a group and moves the camera to take in its base and members, which stops following a forager. */
@@ -290,9 +292,8 @@ export default function ValleyApp() {
 
   /** Finishes the minute in progress, then shows the next one from its start. */
   const stepMinute = useCallback(() => {
-    const { next } = pairRef.current
-    pairRef.current = { previous: next, next: stepValley(next), alpha: 0 }
-    setSnapshot(snap(pairRef.current, followedRef.current, true))
+    pairRef.current = stepDisplay(pairRef.current)
+    setSnapshot(snap(pairRef.current, followedRef.current))
   }, [])
 
   useEffect(() => {
@@ -332,7 +333,8 @@ export default function ValleyApp() {
   }
 
   const { pair, energyKcal, minutes, followed } = snapshot
-  const state = pair.next
+  const state = pair.state
+  const task = taskSummary(state, followed)
   const { config } = state
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
@@ -362,7 +364,7 @@ export default function ValleyApp() {
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 11 · water</span>
+        <span className="life-title">Life 12 · strangers</span>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -410,7 +412,12 @@ export default function ValleyApp() {
 
       <section className="life-card life-hud" aria-label={`The band, following ${name}`}>
         <div className="life-hud-head">
-          <div className="life-clock num">{clockLabel(minutes / 60)}</div>
+          <div
+            className="life-clock num"
+            title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}
+          >
+            {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
+          </div>
           <div className="life-band num">
             {aliveCount(state)} of {config.founders} alive
           </div>
@@ -483,13 +490,13 @@ export default function ValleyApp() {
           {state.today.waterLossMlById[followed]!.toLocaleString()} ml
           {forager.deathCauses.length > 0 && ` · ${forager.deathCauses.join(' and ')}`}
         </p>
-        {forager.alive && forager.route.length > 0 && (
+        {forager.alive && task && (
           <p>
-            {state.lastEvents.find((event) => event.foragerId === followed)?.reason === 'seeking water'
-              ? 'Drinking destination'
-              : 'Destination'}
-            : {Math.round(forager.route.at(-1)!.x / 100)} m east, {Math.round(forager.route.at(-1)!.y / 100)} m south ·
-            gold line shows the known dry route; blue dots mark remembered banks.
+            Task: {task.kind} ({task.reason}), minute {task.startMinute.toLocaleString('en-US')} to{' '}
+            {task.endMinute.toLocaleString('en-US')}
+            {task.nextWake &&
+              ` · next wake-up: ${task.nextWake.kind} at minute ${task.nextWake.minute.toLocaleString('en-US')}`}
+            {task.kind === 'walk' && ' · gold line shows the known dry route; blue dots mark remembered banks.'}
           </p>
         )}
         <div className="life-energy">
@@ -585,9 +592,6 @@ export default function ValleyApp() {
           <dt>Ground</dt>
           <dd className="num">
             {summary.ground}, {summary.heightM.toFixed(1)} m above the datum
-            {summary.walk &&
-              ` · walking ${summary.walk.gradePercent > 0 ? 'up' : summary.walk.gradePercent < 0 ? 'down' : 'on'} a ${Math.abs(summary.walk.gradePercent)}% slope at ${summary.walk.speedKmh.toFixed(1)} km/h`}
-            {` · climbed ${Math.round(summary.climbedTodayM)} m today`}
           </dd>
           <dt>Skills</dt>
           <dd className="num">
@@ -978,7 +982,7 @@ export default function ValleyApp() {
       )}
 
       <LandMap
-        state={snapshot.pair.next}
+        state={snapshot.pair.state}
         view={mapView}
         onPick={(x, y) => {
           followingRef.current = false
@@ -1159,11 +1163,12 @@ function stringify(setup: Setup) {
   >
 }
 
-function snap(pair: DisplayPair, followed: number, interpolate: boolean): Snapshot {
+function snap(pair: Display, followed: number, minutesPerSecond = 0): Snapshot {
   return {
     pair,
     followed,
-    energyKcal: displayedEnergy(pair, followed, interpolate),
-    minutes: displayMinutes(pair, interpolate),
+    minutesPerSecond,
+    energyKcal: displayedEnergy(pair, followed),
+    minutes: pair.minute,
   }
 }
