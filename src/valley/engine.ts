@@ -226,6 +226,9 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     const born = skills[id]!
     return {
       ...newHydration(config),
+      task: null,
+      lastWakeMinute: 0,
+      energyRemainder: 0,
       waterObservations: [],
       groundKnowledge: {
         shore: layout.terrain.water.shore,
@@ -383,6 +386,7 @@ const cloneForager = (forager: Forager): Forager => {
   cloneGroundViews(forager.groundKnowledge, groundKnowledge)
   return {
     ...forager,
+    task: forager.task ? { ...forager.task } : null,
     waterObservations: [...forager.waterObservations],
     groundKnowledge,
     knownBanks: cloneKnownBanks(forager.knownBanks),

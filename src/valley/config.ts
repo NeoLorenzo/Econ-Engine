@@ -17,6 +17,10 @@ import type { Point, ValleyConfig } from './types'
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   daysPerYear: 90,
+  walkKcalPerHour: 250,
+  moderateSlowdownPerMille: 1_300,
+  steepDownSlowdownPerMille: 1_300,
+  climbMinutesPerMetre: 1,
   berryThicketCapacityKcal: 3_120,
   berryThicketRegrowthKcalPerYear: 54_000,
   berryThicketWoodKg: 120,

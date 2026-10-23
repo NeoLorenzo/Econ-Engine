@@ -83,6 +83,10 @@ export interface FoodLot {
  */
 export interface ValleyConfig extends HydrationConfig {
   daysPerYear: number
+  walkKcalPerHour: number
+  moderateSlowdownPerMille: number
+  steepDownSlowdownPerMille: number
+  climbMinutesPerMetre: number
   berryThicketCapacityKcal: number
   berryThicketRegrowthKcalPerYear: number
   berryThicketWoodKg: number
@@ -511,7 +515,32 @@ export interface PlantMemory {
   seen: Int32Array
 }
 
+export type TaskKind = 'sleep' | 'rest' | 'walk' | 'pick' | 'nuts' | 'fish' | 'drink' | 'gather' | 'cut' | 'make'
+export interface TaskRecord {
+  kind: TaskKind
+  startMinute: number
+  endMinute: number
+  placeId: number
+  routeId: number
+  energyPerHour: number
+  waterPerHour: number
+  waterBaseMlPerDay: number
+  waterExtraMlPerKcal: number
+  restKcalPerHour: number
+  drinkMlPerMinute: number
+  startEnergyKcal: number
+  startEnergyRemainder: number
+  startWaterMl: number
+  startWaterRemainder: number
+  startWaterActivityRemainder: number
+  reason: ActionReason
+  productionPerHour: number
+}
+
 export interface Forager extends Hydration {
+  task: TaskRecord | null
+  lastWakeMinute: number
+  energyRemainder: number
   waterObservations: WaterObservationEvent[]
   groundKnowledge: GroundKnowledge
   knownBanks: Map<number, BankMemory>
