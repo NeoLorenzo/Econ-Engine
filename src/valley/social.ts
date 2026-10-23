@@ -1,3 +1,4 @@
+import { bankWaterHeight } from './banks'
 import { ringOffset } from './config'
 import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
 import { distanceSq } from './geometry'
@@ -274,7 +275,13 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Grou
     }
   }
   const flag = { x: Math.floor((forager.x + other.x) / 2), y: Math.floor((forager.y + other.y) / 2) }
-  if (state.layout.terrain.water.body[cellOf(state.layout.terrain, flag.x, flag.y)]! >= 0) return null
+  const water = state.layout.terrain.water
+  if (
+    water.shore
+      ? bankWaterHeight(water.shore, flag, water.level) !== null
+      : water.body[cellOf(state.layout.terrain, flag.x, flag.y)]! >= 0
+  )
+    return null
   const group = newGroup(state.groups.length, flag, minute)
   if (!knownDryFootprint(forager.groundKnowledge, flag, 100) || !knownDryFootprint(other.groundKnowledge, flag, 100))
     return null

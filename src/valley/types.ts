@@ -4,6 +4,7 @@ import type { GroundKnowledge } from './routes'
 import type { FishStock } from './fish'
 
 export interface BankMemory extends Point {
+  segmentId?: number
   id: number
   bodyId: number
   wetCell: number

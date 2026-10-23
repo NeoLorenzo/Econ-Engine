@@ -1,3 +1,4 @@
+import { bankCircleWet, bankWaterHeight } from './banks'
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { ringOffset } from './config'
 import { distanceSq } from './geometry'
@@ -129,7 +130,9 @@ export const OUTCROP_GROUNDS = grows(GRASS, DIRT, STONE)
 
 /** Whether a point's ground is one of `grounds`. */
 export const onGround = (terrain: Terrain, ground: Uint8Array, x: number, y: number, grounds: number) =>
-  terrain.water.body[cellOf(terrain, x, y)]! < 0 && ((grounds >> ground[cellOf(terrain, x, y)]!) & 1) === 1
+  (terrain.water.shore
+    ? bankWaterHeight(terrain.water.shore, { x, y }, terrain.water.level) === null
+    : terrain.water.body[cellOf(terrain, x, y)]! < 0) && ((grounds >> ground[cellOf(terrain, x, y)]!) & 1) === 1
 
 /** Whether the cell holding a point, and every cell whose centre lies within `radius` of it, is one of `grounds`. */
 export function circleOnGround(
@@ -143,6 +146,7 @@ export function circleOnGround(
   const size = terrain.cells * terrain.cellCm
   if (x - radius < 0 || y - radius < 0 || x + radius > size || y + radius > size) return false
   if (!onGround(terrain, ground, x, y, grounds)) return false
+  if (terrain.water.shore && bankCircleWet(terrain.water.shore, { x, y }, radius)) return false
   const { cellCm, cells } = terrain
   const i0 = Math.max(0, Math.floor((x - radius) / cellCm))
   const i1 = Math.min(cells - 1, Math.floor((x + radius) / cellCm))
@@ -159,7 +163,11 @@ export function circleOnGround(
         ) <=
         radius * radius
       )
-        if (terrain.water.body[j * cells + i]! >= 0 || ((grounds >> ground[j * cells + i]!) & 1) === 0) return false
+        if (
+          (!terrain.water.shore && terrain.water.body[j * cells + i]! >= 0) ||
+          ((grounds >> ground[j * cells + i]!) & 1) === 0
+        )
+          return false
   return true
 }
 

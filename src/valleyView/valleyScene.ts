@@ -15,6 +15,8 @@ import { isDaylight } from '../valley/forager'
 import { siteCount } from '../valley/sites'
 import { livingMembers } from '../valley/social'
 import { TiledInstances } from './tiledInstances'
+import { tiledSurface } from './tiledSurface'
+import { waterSurface } from './waterSurface'
 import { groundSurface, surfaceHeightAt, type GroundSurface } from './groundSurface'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
@@ -69,7 +71,7 @@ const OUTSIDE = 0x2c4a30
 /** The grassland's surface colours: grass, dirt and stone, by ground code. */
 const GROUND_COLOURS = [0x4f7a42, 0x785b3b, 0x85827a]
 /** Bushes and hazels are drawn in square tiles this wide, and only those near the camera. */
-const PLANT_TILE_M = 400
+const PLANT_TILE_M = 100
 /** Bushes and hazels are drawn within this many metres of the camera's target, more when it is further away. */
 const PLANT_DRAW_M = 500
 /** The canonical 4 km land is drawn at its full 5 m terrain lattice, so its 15-60 m relief is not averaged away. */
@@ -127,7 +129,6 @@ export interface DrawOptions {
   followedId: number
   /** The camera keeps the followed forager in the middle of the view. */
   following: boolean
-  nowMs: number
   elapsedSeconds: number
 }
 
@@ -314,8 +315,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const { ground } = state.layout
     const { cells, cellCm, columns, along, heights } = sampled
     const half = state.config.valleySizeCm / 200
-    const positions = new Float32Array(along * along * 3)
-    const colours = new Float32Array(along * along * 3)
+    const shore = state.layout.terrain.water.shore
+    const bankFloats = shore ? [...shore.patches.values()].reduce((sum, patch) => sum + patch.ground.length, 0) : 0
+    const positions = new Float32Array(along * along * 3 + bankFloats)
+    const colours = new Float32Array(positions.length)
     const colour = new THREE.Color()
     let highest = 1
     for (const h of heights) highest = Math.max(highest, h)
@@ -357,9 +360,36 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const indices: number[] = []
     for (let row = 0; row < along - 1; row += 1)
       for (let column = 0; column < along - 1; column += 1) {
-        if (state.layout.terrain.water.body[columns[row]! * cells + columns[column]!]! >= 0) continue
+        const cell = columns[row]! * cells + columns[column]!
+        if (shore?.patches.has(cell) || state.layout.terrain.water.body[cell]! >= 0) continue
         const a = row * along + column
         indices.push(a, a + along, a + 1, a + 1, a + along, a + along + 1)
+      }
+    let bankVertex = along * along
+    if (shore)
+      for (const [cell, patch] of shore.patches) {
+        const i = cell % cells,
+          j = Math.floor(cell / cells)
+        const base = j * along + i
+        for (let triangle = 0; triangle < patch.ground.length; triangle += 9) {
+          for (const offset of [0, 6, 3]) {
+            const p = triangle + offset
+            const x = patch.ground[p]!,
+              y = patch.ground[p + 1]!
+            positions[bankVertex * 3] = x / 100 - half
+            positions[bankVertex * 3 + 1] = patch.ground[p + 2]! / 100
+            positions[bankVertex * 3 + 2] = y / 100 - half
+            const fx = x / cellCm - i,
+              fy = y / cellCm - j
+            for (let channel = 0; channel < 3; channel++)
+              colours[bankVertex * 3 + channel] =
+                colours[base * 3 + channel]! * (1 - fx) * (1 - fy) +
+                colours[(base + 1) * 3 + channel]! * fx * (1 - fy) +
+                colours[(base + along) * 3 + channel]! * (1 - fx) * fy +
+                colours[(base + along + 1) * 3 + channel]! * fx * fy
+            indices.push(bankVertex++)
+          }
+        }
       }
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
@@ -483,11 +513,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let hazelStems: TiledInstances | null = null
   let nutMesh: TiledInstances | null = null
   let lake: Mesh | null = null
+  let waterBodyByFace: number[] = []
   let flow: LineSegments | null = null
-  let trunks: InstancedMesh | null = null
-  let crowns: InstancedMesh | null = null
-  let stumps: InstancedMesh | null = null
-  let deadwood: InstancedMesh | null = null
+  let trunks: TiledInstances | null = null
+  let crowns: TiledInstances | null = null
+  let stumps: TiledInstances | null = null
+  let deadwood: TiledInstances | null = null
   let rocks: InstancedMesh | null = null
   let hutModels: HutModel[] = []
   const hutGroup = new THREE.Group()
@@ -1058,8 +1089,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
     siteLoops = []
     if (knowledge) {
-      for (const child of knowledge.children) (child as Mesh).geometry.dispose()
-      knowledge.geometry.dispose()
+      knowledge.traverse((part) => {
+        if (part instanceof THREE.Mesh) part.geometry.dispose()
+      })
       ;(knowledge.material as MeshBasicMaterial).dispose()
       knowledgeTexture?.dispose()
       world.remove(knowledge)
@@ -1075,13 +1107,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     leaves = berryMesh = hazelLeaves = hazelStems = nutMesh = trunks = crowns = stumps = deadwood = rocks = null
     for (const mesh of [ground, outside, lake]) {
       if (!mesh) continue
-      mesh.geometry.dispose()
-      for (const child of mesh.children) {
-        const part = child as Mesh
+      const materials = new Set<InstanceType<Three['Material']>>()
+      mesh.traverse((part) => {
+        if (!(part instanceof THREE.Mesh)) return
         part.geometry.dispose()
-        ;(part.material as MeshStandardMaterial).dispose()
-      }
-      ;(mesh.material as MeshStandardMaterial).dispose()
+        for (const material of Array.isArray(part.material) ? part.material : [part.material]) materials.add(material)
+      })
+      for (const material of materials) material.dispose()
       world.remove(mesh)
     }
     ground = outside = lake = null
@@ -1251,61 +1283,36 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     surface = groundSurface(state.layout.terrain, state.layout.terrain.cells)
     const size = state.config.valleySizeCm / 100
     const terrainGeometry = terrainMeshGeometry(state, surface)
-    ground = new THREE.Mesh(
+    ground = tiledSurface(
+      THREE,
       terrainGeometry,
       new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false }),
     )
-    ground.receiveShadow = true
-    ground.castShadow = true
+    for (const tile of ground.children) {
+      tile.receiveShadow = true
+      tile.castShadow = true
+    }
     outside = new THREE.Mesh(
       new THREE.PlaneGeometry(size * 8, size * 8),
       new THREE.MeshStandardMaterial({ color: OUTSIDE, roughness: 1 }),
     )
     outside.rotation.x = -Math.PI / 2
     outside.position.y = state.layout.terrain.height.reduce((min, h) => Math.min(min, h), 0) / 100 - 1
-    // The lake beyond the north edge: as wide as the valley, and as deep as its area makes it.
     const water = state.layout.terrain.water
-    const vertices: number[] = []
-    const bedVertices: number[] = []
-    const quad = (into: number[], a: number[], b: number[], c: number[], d: number[]) =>
-      into.push(...a, ...c, ...b, ...b, ...c, ...d)
-    for (let id = 0; id < water.body.length; id += 1) {
-      if (water.body[id]! < 0) continue
-      const x = ((id % water.cells) * water.cellCm) / 100 - size / 2
-      const z = (Math.floor(id / water.cells) * water.cellCm) / 100 - size / 2
-      const width = water.cellCm / 100
-      const level = water.level[id]! / 100
-      const bed = water.bed[id]! / 100
-      quad(vertices, [x, level, z], [x + width, level, z], [x, level, z + width], [x + width, level, z + width])
-      quad(bedVertices, [x, bed, z], [x + width, bed, z], [x, bed, z + width], [x + width, bed, z + width])
-      const corners = [
-        [x, z],
-        [x + width, z],
-        [x + width, z + width],
-        [x, z + width],
-      ]
-      for (let edge = 0; edge < 4; edge += 1) {
-        const neighbour = [id - water.cells, id + 1, id + water.cells, id - 1][edge]!
-        if (neighbour >= 0 && neighbour < water.body.length && water.body[neighbour]! >= 0) continue
-        const a = corners[edge]!
-        const b = corners[(edge + 1) % 4]!
-        quad(
-          bedVertices,
-          [a[0]!, bed, a[1]!],
-          [b[0]!, bed, b[1]!],
-          [a[0]!, groundY(a[0]!, a[1]!), a[1]!],
-          [b[0]!, groundY(b[0]!, b[1]!), b[1]!],
-        )
-      }
-    }
+    const wet = waterSurface(surface)
+    const { vertices, bedVertices } = wet
+    waterBodyByFace = wet.waterBodyByFace
     const waterGeometry = new THREE.BufferGeometry()
     waterGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
     waterGeometry.computeVertexNormals()
-    lake = new THREE.Mesh(
+    lake = tiledSurface(
+      THREE,
       waterGeometry,
       new THREE.MeshStandardMaterial({ color: WATER, roughness: 0.25, metalness: 0.1 }),
+      100,
+      true,
     )
-    lake.receiveShadow = true
+    for (const tile of lake.children) tile.receiveShadow = true
     const arrows: number[] = []
     for (const body of water.bodies) {
       if (body.kind !== 'river') continue
@@ -1351,8 +1358,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     beds.setAttribute('position', new THREE.Float32BufferAttribute(bedVertices, 3))
     beds.computeVertexNormals()
     lake.add(
-      new THREE.Mesh(beds, new THREE.MeshStandardMaterial({ color: 0x635749, side: THREE.DoubleSide, roughness: 1 })),
+      tiledSurface(
+        THREE,
+        beds,
+        new THREE.MeshStandardMaterial({ color: 0x635749, side: THREE.DoubleSide, roughness: 1 }),
+      ),
     )
+    beds.dispose()
     world.add(outside, ground, lake)
 
     // Bushes: three leafy lobes each, with berries on their upper sides. Bushes and hazels are drawn in tiles of the
@@ -1458,10 +1470,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
     // Trees: a trunk and two crown cones each, and a stump once felled. The crown of a standing tree is drawn full at
     // first, for the bounds; each tree is redrawn as it is when the first minute is drawn.
-    trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.count)
-    crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, trees.count * CROWN_CONES.length)
-    stumps = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.count)
-    deadwood = new THREE.InstancedMesh(deadwoodGeometry, firewoodMaterial, trees.count * DEADWOOD_STICKS)
+    const treeX = Float32Array.from(trees.x, (x) => x / 100 - size / 2)
+    const treeZ = Float32Array.from(trees.y, (y) => y / 100 - size / 2)
+    trunks = new TiledInstances(THREE, trunkGeometry, trunkMaterial, 1, treeX, treeZ, size, 100)
+    crowns = new TiledInstances(THREE, crownGeometry, crownMaterial, CROWN_CONES.length, treeX, treeZ, size, 100)
+    stumps = new TiledInstances(THREE, trunkGeometry, trunkMaterial, 1, treeX, treeZ, size, 100)
+    deadwood = new TiledInstances(THREE, deadwoodGeometry, firewoodMaterial, DEADWOOD_STICKS, treeX, treeZ, size, 100)
     treeDrawn = Array.from({ length: trees.count }, () => ({ felled: false, trunk: 1, crown: 1, deadwood: 1 }))
     for (let tree = 0; tree < trees.count; tree += 1) placeTree(tree, treeDrawn[tree]!)
     // Stone spots: a heap of grey stones each.
@@ -1504,7 +1518,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       uv[index * 2 + 1] = 1 - (corners.getZ(index) + size / 2) / placesSize
     }
     draped.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
-    knowledge = new THREE.Mesh(
+    knowledge = tiledSurface(
+      THREE,
       draped,
       new THREE.MeshBasicMaterial({
         map: knowledgeTexture,
@@ -1523,9 +1538,17 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       wetUv[index * 2 + 1] = 1 - (wetPositions.getZ(index) + size / 2) / size
     }
     wetShade.setAttribute('uv', new THREE.BufferAttribute(wetUv, 2))
-    knowledge.add(new THREE.Mesh(wetShade, knowledge.material))
-    knowledge.position.y = 0.03
+    knowledge.add(tiledSurface(THREE, wetShade, knowledge.material as MeshBasicMaterial))
+    waterGeometry.dispose()
+    wetShade.dispose()
+    terrainGeometry.dispose()
+    draped.dispose()
+    // Depth bias avoids lifting the overlay above the shoreline and exposing a dark cell grid.
+    knowledge.position.y = 0
     knowledge.renderOrder = 1
+    knowledge.traverse((tile) => {
+      tile.renderOrder = 1
+    })
     world.add(knowledge)
 
     camera.near = 0.1
@@ -1582,7 +1605,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     camera.position.set(cx, Math.max(lookHeight + distance * Math.sin(pitch), groundY(cx, cz) + 1.5), cz)
     camera.lookAt(target.x, lookHeight, target.z)
     // Bushes and hazels are drawn only in the tiles near what the camera looks at.
-    for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh])
+    for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh, trunks, crowns, stumps, deadwood])
       mesh?.showNear(target.x, target.z, PLANT_DRAW_M + distance)
     // Near things need a near plane close in; the whole valley needs a far one.
     camera.near = Math.max(0.05, distance / 200)
@@ -1659,10 +1682,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function draw(pair: DisplayPair, options: DrawOptions) {
     if (flow) flow.visible = options.showFlow
     if (!config || !layout) return
-    const { interpolate, nowMs, followedId } = options
+    const { interpolate, followedId } = options
     const state = pair.next
     drawn = state
     const minutes = displayMinutes(pair, interpolate)
+    const nowMs = minutes * 60_000
     const hourOfDay = (minutes / 60) % 24
     const light = daylightAt(hourOfDay, config.dawnHour, config.duskHour)
     const { elevation, azimuth } = sunAt(hourOfDay, config.dawnHour, config.duskHour)
@@ -1713,11 +1737,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
     // Only plants whose drawn fill changed are redrawn, and only those drawn; one out of view is redrawn when it shows.
     let berriesChanged = false
-    for (let bush = 0; bush < layout.bushes.count; bush += 1) {
-      if (!berryMesh!.shows(bush)) {
-        bushFill[bush] = -1
-        continue
-      }
+    for (const bush of berryMesh!.visiblePlants()) {
       const fill = displayedStock(pair, 'bush', bush, interpolate) / config.bushCapacityKcal
       if (Math.abs(fill - bushFill[bush]!) < 0.002) continue
       bushFill[bush] = fill
@@ -1726,11 +1746,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
     if (berriesChanged) berryMesh!.instanceMatrix.needsUpdate = true
     let nutsChanged = false
-    for (let hazel = 0; hazel < hazelFill.length; hazel += 1) {
-      if (!nutMesh!.shows(hazel)) {
-        hazelFill[hazel] = -1
-        continue
-      }
+    for (const hazel of nutMesh!.visiblePlants()) {
       const id = layout.bushes.count + hazel
       const fill = displayedStock(pair, 'hazel', id, interpolate) / config.hazelCapacityKcal
       if (Math.abs(fill - hazelFill[hazel]!) < 0.002) continue
@@ -1741,7 +1757,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     if (nutsChanged) nutMesh!.instanceMatrix.needsUpdate = true
     // Trees stand, or lie felled as they are cut up, and stone spots show the stones left on them.
     let treesChanged = false
-    for (let tree = 0; tree < layout.trees.count; tree += 1) {
+    for (const tree of trunks!.visiblePlants()) {
       const shape = treeShape(pair, tree, interpolate)
       const drawnBefore = treeDrawn[tree]!
       if (
@@ -2098,9 +2114,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
   /** The plant an instance of a bush's or tree's mesh belongs to. */
   function plantOf(object: unknown, instance: number | undefined, face?: number): ValleyPlant | null {
-    if (object === lake && face !== undefined) {
-      const wet = layout!.terrain.water.body.filter((id) => id >= 0)
-      return { kind: 'lake', id: wet[Math.floor(face / 2)]! }
+    if (face !== undefined && (object as Mesh | undefined)?.parent === lake) {
+      const sourceFace = (object as Mesh).userData.sourceFaces?.[face] as number | undefined
+      if (sourceFace !== undefined) return { kind: 'lake', id: waterBodyByFace[sourceFace]! }
     }
     if (instance === undefined) return null
     const bushes = layout!.bushes.count
@@ -2110,14 +2126,14 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       [hazelLeaves, 'hazel', HAZEL_LOBES.length],
       [hazelStems, 'hazel', HAZEL_LOBES.length],
       [nutMesh, 'hazel', NUTS_PER_HAZEL],
+      [trunks, 'tree', 1],
+      [crowns, 'tree', CROWN_CONES.length],
+      [stumps, 'tree', 1],
+      [deadwood, 'tree', DEADWOOD_STICKS],
     ] as const) {
       const index = mesh?.indexOf(object, instance) ?? null
       if (index !== null) return { kind, id: (kind === 'hazel' ? bushes : 0) + Math.floor(index / per) }
     }
-    if (object === trunks) return { kind: 'tree', id: instance }
-    if (object === crowns) return { kind: 'tree', id: Math.floor(instance / CROWN_CONES.length) }
-    if (object === stumps) return { kind: 'tree', id: instance }
-    if (object === deadwood) return { kind: 'tree', id: Math.floor(instance / DEADWOOD_STICKS) }
     if (object === rocks) return { kind: 'stone', id: Math.floor(instance / config!.stonesPerSpot) }
     return null
   }
@@ -2185,10 +2201,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       hazelLeaves?.group ?? null,
       hazelStems?.group ?? null,
       nutMesh?.group ?? null,
-      trunks,
-      crowns,
-      stumps,
-      deadwood,
+      trunks?.group ?? null,
+      crowns?.group ?? null,
+      stumps?.group ?? null,
+      deadwood?.group ?? null,
       rocks,
       lake,
     ].filter((mesh) => mesh !== null)

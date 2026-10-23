@@ -26,7 +26,8 @@ const TEST_SECONDS: Record<string, number> = {
   'government.test.ts': 11,
 }
 const SHORT_TEST_SECONDS = 2
-const prTests = loadEnv('test', '.', 'ECON_TEST_').ECON_TEST_PROFILE === 'pr'
+const testEnvironment = loadEnv('test', '.', 'ECON_TEST_')
+const prTests = testEnvironment.ECON_TEST_PROFILE === 'pr'
 
 const secondsOf = (file: TestSpecification) => TEST_SECONDS[file.moduleId.split(/[\\/]/).at(-1)!] ?? SHORT_TEST_SECONDS
 
@@ -77,7 +78,8 @@ export default defineConfig({
     testTimeout: 60_000,
     // The tests are simulations bound by computation, and the process that farms them out is nearly idle, so every core
     // runs a worker rather than the default of one fewer, a third more on a 4-core CI runner.
-    maxWorkers: '100%',
+    // Bound local memory use without changing which tests run; CI retains its existing default.
+    maxWorkers: testEnvironment.ECON_TEST_WORKERS ? Number(testEnvironment.ECON_TEST_WORKERS) : '100%',
     sequence: { sequencer: CostSequencer },
   },
 })

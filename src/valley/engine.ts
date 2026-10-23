@@ -219,6 +219,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       ...newHydration(config),
       waterObservations: [],
       groundKnowledge: {
+        shore: layout.terrain.water.shore,
         cells: layout.terrain.cells,
         cellCm: layout.terrain.cellCm,
         observed: new Uint8Array(layout.terrain.cells ** 2),

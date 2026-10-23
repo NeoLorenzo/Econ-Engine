@@ -1,7 +1,15 @@
+import { bankApproach, bankWaterHeight } from './banks'
 import { heightAt } from './terrain'
 import { cardinalCells } from './water'
 import { buildIndex } from './layout'
-import { knownRoute, routeCell, routeCentre, observeRouteCells, routeFrontierCells, forEachUnknownCell } from './routes'
+import {
+  knownRoute,
+  routeAnchor,
+  routeCentre,
+  observeRouteCells,
+  routeFrontierCells,
+  forEachUnknownCell,
+} from './routes'
 import type { BankMemory, Forager, PlantIndex, Point, ValleyConfig, ValleyLayout } from './types'
 
 /** Observe complete cell footprints, never expand an observation into a complete body's outline. */
@@ -39,8 +47,14 @@ export function observeGround(
       !visible({ x: right, y: bottom })
     )
       return
-    grid.observed[id] = water.body[id]! < 0 ? 1 : 2
     const centre = routeCentre(grid, id)
+    grid.observed[id] = water.shore
+      ? bankWaterHeight(water.shore, centre, water.level) === null
+        ? 1
+        : 2
+      : water.body[id]! < 0
+        ? 1
+        : 2
     grid.heights[id] = heightAt(layout.terrain, centre.x, centre.y)
     newlySeen.push(id)
   })
@@ -56,6 +70,37 @@ export function observeGround(
     cells: newlySeen,
     banks: [] as import('./types').BankMemory[],
     far,
+  }
+  if (water.shore) {
+    const patches = new Set<number>()
+    for (const cell of newlySeen) {
+      const x = cell % grid.cells,
+        y = Math.floor(cell / grid.cells)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (x + dx < 0 || y + dy < 0 || x + dx >= grid.cells || y + dy >= grid.cells) continue
+          const neighbour = (y + dy) * grid.cells + x + dx
+          if (grid.observed[neighbour]) patches.add(neighbour)
+        }
+    }
+    for (const cell of patches)
+      for (const segment of water.shore.patches.get(cell)?.segments ?? []) {
+        if (person.knownBanks.has(segment.id)) continue
+        const bank = bankApproach(
+          water.shore,
+          segment,
+          config.reachCm,
+          config.drinkBankHeightCm,
+          (x, y) => heightAt(layout.terrain, x, y),
+          water.bodies[segment.body]!.id,
+          minute,
+        )
+        if (!bank || !grid.observed[bank.dryCell]) continue
+        person.knownBanks.set(bank.id, bank)
+        observation.banks.push(bank)
+      }
+    person.waterObservations.push(observation)
+    return
   }
   const edges = new Set<number>()
   for (const id of newlySeen) {
@@ -131,7 +176,7 @@ export function* knownBanksInChunks(
 ) {
   if (!person.knownBanks.size) return
   const grid = person.groundKnowledge
-  const first = routeCell(grid, person)
+  const first = routeAnchor(grid, person)
   if (first < 0 || grid.observed[first] !== 1) return
   let index = bankCells.get(person.knownBanks)
   if (index?.size !== person.knownBanks.size) {

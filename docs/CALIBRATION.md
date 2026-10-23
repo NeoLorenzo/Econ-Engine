@@ -258,3 +258,5 @@ Later on 2026-10-19, after every forager starved in the implemented Life 9.6, th
 46. SideFX. *HeightField Erode 2.0*: terrain structure from interacting erosion, deposition and material layers at multiple scales. https://www.sidefx.com/docs/houdini/heightfields_cop/erosion.html
 47. Cordonnier, G., et al. (2016). Large scale terrain generation from tectonic uplift and fluvial erosion. *Computer Graphics Forum*, 35(2), 165–175. https://onlinelibrary.wiley.com/doi/10.1111/cgf.12820
 48. Klimadatastyrelsen. *Danmarks Højdemodel – Terræn (DHM/Terræn)*, nationwide bare-earth elevation data from airborne LiDAR. https://dataforsyningen.dk/data?filter=99%3Btag-103&view=gallery
+
+Life 11 continuous-bank refinement: the 5 m lattice still supplies drainage and channel samples, but habitat area now comes from non-overlapping water polygons clipped against the shared bank surface. Sum doubled integer square-centimetre areas, then floor once to square metres. No fish-density, hydration or terrain calibration parameter changes accompany this geometric correction. The existing need for measured lake/river comparisons remains.

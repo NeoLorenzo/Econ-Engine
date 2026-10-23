@@ -1,3 +1,4 @@
+import { bankWaterHeight } from './banks'
 import { isDaylight } from './forager'
 import { distance, distanceSq } from './geometry'
 import { observeGround } from './waterKnowledge'
@@ -17,6 +18,8 @@ import type { Forager, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } 
 /** Water surfaces, rather than submerged beds, are the visible surface crossed by sight rays. */
 function sightHeightAt(terrain: Terrain, x: number, y: number) {
   const cell = cellOf(terrain, x, y)
+  if (terrain.water.shore)
+    return bankWaterHeight(terrain.water.shore, { x, y }, terrain.water.level) ?? heightAt(terrain, x, y)
   return terrain.water.body[cell]! >= 0 ? terrain.water.level[cell]! : heightAt(terrain, x, y)
 }
 /** The place holding a point. */

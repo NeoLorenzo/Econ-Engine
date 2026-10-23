@@ -1,3 +1,4 @@
+import { bankApproach, bankCircleWet, bankWaterHeight } from './banks'
 import { knownDrySegment, routeCentre, type GroundKnowledge } from './routes'
 import { heightAt } from './terrain'
 import { cardinalCells } from './water'
@@ -65,11 +66,49 @@ export class WaterKnowledgeChecker {
           )
             fail('A cell was observed outside sight')
         }
-        known.observed[cell] = water.body[cell]! < 0 ? 1 : 2
         const centre = routeCentre(known, cell)
+        known.observed[cell] = water.shore
+          ? bankWaterHeight(water.shore, centre, water.level) === null
+            ? 1
+            : 2
+          : water.body[cell]! < 0
+            ? 1
+            : 2
         known.heights[cell] = heightAt(layout.terrain, centre.x, centre.y)
       }
       for (const bank of observation.banks) {
+        if (water.shore) {
+          const segment = water.shore.segments.get(bank.id)
+          const expected = segment
+            ? bankApproach(
+                water.shore,
+                segment,
+                config.reachCm,
+                config.drinkBankHeightCm,
+                (x, y) => heightAt(layout.terrain, x, y),
+                water.bodies[segment.body]!.id,
+                event.minute,
+              )
+            : null
+          if (
+            !segment ||
+            !expected ||
+            banks.has(bank.id) ||
+            !known.observed[segment.cell] ||
+            !known.observed[bank.dryCell] ||
+            bank.id !== bank.segmentId ||
+            bank.wetCell !== expected.wetCell ||
+            bank.dryCell !== expected.dryCell ||
+            bank.x !== expected.x ||
+            bank.y !== expected.y ||
+            bank.bodyId !== expected.bodyId ||
+            bank.minute !== event.minute ||
+            bankCircleWet(water.shore, bank, 1)
+          )
+            fail('A bank does not match its visible contour and dry approach')
+          banks.set(bank.id, { ...bank })
+          continue
+        }
         if (
           banks.has(bank.id) ||
           known.observed[bank.wetCell] !== 2 ||

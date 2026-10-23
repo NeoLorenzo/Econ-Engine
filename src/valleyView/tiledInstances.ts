@@ -28,7 +28,7 @@ export class TiledInstances {
     THREE: Three,
     geometry: BufferGeometry,
     material: Material,
-    perPlant: number,
+    private readonly perPlant: number,
     plantX: Float32Array,
     plantZ: Float32Array,
     sizeM: number,
@@ -62,7 +62,7 @@ export class TiledInstances {
     this.tiles = Array.from(counts, (n) => {
       const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, n))
       mesh.count = n
-      this.group.add(mesh)
+      if (n > 0) this.group.add(mesh)
       return mesh
     })
     this.centres = Array.from(counts, (_, tile) => ({
@@ -82,6 +82,16 @@ export class TiledInstances {
     return this.tiles[this.tileOfPlant[plant]!]!.visible
   }
 
+  /** Visit plants in drawn tiles without scanning every plant in the landscape. */
+  *visiblePlants() {
+    for (let tile = 0; tile < this.tiles.length; tile += 1) {
+      if (!this.tiles[tile]!.visible) continue
+      const indices = this.globalOf[tile]!
+      for (let index = 0; index < indices.length; index += this.perPlant)
+        yield Math.floor(indices[index]! / this.perPlant)
+    }
+  }
+
   /** Setting `needsUpdate` marks the tiles whose matrices changed for upload, as on one mesh. */
   readonly instanceMatrix: { needsUpdate: boolean } = (() => {
     const tiles = () => this.tiles
@@ -92,7 +102,12 @@ export class TiledInstances {
       },
       set needsUpdate(value: boolean) {
         if (!value) return
-        for (const tile of dirty()) tiles()[tile]!.instanceMatrix.needsUpdate = true
+        for (const tile of dirty()) {
+          const mesh = tiles()[tile]!
+          mesh.instanceMatrix.needsUpdate = true
+          // A felled tree can extend beyond its former standing bounds.
+          mesh.computeBoundingSphere()
+        }
         dirty().clear()
       },
     }

@@ -1,4 +1,5 @@
 import type { Terrain } from '../valley/terrain'
+import { triangleHeight } from '../valley/banks'
 
 /**
  * The observer's sampled version of the immutable terrain. The same samples build the mesh and answer every visual
@@ -51,7 +52,14 @@ export function surfaceHeightAt(surface: GroundSurface, x: number, y: number) {
   const cell =
     Math.min(surface.cells - 1, Math.max(0, Math.floor(y / surface.cellCm))) * surface.cells +
     Math.min(surface.cells - 1, Math.max(0, Math.floor(x / surface.cellCm)))
+  const patch = surface.water.shore?.patches.get(cell)
+  if (patch) return triangleHeight(patch.ground, x, y) ?? drySurfaceHeightAt(surface, x, y)
   if (surface.water.body[cell]! >= 0) return surface.water.bed[cell]!
+  return drySurfaceHeightAt(surface, x, y)
+}
+
+/** Height of the uncut lattice, including the dry lip of a bank on a wet-cell boundary. */
+export function drySurfaceHeightAt(surface: GroundSurface, x: number, y: number) {
   const px = Math.max(0, Math.min(surface.sizeCm, x))
   const py = Math.max(0, Math.min(surface.sizeCm, y))
   const cellX = px / surface.cellCm

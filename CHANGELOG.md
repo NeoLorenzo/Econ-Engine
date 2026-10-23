@@ -2,6 +2,16 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE11-ContinuousBanks-054] - (2026-10-22)
+
+### Changed
+
+- Replace square-cell shores with continuous slopes and terrain-clipped water contours. The owner approved this Life 11 refinement on 2026-10-22.
+- Use the same immutable bank triangles for rendering, ground contact, water collision, dry placement and drinking/fishing access. Observed routes can connect safely to dry bank approaches inside shore cells; all edges retain centimetre rounding clearance.
+- Compute fish habitat areas from non-overlapping water polygons, summing exact doubled square-centimetre areas before rounding once to square metres.
+- Retain terrain/water/vegetation visibility tiling and simulation-time animation from the performance repair. Bank contact and tile picking have regression fixtures.
+- Validate all 21 required 30-day trajectories with the minute checker: refresh 18 terrain-bearing fingerprints and retain the three flat-land records. The CI implementation gate passes, including an independent repeat of the canonical trajectory. A worker-limit environment option bounds local validation memory without reducing coverage.
+
 ## [LIFE11-Performance-053.1] - (2026-10-22)
 
 ### Changed
