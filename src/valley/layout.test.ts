@@ -33,21 +33,15 @@ describe('layout', () => {
     }
   })
 
-  it('scatters each thicket’s bushes within its radius and apart, in thicket order', () => {
-    const { bushes } = layout
-    expect(bushes.count).toBe(config.thicketCount * config.bushesPerThicket)
-    for (let id = 0; id < bushes.count; id += 1) {
-      expect(bushes.site[id]).toBe(Math.floor(id / config.bushesPerThicket))
-      const centre = layout.thickets[bushes.site[id]!]!
-      expect(distanceSq(bushes.x[id]!, bushes.y[id]!, centre.x, centre.y)).toBeLessThanOrEqual(
-        config.thicketRadiusCm ** 2,
-      )
-      for (let other = id + 1; other < bushes.count && bushes.site[other] === bushes.site[id]; other += 1)
-        expect(distanceSq(bushes.x[id]!, bushes.y[id]!, bushes.x[other]!, bushes.y[other]!)).toBeGreaterThanOrEqual(
-          config.bushSpacingCm ** 2,
-        )
+  it('places one resource record at each site centre', () => {
+    expect(layout.places.count).toBe(
+      config.thicketCount + config.hazelThicketCount + config.standCount + config.outcropCount,
+    )
+    const centres = [...layout.thickets, ...layout.hazelThickets, ...layout.stands, ...layout.outcrops]
+    for (const [id, centre] of centres.entries()) {
+      expect(layout.places.x[id]).toBe(centre.x)
+      expect(layout.places.y[id]).toBe(centre.y)
     }
-    expect(layout.trees.count).toBe(config.standCount * config.treesPerStand)
   })
 
   it('puts the hearths on a ring round the camp in a band that starts as one group', () => {
@@ -82,7 +76,7 @@ describe('layout', () => {
 
   it('finds the plants within a radius, as a search of every plant would', () => {
     const { bushes } = layout
-    const [x, y] = [bushes.x[100]! + 500, bushes.y[100]! - 700]
+    const [x, y] = [bushes.x[10]! + 500, bushes.y[10]! - 700]
     const found: number[] = []
     forEachPlantWithin(layout.bushIndex, bushes, x, y, config.perceptionRadiusCm, (id) => found.push(id))
     const all = Array.from({ length: bushes.count }, (_, id) => id).filter(
@@ -96,7 +90,7 @@ describe('layout', () => {
     for (const [x, y] of [
       [0, 0],
       [30_000, 30_000],
-      [bushes.x[500]!, bushes.y[500]!],
+      [bushes.x[5]!, bushes.y[5]!],
       [59_000, 12_345],
     ] as const) {
       const accept = (id: number) => id % 7 !== 0

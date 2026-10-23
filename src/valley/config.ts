@@ -17,6 +17,17 @@ import type { Point, ValleyConfig } from './types'
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   daysPerYear: 90,
+  berryThicketCapacityKcal: 3_120,
+  berryThicketRegrowthKcalPerYear: 54_000,
+  berryThicketWoodKg: 120,
+  berryThicketWoodRegrowthKgPerYear: 12,
+  hazelThicketCapacityKcal: 75_000,
+  hazelThicketRegrowthKcalPerYear: 150_000,
+  standWoodKg: 300,
+  standDeadfallKgPerYear: 60,
+  standLogs: 36,
+  outcropStones: 60,
+  treeRegrowthYears: 20,
   riverCatchmentM2: 250_000,
   riverDepthCm: 50,
   drinkBankHeightCm: 100,

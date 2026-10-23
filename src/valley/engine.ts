@@ -1,3 +1,4 @@
+import { regrowPlaces } from './places'
 import { beginAxe, cutAt, exchangeAxes, planHut, workAxe } from './axes'
 import { carriedKcal, foodOfSource, fullRateOf, rateAtStock, spoil, worthWorking } from './food'
 import { resolveValleyConfig } from './config'
@@ -189,22 +190,29 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const unplaceable = layoutError(config)
   if (unplaceable) throw new Error(`Invalid valley configuration: ${unplaceable}`)
   const layout = generateLayout(config)
-  // Food plants are the bushes, holding berries, then the hazels, holding nuts.
-  const foodStock = new Int32Array(layout.foodPlants.count)
-    .fill(config.initialBushKcal, 0, layout.bushes.count)
-    .fill(config.initialHazelKcal, layout.bushes.count)
+  const foodStock = new Int32Array(layout.places.count)
+  const woodStock = new Int32Array(layout.places.count)
+  const treeLogs = new Int32Array(layout.places.count)
+  const treeFelledMinute = new Int32Array(layout.places.count).fill(-1)
+  const stoneStock = new Int32Array(layout.places.count)
+  for (let id = 0; id < layout.places.count; id += 1) {
+    const kind = layout.places.kind[id]
+    if (kind === 0) {
+      foodStock[id] = config.berryThicketCapacityKcal
+      woodStock[id] = config.berryThicketWoodKg
+    }
+    if (kind === 1) foodStock[id] = config.hazelThicketCapacityKcal
+    if (kind === 2) {
+      woodStock[id] = config.standWoodKg
+      treeLogs[id] = config.standLogs
+    }
+    if (kind === 3) stoneStock[id] = config.outcropStones
+  }
   const fish = layout.terrain.water.bodies.map((body) => {
     const capacity = fishCapacity(body.areaM2, config.fishMinAreaM2, config.fishKgPerHectare, config.fishKcalPerKg)
     return { bodyId: body.id, capacity, stock: capacity, remainder: 0, grown: 0, caught: 0 }
   })
   const fishKcal = fish.reduce((total, body) => total + body.stock, 0)
-  // Wood plants are the trees, holding branches, then the bushes, holding sticks.
-  const woodStock = new Int32Array(layout.woodPlants.count)
-    .fill(config.initialTreeWood, 0, layout.trees.count)
-    .fill(config.initialBushWood, layout.trees.count)
-  const treeLogs = new Int32Array(layout.trees.count).fill(config.logsPerTree)
-  const treeFelledMinute = new Int32Array(layout.trees.count).fill(-1)
-  const stoneStock = new Int32Array(layout.stones.count).fill(config.stonesPerSpot)
   const skills = drawSkills(config)
   const craftSkills = drawCraftSkills(config)
   const places = placeCount(config)
@@ -316,6 +324,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     fishKcal,
     treeLogs,
     treeFelledMinute,
+    logStock: treeLogs,
+    felledMinute: treeFelledMinute,
     stoneStock,
     foragers,
     groups,
@@ -443,6 +453,8 @@ export function cloneValley(state: ValleyState): ValleyState {
     woodStock: state.woodStock.slice(),
     treeLogs: state.treeLogs.slice(),
     treeFelledMinute: state.treeFelledMinute.slice(),
+    logStock: state.logStock.slice(),
+    felledMinute: state.felledMinute.slice(),
     stoneStock: state.stoneStock.slice(),
     foragers: state.foragers.map(cloneForager),
     groups: state.groups.map((group) => ({ ...group })),
@@ -1133,23 +1145,29 @@ function advance(state: ValleyState, recordEvents = true) {
   if (minute > 0 && minute % MINUTES_PER_DAY === 0) {
     for (const forager of state.foragers) if (forager.alive) lastPractice.push(practiceDay(config, forager, minute))
     lastHutEvents.push(...weatherHuts(state, minute))
-    state.totals.regrownLogs += regrowTrees(state, minute)
+    const grown = regrowPlaces(state, minute)
+    state.totals.regrownLogs += grown.logs
+    state.totals.regrownKcal += grown.kcal
+    state.totals.regrownWood += grown.wood
   }
   let regrownKcal = 0
   let fishGrownKcal = 0
   let regrownWood = 0
-  if (minute > 0 && minute % 60 === 0) {
-    const hour = minute / 60
-    regrownKcal += regrowFood(state, hour)
+  if (minute > 0 && minute % MINUTES_PER_DAY === 0) {
     for (const stock of state.fish) {
-      const grown = fishGrowth(stock.capacity, stock.stock, stock.remainder, config.fishGrowthPercentPerYear)
+      const grown = fishGrowth(
+        stock.capacity,
+        stock.stock,
+        stock.remainder,
+        config.fishGrowthPercentPerYear,
+        config.daysPerYear,
+      )
       stock.stock += grown.grown
       stock.grown += grown.grown
       stock.remainder = grown.remainder
       state.fishKcal += grown.grown
       fishGrownKcal += grown.grown
     }
-    regrownWood += regrowWood(state, hour)
   }
 
   // The fires burn, or go out, at the start of every hour, before anyone acts.

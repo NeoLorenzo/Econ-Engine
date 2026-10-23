@@ -82,6 +82,17 @@ export interface FoodLot {
  */
 export interface ValleyConfig extends HydrationConfig {
   daysPerYear: number
+  berryThicketCapacityKcal: number
+  berryThicketRegrowthKcalPerYear: number
+  berryThicketWoodKg: number
+  berryThicketWoodRegrowthKgPerYear: number
+  hazelThicketCapacityKcal: number
+  hazelThicketRegrowthKcalPerYear: number
+  standWoodKg: number
+  standDeadfallKgPerYear: number
+  standLogs: number
+  outcropStones: number
+  treeRegrowthYears: number
   riverCatchmentM2: number
   riverDepthCm: number
   drinkBankHeightCm: number
@@ -341,7 +352,21 @@ export interface PlantIndex {
 }
 
 /** Where everything stands. It never changes during a run, so every state shares it. */
+export const PLACE_KINDS = ['berry thicket', 'hazel thicket', 'stand', 'outcrop'] as const
+export type PlaceKind = (typeof PLACE_KINDS)[number]
+export interface PlaceTable {
+  count: number
+  kind: Uint8Array
+  x: Int32Array
+  y: Int32Array
+  chunk: Int32Array
+  radiusCm: Int32Array
+}
+
 export interface ValleyLayout {
+  places: PlaceTable
+  placeChunks: Int32Array[]
+  placeIndex: PlantIndex
   camp: Point
   /** The land's heights, and the ground of each terrain cell with every outcrop's circle laid as stone. */
   terrain: Terrain
@@ -1060,6 +1085,8 @@ export interface ValleyTotals {
 }
 
 export interface ValleyState {
+  logStock: Int32Array
+  felledMinute: Int32Array
   lastWaterEvents: WaterEvent[]
   fish: FishStock[]
   waterWithdrawals: Map<number, number>

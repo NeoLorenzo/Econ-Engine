@@ -62,7 +62,7 @@ A place is a thing someone can decide to go to. Each has an id, a kind, a positi
 | Drinking bank, fishing bank | none; the water body holds the fish | from geometry | as Life 11 |
 | Hearth, flag, hut site | the group's fire wood; the hut's logs | made by people | as Life 11 |
 
-Places are laid out by the layout stream with Life 11's spacing and dry-footprint rejection. A thicket's capacity, initial stock and yearly regrowth are the sums over its former individuals: a berry thicket holds up to 3,120 kcal and regrows 54,000 kcal a year; a hazel thicket 75,000 kcal and 150,000 a year; a stand 300 kg of wood, 60 kg of deadfall a year and 36 logs, with 10 kg of crown wood per felled tree; an outcrop 60 stones. Picking at a thicket yields at Life 11's hourly rates while stock remains, so a thicket is emptied over the same hours as its sixty bushes were.
+Places are laid out by the layout stream with Life 11's spacing and dry-footprint rejection. A thicket's capacity, initial stock and yearly regrowth are the sums over its former individuals: a berry thicket holds up to 3,120 kcal and regrows 54,000 kcal a year; a hazel thicket 75,000 kcal and 150,000 a year; a stand 300 kg of wood, 60 kg of deadfall a year and 36 logs, with 10 kg of crown wood per felled tree; an outcrop 60 stones. Picking retains Life 11's stock-dependent slowdown: the skill-adjusted full rate is multiplied by the remembered fraction of capacity remaining, rounded down, when the task starts. That rate stays fixed until the next wake-up; production is capped at the stock remaining when credited. The owner confirmed this reading during implementation on 2026-10-23.
 
 ### Stocks, fish and regrowth
 

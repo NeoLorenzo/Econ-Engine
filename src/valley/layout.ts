@@ -1,3 +1,4 @@
+import { buildPlaces } from './places'
 import { bankCircleWet, bankWaterHeight } from './banks'
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { ringOffset } from './config'
@@ -171,36 +172,6 @@ export function circleOnGround(
   return true
 }
 
-/**
- * Plants drawn uniformly in the square around `centre`, kept within `radius`, `spacing` from the site's others, and on
- * ground they grow on.
- */
-function scatter(
-  draws: Draws,
-  count: number,
-  centre: Point,
-  radius: number,
-  spacing: number,
-  what: string,
-  growsAt: (x: number, y: number) => boolean,
-) {
-  const placed: Point[] = []
-  let failed = 0
-  while (placed.length < count) {
-    const x = centre.x + draws.int(2 * radius + 1) - radius
-    const y = centre.y + draws.int(2 * radius + 1) - radius
-    const fits =
-      distanceSq(x, y, centre.x, centre.y) <= radius * radius &&
-      growsAt(x, y) &&
-      placed.every((other) => distanceSq(x, y, other.x, other.y) >= spacing * spacing)
-    if (fits) {
-      placed.push({ x, y })
-      failed = 0
-    } else if ((failed += 1) >= PLACEMENT_DRAWS) throw new LayoutError(`${what} cannot all be placed`)
-  }
-  return placed
-}
-
 /** Two kinds of plant as one list, the first by ID then the second, each keeping its site. */
 export function joinPlants(first: Plants, second: Plants): Plants {
   const count = first.count + second.count
@@ -258,7 +229,6 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const draws = new Draws(deriveLayoutSeed(config.seed))
   const terrain = terrainOf(config)
   const base = terrain.ground
-  const on = (grounds: number) => (x: number, y: number) => onGround(terrain, base, x, y, grounds)
   const size = config.valleySizeCm
   let camp = { x: Math.floor(size / 2), y: Math.floor(size / 2) }
   if (!config.scattered) {
@@ -328,51 +298,10 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   let next = 0
   const [thickets, hazelThickets, stands, outcrops] = kinds.map((count) => centres.slice(next, (next += count)))
   if (!thickets || !hazelThickets || !stands || !outcrops) throw new Error('Every kind of site has centres')
-  const bushSites = thickets.map((centre, id) =>
-    scatter(
-      draws,
-      config.bushesPerThicket,
-      centre,
-      config.thicketRadiusCm,
-      config.bushSpacingCm,
-      `Thicket ${id}'s bushes`,
-      on(BUSH_GROUNDS),
-    ),
-  )
-  const hazelSites = hazelThickets.map((centre, id) =>
-    scatter(
-      draws,
-      config.hazelsPerThicket,
-      centre,
-      config.hazelThicketRadiusCm,
-      config.hazelSpacingCm,
-      `Hazel thicket ${id}'s hazels`,
-      on(HAZEL_GROUNDS),
-    ),
-  )
-  const treeSites = stands.map((centre, id) =>
-    scatter(
-      draws,
-      config.treesPerStand,
-      centre,
-      config.standRadiusCm,
-      config.treeSpacingCm,
-      `Stand ${id}'s trees`,
-      on(TREE_GROUNDS),
-    ),
-  )
-  // Stones lie within their outcrop's circle, which is exposed stone.
-  const stoneSites = outcrops.map((centre, id) =>
-    scatter(
-      draws,
-      config.stonesPerOutcrop,
-      centre,
-      config.outcropRadiusCm,
-      config.stoneSpacingCm,
-      `Outcrop ${id}'s stones`,
-      () => true,
-    ),
-  )
+  const bushSites = thickets.map((centre) => [centre])
+  const hazelSites = hazelThickets.map((centre) => [centre])
+  const treeSites = stands.map((centre) => [centre])
+  const stoneSites = outcrops.map((centre) => [centre])
   const ground = base.slice()
   const half = Math.floor(terrain.cellCm / 2)
   for (const centre of outcrops) {
@@ -420,7 +349,12 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
         return { x: camp.x + offset.x, y: camp.y + offset.y }
       })
   const sitePoints = plantsOf([...thickets, ...hazelThickets, ...stands, ...outcrops].map((centre) => [centre]))
+  const places = buildPlaces(config, [thickets, hazelThickets, stands, outcrops])
+  const placeIndex = buildIndex(places, config.chunkCm, size)
   return {
+    places,
+    placeIndex,
+    placeChunks: placeIndex.buckets,
     camp,
     terrain,
     ground,
