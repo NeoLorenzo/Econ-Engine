@@ -7,6 +7,7 @@ import { distance, distanceSq, walkSeconds } from './geometry'
 import { forEachPlantWithin, forEachRingOutwards } from './layout'
 import { heightAt, terrainOf } from './terrain'
 import { SECONDS_PER_HOUR } from './practice'
+import { MINUTES_PER_DAY, minuteOfDay } from './calendar'
 import { buyingPays, knownTerms, sellingPays, spareWood, wantedWood } from './trade'
 import type {
   ActionReason,
@@ -20,9 +21,7 @@ import type {
   ValleyLayout,
 } from './types'
 
-export const MINUTES_PER_DAY = 1_440
-
-export const minuteOfDay = (minute: number) => minute % MINUTES_PER_DAY
+export { MINUTES_PER_DAY, minuteOfDay } from './calendar'
 
 export const isDaylight = (config: ValleyConfig, minute: number) => {
   const m = minuteOfDay(minute)

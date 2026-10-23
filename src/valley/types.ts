@@ -81,6 +81,7 @@ export interface FoodLot {
  * kilograms, so every balance is exact. Rates and costs stay per hour; a forager pays or takes them second by second.
  */
 export interface ValleyConfig extends HydrationConfig {
+  daysPerYear: number
   riverCatchmentM2: number
   riverDepthCm: number
   drinkBankHeightCm: number

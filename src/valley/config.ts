@@ -16,6 +16,7 @@ import type { Point, ValleyConfig } from './types'
  * stone axe it makes or buys. Measurements and explicit estimates are sourced in docs/CALIBRATION.md.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
+  daysPerYear: 90,
   riverCatchmentM2: 250_000,
   riverDepthCm: 50,
   drinkBankHeightCm: 100,
@@ -273,7 +274,11 @@ function computeSpiral(count: number) {
 
 /** Returns every rule the configuration breaks, except whether its layout can be drawn, which `createValley` finds. */
 export function valleyConfigErrors(config: ValleyConfig): string[] {
-  const errors: string[] = []
+  const calendarErrors =
+    Number.isInteger(config.daysPerYear) && config.daysPerYear >= 8 && config.daysPerYear <= 365
+      ? []
+      : ['daysPerYear must be an integer from 8 to 365']
+  const errors: string[] = [...calendarErrors]
   for (const [key, value] of Object.entries(config)) {
     if (BOOLEAN_KEYS.has(key)) {
       if (typeof value !== 'boolean') errors.push(`${key} must be true or false`)
