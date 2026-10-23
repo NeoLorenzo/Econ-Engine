@@ -1,8 +1,10 @@
 import { randomInt } from '../sim/rng'
 import { addLots, carriedKcal, takeOldest } from './food'
-import { daylightSecondsLeft, reachableInTime } from './legacyForager'
+import { walkSpeed } from './forager'
+import { minuteOfDay } from './calendar'
+import { distance } from './geometry'
 import { wantsLogs } from './huts'
-import { deriveAxeSeed, nearestPlant } from './layout'
+import { deriveAxeSeed } from './layout'
 import { SECONDS_PER_HOUR } from './practice'
 import { mayTrade, roomKcal, withinTalk } from './trade'
 import type {
@@ -74,33 +76,37 @@ export type HutPlan =
  * buy an axe it has heard of, if one is worth it; or make one, for its hut or for a promise, fetching a stone first.
  * Returns null when none applies or finds anything it can reach, so the next rule decides.
  */
-export function planHut(state: ValleyState, forager: Forager, minute: number, speed: number): HutPlan | null {
+export function planHut(
+  state: ValleyState,
+  forager: Forager,
+  minute: number,
+  _speed = walkSpeed(state.config, forager),
+): HutPlan | null {
   const { config, layout } = state
   if (forager.making) return { kind: 'make' }
   const needLogs = wantsLogs(state, forager)
-  const left = daylightSecondsLeft(config, minute)
+  const nearest = (kind: number, fallen = false) => {
+    let best = -1,
+      bestDistance = Infinity
+    for (let id = 0; id < layout.places.count; id += 1) {
+      if (forager.knownPlaces[id]! < 0 || layout.places.kind[id] !== kind) continue
+      const remembered = kind === 2 ? forager.placeLogs[id]! : forager.placeStock[id]!
+      const amount = remembered < 0 ? (kind === 2 ? config.standLogs : config.outcropStones) : remembered
+      if (amount <= 0 || (kind === 2 && amount < config.standLogs !== fallen)) continue
+      const point = { x: layout.places.x[id]!, y: layout.places.y[id]! },
+        cm = distance(forager.x, forager.y, point.x, point.y)
+      if (cm / Math.max(1, _speed * 60) + 1 > config.duskHour * 60 - minuteOfDay(minute)) continue
+      if (cm < bestDistance) {
+        best = id
+        bestDistance = cm
+      }
+    }
+    return best
+  }
   if (needLogs && forager.axe) {
-    // It finishes a tree already felled before it fells another: the nearest it knows lying with a log, else the
-    // nearest standing. A standing tree holds every log, so what it saw from afar tells them apart.
-    const { trees, treeChunks } = layout
-    const nearestWith = (fallen: boolean) =>
-      nearestPlant(
-        treeChunks,
-        trees,
-        forager.x,
-        forager.y,
-        (id) => {
-          const logs = forager.logMemory.stock[id]!
-          return (
-            logs > 0 &&
-            logs < config.logsPerTree === fallen &&
-            reachableInTime(config, forager, trees.x[id]!, trees.y[id]!, left, speed)
-          )
-        },
-        left * speed,
-      )
-    const tree = nearestWith(true) ?? nearestWith(false)
-    if (tree !== null) return { kind: 'cut', treeId: tree }
+    const fallen = nearest(2, true),
+      stand = fallen >= 0 ? fallen : nearest(2)
+    if (stand >= 0) return { kind: 'cut', treeId: stand }
   }
   const lacksAxe = needLogs && !forager.axe
   if (lacksAxe) {
@@ -113,18 +119,8 @@ export function planHut(state: ValleyState, forager: Forager, minute: number, sp
   }
   if (!lacksAxe && !forager.promised) return null
   if (forager.stone < 1) {
-    const { stones, stoneChunks } = layout
-    const spot = nearestPlant(
-      stoneChunks,
-      stones,
-      forager.x,
-      forager.y,
-      (id) =>
-        forager.stoneMemory.stock[id]! > 0 &&
-        reachableInTime(config, forager, stones.x[id]!, stones.y[id]!, left, speed),
-      left * speed,
-    )
-    return spot === null ? null : { kind: 'stone', stoneId: spot }
+    const spot = nearest(3)
+    return spot < 0 ? null : { kind: 'stone', stoneId: spot }
   }
   return forager.wood >= config.axeWood ? { kind: 'make' } : null
 }
@@ -162,7 +158,10 @@ export function workAxe(state: ValleyState, forager: Forager, seconds: number, m
     return { worked, made: null }
   }
   const low = Math.floor(forager.craft / 2)
-  const draw = randomInt(deriveAxeSeed(config.seed, minute, forager.id), forager.craft - low + 1)
+  const draw = randomInt(
+    deriveAxeSeed(config.seed, forager.axeTotals.madeOwn + forager.axeTotals.madeForSale, forager.id),
+    forager.craft - low + 1,
+  )
   const quality = Math.max(1, low + draw.value)
   const axe: Axe = {
     id: state.totals.axesMade,
@@ -201,19 +200,25 @@ export function workAxe(state: ValleyState, forager: Forager, seconds: number, m
 export function cutAt(state: ValleyState, forager: Forager, treeId: number, seconds: number, minute: number) {
   const { config } = state
   const axe = forager.axe!
+  if (!axe || state.logStock[treeId]! <= 0) return { cut: null, worn: null }
   let cut: CutEvent | null = null
   let worn: WornEvent | null = null
   forager.chopRemainder += seconds * axe.quality
   if (forager.chopRemainder < logCut(config)) return { cut, worn }
   forager.chopRemainder -= logCut(config)
-  const felled = state.treeFelledMinute[treeId]! < 0
+  const felled = state.logStock[treeId]! % 3 === 0
   if (felled) {
-    state.treeFelledMinute[treeId] = minute
-    // Trees come first among wood plants, so a tree's branches are wood plant `treeId`.
+    state.felledMinute[treeId] = minute
+    // Each three-log bundle represents one of the stand's former trees.
     state.woodStock[treeId]! += config.fellWood
     state.totals.fellenWood += config.fellWood
   }
-  state.treeLogs[treeId]! -= 1
+  state.logStock[treeId]! -= 1
+  if (state.logStock[treeId]! % 3 === 0) {
+    const regrowth = state.logRegrowth.get(treeId) ?? []
+    state.logRegrowth.set(treeId, [...regrowth, state.felledMinute[treeId]!])
+    state.felledMinute[treeId] = -1
+  }
   forager.log = 1
   state.totals.logsCut += 1
   forager.axeTotals = { ...forager.axeTotals, logsCut: forager.axeTotals.logsCut + 1 }
@@ -226,7 +231,7 @@ export function cutAt(state: ValleyState, forager: Forager, treeId: number, seco
     axeId: axe.id,
     quality: axe.quality,
     axeLogsLeft: used.logsLeft,
-    treeLogsAfter: state.treeLogs[treeId]!,
+    treeLogsAfter: state.logStock[treeId]!,
     felled,
   }
   if (used.logsLeft > 0) forager.axe = used

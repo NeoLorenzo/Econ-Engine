@@ -14,6 +14,22 @@ function at(minute: number) {
   return state
 }
 describe('wake-up engine', () => {
+  it('preserves interval partitioning with meetings, crafting and shared fires', () => {
+    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 })
+    for (const person of state.foragers) {
+      person.wood = 36
+      person.stone = 1
+      person.knowledge.nodes.fill(1)
+    }
+    const before = cloneValley(state)
+    const batch = stepValley(state, 1_440)
+    let single = state
+    for (let minute = 1; minute <= 1_440; minute += 1) single = stepValley(single, minute)
+    batch.lastInterval = []
+    single.lastInterval = []
+    expect(batch).toEqual(single)
+    expect(state).toEqual(before)
+  })
   it('sleeps from dusk to dawn as one task', () => {
     const state = at(1_080)
     const asleep = stepValley(state, 1_081)
@@ -112,9 +128,7 @@ describe('food, water and wood tasks', () => {
     expect(next.foragers[0]!.task).toMatchObject({ kind: 'walk', reason: 'taking a load home' })
   })
   it('keeps a day of bodies and meals identical at 8 and 365 days per year', () => {
-    const runs = [8, 365].map((daysPerYear) =>
-      stepValley(createValley({ ...FLAT_LAND, bandSize: 1, daysPerYear }), 1_440),
-    )
+    const runs = [8, 365].map((daysPerYear) => stepValley(createValley({ daysPerYear }), 1_440))
     const body = (s: ReturnType<typeof createValley>) =>
       s.foragers.map((p) => ({
         energy: p.energyKcal,
@@ -126,5 +140,5 @@ describe('food, water and wood tasks', () => {
         carried: p.carried,
       }))
     expect(body(runs[0]!)).toEqual(body(runs[1]!))
-  })
+  }, 120_000)
 })

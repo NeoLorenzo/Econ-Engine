@@ -1,8 +1,29 @@
+export interface HydrationConfig {
+  waterBaseMlPerDay: number
+  waterExtraMlPerKcal: number
+  thirstBodyPerMille: number
+  urgentThirstBodyPerMille: number
+  fatalWaterLossBodyPerMille: number
+  initialWaterDeficitMl: number
+  drinkStopMl: number
+  drinkMlPerSecond: number
+  bodyKg: number
+  restKcalPerHour: number
+}
+
+export interface Hydration {
+  waterDeficitMl: number
+  waterBaseRemainder: number
+  waterActivityRemainder: number
+  waterLostMl: number
+  waterDrunkMl: number
+  thirsty: boolean
+}
+
 import type { ObservationEvent } from './perception'
 import type { Knowledge, Route, RouteLattice } from './routes'
 import type { Terrain } from './terrain'
-import type { Hydration, HydrationConfig } from './hydration'
-import type { GroundKnowledge } from './legacyRoutes'
+import type { BankGeometry } from './banks'
 import type { FishStock } from './fish'
 import type { WakeQueue } from './clock'
 
@@ -541,12 +562,17 @@ export interface TaskRecord {
   startWaterActivityRemainder: number
   reason: ActionReason
   productionPerHour: number
+  groupId?: number | null
+  wholeHut?: boolean
+  rateChanges?: { minute: number; energyPerHour: number }[]
 }
 
 export interface Forager extends Hydration {
   task: TaskRecord | null
   knowledge: Knowledge
   knownPlaces: Int32Array
+  placeCheckedMinute: Int32Array
+  seenMinute: Int32Array
   placeStock: Int32Array
   placeWood: Int32Array
   placeLogs: Int32Array
@@ -559,7 +585,15 @@ export interface Forager extends Hydration {
   lastWakeMinute: number
   energyRemainder: number
   waterObservations: WaterObservationEvent[]
-  groundKnowledge: GroundKnowledge
+  /** Empty compatibility record until the Task 9 cleanup and Task 10 observer port. */
+  groundKnowledge: {
+    shore?: BankGeometry
+    cells: number
+    cellCm: number
+    observed: Uint8Array
+    heights: Int32Array
+    revision: number
+  }
   knownBanks: Map<number, BankMemory>
   fishMemory: Map<number, { stock: number; capacity: number; minute: number }>
   route: Point[]
@@ -986,6 +1020,9 @@ export interface TaskEvent {
   task: TaskRecord
   position: Point
   produced?: { kcal: number; wood: number; logs: number; stones: number }
+  paid?: { kcal: number; waterLossMl: number; drankMl: number }
+  ateKcal?: number
+  spoiledKcal?: number
 }
 export type WakeEvent =
   | TaskEvent
@@ -994,6 +1031,12 @@ export type WakeEvent =
   | { kind: 'regrowth'; minute: number; placeId: number; kcal: number; wood: number; logs: number }
 export type ValleyEvent =
   | WakeEvent
+  | { kind: 'group-founded' | 'group-joined' | 'group-dissolved'; minute: number; groupId: number }
+  | { kind: 'exchange'; minute: number; sellerId: number; buyerId: number; wood: number; kcal: number }
+  | { kind: 'meet'; minute: number; foragerId: number; otherId: number }
+  | { kind: 'axe-request'; minute: number; foragerId: number; otherId: number }
+  | { kind: 'delivery'; minute: number; foragerId: number; logs: number; hutId: number | null }
+  | { kind: 'fire'; minute: number; foragerId: number; burned: number; lit: boolean }
   | WaterEvent
   | ActionEvent
   | DeathEvent
@@ -1154,6 +1197,7 @@ export interface ValleyState {
   lastInterval: ValleyEvent[]
   logStock: Int32Array
   felledMinute: Int32Array
+  logRegrowth: Map<number, number[]> // felling minutes of fully harvested three-log bundles
   lastWaterEvents: WaterEvent[]
   fish: FishStock[]
   waterWithdrawals: Map<number, number>

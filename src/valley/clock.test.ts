@@ -19,7 +19,7 @@ describe('wake-up queue', () => {
     const a = new WakeQueue()
     const b = new WakeQueue()
     entries.forEach((entry) => a.schedule(entry))
-    entries.toReversed().forEach((entry) => b.schedule(entry))
+    ;[...entries].reverse().forEach((entry) => b.schedule(entry))
     const expected = [entries[3], entries[1], entries[0], entries[2]]
     expect(drain(a)).toEqual(expected)
     expect(drain(b)).toEqual(expected)
@@ -39,6 +39,14 @@ describe('wake-up queue', () => {
     const copy = queue.clone()
     copy.pop()!.minute = 100
     expect(queue.peek()!.minute).toBe(5)
+  })
+  it('orders simultaneous arrival sources independently of insertion order', () => {
+    const a = new WakeQueue(),
+      b = new WakeQueue()
+    const notices: WakeEntry[] = [2, 1].map((walkerId) => ({ minute: 5, phase: 1, id: 0, kind: 'arrival', walkerId }))
+    notices.forEach((entry) => a.schedule(entry))
+    ;[...notices].reverse().forEach((entry) => b.schedule(entry))
+    expect(drain(a)).toEqual(drain(b))
   })
   it('advancing zero minutes changes nothing and never mutates its input', () => {
     const state = createValley(FLAT_LAND)

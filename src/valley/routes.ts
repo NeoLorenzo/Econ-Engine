@@ -58,6 +58,18 @@ export const nodePoint = (lattice: RouteLattice, id: number): Point => ({
 export const chunkOf = (lattice: RouteLattice, point: Point) =>
   Math.floor(point.y / lattice.chunkCm) * lattice.chunkCells + Math.floor(point.x / lattice.chunkCm)
 
+function drySegment(banks: BankGeometry, a: Point, b: Point): boolean {
+  if (bankCircleWet(banks, a, 1) || bankCircleWet(banks, b, 1) || bankSegmentWet(banks, a, b)) return false
+  for (const [dx, dy] of [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ])
+    if (bankSegmentWet(banks, { x: a.x + dx!, y: a.y + dy! }, { x: b.x + dx!, y: b.y + dy! })) return false
+  return true
+}
+
 export function buildLattice(
   config: ValleyConfig,
   terrain: Terrain,
@@ -90,7 +102,7 @@ export function buildLattice(
         next = ny * cells + nx
       if (nx < 0 || ny < 0 || nx >= cells || ny >= cells || !lattice.dry[next]) continue
       if (dx && dy && (!lattice.dry[y * cells + nx] || !lattice.dry[ny * cells + x])) continue
-      if (!bankSegmentWet(banks, a, nodePoint(lattice, next))) lattice.edges[id] |= 1 << d
+      if (drySegment(banks, a, nodePoint(lattice, next))) lattice.edges[id] |= 1 << d
     }
   }
   return lattice
@@ -155,7 +167,7 @@ export function routeNode(lattice: RouteLattice, knowledge: Knowledge, point: Po
       if (!knowledge.nodes[id] || !lattice.dry[id]) continue
       const anchor = nodePoint(lattice, id),
         sq = distanceSq(point.x, point.y, anchor.x, anchor.y)
-      if ((sq < bestSq || (sq === bestSq && id < best)) && !bankSegmentWet(lattice.banks, point, anchor)) {
+      if ((sq < bestSq || (sq === bestSq && id < best)) && drySegment(lattice.banks, point, anchor)) {
         best = id
         bestSq = sq
       }
@@ -200,6 +212,7 @@ export function knownRoute(
     for (const [direction, [dx, dy]] of directions.entries()) {
       if (!(lattice.edges[id]! & (1 << direction))) continue
       const next = id + dy * n + dx
+      if (dx && dy && (!knowledge.nodes[id + dx] || !knowledge.nodes[id + dy * n])) continue
       if (!knowledge.nodes[next] || closed[next]) continue
       const cost = costs[id]! + (dx && dy ? diagonal : lattice.cellCm)
       if (cost < costs[next]! || (cost === costs[next] && id < parents[next]!)) {
@@ -229,7 +242,7 @@ export function knownRoute(
       b = points[i]!,
       lengthCm = distance(a.x, a.y, b.x, b.y)
     if (!lengthCm) continue
-    if (bankSegmentWet(banks, a, b)) return null
+    if (!drySegment(banks, a, b)) return null
     const { slope, uphill } = slopeClassOf(config, terrain, a, b)
     const groundClass = ground[cellOf(terrain, a.x, a.y)]! as Ground
     const duration = segmentTimeUnits(config, lengthCm, slope, uphill, groundClass, speed)
@@ -294,6 +307,7 @@ export function nearestFrontier(lattice: RouteLattice, knowledge: Knowledge, fro
         next = ny * lattice.cells + nx
       if (nx < 0 || ny < 0 || nx >= lattice.cells || ny >= lattice.cells) continue
       if (!knowledge.nodes[next]) frontier = true
+      if (dx && dy && (!knowledge.nodes[id + dx] || !knowledge.nodes[id + dy * lattice.cells])) continue
       if (lattice.edges[id]! & (1 << direction) && knowledge.nodes[next] && !seen[next]) {
         seen[next] = 1
         pending.push(next)

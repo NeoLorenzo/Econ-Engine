@@ -1,5 +1,5 @@
 import { isqrt } from './geometry'
-import { waterThresholds } from './hydration'
+import { waterThresholds } from './body'
 import { terrainOf } from './terrain'
 import { fishCapacity } from './fish'
 import type { Point, ValleyConfig } from './types'

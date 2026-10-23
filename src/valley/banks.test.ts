@@ -75,8 +75,8 @@ describe('continuous water banks', () => {
       const start = nodePoint(lattice, anchor),
         route = knownRoute(lattice, knowledge, terrain, ground, shore, config, 0, start, bank)
       expect(route).not.toBeNull()
-      for (const segment of route!.segments)
-        expect(bankSegmentWet(shore, { x: segment.x0, y: segment.y0 }, { x: segment.x1, y: segment.y1 })).toBe(false)
+      for (const leg of route!.segments)
+        expect(bankSegmentWet(shore, { x: leg.x0, y: leg.y0 }, { x: leg.x1, y: leg.y1 })).toBe(false)
       expect(knownRoute(lattice, knowledge, terrain, ground, shore, config, 0, start, bank)).toEqual(route)
       used++
     }

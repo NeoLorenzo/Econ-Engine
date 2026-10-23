@@ -31,6 +31,22 @@ describe('known route lattice', () => {
     knowledge.revision += 1
     expect(route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })).not.toBeNull()
   })
+  it('does not cut diagonally across unseen adjoining ground', () => {
+    const { route, knowledge, lattice } = fixture()
+    knowledge.nodes.fill(0)
+    knowledge.nodes[0] = 1
+    knowledge.nodes[lattice.cells + 1] = 1
+    expect(route({ x: 1_000, y: 1_000 }, { x: 3_000, y: 3_000 })).toBeNull()
+  })
+  it('takes a shorter crossing only after observing it', () => {
+    const { route, knowledge, lattice } = fixture()
+    for (let row = 0; row < lattice.cells - 1; row += 1) knowledge.nodes[row * lattice.cells + 5] = 0
+    const before = route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })!
+    knowledge.nodes[5] = 1
+    knowledge.revision += 1
+    const after = route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })!
+    expect(after.minutes).toBeLessThan(before.minutes)
+  })
   it('times segments and costs walking by slope class', () => {
     const { state } = fixture()
     const c = state.config

@@ -2,6 +2,15 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Refoundation-055] - (2026-10-23, Task 7 checkpoint)
+
+### Changed
+
+- Implement the first seven tasks of the approved Life 12 re-foundation: configurable calendar, aggregate resource places, deterministic wake-up queue, lazy bodies and tasks, known dry lattice routes, and perception at wake-ups.
+- Port sleep, exploration, harvesting, drinking, loads, meetings, groups, shared fires, huts, axes and exchange into the wake-up pipeline. Preserve the owner's decisions on stock-dependent picking and configured walking pace.
+- Record interval events and daily summaries without advancing every person each minute. Retain independent three-log regrowth schedules within aggregate stands.
+- Stop before Task 8 for review. Lint passes; the full gate is blocked by the checker and observer ports scheduled in Tasks 8 and 10. Fingerprints, browser acceptance and canonical-year timing remain later plan tasks. See the matching lab-notes entry for every port choice and checkpoint limitations.
+
 ## [LIFE11-ContinuousBanks-054] - (2026-10-22)
 
 ### Changed

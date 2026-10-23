@@ -15,6 +15,7 @@ export interface ObservationEvent {
   nodes: number[]
   banks: BankMemory[]
   people: number[]
+  seenPeople: { id: number; position: Point }[]
   stock: { placeId: number; food: number; wood: number; logs: number; stones: number } | null
 }
 export const peopleInChunk = (state: ValleyState, chunk: number): number[] => [...(state.peopleByChunk[chunk] ?? [])]
@@ -71,12 +72,14 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
     nodes: [],
     banks: [],
     people: [],
+    seenPeople: [],
     stock: null,
   }
   for (const id of observation.places) person.knownPlaces[id] = minute
   const placeId = placeAt(layout, origin.x, origin.y)
   if (placeId >= 0) {
     const kind = layout.places.kind[placeId]
+    person.placeCheckedMinute[placeId] = minute
     person.placeStock[placeId] =
       kind === 0 || kind === 1
         ? state.foodStock[placeId]!
@@ -132,7 +135,7 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
     }
   if (observation.nodes.length) person.knowledge.revision += 1
   // The index records each person's last wake-up; route entry notifications keep moving entries local.
-  const talk = config.talkRadiusCm
+  const talk = config.sightRadiusCm
   const candidates = new Set<number>()
   for (
     let y = Math.max(0, Math.floor((origin.y - talk) / lattice.chunkCm));
@@ -150,9 +153,13 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
     if (id === person.id || !other.alive) continue
     const point = positionAt(state, other, minute)
     if ((point.x - origin.x) ** 2 + (point.y - origin.y) ** 2 > talk ** 2) continue
-    person.metMinute[id] = minute
+    observation.seenPeople.push({ id, position: point })
+    person.seenMinute[id] = minute
     person.metPosition.set(id, point)
-    observation.people.push(id)
+    if ((point.x - origin.x) ** 2 + (point.y - origin.y) ** 2 <= config.talkRadiusCm ** 2) {
+      person.metMinute[id] = minute
+      observation.people.push(id)
+    }
   }
   for (const group of state.groups)
     if (
@@ -216,6 +223,7 @@ export function scheduleArrivals(state: ValleyState, walkerId: number, route: Ro
       walkerId,
       chunk: entry.chunk,
       routeId: walker.task?.routeId ?? -1,
+      walkStartMinute: startMinute,
     })
     for (const id of peopleInChunk(state, entry.chunk)) {
       if (id === walkerId) continue
@@ -229,6 +237,7 @@ export function scheduleArrivals(state: ValleyState, walkerId: number, route: Ro
         walkerId,
         chunk: entry.chunk,
         routeId: walker.task?.routeId ?? -1,
+        walkStartMinute: startMinute,
       })
     }
   }

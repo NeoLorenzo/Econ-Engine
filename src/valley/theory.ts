@@ -1,7 +1,7 @@
 import { askOf } from './axes'
 import { fishCapacityKcal } from './config'
 import { speedForLoad } from './forager'
-import { placeCount } from './social'
+const placeCount = (config: ValleyConfig) => Math.ceil(config.valleySizeCm / config.placeCm) ** 2
 import { siteCount } from './sites'
 import { GROUND_NAMES, cellSlopePercent, speedOnGrade, walkCost as landWalkCost } from './terrain'
 import { nightHours, nightWood, woodTarget } from './trade'

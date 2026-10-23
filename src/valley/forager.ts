@@ -1,12 +1,13 @@
+import { planHut, salePrice, worthTo } from './axes'
 import { waterThresholds } from './body'
 import { capacityOf as foodCapacity, fullRateOf, rateAtStock, carriedKcal } from './food'
 import { knownTerms, buyingPays, sellingPays, wantedWood, spareWood } from './trade'
 import { nearestFrontier, estimateMinutes } from './routes'
 import { heightAt } from './terrain'
 import { carriedByFood, foodKg } from './food'
-import { MINUTES_PER_DAY, minuteOfDay } from './calendar'
+import { minuteOfDay } from './calendar'
 import { knownRoute, type Route } from './routes'
-import type { ActionReason, Forager, Point, TaskKind, ValleyConfig, ValleyState } from './types'
+import type { ActionReason, Forager, Good, Point, TaskKind, ValleyConfig, ValleyState } from './types'
 export { MINUTES_PER_DAY, minuteOfDay } from './calendar'
 export const isDaylight = (config: ValleyConfig, minute: number) =>
   minuteOfDay(minute) >= config.dawnHour * 60 && minuteOfDay(minute) < config.duskHour * 60
@@ -77,6 +78,7 @@ export function routeFor(state: ValleyState, person: Forager, target: Point): Ro
 export interface TaskChoice {
   productionPerHour?: number
   expectedStock?: number
+  desiredCarriedKcal?: number
   kind: TaskKind
   placeId: number
   target: Point | null
@@ -252,21 +254,103 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
     return { kind: 'walk', placeId: -1, target: person.hearth, reason: 'taking a load home' }
   if (!person.hungry && person.tripWood > 0 && person.tripWood < state.config.woodLoad)
     return woodGoal(state, person, minute) ?? explore(state, person, 'seeking wood')
+  if (!person.hungry && !person.shortOfWood) {
+    if (person.groupId === null) {
+      const seen = [...person.metPosition.entries()]
+        .filter(([id]) => person.seenMinute[id] === minute && state.foragers[id]!.alive)
+        .sort(
+          (a, b) =>
+            (a[1].x - person.x) ** 2 +
+              (a[1].y - person.y) ** 2 -
+              ((b[1].x - person.x) ** 2 + (b[1].y - person.y) ** 2) || a[0] - b[0],
+        )
+      for (const [, point] of seen)
+        if (
+          (point.x - person.x) ** 2 + (point.y - person.y) ** 2 > state.config.talkRadiusCm ** 2 &&
+          routeFor(state, person, point)
+        )
+          return { kind: 'walk', placeId: -1, target: point, reason: 'seeking company' }
+      for (const id of person.knownFlags) {
+        const group = state.groups[id]
+        if (group && group.dissolvedMinute === null) {
+          const route = routeFor(state, person, group.flag)
+          if (route)
+            return route.segments.length
+              ? { kind: 'walk', placeId: -1, target: group.flag, reason: 'seeking company' }
+              : restChoice('waiting for company')
+        }
+      }
+    } else {
+      if (!person.axe && person.spareAxe) {
+        person.axe = person.spareAxe
+        person.spareAxe = null
+      }
+      const plan = planHut(state, person, minute)
+      if (plan?.kind === 'make')
+        return atHearth(person)
+          ? { kind: 'make', placeId: -1, target: null, reason: 'making an axe' }
+          : { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home to make an axe' }
+      if (plan?.kind === 'cut') return workAt(state, person, plan.treeId, 'cut', 'cutting a log', 0, 0)
+      if (plan?.kind === 'stone') return workAt(state, person, plan.stoneId, 'gather', 'picking up a stone', 60, 1)
+      if (plan?.kind === 'buy food') {
+        const choice = foodGoal(state, person, minute)
+        if (choice && person.heardAsk) {
+          choice.desiredCarriedKcal = salePrice(
+            person.heardAsk.price,
+            worthTo(state.config, person, person.heardAsk.quality),
+          )
+          choice.reason = 'picking food to buy an axe'
+        }
+        return choice ?? restChoice('waiting to buy an axe')
+      }
+      if (plan?.kind === 'await axe' || plan?.kind === 'await sale')
+        return atHearth(person)
+          ? restChoice('waiting for an axe being made')
+          : { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home to wait for an axe' }
+    }
+    const frontier = nearestFrontier(state.layout.lattice, person.knowledge, person)
+    if (frontier) return { kind: 'walk', placeId: -1, target: frontier, reason: 'exploring' }
+    let target = -1,
+      best = Infinity
+    for (let id = 0; id < state.layout.places.count; id += 1) {
+      if (
+        person.knownPlaces[id]! < 0 ||
+        (person.placeCheckedMinute[id]! >= 0 &&
+          minute - person.placeCheckedMinute[id]! < state.config.exploreAfterHours * 60)
+      )
+        continue
+      const point = { x: state.layout.places.x[id]!, y: state.layout.places.y[id]! },
+        travel = estimate(state, person, point)
+      if (
+        travel < best &&
+        travel + estimateMinutes(state.config, point, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 <
+          state.config.duskHour * 60 - minuteOfDay(minute)
+      ) {
+        target = id
+        best = travel
+      }
+    }
+    if (target >= 0)
+      return {
+        kind: 'walk',
+        placeId: -1,
+        target: { x: state.layout.places.x[target]!, y: state.layout.places.y[target]! },
+        reason: 'checking',
+      }
+  }
   if (person.hungry || person.shortOfWood) {
-    const terms = knownTerms(state.config, person, minute)
-    if (person.hungry && terms !== null && sellingPays(person, terms) && spareWood(state.config, person) > 0)
-      return restChoice('waiting to swap')
-    if (
-      !person.hungry &&
-      terms !== null &&
-      buyingPays(person, terms) &&
-      carriedKcal(person.carried) < wantedWood(state.config, person) * terms
-    )
-      return foodGoal(state, person, minute) ?? explore(state, person, 'seeking food')
-    return (
-      (person.hungry ? foodGoal(state, person, minute) : woodGoal(state, person, minute)) ??
-      explore(state, person, person.hungry ? 'seeking food' : 'seeking wood')
-    )
+    const work = chooseWork(state.config, person, minute)
+    if (work === 'wait') return restChoice('waiting to swap')
+    if (work) {
+      person.trip = work.trip
+      const good = work.good === 'wood' && person.tripWood >= state.config.woodLoad ? 'food' : work.good
+      const choice =
+        (good === 'food' ? foodGoal(state, person, minute) : woodGoal(state, person, minute)) ??
+        explore(state, person, good === 'food' ? 'seeking food' : 'seeking wood')
+      if (work.forTrade && good === 'food')
+        choice.desiredCarriedKcal = wantedWood(state.config, person) * (knownTerms(state.config, person, minute) ?? 0)
+      return choice
+    }
   }
   return restChoice()
 }
@@ -274,3 +358,34 @@ export const fillingLoad = (config: ValleyConfig, person: Forager) =>
   person.tripWood > 0 && person.tripWood < config.woodLoad
 export const carryingFullLoad = (config: ValleyConfig, person: Forager) =>
   config.woodLoad > 0 && person.tripWood >= config.woodLoad
+
+export type Work = { good: Good; forTrade: boolean; trip: Forager['trip'] } | 'wait' | null
+
+/**
+ * The choice of work, with loads: a forager neither hungry nor short of wood that is filling a load keeps working
+ * for wood. `hungry` and `shortOfWood` must already be updated.
+ */
+export function chooseWork(config: ValleyConfig, forager: Forager, minute: number): Work {
+  if (!forager.hungry && fillingLoad(config, forager)) return { good: 'wood', forTrade: false, trip: null }
+  if (!forager.hungry && !forager.shortOfWood) return null
+  const terms = knownTerms(config, forager, minute)
+  const carried = carriedKcal(forager.carried)
+  if (forager.hungry) {
+    if (terms !== null && sellingPays(forager, terms)) {
+      const spare = spareWood(config, forager)
+      if (forager.trip && spare < forager.trip.goalSpareWood)
+        return { good: 'wood', forTrade: true, trip: forager.trip }
+      if (spare === 0) {
+        const request = Math.max(0, config.satiatedAtKcal - forager.energyKcal - carried)
+        const goalSpareWood = Math.ceil(request / terms)
+        if (goalSpareWood > 0) return { good: 'wood', forTrade: true, trip: { goalSpareWood } }
+      }
+    }
+    return { good: 'food', forTrade: false, trip: null }
+  }
+  if (terms !== null && buyingPays(forager, terms)) {
+    if (carried < wantedWood(config, forager) * terms) return { good: 'food', forTrade: true, trip: null }
+    return 'wait'
+  }
+  return { good: 'wood', forTrade: false, trip: null }
+}

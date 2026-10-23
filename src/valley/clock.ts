@@ -8,11 +8,19 @@ export interface WakeEntry {
   walkerId?: number
   chunk?: number
   routeId?: number
+  walkStartMinute?: number
 }
 export const WAKE_ORDER: readonly WakeKind[] = ['world', 'end', 'threshold', 'arrival', 'address']
 
 const compare = (a: WakeEntry, b: WakeEntry) =>
-  a.minute - b.minute || a.phase - b.phase || a.id - b.id || WAKE_ORDER.indexOf(a.kind) - WAKE_ORDER.indexOf(b.kind)
+  a.minute - b.minute ||
+  a.phase - b.phase ||
+  a.id - b.id ||
+  WAKE_ORDER.indexOf(a.kind) - WAKE_ORDER.indexOf(b.kind) ||
+  (a.walkerId ?? -1) - (b.walkerId ?? -1) ||
+  (a.chunk ?? -1) - (b.chunk ?? -1) ||
+  (a.routeId ?? -1) - (b.routeId ?? -1) ||
+  (a.walkStartMinute ?? -1) - (b.walkStartMinute ?? -1)
 
 export class WakeQueue {
   private heap: WakeEntry[] = []

@@ -1,7 +1,4 @@
-import { daylightSecondsLeft, estimateKnownWalk, isDaylight, walkLowerBound, walkSpeed } from './legacyForager'
-import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
-import type { GroundKnowledge } from './legacyRoutes'
-
+import type { Good, Point, ValleyConfig, ValleyLayout } from './types'
 // Thickets, hazel thickets, stands and outcrops as sites, which a forager spots from afar, checks up close, and walks
 // to when it checks what it knows or searches for food or wood.
 
@@ -29,7 +26,7 @@ export const siteKind = (config: ValleyConfig, site: number) => siteKindOf(confi
 export const siteHolds = (config: ValleyConfig, site: number, good: Good) => {
   const kind = siteKind(config, site)
   if (good === 'food') return kind === 'thicket' || kind === 'hazel'
-  return kind === 'stand' || (kind === 'thicket' && config.bushCapacityWood > 0)
+  return kind === 'stand' || (kind === 'thicket' && config.berryThicketWoodKg > 0)
 }
 
 export function siteCentre(config: ValleyConfig, layout: ValleyLayout, site: number): Point {
@@ -50,125 +47,4 @@ export function siteRadius(config: ValleyConfig, site: number) {
 export const checkRadius = (config: ValleyConfig, site: number) => config.perceptionRadiusCm - siteRadius(config, site)
 
 /** How far a forager sees in minute `minute`: long sight by day, close sight at night. */
-export const sightOf = (config: ValleyConfig, minute: number) =>
-  isDaylight(config, minute) ? config.sightRadiusCm : config.perceptionRadiusCm
-
-/** Every site's centre and the square of its check radius, by ID, kept per layout; they hold no simulation state. */
-export interface SiteGeometry {
-  x: Int32Array
-  y: Int32Array
-  checkSq: Float64Array
-}
-
-const geometries = new WeakMap<ValleyLayout, SiteGeometry>()
-
-export function siteGeometry(config: ValleyConfig, layout: ValleyLayout): SiteGeometry {
-  let geometry = geometries.get(layout)
-  if (!geometry) {
-    const count = siteCount(config)
-    geometry = { x: new Int32Array(count), y: new Int32Array(count), checkSq: new Float64Array(count) }
-    for (let site = 0; site < count; site += 1) {
-      const centre = siteCentre(config, layout, site)
-      geometry.x[site] = centre.x
-      geometry.y[site] = centre.y
-      geometry.checkSq[site] = checkRadius(config, site) ** 2
-    }
-    geometries.set(layout, geometry)
-  }
-  return geometry
-}
-
-/** Checking goes to known sites not checked for `exploreAfterHours` or never; searching only to sites never checked. */
-export type SiteSearch = 'check' | 'search'
-
-// Previous winners are only an evaluation-order hint. Every remaining contender is still checked against an exact bound.
-const siteHints = new WeakMap<GroundKnowledge, number[]>()
-
-export function siteWanted(config: ValleyConfig, forager: Forager, site: number, minute: number, why: SiteSearch) {
-  if (!forager.siteKnown[site]) return false
-  const checked = forager.siteChecked[site]!
-  if (checked < 0) return true
-  return why === 'check' && minute - checked >= 60 * config.exploreAfterHours
-}
-
-/**
- * The nearest site a forager wants to check or search, of the good's kind when one is given, among those it can reach
- * and return home from before dusk, by estimated known-route travel time, ties to the lowest ID; or null.
- */
-export function chooseSite(
-  config: ValleyConfig,
-  layout: ValleyLayout,
-  forager: Forager,
-  minute: number,
-  why: SiteSearch,
-  good: Good | null,
-): number | null {
-  return nearestKnownSite(
-    config,
-    layout,
-    forager,
-    minute,
-    (site) => (good === null || siteHolds(config, site, good)) && siteWanted(config, forager, site, minute, why),
-  )
-}
-
-/** Search nearby candidates first; the Chebyshev bound cannot overestimate an eight-neighbour route. */
-export function nearestKnownSite(
-  config: ValleyConfig,
-  layout: ValleyLayout,
-  forager: Forager,
-  minute: number,
-  wanted: (site: number) => boolean,
-): number | null {
-  const speed = walkSpeed(config, forager)
-  const left = daylightSecondsLeft(config, minute)
-  let best: number | null = null
-  let bestTime = Infinity
-  const candidates: { site: number; centre: Point; lower: number }[] = []
-  for (let site = 0; site < siteCount(config); site += 1) {
-    if (!forager.siteKnown[site] || !wanted(site)) continue
-    const centre = siteCentre(config, layout, site)
-    const lower = walkLowerBound(forager, centre, speed)
-    const homeFloor = walkLowerBound(centre, forager.hearth, speed)
-    if (lower + homeFloor > left) continue
-    candidates.push({ site, centre, lower })
-  }
-  candidates.sort((a, b) => a.lower - b.lower || a.site - b.site)
-  const consider = ({ site, centre, lower }: (typeof candidates)[number]) => {
-    if (lower > bestTime) return
-    // The stable hearth-rooted search is shared across moving positions and candidate sites.
-    const home = estimateKnownWalk(config, forager, centre, forager.hearth, speed, left - lower)
-    if (lower + home > left) return
-    const time = estimateKnownWalk(config, forager, forager, centre, speed, Math.min(bestTime, left - home))
-    if ((time < bestTime || (time === bestTime && site < best!)) && time + home <= left) {
-      best = site
-      bestTime = time
-    }
-  }
-  const hints = siteHints.get(forager.groundKnowledge) ?? []
-  const preferred = hints
-    .map((site) => candidates.find((candidate) => candidate.site === site))
-    .find((candidate) => candidate !== undefined)
-  if (preferred) consider(preferred)
-  for (const candidate of candidates) {
-    if (candidate.lower > bestTime) break
-    if (candidate !== preferred) consider(candidate)
-  }
-  if (best !== null)
-    siteHints.set(forager.groundKnowledge, [best, ...hints.filter((site) => site !== best)].slice(0, 4))
-  return best
-}
-
-/** How many sites a forager knows. */
-export function sitesKnown(forager: Forager) {
-  let count = 0
-  for (const known of forager.siteKnown) count += known
-  return count
-}
-
-/** How many sites a forager has checked at or after minute `since`. */
-export function sitesCheckedSince(forager: Forager, since: number) {
-  let count = 0
-  for (const checked of forager.siteChecked) if (checked >= since) count += 1
-  return count
-}
+export const sightOf = (config: ValleyConfig, _minute: number) => config.sightRadiusCm

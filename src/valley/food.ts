@@ -104,3 +104,8 @@ export function addLots(lots: FoodLot[], added: readonly FoodLot[]) {
   if (!added.length) return lots
   return [...lots, ...added].sort((a, b) => a.harvestTick - b.harvestTick)
 }
+
+export const eatCarried = (lots: FoodLot[], room: number) => {
+  const eaten = takeOldest(lots, room)
+  return { rest: eaten.rest, takenKcal: eaten.takenKcal }
+}

@@ -3,7 +3,6 @@ import { createValley } from './engine'
 import { FLAT_LAND } from './config'
 import { fishCapacity, fishGrowth, fishRate } from './fish'
 import { rateAtStock, spoil, spoilsIn } from './food'
-import { HOURS_PER_YEAR } from './work'
 describe('the lake', () => {
   const { config } = createValley(FLAT_LAND)
   const capacity = fishCapacity(300_000, 1_000, config.fishKgPerHectare, config.fishKcalPerKg)
@@ -13,13 +12,13 @@ describe('the lake', () => {
   })
 
   it('grows nothing full or empty, most at half, and loses nothing to rounding', () => {
-    expect(fishGrowth(capacity, capacity, 0, config.fishGrowthPercentPerYear).grown).toBe(0)
-    expect(fishGrowth(capacity, 0, 0, config.fishGrowthPercentPerYear).grown).toBe(0)
+    expect(fishGrowth(capacity, capacity, 0, config.fishGrowthPercentPerYear, config.daysPerYear).grown).toBe(0)
+    expect(fishGrowth(capacity, 0, 0, config.fishGrowthPercentPerYear, config.daysPerYear).grown).toBe(0)
     const yearFrom = (start: number) => {
       let stock = start
       let remainder = 0
-      for (let hour = 0; hour < HOURS_PER_YEAR; hour += 1) {
-        const grown = fishGrowth(capacity, stock, remainder, config.fishGrowthPercentPerYear)
+      for (let hour = 0; hour < config.daysPerYear; hour += 1) {
+        const grown = fishGrowth(capacity, stock, remainder, config.fishGrowthPercentPerYear, config.daysPerYear)
         stock += grown.grown
         remainder = grown.remainder
       }

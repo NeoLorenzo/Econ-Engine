@@ -69,7 +69,7 @@ export function takeFrom(stock: Int32Array, id: number, wanted: number): number 
 }
 
 export function regrowPlaces(
-  state: Pick<ValleyState, 'config' | 'layout' | 'foodStock' | 'woodStock' | 'logStock' | 'felledMinute'>,
+  state: Pick<ValleyState, 'config' | 'layout' | 'foodStock' | 'woodStock' | 'logStock' | 'logRegrowth'>,
   minute: number,
 ) {
   const config = state.config
@@ -100,14 +100,14 @@ export function regrowPlaces(
       )
     } else if (kind === 2) {
       grown.wood += add(state.woodStock, id, share(config.standDeadfallKgPerYear), config.standWoodKg)
-      if (
-        state.felledMinute[id]! >= 0 &&
-        state.logStock[id] === 0 &&
-        minute - state.felledMinute[id]! >= yearsToDays(config, config.treeRegrowthYears) * MINUTES_PER_DAY
-      ) {
-        state.logStock[id] = config.standLogs
-        state.felledMinute[id] = -1
-        grown.logs += config.standLogs
+      const pending = state.logRegrowth.get(id)
+      if (pending) {
+        const delay = yearsToDays(config, config.treeRegrowthYears) * MINUTES_PER_DAY
+        const ready = pending.filter((felled) => minute - felled >= delay)
+        grown.logs += add(state.logStock, id, ready.length * 3, config.standLogs)
+        const remaining = pending.filter((felled) => minute - felled < delay)
+        if (remaining.length) state.logRegrowth.set(id, remaining)
+        else state.logRegrowth.delete(id)
       }
     }
   }

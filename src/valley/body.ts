@@ -1,4 +1,4 @@
-import type { TaskRecord, ValleyConfig } from './types'
+import type { TaskRecord, ValleyConfig, Hydration, HydrationConfig } from './types'
 import { TIME_UNITS_PER_MINUTE } from './routes'
 
 export const waterThresholds = (
@@ -37,6 +37,17 @@ function integral(task: TaskRecord, minute: number, routes: readonly BodyRoute[]
     }
     // Arrival is rounded to an integer wake-up minute. The fraction after arrival is spent standing.
     if (left > 0) charge(left, task.restKcalPerHour)
+  } else if (task.kind === 'sleep' && task.rateChanges?.length) {
+    let cursor = task.startMinute,
+      rate = task.energyPerHour
+    const until = Math.min(minute, task.endMinute)
+    for (const change of task.rateChanges) {
+      if (change.minute > until) break
+      charge(Math.max(0, change.minute - cursor) * TIME_UNITS_PER_MINUTE, rate)
+      cursor = change.minute
+      rate = change.energyPerHour
+    }
+    if (left > 0) charge(left, rate)
   } else charge(left, task.energyPerHour)
   return { energy, activity }
 }
@@ -107,4 +118,15 @@ export function firstThresholdMinute(config: ValleyConfig, task: TaskRecord, rou
     if (low === first && name.startsWith('fatal')) causes.push(name)
   }
   return Number.isFinite(first) ? { minute: first, crossing, causes } : null
+}
+
+export function newHydration(config: HydrationConfig): Hydration {
+  return {
+    waterDeficitMl: config.initialWaterDeficitMl,
+    waterBaseRemainder: 0,
+    waterActivityRemainder: 0,
+    waterLostMl: 0,
+    waterDrunkMl: 0,
+    thirsty: false,
+  }
 }

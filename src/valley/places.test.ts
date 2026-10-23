@@ -45,13 +45,15 @@ describe('resource places', () => {
     expect(takeFrom(stock, 0, 3_000)).toBe(1_920)
     expect(takeFrom(stock, 0, 1)).toBe(0)
   })
-  it('restores an emptied stand after twenty years', () => {
+  it('restores harvested bundles independently after twenty years', () => {
     const state = createValley({ ...FLAT_LAND, daysPerYear: 8 })
-    state.logStock[64] = 0
-    state.felledMinute[64] = 0
+    state.logStock[64] = 30
+    state.logRegrowth.set(64, [0, 1_440])
     regrowPlaces(state, 159 * 1_440)
-    expect(state.logStock[64]).toBe(0)
+    expect(state.logStock[64]).toBe(30)
     regrowPlaces(state, 160 * 1_440)
+    expect(state.logStock[64]).toBe(33)
+    regrowPlaces(state, 161 * 1_440)
     expect(state.logStock[64]).toBe(36)
   })
   it('does not destroy crown wood above the deadfall capacity', () => {
