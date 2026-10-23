@@ -15,7 +15,10 @@ import { startTask, positionAt } from './tasks'
 import { nearestFrontier } from './routes'
 import { observeAt, reindexPeople, scheduleArrivals, peopleInChunk } from './perception'
 import { worldWake } from './world'
-import { carriedKcal, takeOldest } from './food'
+import { carriedKcal, takeOldest, spoil, addLots } from './food'
+import { takeFrom } from './places'
+import { nextHungry } from './forager'
+import { nextShortOfWood } from './trade'
 import type { DaySummary, FoodLot, Forager, ValleyConfig, ValleyEvent, ValleyState } from './types'
 
 /** The observer shows the last 3 days of events; experiments read daily summaries instead. */
@@ -503,7 +506,10 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
     let route = routeFor(state, person, choice.target)
     if (!route) {
       const frontier = nearestFrontier(state.layout.lattice, person.knowledge, person)
-      if (frontier) route = routeFor(state, person, frontier)
+      if (frontier) {
+        route = routeFor(state, person, frontier)
+        choice = { ...choice, target: frontier, placeId: -1 }
+      }
     }
     if (route?.segments.length) {
       const key = routeKey(state, person, choice.target),
@@ -524,16 +530,33 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
       state.config.dawnHour * 60
   if (choice.kind === 'rest' && isDaylight(state.config, minute))
     end = Math.min(end, minute - minuteOfDay(minute) + state.config.duskHour * 60)
+  if (choice.kind === 'drink') {
+    const net = state.config.drinkMlPerSecond * 60 - state.config.waterBaseMlPerDay / 1_440
+    end = minute + Math.max(1, Math.ceil((person.waterDeficitMl - state.config.drinkStopMl) / net))
+  }
+  if (choice.kind === 'pick' || choice.kind === 'nuts' || choice.kind === 'fish' || choice.kind === 'gather') {
+    const rate = choice.productionPerHour ?? 0,
+      stock = choice.expectedStock ?? 0
+    const room =
+      choice.kind === 'gather'
+        ? state.config.woodLoad - person.tripWood
+        : Math.max(0, state.config.reserveMaxKcal - person.energyKcal - carriedKcal(person.carried))
+    const net = choice.kind === 'gather' ? rate : rate - state.config.pickKcalPerHour
+    const duration = Math.min(Math.ceil((stock * 60) / Math.max(1, rate)), Math.ceil((room * 60) / Math.max(1, net)))
+    const home = atHearth(person) ? 0 : (routeFor(state, person, person.hearth)?.minutes ?? 0)
+    end = minute + Math.max(1, Math.min(duration, state.config.duskHour * 60 - minuteOfDay(minute) - home))
+  }
   person.task = startTask(
     state.config,
     person,
     choice.kind,
     minute,
     Math.max(minute + 1, end),
-    choice.placeId,
+    choice.kind === 'walk' ? -1 : choice.placeId,
     routeId,
     choice.reason,
   )
+  person.task.productionPerHour = choice.productionPerHour ?? 0
   state.queue.schedule({ minute: person.task.endMinute, phase: 1, id: person.id, kind: 'end' })
   const threshold = firstThresholdMinute(state.config, person.task, state.routes)
   if (threshold && threshold.minute < person.task.endMinute)
@@ -553,6 +576,57 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   }
   return events
 }
+function creditTask(state: ValleyState, person: Forager, minute: number) {
+  const task = person.task!,
+    elapsed = minute - task.startMinute,
+    produced = { kcal: 0, wood: 0, logs: 0, stones: 0 }
+  if (task.kind === 'pick' || task.kind === 'nuts' || task.kind === 'fish') {
+    const owed = person.pickRemainder + task.productionPerHour * elapsed,
+      wanted = Math.floor(owed / 60)
+    if (task.kind === 'fish') {
+      const bank = person.knownBanks.get(task.placeId)!,
+        fish = state.fish.find((body) => body.bodyId === bank.bodyId)!
+      produced.kcal = Math.min(wanted, fish.stock)
+      fish.stock -= produced.kcal
+      fish.caught += produced.kcal
+      state.fishKcal -= produced.kcal
+      person.fishMemory.set(bank.bodyId, { stock: fish.stock, capacity: fish.capacity, minute })
+      state.today.fishCatchByBody[bank.bodyId] = (state.today.fishCatchByBody[bank.bodyId] ?? 0) + produced.kcal
+      person.pickRemainder = fish.stock ? owed % 60 : 0
+    } else {
+      produced.kcal = takeFrom(state.foodStock, task.placeId, wanted)
+      person.pickRemainder = state.foodStock[task.placeId] ? owed % 60 : 0
+    }
+    if (produced.kcal)
+      person.carried = addLots(person.carried, [
+        {
+          food: task.kind === 'pick' ? 'berries' : task.kind === 'nuts' ? 'nuts' : 'fish',
+          kcal: produced.kcal,
+          harvestTick: minute,
+        },
+      ])
+    state.totals.gatheredKcal += produced.kcal
+    state.today.gatheredKcal += produced.kcal
+    person.secondsToday.forage += elapsed * 60
+    person.secondsWorked.forage += elapsed * 60
+  }
+  if (task.kind === 'gather') {
+    const owed = person.gatherRemainder + task.productionPerHour * elapsed
+    produced.wood = takeFrom(
+      state.woodStock,
+      task.placeId,
+      Math.min(Math.floor(owed / 60), state.config.woodLoad - person.tripWood),
+    )
+    person.gatherRemainder = state.woodStock[task.placeId] ? owed % 60 : 0
+    person.wood += produced.wood
+    person.tripWood += produced.wood
+    state.totals.gatheredWood += produced.wood
+    state.today.gatheredWood += produced.wood
+    person.secondsToday.gather += elapsed * 60
+    person.secondsWorked.gather += elapsed * 60
+  }
+  return produced
+}
 export function personWake(state: ValleyState, id: number, minute: number, _kind: WakeKind): ValleyEvent[] {
   const person = state.foragers[id]!
   if (!person.alive) return []
@@ -560,7 +634,24 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
   const events: ValleyEvent[] = [],
     task = person.task
   if (task) {
-    bodyWake(state, person, minute)
+    const charge = bodyWake(state, person, minute)
+    if (task.kind === 'drink' && charge.drink > 0) {
+      const bank = person.knownBanks.get(task.placeId)!
+      state.waterWithdrawals.set(bank.bodyId, (state.waterWithdrawals.get(bank.bodyId) ?? 0) + charge.drink)
+      events.push({
+        kind: 'drink',
+        minute,
+        foragerId: id,
+        bankId: bank.id,
+        bodyId: bank.bodyId,
+        seconds: (minute - task.startMinute) * 60,
+        volumeMl: charge.drink,
+        deficitBeforeMl: task.startWaterMl,
+        deficitAfterMl: person.waterDeficitMl,
+        lossMl: charge.loss,
+      })
+    }
+    const produced = creditTask(state, person, minute)
     const point = positionAt(state, person, minute)
     person.x = point.x
     person.y = point.y
@@ -570,7 +661,7 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
       foragerId: id,
       task: { ...task },
       position: point,
-      produced: { kcal: 0, wood: 0, logs: 0, stones: 0 },
+      produced,
     })
   }
   person.task = null
@@ -594,6 +685,17 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
     })
     return events
   }
+  const spoiled = spoil(state.config, person.carried, minute)
+  person.carried = spoiled.lots
+  state.totals.spoiledKcal += spoiled.spoiledKcal
+  state.today.spoiledKcal += spoiled.spoiledKcal
+  const eaten = eatCarried(person.carried, state.config.reserveMaxKcal - person.energyKcal)
+  person.carried = eaten.rest
+  person.energyKcal += eaten.takenKcal
+  person.hungry = nextHungry(state.config, person.energyKcal, person.hungry)
+  person.shortOfWood = nextShortOfWood(state.config, person.wood, person.shortOfWood)
+  if (person.waterDeficitMl >= waterThresholds(state.config).thirsty) person.thirsty = true
+  else if (person.waterDeficitMl <= state.config.drinkStopMl) person.thirsty = false
   if (atHearth(person)) person.tripWood = 0
   reindexPeople(state, minute)
   events.push(observeAt(state, person, minute))

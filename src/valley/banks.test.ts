@@ -8,7 +8,9 @@ import {
   bankWaterHeight,
   triangleHeight,
 } from './banks'
-import { knownRoute, knownDrySegment, routeCentre, routeAnchor } from './legacyRoutes'
+import { knownRoute, buildLattice, nodePoint, routeNode } from './routes'
+import { VALLEY_DEFAULT_CONFIG } from './config'
+import type { Terrain } from './terrain'
 import { deriveWater } from './water'
 
 function bowl() {
@@ -59,34 +61,23 @@ describe('continuous water banks', () => {
         x,
         y,
       ) ?? 200
-    const grid = {
-      cells: 5,
-      cellCm: 500,
-      shore,
-      observed: new Uint8Array(25),
-      heights: new Int32Array(25),
-      revision: 1,
-    }
-    for (let id = 0; id < 25; id++) {
-      const p = routeCentre(grid, id)
-      grid.observed[id] = bankWaterHeight(shore, p, water.level) === null ? 1 : 2
-    }
+    const config = { ...VALLEY_DEFAULT_CONFIG, routeCellCm: 500, valleySizeCm: 2_500 }
+    const terrain = { water, cells: 5, cellCm: 500, height: bowl().corners } as Terrain
+    const ground = new Uint8Array(25)
+    const lattice = buildLattice(config, terrain, shore)
+    const knowledge = { nodes: new Uint8Array(25).fill(1), revision: 1 }
     let used = 0
     for (const segment of shore.segments.values()) {
       const bank = bankApproach(shore, segment, 100, 1000, height, water.bodies[segment.body]!.id, 0)
       if (!bank) continue
-      const anchor = routeAnchor(grid, bank)
+      const anchor = routeNode(lattice, knowledge, bank)
       if (anchor < 0) continue
-      const start = routeCentre(grid, anchor),
-        route = knownRoute(grid, start, bank)
+      const start = nodePoint(lattice, anchor),
+        route = knownRoute(lattice, knowledge, terrain, ground, shore, config, 0, start, bank)
       expect(route).not.toBeNull()
-      let from = start
-      for (const to of route!) {
-        expect(knownDrySegment(grid, from, to)).toBe(true)
-        expect(bankSegmentWet(shore, from, to)).toBe(false)
-        from = to
-      }
-      expect(knownRoute(grid, start, bank)).toEqual(route)
+      for (const segment of route!.segments)
+        expect(bankSegmentWet(shore, { x: segment.x0, y: segment.y0 }, { x: segment.x1, y: segment.y1 })).toBe(false)
+      expect(knownRoute(lattice, knowledge, terrain, ground, shore, config, 0, start, bank)).toEqual(route)
       used++
     }
     expect(used).toBeGreaterThan(0)

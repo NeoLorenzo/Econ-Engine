@@ -1,3 +1,5 @@
+import { buildLattice } from './routes'
+import { reindexPeople } from './perception'
 import { bankWaterHeight } from './banks'
 import { createValley } from './engine'
 import { deriveWater } from './water'
@@ -8,6 +10,8 @@ import type { ValleyConfig, ValleyState } from './types'
 export function createSurveyedValley(overrides: Partial<ValleyConfig> = {}, withWater = false) {
   const state = createValley(overrides)
   for (const person of state.foragers) {
+    person.knowledge.nodes.fill(1)
+    person.knownPlaces.fill(0)
     for (let id = 0; id < person.groundKnowledge.observed.length; id += 1) {
       const water = state.layout.terrain.water
       const point = {
@@ -45,7 +49,11 @@ export function addTestLake(state: ValleyState, two = false) {
     state.config.riverCatchmentM2,
     state.config.riverDepthCm,
   )
-  state.layout = { ...state.layout, terrain: { ...terrain, water } }
+  state.layout = {
+    ...state.layout,
+    terrain: { ...terrain, water },
+    lattice: buildLattice(state.config, { ...terrain, water }),
+  }
   state.totals.initialKcal -= state.fishKcal
   state.fish = water.bodies.map((body) => {
     const capacity = fishCapacity(
@@ -60,19 +68,22 @@ export function addTestLake(state: ValleyState, two = false) {
   state.totals.initialKcal += state.fishKcal
   const wetCell = terrain.cells + 1
   const bank = {
-    id: wetCell * 4,
+    id: wetCell * 4 + 3,
     bodyId: water.bodies[0]!.id,
     wetCell,
-    dryCell: 1,
+    dryCell: 2 * terrain.cells + 1,
     x: 750,
-    y: 450,
+    y: 1_050,
     minute: state.minute,
   }
   for (const person of state.foragers) {
+    person.knowledge.nodes.fill(1)
+    person.knowledge.revision += 1
     person.groundKnowledge.shore = water.shore
     for (let id = 0; id < bed.length; id += 1) person.groundKnowledge.observed[id] = water.body[id]! < 0 ? 1 : 2
     person.groundKnowledge.revision += 1
   }
   state.foragers[0]!.knownBanks.set(bank.id, bank)
+  reindexPeople(state, state.minute)
   return bank
 }

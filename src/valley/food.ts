@@ -7,7 +7,7 @@ export const foodOfSource = (layout: ValleyLayout, source: number): FoodKind =>
 /** The most a source holds. */
 export const capacityOf = (config: ValleyConfig, food: FoodKind) => {
   if (food === 'fish') throw new Error('Fish capacity requires a particular water body')
-  return food === 'berries' ? config.bushCapacityKcal : config.hazelCapacityKcal
+  return food === 'berries' ? config.berryThicketCapacityKcal : config.hazelThicketCapacityKcal
 }
 
 /** A forager's hourly rate for a food at a full source, for the day. */

@@ -42,7 +42,7 @@ function banksOf(state: ValleyState) {
       config.reachCm,
       config.drinkBankHeightCm,
       (x, y) => heightAt(terrain, x, y),
-      segment.body,
+      terrain.water.bodies[segment.body]!.id,
       0,
     )
     if (!bank) continue
