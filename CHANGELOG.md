@@ -2,6 +2,12 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Ledger-057] - (2026-10-23)
+
+- Replace the minute checker with interval replay of bodies, stocks, observations, tools, huts and external water withdrawals, plus physical routes, queues, event order, group/fire and regrowth checks.
+- Record world boundaries, fish growth and sleeping warmth changes; retain task-start loads for validating production and travel. Refresh the derived chunk index at interval endpoints.
+- Port the retained corruption cases and analytic examples. Check a canonical thirty-day run at daily intervals with all eight founders alive. Tasks 9–13 remain pending.
+
 ## [LIFE12-Review-056] - (2026-10-23)
 
 - Cache shoreline connectors, index estimated bank candidates, bound real water-route searches to three, and reuse immutable perception/route calculations.

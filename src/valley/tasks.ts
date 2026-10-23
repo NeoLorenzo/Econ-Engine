@@ -1,3 +1,4 @@
+import { loadKg, loadOf } from './forager'
 import { positionAlong } from './routes'
 import type { ValleyState, Point } from './types'
 import { sleepCostOf } from './work'
@@ -40,6 +41,8 @@ export function startTask(
     throw new Error('A task must end at a later safe integer minute')
   return {
     kind,
+    startTripWood: person.tripWood,
+    startLoadKg: loadKg(config, loadOf(person)),
     startMinute: minute,
     endMinute,
     placeId,

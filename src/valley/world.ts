@@ -10,7 +10,7 @@ import { practiceDay } from './practice'
 import { weatherHuts } from './huts'
 import type { ValleyState, ValleyEvent } from './types'
 export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
-  const events: ValleyEvent[] = []
+  const events: ValleyEvent[] = [{ kind: 'world', minute }]
   if (minute % MINUTES_PER_DAY === 0) {
     for (const person of state.foragers) if (person.alive) events.push(practiceDay(state.config, person, minute))
     events.push(...weatherHuts(state, minute))
@@ -40,6 +40,13 @@ export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
       fish.remainder = growth.remainder
       state.fishKcal += growth.grown
       state.totals.fishGrownKcal += growth.grown
+      events.push({
+        kind: 'fish-regrowth',
+        minute,
+        bodyId: fish.bodyId,
+        kcal: growth.grown,
+        remainder: growth.remainder,
+      })
     }
   }
   const fires = burnFires(state, minute)
@@ -62,6 +69,7 @@ export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
     const previous = task.rateChanges?.at(-1)?.energyPerHour ?? task.energyPerHour
     if (rate !== previous) {
       task.rateChanges = [...(task.rateChanges ?? []), { minute, energyPerHour: rate }]
+      events.push({ kind: 'rate-change', minute, foragerId: person.id, energyPerHour: rate })
       state.queue.cancelPerson(person.id, 'threshold')
       const threshold = firstThresholdMinute(state.config, task, state.routes)
       if (threshold && threshold.minute < task.endMinute)

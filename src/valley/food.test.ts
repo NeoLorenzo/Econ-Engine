@@ -1,3 +1,5 @@
+import { mustGoHome } from './forager'
+import { eatCarried } from './food'
 import { addTestLake } from './ruleFixtures'
 import { bandAt } from './ruleTestFixtures'
 import { stepValley } from './engine'
@@ -162,4 +164,37 @@ it('fishes an observed lake optimistically, withdraws its stock and remembers it
   const next = stepValley(s, 602)
   expect(next.totals.gatheredKcal).toBeGreaterThan(0)
   expect(next.foragers[0]!.fishMemory.get(bank.bodyId)?.stock).toBeLessThan(next.fish[0]!.capacity)
+})
+
+it('walks farther for full hazels rather than staying at a thin berry thicket', () => {
+  const s = bandAt(),
+    p = s.foragers[0]!
+  p.knownPlaces.fill(-1)
+  p.knownPlaces[0] = 0
+  p.knownPlaces[32] = 0
+  p.placeStock[0] = 1560
+  p.placeStock[32] = 75000
+  p.x = s.layout.places.x[0]!
+  p.y = s.layout.places.y[0]!
+  expect(foodGoal(s, p, 600)).toMatchObject({ kind: 'walk', placeId: 32 })
+})
+it('eats the oldest timestamped food up to reserve room without changing the lots supplied', () => {
+  const lots = [
+    { food: 'berries' as const, kcal: 100, harvestTick: 10 },
+    { food: 'nuts' as const, kcal: 200, harvestTick: 20 },
+  ]
+  expect(eatCarried(lots, 150)).toEqual({ takenKcal: 150, rest: [{ food: 'nuts', kcal: 150, harvestTick: 20 }] })
+  expect(lots[0]!.kcal).toBe(100)
+})
+it('includes the carried load when judging the departure deadline', () => {
+  const s = bandAt(),
+    p = s.foragers[0]!
+  p.hearth = { x: 10000, y: 40000 }
+  p.x = 70000
+  p.y = 40000
+  p.wood = 30
+  p.tripWood = 0
+  expect(mustGoHome(s, p, 1071)).toBe(false)
+  p.tripWood = 30
+  expect(mustGoHome(s, p, 1071)).toBe(true)
 })

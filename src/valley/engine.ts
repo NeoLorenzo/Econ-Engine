@@ -1,3 +1,4 @@
+import { reindexPeople } from './perception'
 import { measureTask } from './summary'
 import { WakeQueue } from './clock'
 import { MINUTES_PER_DAY, dayOf } from './calendar'
@@ -529,6 +530,7 @@ export function stepValley(previous: ValleyState, toMinute = previous.minute + 1
       record(state, personWake(state, entry.id, entry.minute, entry.kind))
   }
   state.minute = toMinute
+  reindexPeople(state, toMinute)
   return state
 }
 export interface RunOptions {

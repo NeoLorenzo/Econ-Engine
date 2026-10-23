@@ -331,7 +331,7 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
   if (meeting) {
     if (meeting.kind === 'found') state.today.foundings += 1
     else state.today.joinings += 1
-    events.push({ ...meeting, kind: meeting.kind === 'found' ? 'group-founded' : 'group-joined' })
+    events.push(meeting.kind === 'found' ? { ...meeting, kind: 'group-founded' } : { ...meeting, kind: 'group-joined' })
     const members = meeting.kind === 'found' ? meeting.founderIds : [meeting.metId]
     for (const otherId of members) if (otherId !== id) address(state, otherId, minute)
   }

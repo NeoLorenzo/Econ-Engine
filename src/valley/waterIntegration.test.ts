@@ -67,3 +67,24 @@ describe('water at wake-ups', () => {
     expect(next.foragers[0]!.secondsWorked.forage).toBe(60)
   })
 })
+
+it('records no withdrawal at the wake-up spent arriving before the drinking task', () => {
+  const state = createValley({ ...FLAT_LAND, bandSize: 1 }),
+    bank = addTestLake(state),
+    p = state.foragers[0]!
+  state.minute = 600
+  state.queue = new WakeQueue()
+  state.queue.schedule({ minute: 600, phase: 1, id: 0, kind: 'end' })
+  p.x = bank.x
+  p.y = bank.y + 5000
+  p.hearth = { x: p.x, y: p.y }
+  p.waterDeficitMl = 700
+  p.thirsty = true
+  const walking = stepValley(state, 601),
+    walk = walking.lastInterval.find((e) => e.kind === 'task-start' && e.task.kind === 'walk')!
+  if (walk.kind !== 'task-start') throw new Error('Expected a recorded walk')
+  const arrived = walk.task.endMinute === walking.minute ? walking : stepValley(walking, walk.task.endMinute)
+  expect(arrived.foragers[0]!.task?.kind).toBe('drink')
+  expect(arrived.lastInterval.some((e) => e.kind === 'drink')).toBe(false)
+  expect(arrived.waterWithdrawals.size).toBe(0)
+})

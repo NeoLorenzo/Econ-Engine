@@ -81,7 +81,14 @@ The draw sequence is therefore: one orientation draw per non-square plot, one po
 
 The 3D world draws each firm and Government across its plot: `buildingScale` stretches the building model to the plot, less a 0.1-tile inset, and raises it with the square root of the plot's area. The camera's default distance, zoom-out limit, fog and far plane scale with the grid, and Locate stays further out for bigger plots.
 
-## Life 11: land, water and bodies
+## Life 12 checkpoint: through Task 8
+
+The current core follows [LIFE12_SPEC.md](LIFE12_SPEC.md): one integer minute clock, queued world/person wake-ups, aggregate resource places, cached known-ground lattice routes, and recorded lazy tasks/bodies. `wake.ts` applies personal wake-ups; `world.ts` owns hourly and midnight work; `perception.ts` observes at wake-ups. Bank connectors and the spatial bank index are built once with the immutable layout. Goal estimates choose candidates before route search; water searches at most three candidates.
+
+`invariants.ts` checks intervals against the preceding immutable state. `replay.ts` keeps copied stock/body/tool/hut ledgers, applies recorded transfers and scheduled regrowth, and checks final balances and memory traces. World, fish-growth and sleeping-rate records make cadence and changing warmth replayable. Geography is checked once. The observer port (Task 10), representation cleanup (Task 9) and fingerprint refresh (Task 11) are still pending; eight founders remain in this first pull request.
+
+### Life 11 architecture reference, pending the Task 12 document replacement
+
 
 `src/valley/` is the independent Life core described by [LIFE11_SPEC.md](LIFE11_SPEC.md). It imports only the pure RNG helpers from the frozen MVP9 core. Lengths and heights are integer centimetres, food integer kilocalories, wood integer kilograms and water deficit integer millilitres. The engine remains pure and deterministic.
 

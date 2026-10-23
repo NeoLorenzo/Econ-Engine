@@ -112,7 +112,15 @@ No existing simulation test needed a new expected value: they assert behaviour r
 
 The eight-seed MVP8/MVP9 comparison is in [MVP9_SPEC.md](MVP9_SPEC.md#mvp8-and-mvp9-compared). The fast-mode browser check passed with a pause latency of 256 ms. In the browser, the 40×40 town, plot buildings, the overlay and scenery, clicking a plot, Locate, the 2D market map and the 375px layout were checked with no console errors.
 
-# Life 11
+# Life 12 checkpoint: through Task 8
+
+Use `npm run agent:check` as the implementation gate. At this intermediate checkpoint lint passes; observer type errors still block its later stages until Task 10. Old Life fingerprints are intentionally not accepted as Life 12 records; Task 11 refreshes them after rule validation.
+
+The focused core suite excludes the old fingerprints and the observer path (the `src/valley` filter also matches `src/valleyView`). It covers retained fire, hut, tool, social, food, water and load rules at task boundaries, canonical thirty-day survival, and an interval checker run after every canonical day. Corruption fixtures first accept an intact interval, then require a named checker failure after damaging production, body charges, resources, observations, geometry, queues, transfers, groups or death records. Layout/water/bank checks run once per checker. Small cache fixtures compare cold/warm routes, observed connectivity, exhaustive bank-estimate ordering and clone isolation.
+
+`node scripts/time-life.mjs 1 batch` measures a canonical day; `node scripts/time-life.mjs 90 batch` measures a ninety-day year with eight founders. Creation is reported separately. The benchmark excludes rendering and invariant checking; the checked thirty-day regression verifies the same core with the ledger enabled. Timings and deliberately removed old assertions are documented in [LAB_NOTES.md](../LAB_NOTES.md).
+
+## Life 11 validation reference, pending the Task 12 document replacement
 
 [Life 11](LIFE11_SPEC.md) adds terrain-derived permanent water and drinking. Calibration evidence and estimates remain distinguished in [CALIBRATION.md](CALIBRATION.md). `npm run agent:check` is the final implementation gate. On memory-constrained machines, `ECON_TEST_WORKERS=1` serializes workers without reducing test selection or checker coverage.
 

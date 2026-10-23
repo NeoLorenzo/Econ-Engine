@@ -94,3 +94,28 @@ describe('known route lattice', () => {
     }
   })
 })
+
+it('keeps forward and return paths exact after unrelated searches and load changes', () => {
+  const s = createSurveyedValley(FLAT_LAND),
+    l = s.layout.lattice,
+    p = s.foragers[0]!,
+    a = { x: 1000, y: 1000 },
+    b = { x: 61000, y: 21000 }
+  const run = (lattice: typeof l, load: number, reverse: boolean) =>
+    knownRoute(
+      lattice,
+      p.knowledge,
+      s.layout.terrain,
+      s.layout.ground,
+      lattice.banks,
+      s.config,
+      load,
+      reverse ? b : a,
+      reverse ? a : b,
+    )
+  for (const load of [0, 30, 0])
+    for (const reverse of [false, true]) {
+      run(l, load, !reverse)
+      expect(run(l, load, reverse)).toEqual(run({ ...l }, load, reverse))
+    }
+})

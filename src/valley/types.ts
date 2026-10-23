@@ -543,6 +543,8 @@ export interface PlantMemory {
 
 export type TaskKind = 'sleep' | 'rest' | 'walk' | 'pick' | 'nuts' | 'fish' | 'drink' | 'gather' | 'cut' | 'make'
 export interface TaskRecord {
+  startTripWood?: number
+  startLoadKg?: number
   kind: TaskKind
   startMinute: number
   endMinute: number
@@ -1026,13 +1028,18 @@ export interface TaskEvent {
   spoiledKcal?: number
 }
 export type WakeEvent =
+  | { kind: 'world'; minute: number }
   | TaskEvent
   | ObservationEvent
   | { kind: 'walk'; minute: number; foragerId: number; routeId: number }
   | { kind: 'regrowth'; minute: number; placeId: number; kcal: number; wood: number; logs: number }
+  | { kind: 'fish-regrowth'; minute: number; bodyId: number; kcal: number; remainder: number }
+  | { kind: 'rate-change'; minute: number; foragerId: number; energyPerHour: number }
 export type ValleyEvent =
   | WakeEvent
-  | { kind: 'group-founded' | 'group-joined' | 'group-dissolved'; minute: number; groupId: number }
+  | (Omit<FoundEvent, 'kind'> & { kind: 'group-founded' })
+  | (Omit<JoinEvent, 'kind'> & { kind: 'group-joined' })
+  | (Omit<DissolveEvent, 'kind'> & { kind: 'group-dissolved' })
   | { kind: 'exchange'; minute: number; sellerId: number; buyerId: number; wood: number; kcal: number }
   | { kind: 'meet'; minute: number; foragerId: number; otherId: number }
   | { kind: 'axe-request'; minute: number; foragerId: number; otherId: number }
