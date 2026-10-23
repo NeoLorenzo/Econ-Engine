@@ -115,7 +115,7 @@ export function regrowPlaces(
       if (pending) {
         const delay = yearsToDays(config, config.treeRegrowthYears) * MINUTES_PER_DAY
         const ready = pending.filter((felled) => minute - felled >= delay)
-        grown.logs += add(state.logStock, id, ready.length * 3, config.standLogs)
+        grown.logs += add(state.logStock, id, ready.length * config.logsPerTree, config.standLogs)
         const remaining = pending.filter((felled) => minute - felled < delay)
         if (remaining.length) state.logRegrowth.set(id, remaining)
         else state.logRegrowth.delete(id)

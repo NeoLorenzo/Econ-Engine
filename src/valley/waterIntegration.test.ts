@@ -7,7 +7,7 @@ import { startTask } from './tasks'
 
 describe('water at wake-ups', () => {
   function atBank() {
-    const state = createValley({ ...FLAT_LAND, bandSize: 1 }),
+    const state = createValley({ ...FLAT_LAND, founders: 1 }),
       bank = addTestLake(state),
       person = state.foragers[0]!
     state.minute = 600
@@ -32,7 +32,7 @@ describe('water at wake-ups', () => {
     expect(next.foragers[0]!.waterDeficitMl).toBeLessThanOrEqual(next.config.drinkStopMl)
   })
   it('records coincident fatal causes and never charges a dead body again', () => {
-    const state = createValley({ ...FLAT_LAND, bandSize: 1 }),
+    const state = createValley({ ...FLAT_LAND, founders: 1 }),
       person = state.foragers[0]!
     state.minute = 600
     state.queue = new WakeQueue()
@@ -69,7 +69,7 @@ describe('water at wake-ups', () => {
 })
 
 it('records no withdrawal at the wake-up spent arriving before the drinking task', () => {
-  const state = createValley({ ...FLAT_LAND, bandSize: 1 }),
+  const state = createValley({ ...FLAT_LAND, founders: 1 }),
     bank = addTestLake(state),
     p = state.foragers[0]!
   state.minute = 600

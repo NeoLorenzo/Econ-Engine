@@ -11,7 +11,7 @@ import { feedAmount, nightHoursLeft } from './fire'
 
 describe('fires on their hourly cadence', () => {
   it('burns shared wood once per night hour and none by day', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 })
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 })
     state.groups[0]!.fireWood = 3
     worldWake(state, 1_080)
     expect(state.groups[0]!.fireWood).toBe(2)
@@ -23,7 +23,7 @@ describe('fires on their hourly cadence', () => {
     expect(state.totals.burnedWood).toBe(2)
   })
   it('changes sleeping energy at the fire boundary without hourly person wake-ups', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 })
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 })
     state.minute = 1_080
     state.queue = new WakeQueue()
     state.groups[0]!.fireWood = 1
@@ -53,7 +53,7 @@ describe('ported Life 11 fire rules', () => {
     expect(burnFires(s, 1260)[0]).toMatchObject({ lit: true, burned: 1, fireWoodAfter: 2 })
   })
   it('saves wood: twelve kilograms per night for eight members', () => {
-    const s = bandAt(1080, { bandSize: 8 })
+    const s = bandAt(1080, { founders: 8 })
     s.groups[0]!.fireWood = 12
     for (let h = 18; h < 30; h++) burnFires(s, h * 60)
     expect(s.groups[0]!.fireBurned).toBe(12)
@@ -74,7 +74,7 @@ describe('ported Life 11 fire rules', () => {
     expect(n.foragers.every((p) => p.task?.energyPerHour === s.config.coldSleepKcalPerHour)).toBe(true)
   })
   it('leaves a forager without a group to tend its own fire', () => {
-    const s = bandAt(1200, { scattered: true, bandSize: 1 })
+    const s = bandAt(1200, { scattered: true, founders: 1 })
     s.foragers[0]!.wood = 5
     const n = stepValley(s, 1201)
     expect(n.foragers[0]!.warm).toBe(true)

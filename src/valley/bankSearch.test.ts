@@ -6,7 +6,7 @@ import { FLAT_LAND } from './config'
 import { cloneValley } from './engine'
 import { cachedHeight, estimateMinutes, nodePoint, knownRoute } from './routes'
 function fixture() {
-  const s = createSurveyedValley({ ...FLAT_LAND, bandSize: 1 })
+  const s = createSurveyedValley({ ...FLAT_LAND, founders: 1 })
   addTestLake(s)
   const p = s.foragers[0]!
   for (const b of s.layout.lattice.accessBanks) p.knownBanks.set(b.id, b)

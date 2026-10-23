@@ -206,15 +206,15 @@ export function cutAt(state: ValleyState, forager: Forager, treeId: number, seco
   forager.chopRemainder += seconds * axe.quality
   if (forager.chopRemainder < logCut(config)) return { cut, worn }
   forager.chopRemainder -= logCut(config)
-  const felled = state.logStock[treeId]! % 3 === 0
+  const felled = state.logStock[treeId]! % config.logsPerTree === 0
   if (felled) {
     state.felledMinute[treeId] = minute
-    // Each three-log bundle represents one of the stand's former trees.
+    // Each bundle of `logsPerTree` logs represents one of the stand's former trees.
     state.woodStock[treeId]! += config.fellWood
     state.totals.fellenWood += config.fellWood
   }
   state.logStock[treeId]! -= 1
-  if (state.logStock[treeId]! % 3 === 0) {
+  if (state.logStock[treeId]! % config.logsPerTree === 0) {
     const regrowth = state.logRegrowth.get(treeId) ?? []
     state.logRegrowth.set(treeId, [...regrowth, state.felledMinute[treeId]!])
     state.felledMinute[treeId] = -1

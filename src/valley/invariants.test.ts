@@ -182,7 +182,7 @@ describe('ported Life 11 corruption cases', () => {
     }
   })
   it.each(['volume', 'body', 'fish remainder', 'death'] as const)('catches a corrupted water %s record', (kind) => {
-    const base = bandAt(600, { bandSize: 1, scattered: true }),
+    const base = bandAt(600, { founders: 1, scattered: true }),
       bank = addTestLake(base),
       p = base.foragers[0]!
     p.x = bank.x

@@ -11,7 +11,7 @@ import { swap } from './trade'
 
 describe('meetings and exchange at wake-ups', () => {
   it('wakes a counterparty in the same minute when an exchange changes its load', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 })
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 })
     state.minute = 600
     state.queue = new WakeQueue()
     const [seller, buyer] = state.foragers
@@ -36,7 +36,7 @@ describe('meetings and exchange at wake-ups', () => {
     expect(next.foragers[0]!.lastWakeMinute).toBe(600)
   })
   it('founds a group through a meeting without moving either person', () => {
-    const state = createValley({ ...FLAT_LAND, bandSize: 2 })
+    const state = createValley({ ...FLAT_LAND, founders: 2 })
     state.minute = 600
     state.queue = new WakeQueue()
     for (const person of state.foragers) {
@@ -59,7 +59,7 @@ describe('meetings and exchange at wake-ups', () => {
     expect(next.lastInterval.some((event) => event.kind === 'group-founded')).toBe(true)
   })
   it('dissolves after a death and returns fire wood to the survivor', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 })
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 })
     state.minute = 600
     state.queue = new WakeQueue()
     state.groups[0]!.fireWood = 5
@@ -71,7 +71,7 @@ describe('meetings and exchange at wake-ups', () => {
     expect(next.foragers[0]!.wood).toBe(5)
   })
   it('conserves wood and timestamped food in a mutually worthwhile swap', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 }),
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       [seller, buyer] = state.foragers
     seller!.forageRate = 600
     seller!.woodRate = 20
@@ -91,7 +91,7 @@ describe('meetings and exchange at wake-ups', () => {
 
 describe('ported Life 11 group boundaries', () => {
   function strangers() {
-    const s = bandAt(600, { scattered: true, bandSize: 3 })
+    const s = bandAt(600, { scattered: true, founders: 3 })
     for (const p of s.foragers) {
       p.x = 40000 + p.id * 1000
       p.y = 40000

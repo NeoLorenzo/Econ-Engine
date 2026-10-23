@@ -179,7 +179,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       )
       if (whole !== t.wholeHut) fail('Sleeping hut status does not match its delivered logs')
     }
-    tasks[id] = { ...t, rateChanges: t.rateChanges?.map((c) => ({ ...c })) }
+    tasks[id] = { ...t, rateChanges: t.rateChanges?.map((change) => ({ ...change })) }
   }
   const checkEnd = (event: TaskEvent) => {
     const id = event.foragerId,
@@ -346,14 +346,14 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
         fail('Cut record has wrong axe quality or wear')
       if (tool) tool.axe.logsLeft--
       const id = event.treeId,
-        felled = book.logStock[id]! % 3 === 0
+        felled = book.logStock[id]! % after.config.logsPerTree === 0
       if (event.felled !== felled || book.logStock[id]! <= 0) fail('Cut record felled the wrong stand')
       if (felled) {
         book.felledMinute[id] = event.minute
         book.woodStock[id]! += after.config.fellWood
       }
       book.logStock[id]!--
-      if (book.logStock[id]! % 3 === 0) {
+      if (book.logStock[id]! % after.config.logsPerTree === 0) {
         book.logRegrowth.set(id, [...(book.logRegrowth.get(id) ?? []), book.felledMinute[id]!])
         book.felledMinute[id] = -1
       }

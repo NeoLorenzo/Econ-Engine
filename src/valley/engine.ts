@@ -8,7 +8,6 @@ import { newHydration } from './body'
 import { drawCraftSkills, drawSkills, generateLayout, LayoutError } from './layout'
 import { craftOf, noTaskSeconds, ratesOf, startingLog } from './practice'
 import { startingGroups } from './social'
-import { siteCount } from './sites'
 import { woodMatters } from './trade'
 import { hutWhole } from './huts'
 import { energyAt, waterAt } from './body'
@@ -105,7 +104,7 @@ function emptyDay(
     foundings: 0,
     joinings: 0,
     dissolutions: 0,
-    placesSeenById: foragers.map((forager) => forager.placesSeen),
+    placesSeenById: foragers.map((p) => [...p.knownPlaces].filter((m) => m >= 0).length),
     loadedWalkSecondsById: zeros(foragers.length),
     sitesKnownById: foragers.map((p) => [...p.knownPlaces].filter((m) => m >= 0).length),
     sitesCheckedById: zeros(foragers.length),
@@ -146,8 +145,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   }
   const foodStock = new Int32Array(layout.places.count)
   const woodStock = new Int32Array(layout.places.count)
-  const treeLogs = new Int32Array(layout.places.count)
-  const treeFelledMinute = new Int32Array(layout.places.count).fill(-1)
+  const logStock = new Int32Array(layout.places.count)
+  const felledMinute = new Int32Array(layout.places.count).fill(-1)
   const stoneStock = new Int32Array(layout.places.count)
   for (let id = 0; id < layout.places.count; id += 1) {
     const kind = layout.places.kind[id]
@@ -158,7 +157,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     if (kind === 1) foodStock[id] = config.hazelThicketCapacityKcal
     if (kind === 2) {
       woodStock[id] = config.standWoodKg
-      treeLogs[id] = config.standLogs
+      logStock[id] = config.standLogs
     }
     if (kind === 3) stoneStock[id] = config.outcropStones
   }
@@ -169,11 +168,6 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const fishKcal = fish.reduce((total, body) => total + body.stock, 0)
   const skills = drawSkills(config)
   const craftSkills = drawCraftSkills(config)
-  const places = 0
-  const unknown = (stocks: Int32Array) => ({
-    stock: new Int32Array(stocks.length),
-    seen: new Int32Array(stocks.length).fill(-1),
-  })
   const foragers: Forager[] = layout.hearths.map((hearth, id) => {
     const practiceLog = startingLog(config)
     const born = skills[id]!
@@ -182,32 +176,21 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       task: null,
       knownPlaces: new Int32Array(layout.places.count).fill(-1),
       placeCheckedMinute: new Int32Array(layout.places.count).fill(-1),
-      seenMinute: new Int32Array(config.bandSize).fill(-1),
+      seenMinute: new Int32Array(config.founders).fill(-1),
       placeStock: new Int32Array(layout.places.count).fill(-1),
       placeWood: new Int32Array(layout.places.count).fill(-1),
       placeLogs: new Int32Array(layout.places.count).fill(-1),
-      metMinute: new Int32Array(config.bandSize).fill(-1),
+      metMinute: new Int32Array(config.founders).fill(-1),
       metPosition: new Map(),
-      arrivalFrom: new Int32Array(config.bandSize).fill(-1),
+      arrivalFrom: new Int32Array(config.founders).fill(-1),
       knowledge: { nodes: new Uint8Array(layout.lattice.dry.length), revision: 0 },
       routeCache: new Map(),
       energyTimeRemainder: 0,
       waterTimeRemainder: 0,
       lastWakeMinute: 0,
       energyRemainder: 0,
-      waterObservations: [],
-      groundKnowledge: {
-        shore: layout.terrain.water.shore,
-        cells: layout.terrain.cells,
-        cellCm: layout.terrain.cellCm,
-        observed: new Uint8Array(0),
-        heights: new Int32Array(0),
-        revision: 0,
-      },
       knownBanks: new Map(),
       fishMemory: new Map(),
-      route: [],
-      routeRevision: 0,
       deathSecond: null,
       deathCauses: [],
       id,
@@ -222,21 +205,9 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       wood: 0,
       shortOfWood: woodMatters(config),
       tripWood: 0,
-      targetFoodId: null,
-      targetWoodId: null,
-      // A forager has seen nothing yet, and sees what is around it in its first turn.
-      foodMemory: unknown(foodStock),
-      woodMemory: unknown(woodStock),
-      logMemory: unknown(treeLogs),
-      stoneMemory: unknown(stoneStock),
       groupId: null,
       joinedMinute: null,
-      placeSeen: new Int32Array(places).fill(-1),
-      placesSeen: 0,
       knownFlags: [],
-      exploreTarget: null,
-      siteKnown: new Uint8Array(siteCount(config)),
-      siteChecked: new Int32Array(siteCount(config)).fill(-1),
       ...born,
       ...ratesOf(config, born.foragingSkill, born.woodSkill, practiceLog),
       craftSkill: craftSkills[id]!,
@@ -269,15 +240,11 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       trip: null,
       pickRemainder: 0,
       gatherRemainder: 0,
-      costRemainder: 0,
       fireHour: -1,
       warm: false,
       fireGiven: 0,
       warmByFireMinutes: 0,
       swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
-      farPlace: -1,
-      farMinute: -1,
-      climbedCm: 0,
     }
   })
   const groups = startingGroups(config, layout, foragers)
@@ -307,10 +274,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     foodStock,
     woodStock,
     fishKcal,
-    treeLogs,
-    treeFelledMinute,
-    logStock: treeLogs,
-    felledMinute: treeFelledMinute,
+    logStock,
+    felledMinute,
     logRegrowth: new Map(),
     stoneStock,
     foragers,
@@ -332,7 +297,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       swappedKcal: 0,
       firstSwapMinute: null,
       fellenWood: 0,
-      initialLogs: sum(treeLogs),
+      initialLogs: sum(logStock),
       regrownLogs: 0,
       logsCut: 0,
       rottedLogs: 0,
@@ -344,8 +309,6 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       axeSales: 0,
       axeSalesKcal: 0,
     },
-    lastEvents: [],
-    lastWaterEvents: [],
     lastSwaps: [],
     lastQuotes: [],
     lastPractice: [],
@@ -362,11 +325,6 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
 }
 
 const cloneForager = (forager: Forager): Forager => {
-  const groundKnowledge = {
-    ...forager.groundKnowledge,
-    observed: forager.groundKnowledge.observed.slice(),
-    heights: forager.groundKnowledge.heights.slice(),
-  }
   return {
     ...forager,
     task: forager.task
@@ -389,17 +347,10 @@ const cloneForager = (forager: Forager): Forager => {
       views: forager.knowledge.views ? new Set(forager.knowledge.views) : undefined,
     },
     routeCache: new Map(forager.routeCache),
-    waterObservations: [...forager.waterObservations],
-    groundKnowledge,
     knownBanks: new Map(forager.knownBanks),
     fishMemory: new Map(forager.fishMemory),
-    route: [...forager.route],
     deathCauses: [...forager.deathCauses],
     carried: [...forager.carried],
-    foodMemory: { stock: forager.foodMemory.stock.slice(), seen: forager.foodMemory.seen.slice() },
-    woodMemory: { stock: forager.woodMemory.stock.slice(), seen: forager.woodMemory.seen.slice() },
-    logMemory: { stock: forager.logMemory.stock.slice(), seen: forager.logMemory.seen.slice() },
-    stoneMemory: { stock: forager.stoneMemory.stock.slice(), seen: forager.stoneMemory.seen.slice() },
     practiceLog: {
       forage: [...forager.practiceLog.forage],
       gather: [...forager.practiceLog.gather],
@@ -410,10 +361,7 @@ const cloneForager = (forager: Forager): Forager => {
     loggedSeconds: { ...forager.loggedSeconds },
     secondsWorked: { ...forager.secondsWorked },
     swapTotals: { ...forager.swapTotals },
-    placeSeen: forager.placeSeen.slice(),
     knownFlags: [...forager.knownFlags],
-    siteKnown: forager.siteKnown.slice(),
-    siteChecked: forager.siteChecked.slice(),
   }
 }
 
@@ -465,8 +413,6 @@ export function cloneValley(state: ValleyState): ValleyState {
     waterWithdrawals: new Map(state.waterWithdrawals),
     foodStock: state.foodStock.slice(),
     woodStock: state.woodStock.slice(),
-    treeLogs: state.treeLogs.slice(),
-    treeFelledMinute: state.treeFelledMinute.slice(),
     logStock: state.logStock.slice(),
     felledMinute: state.felledMinute.slice(),
     logRegrowth: new Map([...state.logRegrowth].map(([id, minutes]) => [id, [...minutes]])),

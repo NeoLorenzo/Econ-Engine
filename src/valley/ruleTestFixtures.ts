@@ -3,7 +3,7 @@ import { FLAT_LAND } from './config'
 import { WakeQueue } from './clock'
 import type { ValleyConfig, ValleyState, Forager } from './types'
 export function bandAt(minute = 600, overrides: Partial<ValleyConfig> = {}) {
-  const s = createSurveyedValley({ ...FLAT_LAND, scattered: false, bandSize: 2, ...overrides })
+  const s = createSurveyedValley({ ...FLAT_LAND, scattered: false, founders: 2, ...overrides })
   s.minute = minute
   s.queue = new WakeQueue()
   for (const p of s.foragers) {

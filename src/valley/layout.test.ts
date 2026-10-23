@@ -73,6 +73,12 @@ describe('layout', () => {
     expect(drawStarts(resolveValleyConfig({ ...FLAT_LAND, seed: 1 }))).not.toEqual(layout.hearths)
   })
 
+  it('draws each founder from its own stream', () => {
+    const nine = drawStarts(resolveValleyConfig({ ...FLAT_LAND, founders: 9 }))
+    expect(nine).toHaveLength(9)
+    expect(nine.slice(0, 8)).toEqual(drawStarts(resolveValleyConfig({ ...FLAT_LAND, founders: 8 })))
+  })
+
   it('finds the plants within a radius, as a search of every plant would', () => {
     const { bushes } = layout
     const [x, y] = [bushes.x[10]! + 500, bushes.y[10]! - 700]

@@ -5,7 +5,7 @@ import { createSurveyedValley } from '../valley/ruleFixtures'
 import { advancePlayback, type DisplayPair } from './valleyViewModel'
 
 const startPair = (): DisplayPair => {
-  const previous = createSurveyedValley({ ...FLAT_LAND, bandSize: 1 })
+  const previous = createSurveyedValley({ ...FLAT_LAND, founders: 1 })
   return { previous, next: stepValley(previous), alpha: 0 }
 }
 

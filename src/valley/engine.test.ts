@@ -5,7 +5,7 @@ import { FLAT_LAND } from './config'
 import { WakeQueue } from './clock'
 
 function at(minute: number) {
-  const state = createValley({ ...FLAT_LAND, bandSize: 1 })
+  const state = createValley({ ...FLAT_LAND, founders: 1 })
   state.minute = minute
   state.queue = new WakeQueue()
   state.queue.schedule({ minute, phase: 1, id: 0, kind: 'end' })
@@ -15,7 +15,7 @@ function at(minute: number) {
 }
 describe('wake-up engine', () => {
   it('preserves interval partitioning with meetings, crafting and shared fires', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 })
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 })
     for (const person of state.foragers) {
       person.wood = 36
       person.stone = 1
@@ -57,7 +57,7 @@ describe('wake-up engine', () => {
     expect(after.queue.entriesOf(0)).toEqual(pending)
   })
   it('advancing a day at once equals advancing minute by minute and preserves its input', () => {
-    const state = createValley({ ...FLAT_LAND, bandSize: 1 }),
+    const state = createValley({ ...FLAT_LAND, founders: 1 }),
       before = cloneValley(state)
     const batch = stepValley(state, 1_440)
     let single = state
@@ -71,7 +71,7 @@ describe('wake-up engine', () => {
 
 describe('food, water and wood tasks', () => {
   it('two pickers cannot overdraw a thicket', () => {
-    const state = createValley({ ...FLAT_LAND, bandSize: 2 })
+    const state = createValley({ ...FLAT_LAND, founders: 2 })
     state.minute = 600
     state.queue = new WakeQueue()
     state.foodStock.fill(0)

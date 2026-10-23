@@ -1,7 +1,6 @@
 import { indexBanks } from './bankSearch'
 import { buildLattice, routeNode } from './routes'
 import { reindexPeople } from './perception'
-import { bankWaterHeight } from './banks'
 import { createValley } from './engine'
 import { deriveWater } from './water'
 import { fishCapacity } from './fish'
@@ -13,22 +12,6 @@ export function createSurveyedValley(overrides: Partial<ValleyConfig> = {}, with
   for (const person of state.foragers) {
     person.knowledge.nodes.fill(1)
     person.knownPlaces.fill(0)
-    for (let id = 0; id < person.groundKnowledge.observed.length; id += 1) {
-      const water = state.layout.terrain.water
-      const point = {
-        x: ((id % water.cells) + 0.5) * water.cellCm,
-        y: (Math.floor(id / water.cells) + 0.5) * water.cellCm,
-      }
-      person.groundKnowledge.observed[id] = water.shore
-        ? bankWaterHeight(water.shore, point, water.level) === null
-          ? 1
-          : 2
-        : water.body[id]! < 0
-          ? 1
-          : 2
-      person.groundKnowledge.heights[id] = state.layout.terrain.water.bed[id]!
-    }
-    person.groundKnowledge.revision += 1
   }
   if (withWater) {
     const bank = addTestLake(state)
@@ -89,9 +72,6 @@ export function addTestLake(state: ValleyState, two = false) {
   for (const person of state.foragers) {
     person.knowledge.nodes.fill(1)
     person.knowledge.revision += 1
-    person.groundKnowledge.shore = water.shore
-    for (let id = 0; id < bed.length; id += 1) person.groundKnowledge.observed[id] = water.body[id]! < 0 ? 1 : 2
-    person.groundKnowledge.revision += 1
   }
   state.foragers[0]!.knownBanks.set(bank.id, bank)
   reindexPeople(state, state.minute)

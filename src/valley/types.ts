@@ -23,7 +23,6 @@ export interface Hydration {
 import type { ObservationEvent } from './perception'
 import type { Knowledge, Route, RouteLattice } from './routes'
 import type { Terrain } from './terrain'
-import type { BankGeometry } from './banks'
 import type { FishStock } from './fish'
 import type { WakeQueue } from './clock'
 
@@ -35,37 +34,6 @@ export interface BankMemory extends Point {
   wetCell: number
   dryCell: number
   minute: number
-}
-
-export interface MovementSegment {
-  target: Point
-  from: Point
-  to: Point
-  seconds: number
-  grade: number
-  speed: number
-  terrainPercent: number
-  rate: number
-}
-
-export interface BodySecond {
-  deficitMl: number
-  thirsty: boolean
-  rate: number
-  drink: number
-  loss: number
-  spent: number
-}
-
-export interface WaterObservationEvent {
-  kind: 'water observation'
-  minute: number
-  foragerId: number
-  origin: Point
-  radiusCm: number
-  cells: number[]
-  banks: BankMemory[]
-  far: boolean
 }
 
 export interface DrinkEvent {
@@ -89,7 +57,7 @@ export interface RouteFailureEvent {
   knowledgeRevision: number
 }
 
-export type WaterEvent = WaterObservationEvent | DrinkEvent | RouteFailureEvent
+export type WaterEvent = DrinkEvent | RouteFailureEvent
 
 /** The three foods: berries from bushes, hazelnuts from hazels, and fish from the lake. */
 export type FoodKind = 'berries' | 'nuts' | 'fish'
@@ -197,34 +165,13 @@ export interface ValleyConfig extends HydrationConfig {
   dirtSlopePercent: number
   stoneSlopePercent: number
   dirtCurvatureCm: number
-  /** A forager's eye above the ground, and the step at which a line of sight is checked against the ground. */
-  eyeHeightCm: number
-  sightStepCm: number
   /** Scattered starts lie within the square this wide round the land's centre. */
   startAreaCm: number
   thicketCount: number
-  bushesPerThicket: number
   thicketRadiusCm: number
-  /** Bushes in a thicket stand at least this far apart. */
-  bushSpacingCm: number
-  bushCapacityKcal: number
-  initialBushKcal: number
-  /** Berries a bush grows in a year, spread evenly over the year. */
-  bushRegrowthKcalPerYear: number
-  /** Sticks a bush holds, in kilograms, gathered by hand like the dead branches under a tree. */
-  bushCapacityWood: number
-  initialBushWood: number
-  /** Sticks a bush grows in a decade, spread evenly over it: a bush grows less than a kilogram of wood a year. */
-  bushRegrowthWoodPerDecade: number
   /** Hazel thickets, a fourth kind of site, of hazels holding nuts, gathered and cracked by hand. */
   hazelThicketCount: number
-  hazelsPerThicket: number
   hazelThicketRadiusCm: number
-  hazelSpacingCm: number
-  hazelCapacityKcal: number
-  initialHazelKcal: number
-  /** Nuts a hazel grows in a year, spread evenly over the year. */
-  hazelRegrowthKcalPerYear: number
   /** Nuts gathered and cracked in an hour at a full hazel at a skill of 100%. */
   nutKcalPerHour: number
   /** Carried nuts, in their shells, weigh a kilogram for every this many kilocalories. */
@@ -237,14 +184,7 @@ export interface ValleyConfig extends HydrationConfig {
   fishKcalPerKg: number
   fishShelfLifeHours: number
   standCount: number
-  treesPerStand: number
   standRadiusCm: number
-  treeSpacingCm: number
-  /** Dead branches lying under a standing tree, in kilograms, gathered by hand. A felled tree gains none. */
-  treeCapacityWood: number
-  initialTreeWood: number
-  /** Dead branches a standing tree drops in a year, spread evenly over the year. */
-  treeDeadfallWoodPerYear: number
   /** Branches a tree's crown brings down when it is felled, in kilograms. */
   fellWood: number
   /** Site centres lie at least this far apart, this far from the valley's edges and this far from the camp. */
@@ -279,8 +219,6 @@ export interface ValleyConfig extends HydrationConfig {
   grassTerrainPercent: number
   dirtTerrainPercent: number
   stoneTerrainPercent: number
-  /** A forager judges a walk's climb at this many seconds a metre, by Naismith's rule. */
-  climbSecondsPerMetre: number
   /** Walking speed falls by this many thousandths for each body mass carried. */
   loadSlowdownPerMille: number
   reserveMaxKcal: number
@@ -288,7 +226,7 @@ export interface ValleyConfig extends HydrationConfig {
   hungryBelowKcal: number
   satiatedAtKcal: number
   /** The number of foragers at the start. There are no births. */
-  bandSize: number
+  founders: number
   /** Carried berries spoil this many hours after they were picked; 0 means they keep. */
   berryShelfLifeHours: number
   /** Wood burned for an hour of warm sleep. */
@@ -316,8 +254,6 @@ export interface ValleyConfig extends HydrationConfig {
   scattered: boolean
   /** Scattered starts lie at least this far apart. */
   startSpacingCm: number
-  /** The valley is divided into square places this wide, which a forager remembers having seen. */
-  placeCm: number
   /** A thicket or stand not checked for this many hours is worth checking again. */
   exploreAfterHours: number
   /** By day a forager sees thickets, stands, other foragers and flags this far; at night only `perceptionRadiusCm`. */
@@ -330,16 +266,12 @@ export interface ValleyConfig extends HydrationConfig {
   campfireWoodPerHour: number
   /** Outcrops, a third kind of site, each with stone spots holding stones that never come back. */
   outcropCount: number
-  stonesPerOutcrop: number
   outcropRadiusCm: number
-  stoneSpacingCm: number
-  stonesPerSpot: number
   /**
    * Logs a standing tree holds. Cutting the first fells it whole, and the rest are cut from the trunk where it lies. A
-   * stump, with no logs or branches left, stands again whole at the first midnight `treeRegrowthDays` after it fell.
+   * felled tree comes back to its stand `treeRegrowthYears` after it fell.
    */
   logsPerTree: number
-  treeRegrowthDays: number
   /** A log's weight, carried one at a time, and the minutes it takes to cut one with an axe of quality 100. */
   logKg: number
   logChopMinutes: number
@@ -535,12 +467,6 @@ export interface SwapTotals {
   kcalPaid: number
 }
 
-/** What a forager remembers of every plant of one kind: the stock it last saw and the minute it saw it. */
-export interface PlantMemory {
-  stock: Int32Array
-  seen: Int32Array
-}
-
 export type TaskKind = 'sleep' | 'rest' | 'walk' | 'pick' | 'nuts' | 'fish' | 'drink' | 'gather' | 'cut' | 'make'
 export interface TaskRecord {
   startTripWood?: number
@@ -587,20 +513,8 @@ export interface Forager extends Hydration {
   waterTimeRemainder: number
   lastWakeMinute: number
   energyRemainder: number
-  waterObservations: WaterObservationEvent[]
-  /** Empty compatibility record until the Task 9 cleanup and Task 10 observer port. */
-  groundKnowledge: {
-    shore?: BankGeometry
-    cells: number
-    cellCm: number
-    observed: Uint8Array
-    heights: Int32Array
-    revision: number
-  }
   knownBanks: Map<number, BankMemory>
   fishMemory: Map<number, { stock: number; capacity: number; minute: number }>
-  route: Point[]
-  routeRevision: number
   deathSecond: number | null
   deathCauses: ('starvation' | 'dehydration')[]
   id: number
@@ -618,15 +532,6 @@ export interface Forager extends Hydration {
   shortOfWood: boolean
   /** Wood gathered since it last stood at its hearth. */
   tripWood: number
-  /** The food plant it works for food, or a negative encoded bank ID for fishing. */
-  targetFoodId: number | null
-  targetWoodId: number | null
-  /** For each food plant, the berries or nuts it last saw there. */
-  foodMemory: PlantMemory
-  woodMemory: PlantMemory
-  /** The logs on each tree and the stones on each stone spot, as it last saw them from afar. */
-  logMemory: PlantMemory
-  stoneMemory: PlantMemory
   /** Born skills, in percent. */
   foragingSkill: number
   woodSkill: number
@@ -664,7 +569,6 @@ export interface Forager extends Hydration {
   /** Remainders in 3,600ths of a unit: of picking, of gathering, and of energy owed. */
   pickRemainder: number
   gatherRemainder: number
-  costRemainder: number
   /** The hour of its last fire decision, and whether it has a fire of its own that hour. */
   fireHour: number
   warm: boolean
@@ -675,23 +579,8 @@ export interface Forager extends Hydration {
   /** Its group, or null if it has none, and the minute it joined or founded it. */
   groupId: number | null
   joinedMinute: number | null
-  /** For each place, the first minute it lay wholly in view, or −1 if never. */
-  placeSeen: Int32Array
-  /** How many places it has ever seen. */
-  placesSeen: number
   /** The groups whose flags it has seen and not since found gone. */
   knownFlags: number[]
-  /** The place it is walking to explore or search, if any. */
-  exploreTarget: number | null
-  /** For each site, thickets, stands then outcrops, 1 if it has spotted it. */
-  siteKnown: Uint8Array
-  /** For each site, the last minute it stood close enough to see every plant in it, or −1 if never. */
-  siteChecked: Int32Array
-  /** The place it last looked round from by long sight, or −1 since dark, and the minute it did. */
-  farPlace: number
-  farMinute: number
-  /** The height it has climbed since minute 0, in whole centimetres. */
-  climbedCm: number
 }
 
 /** How warm a forager sleeps: by a lit fire in its whole hut, by the fire alone, in its hut alone, or with neither. */
@@ -737,95 +626,6 @@ export type ActionReason =
   | 'waiting to buy an axe'
   | 'fetching a stone'
   | 'picking up a stone'
-
-/** One forager's minute. Its seconds add up to 60. */
-export interface ActionEvent {
-  fishBodyId: number | null
-  fishBankId: number | null
-  fishExpectedRate: number
-  waterDeficitBeforeMl: number
-  waterDeficitAfterMl: number
-  drinkSeconds: number
-  observations: WaterObservationEvent[]
-  routeFailed: boolean
-  segments: MovementSegment[]
-  bodySeconds: BodySecond[]
-  drinkBankId: number | null
-  waterLostMl: number
-  waterDrunkMl: number
-  inactiveSeconds: number
-  kind: 'action'
-  foragerId: number
-  minute: number
-  /** Forage or gather if it worked at all; otherwise walk if it walked; otherwise rest or sleep. */
-  action: ForagerAction
-  reason: ActionReason
-  from: Point
-  position: Point
-  /** The good it worked for or walked towards, and whether to swap it. */
-  workedFor: Good | null
-  forTrade: boolean
-  /** What it walked towards or worked, if any: a food plant or a negative encoded bank ID for fishing, a wood plant for wood. */
-  targetId: number | null
-  /** What it worked this minute, if any. */
-  plantId: number | null
-  /** The food it worked for this minute, if it worked for food, and the stock of its source as it began. */
-  food: FoodKind | null
-  sourceStockBefore: number
-  walkSeconds: number
-  workSeconds: number
-  standSeconds: number
-  sleepSeconds: number
-  gatheredKcal: number
-  gatheredWood: number
-  spoiledKcal: number
-  eatenKcal: number
-  spentKcal: number
-  energyAfterKcal: number
-  carriedAfterKcal: number
-  woodAfter: number
-  tripWoodAfter: number
-  burnedWood: number
-  /** Asleep with neither a lit fire nor a whole hut, when that costs more. */
-  sleptCold: boolean
-  /** How warm it slept, or null if it did not sleep. */
-  warmth: Warmth | null
-  /** Its group at the end of its turn. */
-  groupId: number | null
-  /** The place it walked towards to explore, search or seek company, if any. */
-  placeId: number | null
-  /** The site it walked towards to check or search, if any. */
-  siteId: number | null
-  /** What it carried at the start of its action: the wood of its trip, and its food of each kind in kilocalories. */
-  loadWood: number
-  loadBerriesKcal: number
-  loadNutsKcal: number
-  loadFishKcal: number
-  /** The point it walked towards, if it walked. */
-  walkTarget: Point | null
-  /** Its speed for that load on the flat, and its walking speed on the grade it walked, in centimetres a second. */
-  loadSpeedCmPerSecond: number
-  speedCmPerSecond: number
-  /** The grade ahead of it as it set out, in whole percent; the terrain factor of the ground it set out from; the height it climbed. */
-  gradePercent: number
-  terrainPercent: number
-  climbCm: number
-  /** The group whose fire it slept by, if it slept as a member; null if it tended its own fire or did not sleep. */
-  fireGroupId: number | null
-  /** Its log at the start of its action, which slows it at `logKg`. */
-  loadLog: number
-  /** Work for its hut this minute, and the tree or stone spot it worked or walked towards. */
-  task: HutTask | null
-  treeId: number | null
-  stoneId: number | null
-  /** A log it cut and whether that cut felled the tree, a stone it picked up, and a log it laid in its hut this minute. */
-  cutLog: boolean
-  felled: boolean
-  tookStone: boolean
-  laidLog: boolean
-  /** Asleep in its whole hut. */
-  inHut: boolean
-}
 
 /** A log cut from a tree. */
 export interface CutEvent {
@@ -1046,7 +846,6 @@ export type ValleyEvent =
   | { kind: 'delivery'; minute: number; foragerId: number; logs: number; hutId: number | null }
   | { kind: 'fire'; minute: number; foragerId: number; burned: number; lit: boolean }
   | WaterEvent
-  | ActionEvent
   | DeathEvent
   | SwapEvent
   | QuoteEvent
@@ -1206,7 +1005,6 @@ export interface ValleyState {
   logStock: Int32Array
   felledMinute: Int32Array
   logRegrowth: Map<number, number[]> // felling minutes of fully harvested three-log bundles
-  lastWaterEvents: WaterEvent[]
   fish: FishStock[]
   waterWithdrawals: Map<number, number>
   config: ValleyConfig
@@ -1218,9 +1016,6 @@ export interface ValleyState {
   woodStock: Int32Array
   /** The lake's fish in kilocalories, and the growth owed it, in units of `100 · capacity · 8,760`. */
   fishKcal: number
-  /** Every tree's logs, the minute it was felled or −1 while it stands, and every stone spot's stones, by ID. */
-  treeLogs: Int32Array
-  treeFelledMinute: Int32Array
   stoneStock: Int32Array
   foragers: Forager[]
   /** Every hut ever begun, by ID. */
@@ -1228,8 +1023,6 @@ export interface ValleyState {
   /** Every group ever founded, by ID. */
   groups: Group[]
   totals: ValleyTotals
-  /** The actions of the last minute run, in turn order. */
-  lastEvents: ActionEvent[]
   lastSwaps: SwapEvent[]
   lastQuotes: QuoteEvent[]
   lastPractice: PracticeEvent[]

@@ -14,7 +14,7 @@ import { layLog, weatherHuts, leaveHutIfMoved } from './huts'
 
 describe('axes and huts at task boundaries', () => {
   it('keeps pausable axe work and draws quality from the maker stream', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 }),
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       person = state.foragers[0]!
     person.craft = 100
     person.stone = 1
@@ -55,7 +55,7 @@ describe('axes and huts at task boundaries', () => {
     expect(state.woodStock[stand]).toBe(320)
   })
   it('delivers a carried log, weathers it by day, and leaves a hut when the hearth moves', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 }),
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       person = state.foragers[0]!
     person.log = 1
     expect(layLog(state, person, 600)).toBe(true)
@@ -67,7 +67,7 @@ describe('axes and huts at task boundaries', () => {
     expect(person.hutId).toBeNull()
   })
   it('chooses crafting at its hearth when it has the inputs', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 }),
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       person = state.foragers[0]!
     state.minute = 600
     state.queue = new WakeQueue()
@@ -81,7 +81,7 @@ describe('axes and huts at task boundaries', () => {
     expect(next.foragers[0]!.making).not.toBeNull()
   })
   it('sells an axe at the midpoint of ask and worth, conserving food', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 }),
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       [seller, buyer] = state.foragers
     seller!.craft = 150
     buyer!.craft = 50
@@ -300,7 +300,7 @@ describe('ported Life 11 axe and shelter rules', () => {
     expect(worthTo(s.config, p, expectedQuality(100))).toBe(askOf(s.config, 100))
   })
   it('draws a promise from the cheapest mutually worthwhile maker', () => {
-    const s = bandAt(600, { bandSize: 3 }),
+    const s = bandAt(600, { founders: 3 }),
       [buyer, a, b] = s.foragers
     giveHut(s, a!)
     giveHut(s, b!)

@@ -48,7 +48,7 @@ import {
 type NumericSetup = Pick<
   ValleyConfig,
   | 'seed'
-  | 'bandSize'
+  | 'founders'
   | 'woodLoad'
   | 'skillMinPercent'
   | 'skillMaxPercent'
@@ -68,7 +68,7 @@ type Setup = NumericSetup & Pick<ValleyConfig, SwitchKey>
 /** A field is typed in its own unit: `unit` of the configuration's units make one of it. */
 const SETUP_FIELDS: { key: keyof NumericSetup; label: string; unit?: number }[] = [
   { key: 'seed', label: 'Seed' },
-  { key: 'bandSize', label: 'Foragers' },
+  { key: 'founders', label: 'Foragers' },
   { key: 'woodLoad', label: 'Load, kg' },
   { key: 'skillMinPercent', label: 'Skill from, %' },
   { key: 'skillMaxPercent', label: 'Skill to, %' },
@@ -317,7 +317,7 @@ export default function ValleyApp() {
     }
     const config = { ...VALLEY_DEFAULT_CONFIG, ...parsed }
     const errors = valleyConfigErrors(config)
-    if (!errors.length && parsed.bandSize > MAX_BAND) errors.push(`The observer shows at most ${MAX_BAND} foragers`)
+    if (!errors.length && parsed.founders > MAX_BAND) errors.push(`The observer shows at most ${MAX_BAND} foragers`)
     if (!errors.length) {
       const unplaceable = layoutError(config)
       if (unplaceable) errors.push(unplaceable)
@@ -412,7 +412,7 @@ export default function ValleyApp() {
         <div className="life-hud-head">
           <div className="life-clock num">{clockLabel(minutes / 60)}</div>
           <div className="life-band num">
-            {aliveCount(state)} of {config.bandSize} alive
+            {aliveCount(state)} of {config.founders} alive
           </div>
         </div>
         <div className="life-follow" role="group" aria-label="Followed forager">
@@ -1104,7 +1104,7 @@ export default function ValleyApp() {
             </p>
           )}
           <p className="life-note">
-            Running seed {setup.seed}: {setup.bandSize} foragers on a stretch of glacial land{' '}
+            Running seed {setup.seed}: {setup.founders} foragers on a stretch of glacial land{' '}
             {config.valleySizeCm / 100} m across, with broken moraine fronts, flow-aligned drumlins, clustered hummocks,
             irregular hollows, lakes and connected river reaches,{' '}
             {setup.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},

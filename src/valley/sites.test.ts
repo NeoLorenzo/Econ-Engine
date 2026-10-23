@@ -9,14 +9,14 @@ import { chooseTask } from './forager'
 
 describe('place knowledge and rechecking', () => {
   it('keeps unknown stock optimistic, learning stock only at the place', () => {
-    const state = createValley({ ...FLAT_LAND, bandSize: 1 }),
+    const state = createValley({ ...FLAT_LAND, founders: 1 }),
       person = state.foragers[0]!
     observeAt(state, person, 600)
     expect([...person.knownPlaces].some((m) => m === 600)).toBe(true)
     expect([...person.placeStock].filter((stock) => stock >= 0).length).toBeLessThanOrEqual(1)
   })
   it('rechecks a remembered place after a day when no frontier remains', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, bandSize: 2 }),
+    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       person = state.foragers[0]!
     person.wood = 24
     person.shortOfWood = false

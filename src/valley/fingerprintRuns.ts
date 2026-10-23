@@ -23,7 +23,7 @@ const CONFIGS: Record<string, Partial<ValleyConfig>> = {
   together: { scattered: false },
   noPractice: { craftPractice: false },
   talent: { craftSkillMinPercent: 50, craftSkillMaxPercent: 150 },
-  twelve: { bandSize: 12 },
+  twelve: { founders: 12 },
   alike: { skillMinPercent: 100, skillMaxPercent: 100 },
   flat: FLAT_LAND,
 }

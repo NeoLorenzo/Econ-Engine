@@ -9,7 +9,6 @@ import type { PlantIndex, Plants, Point, ValleyConfig, ValleyLayout } from './ty
 
 const LAYOUT_STREAM_SALT = 0x5641_4c4c
 const SKILL_STREAM_SALT = 0x534b_494c
-const TURN_ORDER_STREAM_SALT = 0x5455_524e
 const START_STREAM_SALT = 0x5354_5254
 const CRAFT_STREAM_SALT = 0x4352_4146
 const AXE_STREAM_SALT = 0x4158_4553
@@ -31,38 +30,12 @@ export const deriveCraftSeed = (seed: number) => normalizeSeed(mixSeed((normaliz
 export const deriveAxeSeed = (seed: number, minute: number, foragerId: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ AXE_STREAM_SALT ^ mixSeed(minute * 1_024 + foragerId)) >>> 0))
 
-/** The turn order of minute `minute`, from a stream of its own, so any minute's order stands alone. */
-export const deriveTurnOrderSeed = (seed: number, minute: number) =>
-  normalizeSeed(mixSeed((normalizeSeed(seed) ^ TURN_ORDER_STREAM_SALT ^ mixSeed(minute)) >>> 0))
-
-/**
- * A seeded shuffle of the band's IDs, draw for draw the shuffle `seededShuffle` makes with `randomInt`, written out so
- * that a minute's order allocates nothing but the order itself.
- */
-export function turnOrder(seed: number, minute: number, bandSize: number) {
-  const order: number[] = []
-  for (let id = 0; id < bandSize; id += 1) order.push(id)
-  let state = deriveTurnOrderSeed(seed, minute)
-  for (let index = order.length - 1; index > 0; index -= 1) {
-    state = normalizeSeed(state)
-    state ^= state << 13
-    state ^= state >>> 17
-    state ^= state << 5
-    state >>>= 0
-    const selected = Math.floor((state / 0x1_0000_0000) * (index + 1))
-    const swap = order[index]!
-    order[index] = order[selected]!
-    order[selected] = swap
-  }
-  return order
-}
-
 /** Every forager's born skills, by ID: its foraging skill, then its wood skill, from the skill stream. */
 export function drawSkills(config: ValleyConfig): { foragingSkill: number; woodSkill: number }[] {
   const span = config.skillMaxPercent - config.skillMinPercent + 1
   let state = deriveSkillSeed(config.seed)
   const skills = []
-  for (let id = 0; id < config.bandSize; id += 1) {
+  for (let id = 0; id < config.founders; id += 1) {
     const forage = randomInt(state, span)
     const wood = randomInt(forage.state, span)
     state = wood.state
@@ -79,7 +52,7 @@ export function drawCraftSkills(config: ValleyConfig): number[] {
   const span = config.craftSkillMaxPercent - config.craftSkillMinPercent + 1
   let state = deriveCraftSeed(config.seed)
   const skills = []
-  for (let id = 0; id < config.bandSize; id += 1) {
+  for (let id = 0; id < config.founders; id += 1) {
     const draw = randomInt(state, span)
     state = draw.state
     skills.push(config.craftSkillMinPercent + draw.value)
@@ -114,7 +87,7 @@ export function drawStarts(
   const origin = Math.floor((config.valleySizeCm - config.startAreaCm) / 2)
   const starts: Point[] = []
   let failed = 0
-  while (starts.length < config.bandSize) {
+  while (starts.length < config.founders) {
     const x = origin + draws.int(config.startAreaCm + 1)
     const y = origin + draws.int(config.startAreaCm + 1)
     const habitable = circleOnGround(terrain, ground, x, y, 40, BUSH_GROUNDS)
@@ -259,7 +232,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
         base,
         p.x,
         p.y,
-        config.hutRingCm * Math.ceil(Math.sqrt(config.bandSize)) + 200,
+        config.hutRingCm * Math.ceil(Math.sqrt(config.founders)) + 200,
         BUSH_GROUNDS,
       )
     })
@@ -355,7 +328,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const lattice = buildLattice(config, terrain)
   const hearths = config.scattered
     ? drawStarts(config, ground, lattice)
-    : Array.from({ length: config.bandSize }, (_, slot) => {
+    : Array.from({ length: config.founders }, (_, slot) => {
         const offset = ringOffset(config, slot)
         return { x: camp.x + offset.x, y: camp.y + offset.y }
       })
