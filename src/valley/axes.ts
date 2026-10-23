@@ -1,6 +1,6 @@
 import { randomInt } from '../sim/rng'
 import { addLots, carriedKcal, takeOldest } from './food'
-import { daylightSecondsLeft, reachableInTime } from './forager'
+import { daylightSecondsLeft, reachableInTime } from './legacyForager'
 import { wantsLogs } from './huts'
 import { deriveAxeSeed, nearestPlant } from './layout'
 import { SECONDS_PER_HOUR } from './practice'

@@ -1,6 +1,6 @@
 import { bankWaterHeight } from './banks'
 import { ringOffset } from './config'
-import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
+import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './legacyForager'
 import { distanceSq } from './geometry'
 import { nearestSeen } from './sight'
 import { knownRoute, knownDryFootprint } from './legacyRoutes'

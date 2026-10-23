@@ -1,4 +1,4 @@
-import { daylightSecondsLeft, estimateKnownWalk, isDaylight, walkLowerBound, walkSpeed } from './forager'
+import { daylightSecondsLeft, estimateKnownWalk, isDaylight, walkLowerBound, walkSpeed } from './legacyForager'
 import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
 import type { GroundKnowledge } from './legacyRoutes'
 

@@ -1,3 +1,4 @@
+import type { ObservationEvent } from './perception'
 import type { Knowledge, Route, RouteLattice } from './routes'
 import type { Terrain } from './terrain'
 import type { Hydration, HydrationConfig } from './hydration'
@@ -978,7 +979,21 @@ export interface FeedEvent {
   fireWoodAfter: number
 }
 
+export interface TaskEvent {
+  kind: 'task-start' | 'task-end'
+  minute: number
+  foragerId: number
+  task: TaskRecord
+  position: Point
+  produced?: { kcal: number; wood: number; logs: number; stones: number }
+}
+export type WakeEvent =
+  | TaskEvent
+  | ObservationEvent
+  | { kind: 'walk'; minute: number; foragerId: number; routeId: number }
+  | { kind: 'regrowth'; minute: number; placeId: number; kcal: number; wood: number; logs: number }
 export type ValleyEvent =
+  | WakeEvent
   | WaterEvent
   | ActionEvent
   | DeathEvent
@@ -1005,6 +1020,7 @@ export interface ActionSeconds {
 
 /** One day of the band. Time is in seconds, summed over every forager that acted. */
 export interface DaySummary {
+  wakeUpsById: number[]
   drinkingMlById: number[]
   waterLossMlById: number[]
   maxDeficitMlById: number[]
@@ -1097,6 +1113,7 @@ export interface DaySummary {
 }
 
 export interface ValleyTotals {
+  wakeUps: number
   /** Food on plants and in the lake, plus every reserve, at minute 0. */
   initialKcal: number
   /** Berries and nuts regrown, and fish grown in the lake. */

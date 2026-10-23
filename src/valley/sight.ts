@@ -1,5 +1,5 @@
 import { bankWaterHeight } from './banks'
-import { isDaylight } from './forager'
+import { isDaylight } from './legacyForager'
 import { distance, distanceSq } from './geometry'
 import { observeGround } from './waterKnowledge'
 import type { GroundKnowledge } from './legacyRoutes'
