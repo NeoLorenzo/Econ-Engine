@@ -5,6 +5,9 @@ export interface WakeEntry {
   phase: WakePhase
   id: number
   kind: WakeKind
+  walkerId?: number
+  chunk?: number
+  routeId?: number
 }
 export const WAKE_ORDER: readonly WakeKind[] = ['world', 'end', 'threshold', 'arrival', 'address']
 

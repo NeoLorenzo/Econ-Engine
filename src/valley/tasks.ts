@@ -1,3 +1,5 @@
+import { positionAlong } from './routes'
+import type { ValleyState, Point } from './types'
 import { sleepCostOf } from './work'
 import type { ActionReason, Forager, TaskKind, TaskRecord, ValleyConfig, Warmth } from './types'
 
@@ -57,4 +59,13 @@ export function startTask(
     startWaterActivityRemainder: person.waterActivityRemainder,
     productionPerHour: 0,
   }
+}
+
+export function positionAt(state: Pick<ValleyState, 'routes'>, person: Forager, minute: number): Point {
+  const task = person.task
+  if (task?.kind === 'walk') {
+    const route = state.routes[task.routeId]
+    if (route?.segments.length) return positionAlong(route, minute - task.startMinute)
+  }
+  return { x: person.x, y: person.y }
 }

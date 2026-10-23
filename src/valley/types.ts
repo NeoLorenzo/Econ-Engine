@@ -545,6 +545,13 @@ export interface TaskRecord {
 export interface Forager extends Hydration {
   task: TaskRecord | null
   knowledge: Knowledge
+  knownPlaces: Int32Array
+  placeStock: Int32Array
+  placeWood: Int32Array
+  placeLogs: Int32Array
+  metMinute: Int32Array
+  metPosition: Map<number, Point>
+  arrivalFrom: Int32Array
   routeCache: Map<string, number>
   energyTimeRemainder: number
   waterTimeRemainder: number
@@ -1126,6 +1133,7 @@ export interface ValleyTotals {
 export interface ValleyState {
   queue: WakeQueue
   routes: Route[]
+  peopleByChunk: Int32Array[]
   lastInterval: ValleyEvent[]
   logStock: Int32Array
   felledMinute: Int32Array

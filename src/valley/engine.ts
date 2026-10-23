@@ -227,6 +227,13 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     return {
       ...newHydration(config),
       task: null,
+      knownPlaces: new Int32Array(layout.places.count).fill(-1),
+      placeStock: new Int32Array(layout.places.count).fill(-1),
+      placeWood: new Int32Array(layout.places.count).fill(-1),
+      placeLogs: new Int32Array(layout.places.count).fill(-1),
+      metMinute: new Int32Array(config.bandSize).fill(-1),
+      metPosition: new Map(),
+      arrivalFrom: new Int32Array(config.bandSize).fill(-1),
       knowledge: { nodes: new Uint8Array(layout.lattice.dry.length), revision: 0 },
       routeCache: new Map(),
       energyTimeRemainder: 0,
@@ -325,6 +332,16 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     fish,
     queue: new WakeQueue(),
     routes: [],
+    peopleByChunk: Array.from({ length: layout.lattice.chunkCells ** 2 }, (_, chunk) =>
+      Int32Array.from(
+        foragers
+          .filter(
+            (p) =>
+              Math.floor(p.y / config.chunkCm) * layout.lattice.chunkCells + Math.floor(p.x / config.chunkCm) === chunk,
+          )
+          .map((p) => p.id),
+      ),
+    ),
     lastInterval: [],
     waterWithdrawals: new Map(),
     config,
@@ -392,6 +409,13 @@ const cloneForager = (forager: Forager): Forager => {
   return {
     ...forager,
     task: forager.task ? { ...forager.task } : null,
+    knownPlaces: forager.knownPlaces.slice(),
+    placeStock: forager.placeStock.slice(),
+    placeWood: forager.placeWood.slice(),
+    placeLogs: forager.placeLogs.slice(),
+    metMinute: forager.metMinute.slice(),
+    metPosition: new Map(forager.metPosition),
+    arrivalFrom: forager.arrivalFrom.slice(),
     knowledge: {
       ...forager.knowledge,
       nodes: forager.knowledge.nodes.slice(),
@@ -467,6 +491,7 @@ export function cloneValley(state: ValleyState): ValleyState {
     ...state,
     queue: state.queue.clone(),
     routes: [...state.routes],
+    peopleByChunk: [...state.peopleByChunk],
     lastInterval: [...state.lastInterval],
     fish: state.fish.map((stock) => ({ ...stock })),
     waterWithdrawals: new Map(state.waterWithdrawals),
