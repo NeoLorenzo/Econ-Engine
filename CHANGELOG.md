@@ -2,6 +2,15 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Observer-061] - (2026-10-23)
+
+### Changed
+
+- The loading card stays until the valley's first frame is drawn, so no blank page shows while the 3D view starts.
+- The page heading shows the day, season, time and the number alive, and holds New run.
+- The person panel shows the name, then what they are doing, then bars for energy, thirst and load, then rings for picking, wood and axe-making skill. The rest is in a Details section, closed by default.
+- The history panel is titled History and holds only its charts. The run's settings, the controls and the colour key are in an ⓘ window; the long description is removed.
+
 ## [LIFE12-Settings-060] - (2026-10-23)
 
 ### Added

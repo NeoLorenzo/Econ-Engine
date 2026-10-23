@@ -6,6 +6,14 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE12-Observer-061] - (2026-10-23)
+
+The third re-foundation pull request cleans up the observer at the owner's request. The engine and the fingerprints are unchanged.
+
+**Black screen.** The loading card went away as soon as the valley's state existed. The 3D view then still had to load three.js and build the terrain and water meshes, and meanwhile the empty dark page showed. The card now stays until the view reports its first drawn frame, or reports that WebGL failed.
+
+**Panels.** The owner wanted fewer words and a clear hierarchy. The day, season, time and count of the living moved to the heading, and New run joined the controls there. The person panel now leads with the name and the task. Energy, thirst and load follow as three matching bars. Thirst runs from none to the water loss that kills, with marks at thirsty and severely thirsty. Load is full at the heavier of a wood load and a log. Skills follow as three rings: picking, wood and axe-making, each born skill times practice, filling towards the most any forager could reach. A radar chart was considered and rejected, because with three skills it is only a triangle. The rings also read apart from the need bars. The other lines are in a closed Details section, and the debugging lines (task minutes, next wake-up) are gone. The history panel keeps all its charts, by the owner's choice; its long description is replaced by an ⓘ window with the settings, the controls and the colour key.
+
 ## [LIFE12-Settings-060] - (2026-10-23)
 
 The second re-foundation pull request adds the run settings and the forty founders.

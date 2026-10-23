@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { createValley } from '../valley/engine'
 import { RunSettingsScreen } from './RunSettingsScreen'
 import { configOfSettings, defaultRunSettings, runSettingsError, type RunSettings } from './runSettings'
@@ -15,16 +15,23 @@ export default function LifePage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const ready = useCallback(() => setLoading(false), [])
+
   const begin = (next: RunSettings) => {
     setSettings(next)
     setLoading(true)
     afterPaint(() => {
+      let started = false
       try {
         const problem = runSettingsError(next)
         setError(problem)
-        if (!problem) setStart(startDisplay(createValley(configOfSettings(next))))
+        if (!problem) {
+          setStart(startDisplay(createValley(configOfSettings(next))))
+          started = true
+        }
       } finally {
-        setLoading(false)
+        // A run that started keeps the card until the 3D view has drawn its first frame, so no blank page shows meanwhile.
+        if (!started) setLoading(false)
       }
     })
   }
@@ -32,7 +39,7 @@ export default function LifePage() {
   return (
     <>
       {start ? (
-        <ValleyApp start={start} onNewRun={() => setStart(null)} />
+        <ValleyApp start={start} onNewRun={() => setStart(null)} onReady={ready} />
       ) : (
         <RunSettingsScreen initial={settings} error={error} onStart={begin} />
       )}

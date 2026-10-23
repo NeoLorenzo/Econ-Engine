@@ -349,6 +349,48 @@ export const rocksShown = (state: ValleyState, spot: number) =>
   )
 
 /**
+ * A forager's three skills today, born skill times practice, in percent, each with the most any forager could reach
+ * (the top of its born range times the top of practice), so the HUD can draw them on one scale.
+ */
+export function skillLevels(state: ValleyState, id: number) {
+  const { config } = state
+  const forager = state.foragers[id]!
+  const percent = practicePercents(config, forager.practiceLog)
+  const top = (bornMax: number, practice: boolean) => (bornMax * (practice ? config.practiceMaxPercent : 100)) / 100
+  return [
+    {
+      key: 'picking',
+      label: 'Picking',
+      percent: Math.round((forager.foragingSkill * percent.forage) / 100),
+      max: top(config.skillMaxPercent, true),
+    },
+    {
+      key: 'wood',
+      label: 'Wood',
+      percent: Math.round((forager.woodSkill * percent.gather) / 100),
+      max: top(config.skillMaxPercent, true),
+    },
+    { key: 'axes', label: 'Axes', percent: forager.craft, max: top(config.craftSkillMaxPercent, config.craftPractice) },
+  ]
+}
+
+/** A forager's thirst on a scale from none to the water loss that kills, with the thirsty and urgent marks on it. */
+export function thirstLevel(state: ValleyState, id: number) {
+  const { config } = state
+  const forager = state.foragers[id]!
+  const ml = (perMille: number) => config.bodyKg * perMille
+  const urgent = ml(config.urgentThirstBodyPerMille)
+  return {
+    ml: forager.waterDeficitMl,
+    maxMl: ml(config.fatalWaterLossBodyPerMille),
+    thirstyMl: ml(config.thirstBodyPerMille),
+    urgentMl: urgent,
+    label: forager.waterDeficitMl >= urgent ? 'Severely thirsty' : forager.thirsty ? 'Thirsty' : 'Not thirsty',
+    level: forager.waterDeficitMl >= urgent ? 'urgent' : forager.thirsty ? 'thirsty' : 'fine',
+  }
+}
+
+/**
  * How many days a forager's reserve would last at the rate it has been losing it, over up to the last three whole
  * days: null while it holds steady or gains, or before two days have ended.
  */

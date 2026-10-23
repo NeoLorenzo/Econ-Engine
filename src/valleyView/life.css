@@ -47,6 +47,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.life-status {
+  display: flex;
+  gap: 16px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .life-controls {
   margin-left: auto;
   display: flex;
@@ -55,6 +63,9 @@
 }
 .life-controls .speed {
   width: auto;
+}
+.life-controls button {
+  white-space: nowrap;
 }
 
 .life-card {
@@ -71,19 +82,10 @@
   left: 16px;
   bottom: 16px;
   width: 340px;
+  max-height: calc(100vh - 100px);
+  overflow: auto;
   display: grid;
   gap: 10px;
-}
-.life-hud-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-.life-clock,
-.life-band {
-  color: var(--text-3);
-  font-size: var(--fs-sm);
-  font-weight: 600;
 }
 .life-follow {
   display: flex;
@@ -119,6 +121,80 @@
 }
 .life-activity.is-dead {
   color: var(--negative);
+}
+.life-cause {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+.life-needs {
+  display: grid;
+  gap: 8px;
+}
+.life-thirst-fill {
+  background: var(--firm-a);
+}
+.life-thirst-fill.is-thirsty {
+  background: var(--warning);
+}
+.life-thirst-fill.is-urgent {
+  background: var(--negative);
+}
+.life-load-fill {
+  background: var(--text-3);
+}
+
+/* Skills as rings, so they read apart from the bars of what a forager needs now. */
+.life-skills {
+  display: flex;
+  justify-content: space-around;
+}
+.life-skill {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.life-skill svg {
+  width: 48px;
+  height: 48px;
+}
+.life-skill circle {
+  fill: none;
+  stroke-width: 5;
+}
+.life-skill-track {
+  stroke: var(--surface-3);
+}
+.life-skill-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+.life-skill.is-picking .life-skill-fill {
+  stroke: var(--positive);
+}
+.life-skill.is-wood .life-skill-fill {
+  stroke: var(--firm-b);
+}
+.life-skill.is-axes .life-skill-fill {
+  stroke: var(--firm-a);
+}
+.life-skill text {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.life-skill figcaption {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.life-details summary {
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.life-details[open] summary {
+  margin-bottom: 8px;
 }
 .life-energy {
   display: grid;
@@ -233,6 +309,48 @@
 .life-history details[open] summary {
   margin-bottom: 10px;
 }
+.life-history summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.life-history summary::-webkit-details-marker {
+  display: none;
+}
+.life-info {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 700;
+}
+.life-about {
+  width: min(380px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.life-about::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+.life-about header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.life-about h2 {
+  font-size: var(--fs-md);
+}
+.life-about .life-note {
+  margin: 10px 0 0;
+}
 .life-history details {
   display: grid;
   gap: 10px;
@@ -304,19 +422,33 @@
   .life-run-label {
     display: none;
   }
+  /* The day and the count of the living take a second line under the brand and controls. */
+  .life-topbar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .life-status {
+    order: 1;
+    flex-basis: 100%;
+    justify-content: space-between;
+  }
   .life-hud {
     left: 16px;
     right: 16px;
     width: auto;
+    max-height: 40vh;
+  }
+  .life-controls {
+    gap: 6px;
   }
   .life-history,
   .life-inspector {
-    top: 68px;
+    top: 100px;
     left: 16px;
     right: 16px;
     bottom: auto;
     width: auto;
-    max-height: 50vh;
+    max-height: 40vh;
   }
   /* One card at a time at the top of a phone screen: the inspector covers the history while it is open. */
   .life-inspector + .life-history {

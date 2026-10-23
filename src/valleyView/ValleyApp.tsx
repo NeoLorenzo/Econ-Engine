@@ -31,8 +31,10 @@ import {
   lakeInspection,
   ownTermsByDay,
   plantInspection,
+  skillLevels,
   stoneInspection,
   specializationPoints,
+  thirstLevel,
   stepDisplay,
   stepFollowed,
   taskSummary,
@@ -59,6 +61,39 @@ const formatChange = (change: number) =>
 
 const formatKg = (kg: number) => `${kg.toLocaleString('en-US')} kg`
 
+/** `value` as a CSS share of `max`, kept within the bar. */
+const share = (value: number, max: number) => `${Math.min(100, Math.max(0, (value / max) * 100))}%`
+
+const RING_RADIUS = 18
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS
+
+/** A forager's skills as rings: each fills towards the most any forager could reach, with today's percent inside. */
+function SkillRings({ skills }: { skills: ReturnType<typeof skillLevels> }) {
+  return (
+    <div className="life-skills" role="group" aria-label="Skills">
+      {skills.map((skill) => (
+        <figure key={skill.key} className={`life-skill is-${skill.key}`}>
+          <svg viewBox="0 0 44 44" role="img" aria-label={`${skill.label} ${skill.percent}%`}>
+            <circle className="life-skill-track" cx="22" cy="22" r={RING_RADIUS} />
+            <circle
+              className="life-skill-fill"
+              cx="22"
+              cy="22"
+              r={RING_RADIUS}
+              strokeDasharray={`${(Math.min(1, skill.percent / skill.max) * RING_LENGTH).toFixed(1)} ${RING_LENGTH.toFixed(1)}`}
+              transform="rotate(-90 22 22)"
+            />
+            <text x="22" y="26" textAnchor="middle" className="num">
+              {skill.percent}
+            </text>
+          </svg>
+          <figcaption>{skill.label}</figcaption>
+        </figure>
+      ))}
+    </div>
+  )
+}
+
 /** The part of the valley's view the cards over it leave clear, measured from the page. */
 function measureClear(mount: HTMLElement | null): ClearView | null {
   if (!mount) return null
@@ -79,8 +114,19 @@ function measureClear(mount: HTMLElement | null): ClearView | null {
 const fireLabel = (fire: { lit: boolean; wood: number; nights: number }, daylight: boolean) =>
   `${fire.lit ? 'burning' : daylight && fire.wood > 0 ? 'banked for the night' : 'out'}, ${formatKg(fire.wood)} of wood${fire.wood ? ` (${fire.nights.toFixed(1)} nights)` : ''}`
 
-/** Plays the run that `start` begins; its settings are fixed, and `onNewRun` leaves it for the settings screen. */
-export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRun: () => void }) {
+/**
+ * Plays the run that `start` begins; its settings are fixed, and `onNewRun` leaves it for the settings screen.
+ * `onReady` is called once the valley's first frame is drawn, or the 3D view has failed to start.
+ */
+export default function ValleyApp({
+  start,
+  onNewRun,
+  onReady,
+}: {
+  start: Display
+  onNewRun: () => void
+  onReady: () => void
+}) {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<ValleyScene | null>(null)
   const [initialPair] = useState(start)
@@ -97,6 +143,11 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0))
   const [sceneError, setSceneError] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
+  const aboutRef = useRef<HTMLDialogElement | null>(null)
+  const readyRef = useRef(onReady)
+  useEffect(() => {
+    readyRef.current = onReady
+  }, [onReady])
 
   const runningRef = useRef(running)
   const speedRef = useRef(VALLEY_SPEEDS[speedIndex]!)
@@ -150,6 +201,7 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
         if (disposed) return scene.dispose()
         sceneRef.current = scene
         scene.setWorld(pairRef.current.state)
+        let drawn = false
         const loop = (now: number) => {
           const elapsed = (now - lastFrame) / 1000
           lastFrame = now
@@ -165,6 +217,10 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
             following: followingRef.current,
             elapsedSeconds: elapsed,
           })
+          if (!drawn) {
+            drawn = true
+            readyRef.current()
+          }
           if (now - lastHud >= HUD_INTERVAL_MS) {
             lastHud = now
             clearRef.current = measureClear(mount)
@@ -181,7 +237,10 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
         }
         frame = requestAnimationFrame(loop)
       })
-      .catch(() => setSceneError(true))
+      .catch(() => {
+        setSceneError(true)
+        readyRef.current()
+      })
     return () => {
       disposed = true
       cancelAnimationFrame(frame)
@@ -254,6 +313,9 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
   const days = daySeries(state, followed)
   const percent = (value: number) => `${(value / config.reserveMaxKcal) * 100}%`
   const foodLeft = daysOfFoodLeft(state, followed)
+  const thirst = thirstLevel(state, followed)
+  /** The load bar is full at the heavier of a load of wood and a log. */
+  const fullLoadKg = Math.max(config.woodLoad, config.logKg)
 
   return (
     <div className="life-app">
@@ -266,7 +328,15 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 12 · strangers</span>
+        <span className="life-title">Life 12</span>
+        <div className="life-status num">
+          <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
+            {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
+          </span>
+          <span>
+            {aliveCount(state)} of {config.founders} alive
+          </span>
+        </div>
         <div className="life-controls" role="group" aria-label="Simulation controls">
           <button
             type="button"
@@ -309,21 +379,13 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
               </option>
             ))}
           </select>
+          <button type="button" onClick={onNewRun}>
+            New run
+          </button>
         </div>
       </header>
 
       <section className="life-card life-hud" aria-label={`The band, following ${name}`}>
-        <div className="life-hud-head">
-          <div
-            className="life-clock num"
-            title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}
-          >
-            {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
-          </div>
-          <div className="life-band num">
-            {aliveCount(state)} of {config.founders} alive
-          </div>
-        </div>
         <div className="life-follow" role="group" aria-label="Followed forager">
           <button
             type="button"
@@ -357,6 +419,88 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
             Go to {name}
           </button>
         )}
+        <p className={`life-activity${forager.alive ? '' : ' is-dead'}`} aria-live="polite">
+          {describeActivity(pair, followed)}
+          {forager.deathCauses.length > 0 && <span className="life-cause">{forager.deathCauses.join(' and ')}</span>}
+        </p>
+        <div className="life-needs">
+          <div className="life-energy">
+            <div className="life-energy-head">
+              <span>Energy</span>
+              <span className="num">{formatKcal(energyKcal)}</span>
+            </div>
+            <div
+              className="life-energy-bar"
+              role="meter"
+              aria-label="Energy reserve"
+              aria-valuemin={0}
+              aria-valuemax={config.reserveMaxKcal}
+              aria-valuenow={Math.round(energyKcal)}
+            >
+              <div className="life-energy-fill" style={{ width: percent(energyKcal) }} />
+              <div
+                className="life-energy-mark"
+                style={{ left: percent(config.hungryBelowKcal) }}
+                title="Hungry below"
+              />
+              <div className="life-energy-mark" style={{ left: percent(config.satiatedAtKcal) }} title="Satiated at" />
+            </div>
+            <div className="life-energy-legend">
+              <span>
+                {!forager.alive ? 'Dead' : forager.hungry ? 'Hungry' : 'Not hungry'}
+                {foodLeft !== null && ` · about ${Math.round(foodLeft)} days of food left`}
+              </span>
+            </div>
+          </div>
+          <div className="life-energy">
+            <div className="life-energy-head">
+              <span>Thirst</span>
+              <span className="num">{thirst.label}</span>
+            </div>
+            <div
+              className="life-energy-bar"
+              role="meter"
+              aria-label="Thirst"
+              aria-valuemin={0}
+              aria-valuemax={thirst.maxMl}
+              aria-valuenow={thirst.ml}
+              title={`${thirst.ml.toLocaleString('en-US')} ml short of water`}
+            >
+              <div
+                className={`life-energy-fill life-thirst-fill is-${thirst.level}`}
+                style={{ width: share(thirst.ml, thirst.maxMl) }}
+              />
+              <div
+                className="life-energy-mark"
+                style={{ left: share(thirst.thirstyMl, thirst.maxMl) }}
+                title="Thirsty"
+              />
+              <div
+                className="life-energy-mark"
+                style={{ left: share(thirst.urgentMl, thirst.maxMl) }}
+                title="Severely thirsty"
+              />
+            </div>
+          </div>
+          <div className="life-energy">
+            <div className="life-energy-head">
+              <span>Load</span>
+              <span className="num">{summary.loadKg ? formatKg(Math.round(summary.loadKg * 10) / 10) : 'nothing'}</span>
+            </div>
+            <div
+              className="life-energy-bar"
+              role="meter"
+              aria-label="Load carried"
+              aria-valuemin={0}
+              aria-valuemax={fullLoadKg}
+              aria-valuenow={summary.loadKg}
+              title={`Walks at ${summary.speedKmh.toFixed(1)} km/h on the flat`}
+            >
+              <div className="life-energy-fill life-load-fill" style={{ width: share(summary.loadKg, fullLoadKg) }} />
+            </div>
+          </div>
+        </div>
+        <SkillRings skills={skillLevels(state, followed)} />
         {standing.length > 0 && (
           <div className="valley-groups" role="group" aria-label="Groups">
             {standing.map((made) => (
@@ -375,190 +519,90 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
             ))}
           </div>
         )}
-        <p className={`life-activity${forager.alive ? '' : ' is-dead'}`} aria-live="polite">
-          {describeActivity(pair, followed)}
-        </p>
-        <p>
-          Water deficit: {forager.waterDeficitMl.toLocaleString()} ml (
-          {((100 * forager.waterDeficitMl) / (config.bodyKg * 1000)).toFixed(2)}% of body mass) ·{' '}
-          {forager.waterDeficitMl >= config.bodyKg * config.urgentThirstBodyPerMille
-            ? 'Severely thirsty'
-            : forager.thirsty
-              ? 'Thirsty'
-              : 'Hydrated'}
-        </p>
-        <p>
-          Drunk today: {state.today.drinkingMlById[followed]!.toLocaleString()} ml · net loss today:{' '}
-          {state.today.waterLossMlById[followed]!.toLocaleString()} ml
-          {forager.deathCauses.length > 0 && ` · ${forager.deathCauses.join(' and ')}`}
-        </p>
-        {forager.alive && task && (
-          <p>
-            Task: {task.kind} ({task.reason}), minute {task.startMinute.toLocaleString('en-US')} to{' '}
-            {task.endMinute.toLocaleString('en-US')}
-            {task.nextWake &&
-              ` · next wake-up: ${task.nextWake.kind} at minute ${task.nextWake.minute.toLocaleString('en-US')}`}
-            {task.kind === 'walk' && ' · gold line shows the known dry route; blue dots mark remembered banks.'}
-          </p>
-        )}
-        <div className="life-energy">
-          <div className="life-energy-head">
-            <span>Energy reserve</span>
-            <span className="num">{formatKcal(energyKcal)}</span>
-          </div>
-          <div
-            className="life-energy-bar"
-            role="meter"
-            aria-label="Energy reserve"
-            aria-valuemin={0}
-            aria-valuemax={config.reserveMaxKcal}
-            aria-valuenow={Math.round(energyKcal)}
-          >
-            <div className="life-energy-fill" style={{ width: percent(energyKcal) }} />
-            <div className="life-energy-mark" style={{ left: percent(config.hungryBelowKcal) }} title="Hungry below" />
-            <div className="life-energy-mark" style={{ left: percent(config.satiatedAtKcal) }} title="Satiated at" />
-          </div>
-          <div className="life-energy-legend">
-            <span>
-              {!forager.alive ? 'Dead' : forager.hungry ? 'Hungry' : 'Not hungry'}
-              {foodLeft !== null && ` · about ${Math.round(foodLeft)} days of food left at its recent rate`}
-            </span>
-            <span className="num">
-              hungry below {formatKcal(config.hungryBelowKcal)} · full at {formatKcal(config.satiatedAtKcal)}
-            </span>
-          </div>
-        </div>
-        <dl className="life-food">
-          <dt>Group</dt>
-          <dd>
-            {summary.groupId === null ? (
-              'none yet, looking for company'
-            ) : (
+        <details className="life-details">
+          <summary>Details</summary>
+          <dl className="life-food">
+            <dt>Group</dt>
+            <dd>
+              {summary.groupId === null ? (
+                'none yet'
+              ) : (
+                <>
+                  <span
+                    className="life-strategy-dot"
+                    aria-hidden="true"
+                    style={{ background: groupColor(summary.groupId) }}
+                  />
+                  {groupName(summary.groupId)}
+                  {summary.fellows.length > 0 && ` with ${summary.fellows.length} others`}
+                </>
+              )}
+            </dd>
+            {forager.alive && task && (
               <>
-                <span
-                  className="life-strategy-dot"
-                  aria-hidden="true"
-                  style={{ background: groupColor(summary.groupId) }}
-                />
-                {groupName(summary.groupId)}
-                {summary.joinedMinutesAgo !== null &&
-                  `, joined ${summary.joinedMinutesAgo ? `${formatMinutes(summary.joinedMinutesAgo)} ago` : 'this minute'}`}
-                {summary.fellows.length > 0 && ` with ${summary.fellows.join(', ')}`}
-              </>
-            )}
-          </dd>
-          <dt>Has seen</dt>
-          <dd className="num">
-            {summary.seenShare === 1 ? 'the whole land' : `${Math.round(summary.seenShare * 100)}% of the land`}
-          </dd>
-          <dt>Knows</dt>
-          <dd className="num">
-            {summary.sitesKnown} of {summary.sitesTotal} thickets, stands and outcrops, {summary.sitesCheckedLately}{' '}
-            checked in the last {config.exploreAfterHours} h
-          </dd>
-          <dt>Hut</dt>
-          <dd className="num">
-            {summary.hutLogs === null
-              ? summary.groupId === null
-                ? 'none: it builds once it has a group'
-                : 'not begun'
-              : `${summary.hutLogs} of ${config.hutLogs} logs${summary.hutWhole ? ', whole' : ''}`}
-            {summary.log > 0 && ' · carrying a log'}
-          </dd>
-          <dt>Axe</dt>
-          <dd className="num">
-            {summary.axe ?? 'none'}
-            {summary.spareAxe && ` · spare to sell: ${summary.spareAxe}`}
-            {summary.making &&
-              ` · making one ${summary.making.forSale ? 'to sell' : 'for itself'}, ${Math.round(summary.making.done * 100)}% done`}
-            {summary.promised && !summary.making && ' · has promised one'}
-            {summary.stone > 0 && ` · holds ${summary.stone} stone`}
-          </dd>
-          <dt>Craft</dt>
-          <dd className="num">
-            {summary.craft}% ({summary.makePercent}% practice from {summary.makeHours} h) · an axe costs it{' '}
-            {formatKcal(summary.ask)}, expects quality {summary.expectedQuality}
-          </dd>
-          <dt>Axes</dt>
-          <dd className="num">
-            made {summary.madeOwn + summary.madeForSale} ({summary.madeForSale} to sell), sold {summary.sold}, bought{' '}
-            {summary.bought}, worn out {summary.wornOut}
-            {summary.heardAsk &&
-              ` · heard ${summary.heardAsk.from} ${summary.heardAsk.ready ? 'sells' : 'will make'} one for ${formatKcal(summary.heardAsk.price)}`}
-          </dd>
-          <dt>Load</dt>
-          <dd className="num">
-            {summary.loadKg ? formatKg(summary.loadKg) : 'none'} · walks at {summary.speedKmh.toFixed(1)} km/h on the
-            flat
-          </dd>
-          <dt>Ground</dt>
-          <dd className="num">
-            {summary.ground}, {summary.heightM.toFixed(1)} m above the datum
-          </dd>
-          <dt>Skills</dt>
-          <dd className="num">
-            born a {summary.foragingSkill}% forager · berries {formatKcal(summary.forageRate)}/h
-            {formatChange(summary.forageRateChange)} · nuts {formatKcal(summary.nutRate)}/h · fish{' '}
-            {formatKcal(summary.fishRate)}/h · {summary.woodRate} kg/h
-            {formatChange(summary.woodRateChange)}
-          </dd>
-          <dt>Picking practice</dt>
-          <dd className="num">
-            {summary.foragePercent}% from {summary.forageHours} h in {config.practiceDays} days
-          </dd>
-          <dt>Wood practice</dt>
-          <dd className="num">
-            {summary.woodPercent}% from {summary.gatherHours} h in {config.practiceDays} days
-          </dd>
-          <dt>Wood costs it</dt>
-          <dd className="num">{Math.round(summary.ownTerms)} kcal a kg</dd>
-          <dt>Holds</dt>
-          <dd className="num">
-            {formatKg(summary.wood)} of wood{summary.wood < summary.woodTarget && ` (wants ${summary.woodTarget})`}
-          </dd>
-          {summary.tripWood > 0 && (
-            <>
-              <dt>This trip</dt>
-              <dd className="num">
-                {formatKg(summary.tripWood)} gathered of a {formatKg(config.woodLoad)} load
-              </dd>
-            </>
-          )}
-          {summary.groupFire ? (
-            <>
-              <dt>Group’s fire</dt>
-              <dd className="num">{fireLabel(summary.groupFire, isDaylight(config, Math.floor(minutes)))}</dd>
-              <dt>Gave the fire</dt>
-              <dd className="num">{formatKg(summary.fireGiven)} of wood</dd>
-            </>
-          ) : (
-            fire && (
-              <>
-                <dt>A night’s fire</dt>
-                <dd className="num">
-                  {formatKg(fire.wood)} of wood saves {formatKcal(fire.kcal)}
+                <dt>Task</dt>
+                <dd>
+                  {task.kind}, {task.reason}
                 </dd>
               </>
-            )
-          )}
-          <dt>Carries</dt>
-          <dd className="num">
-            {summary.carriedKcal ? carriedPhrase(summary.carriedByFood) : 'no food'}
-            {summary.carriedKcal > 0 &&
-              summary.spoilsInMinutes !== null &&
-              `, the first spoils in ${formatMinutes(summary.spoilsInMinutes)}`}
-          </dd>
-          <dt>Terms it heard</dt>
-          <dd className="num">
-            {summary.heardTerms === null
-              ? 'none it remembers'
-              : `${summary.heardTerms} kcal a kg, ${summary.heardMinutesAgo ? `${formatMinutes(summary.heardMinutesAgo)} ago` : 'this minute'}`}
-          </dd>
-          <dt>Has swapped</dt>
-          <dd className="num">
-            sold {formatKg(summary.woodSold)}, bought {formatKg(summary.woodBought)}
-          </dd>
-        </dl>
+            )}
+            <dt>Has seen</dt>
+            <dd className="num">
+              {Math.round(summary.seenShare * 100)}% of the land, {summary.sitesKnown} sites
+            </dd>
+            <dt>Carries</dt>
+            <dd className="num">
+              {summary.carriedKcal ? carriedPhrase(summary.carriedByFood) : 'no food'}
+              {summary.log > 0 && ', a log'}
+              {summary.stone > 0 && `, ${summary.stone} stone`}
+            </dd>
+            <dt>Wood</dt>
+            <dd className="num">
+              {formatKg(summary.wood)} of {formatKg(summary.woodTarget)} wanted
+            </dd>
+            <dt>Hut</dt>
+            <dd className="num">
+              {summary.hutLogs === null
+                ? 'none'
+                : `${summary.hutLogs} of ${config.hutLogs} logs${summary.hutWhole ? ', whole' : ''}`}
+            </dd>
+            <dt>Axe</dt>
+            <dd className="num">
+              {summary.axe ?? 'none'}
+              {summary.making && `, making one (${Math.round(summary.making.done * 100)}%)`}
+            </dd>
+            {summary.groupFire ? (
+              <>
+                <dt>Fire</dt>
+                <dd className="num">{fireLabel(summary.groupFire, isDaylight(config, Math.floor(minutes)))}</dd>
+              </>
+            ) : (
+              fire && (
+                <>
+                  <dt>A night’s fire</dt>
+                  <dd className="num">
+                    {formatKg(fire.wood)} saves {formatKcal(fire.kcal)}
+                  </dd>
+                </>
+              )
+            )}
+            <dt>Per hour</dt>
+            <dd className="num">
+              berries {formatKcal(summary.forageRate)}
+              {formatChange(summary.forageRateChange)}, wood {summary.woodRate} kg
+              {formatChange(summary.woodRateChange)}
+            </dd>
+            <dt>Wood costs it</dt>
+            <dd className="num">{Math.round(summary.ownTerms)} kcal a kg</dd>
+            <dt>Traded</dt>
+            <dd className="num">
+              wood {formatKg(summary.woodSold)} sold, {formatKg(summary.woodBought)} bought · axes {summary.sold} sold,{' '}
+              {summary.bought} bought
+            </dd>
+            <dt>Water today</dt>
+            <dd className="num">{state.today.drinkingMlById[followed]!.toLocaleString('en-US')} ml drunk</dd>
+          </dl>
+        </details>
       </section>
 
       {plant && (
@@ -895,9 +939,23 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
 
       <section className="life-card life-history" aria-label="History">
         <details open={historyOpen} onToggle={(toggle) => setHistoryOpen(toggle.currentTarget.open)}>
-          <summary>History and settings</summary>
+          <summary>
+            History
+            <button
+              type="button"
+              className="icon-button life-info"
+              aria-label="About this run"
+              title="About this run"
+              onClick={(click) => {
+                click.preventDefault()
+                aboutRef.current?.showModal()
+              }}
+            >
+              i
+            </button>
+          </summary>
           <SpecializationChart points={specializationPoints(state)} config={config} followed={followed} woodUnit="kg" />
-          {days.length > 1 ? (
+          {days.length > 1 && (
             <>
               <TimeChart
                 data={ownTermsByDay(state, followed)}
@@ -978,56 +1036,48 @@ export default function ValleyApp({ start, onNewRun }: { start: Display; onNewRu
                 ]}
               />
             </>
-          ) : (
-            <p className="life-note">The charts over time start after the first full day.</p>
           )}
-          <div className="life-run">
-            <p className="life-note">
-              The settings are fixed for this run: seed {config.seed}, {config.daysPerYear} days a year, a world{' '}
-              {config.valleySizeCm / 100_000} km across and {config.founders} founders who start{' '}
-              {config.scattered ? 'scattered' : 'together'}.
-            </p>
-            <button type="button" onClick={onNewRun}>
-              New run
-            </button>
-          </div>
-          <p className="life-note">
-            Running seed {config.seed}: {config.founders} foragers on a stretch of glacial land{' '}
-            {config.valleySizeCm / 100} m across, with broken moraine fronts, flow-aligned drumlins, clustered hummocks,
-            irregular hollows, lakes and connected river reaches,{' '}
-            {config.scattered ? 'who start scattered' : 'who start as one group around the meadow in the middle'},
-            knowing only what they have seen. By day they see {config.sightRadiusCm / 100} m, but not through hills, and
-            berries and firewood up close. The whole land is grassland, with grass, exposed dirt and stone; slopes slow
-            them and cost them energy, and stone is harder going. When their needs are met they explore ground they have
-            never seen, then check the thickets and stands they have not checked for{' '}
-            {formatHours(config.exploreAfterHours)}. A load costs them energy and slows them a little, and they take a
-            full load home before anything else. Those without a group look for company: two who meet found a group and
-            plant its flag, and anyone who meets a member joins. Members sleep on a ring round their flag and swap wood
-            for food only with each other, telling each other their terms.{' '}
-            {`Each group keeps one fire at its flag, burning ${formatKg(config.campfireWoodPerHour)} an hour at night and warming every member. Every member wants a hut of ${config.hutLogs} logs on the ring round the fire, cut from trees it fells with an axe it makes from a stone and wood${config.axeTrade ? ' or buys from another member for food' : ''}; skill at making axes ${config.craftPractice ? 'grows with practice' : 'stays fixed'}. A hut keeps its sleeper a little warm, the fire more, and both together most.`}{' '}
-            They are born with skills{' '}
-            {config.skillMinPercent === config.skillMaxPercent
-              ? `of ${config.skillMinPercent}%`
-              : `from ${config.skillMinPercent}% to ${config.skillMaxPercent}%`}
-            , which grow with practice over {config.practiceDays} days from {config.practiceMinPercent}% towards{' '}
-            {config.practiceMaxPercent}%. They pick berries bush by bush, gather hazelnuts and fish discovered water at
-            discovered banks, taking less an hour as a source thins, and go where an hour brings most food for the walk.
-            They gather sticks from bushes and dead branches from under trees, bringing them home in loads of{' '}
-            {formatKg(config.woodLoad)}. Each is coloured by what wood costs it, from{' '}
-            <span style={{ color: TERMS_COLORS.gatherer }}>relatively good at gathering wood</span> to{' '}
-            <span style={{ color: TERMS_COLORS.forager }}>relatively good at picking</span>, and wears a sash in its
-            group’s colour; each group’s base has a fire, a flag, coloured ground and a lettered badge. Ground the
-            followed person has never seen is darkest, and a ring marks each thicket and stand it knows, bright if it
-            checked it lately. Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn; click a person to
-            follow them, a bush, hazel, tree or the lake to inspect it, and a flag, badge or group to see the group.
-          </p>
-          <p className="life-note">
-            Measurements, derived quantities and explicit estimates are distinguished in the{' '}
-            <a href="https://github.com/NeoLorenzo/Econ-Engine/blob/main/docs/CALIBRATION.md">calibration document</a>{' '}
-            with the source and trust of each choice.
-          </p>
         </details>
       </section>
+
+      <dialog
+        className="life-about"
+        ref={aboutRef}
+        aria-label="About this run"
+        onClick={(click) => click.target === click.currentTarget && click.currentTarget.close()}
+      >
+        <header>
+          <h2>About this run</h2>
+          <button type="button" className="icon-button" aria-label="Close" onClick={() => aboutRef.current?.close()}>
+            ×
+          </button>
+        </header>
+        <dl className="life-food">
+          <dt>Seed</dt>
+          <dd className="num">{config.seed}</dd>
+          <dt>Founders</dt>
+          <dd className="num">
+            {config.founders}, starting {config.scattered ? 'scattered' : 'together'}
+          </dd>
+          <dt>World</dt>
+          <dd className="num">{config.valleySizeCm / 100_000} km across</dd>
+          <dt>Year</dt>
+          <dd className="num">{config.daysPerYear} days</dd>
+        </dl>
+        <p className="life-note">
+          Drag to pan, scroll or pinch to zoom, right-drag or Q and E to turn. Click a person to follow them, a plant,
+          lake or stone to inspect it, and a flag to see its group.
+        </p>
+        <p className="life-note">
+          Each person is coloured from <span style={{ color: TERMS_COLORS.gatherer }}>good at gathering wood</span> to{' '}
+          <span style={{ color: TERMS_COLORS.forager }}>good at picking</span>. Ground the followed person has never
+          seen is darkest.
+        </p>
+        <p className="life-note">
+          Sources for every number are in the{' '}
+          <a href="https://github.com/NeoLorenzo/Econ-Engine/blob/main/docs/CALIBRATION.md">calibration document</a>.
+        </p>
+      </dialog>
     </div>
   )
 }
