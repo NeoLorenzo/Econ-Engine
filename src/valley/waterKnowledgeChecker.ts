@@ -1,5 +1,5 @@
 import { bankApproach, bankCircleWet, bankWaterHeight } from './banks'
-import { knownDrySegment, routeCentre, type GroundKnowledge } from './routes'
+import { knownDrySegment, routeCentre, type GroundKnowledge } from './legacyRoutes'
 import { heightAt } from './terrain'
 import { cardinalCells } from './water'
 import { placeCentreOf, placeOf, viewFrom } from './sight'

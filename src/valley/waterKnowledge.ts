@@ -9,7 +9,7 @@ import {
   observeRouteCells,
   routeFrontierCells,
   forEachUnknownCell,
-} from './routes'
+} from './legacyRoutes'
 import type { BankMemory, Forager, PlantIndex, Point, ValleyConfig, ValleyLayout } from './types'
 
 /** Observe complete cell footprints, never expand an observation into a complete body's outline. */

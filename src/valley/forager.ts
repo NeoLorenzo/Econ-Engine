@@ -1,6 +1,6 @@
 import { carriedByFood, carriedKcal, foodKg, foodOfSource, fullRateOf, rateAtStock, worthWorking } from './food'
 import { fishRate } from './fish'
-import { knownWalkSeconds, routeAnchor } from './routes'
+import { knownWalkSeconds, routeAnchor } from './legacyRoutes'
 import { knownBanksInChunks } from './waterKnowledge'
 import { nearestKnownSite, siteCentre, siteKind, type SiteKind } from './sites'
 import { distance, distanceSq, walkSeconds } from './geometry'

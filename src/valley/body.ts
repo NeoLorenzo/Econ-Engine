@@ -1,4 +1,5 @@
 import type { TaskRecord, ValleyConfig } from './types'
+import { TIME_UNITS_PER_MINUTE } from './routes'
 
 export const waterThresholds = (
   config: Pick<
@@ -11,55 +12,62 @@ export const waterThresholds = (
   fatal: Math.floor(config.bodyKg * config.fatalWaterLossBodyPerMille),
 })
 
-/** Structural contract shared with routes; no dependency on the route search or its caches. */
+/** Route times retain integer fractions of a minute, so lattice resolution cannot slow a walk. */
 export interface BodyRoute {
-  segments: { minutes: number; energyPerHour: number }[]
+  segments: { minutes: number; timeUnits?: number; energyPerHour: number }[]
 }
-
-function forRates(
-  task: TaskRecord,
-  minute: number,
-  routes: readonly BodyRoute[] | undefined,
-  visit: (minutes: number, energyPerHour: number) => void,
-) {
-  let left = Math.max(0, Math.min(minute, task.endMinute) - task.startMinute)
-  if (task.kind !== 'walk') {
-    visit(left, task.energyPerHour)
-    return
+function integral(task: TaskRecord, minute: number, routes: readonly BodyRoute[] | undefined) {
+  let left = Math.max(0, Math.min(minute, task.endMinute) - task.startMinute) * TIME_UNITS_PER_MINUTE
+  let energy = 0,
+    activity = 0
+  const charge = (units: number, rate: number) => {
+    energy += units * rate
+    activity += units * task.waterExtraMlPerKcal * Math.max(0, rate - task.restKcalPerHour)
+    left -= units
   }
-  const route = routes?.[task.routeId]
-  if (!route) throw new Error('A walking body requires its recorded route')
-  for (const segment of route.segments) {
-    const elapsed = Math.min(left, segment.minutes)
-    visit(elapsed, segment.energyPerHour)
-    left -= elapsed
-    if (left <= 0) break
-  }
+  if (task.kind === 'walk') {
+    const route = routes?.[task.routeId]
+    if (!route) throw new Error('A walking body requires its recorded route')
+    for (const segment of route.segments) {
+      charge(
+        Math.min(left, segment.timeUnits ?? Math.round(segment.minutes * TIME_UNITS_PER_MINUTE)),
+        segment.energyPerHour,
+      )
+      if (left <= 0) break
+    }
+    // Arrival is rounded to an integer wake-up minute. The fraction after arrival is spent standing.
+    if (left > 0) charge(left, task.restKcalPerHour)
+  } else charge(left, task.energyPerHour)
+  return { energy, activity }
 }
-
 export function energyAt(task: TaskRecord, minute: number, routes?: readonly BodyRoute[]) {
-  let owed = task.startEnergyRemainder
-  forRates(task, minute, routes, (minutes, rate) => {
-    owed += minutes * rate
-  })
-  return { kcal: task.startEnergyKcal - Math.floor(owed / 60), remainder: owed % 60 }
+  const unit = 60 * TIME_UNITS_PER_MINUTE
+  const owed =
+    task.startEnergyRemainder * TIME_UNITS_PER_MINUTE +
+    (task.startEnergyTimeRemainder ?? 0) +
+    integral(task, minute, routes).energy
+  const timeRemainder = owed % TIME_UNITS_PER_MINUTE
+  return {
+    kcal: task.startEnergyKcal - Math.floor(owed / unit),
+    remainder: Math.floor((owed % unit) / TIME_UNITS_PER_MINUTE),
+    ...(timeRemainder ? { timeRemainder } : {}),
+  }
 }
-
 export function waterAt(task: TaskRecord, minute: number, routes?: readonly BodyRoute[]) {
-  let base = task.startWaterRemainder
-  let activity = task.startWaterActivityRemainder
-  let elapsed = 0
-  forRates(task, minute, routes, (minutes, rate) => {
-    elapsed += minutes
-    base += minutes * task.waterBaseMlPerDay
-    activity += minutes * task.waterExtraMlPerKcal * Math.max(0, rate - task.restKcalPerHour)
-  })
-  const loss = Math.floor(base / 1_440) + Math.floor(activity / 60)
+  const elapsed = Math.max(0, Math.min(minute, task.endMinute) - task.startMinute)
+  const base = task.startWaterRemainder + elapsed * task.waterBaseMlPerDay
+  const activity =
+    task.startWaterActivityRemainder * TIME_UNITS_PER_MINUTE +
+    (task.startWaterTimeRemainder ?? 0) +
+    integral(task, minute, routes).activity
+  const unit = 60 * TIME_UNITS_PER_MINUTE
+  const loss = Math.floor(base / 1_440) + Math.floor(activity / unit)
   const drink = task.kind === 'drink' ? Math.min(task.startWaterMl + loss, elapsed * task.drinkMlPerMinute) : 0
   return {
     ml: task.startWaterMl + loss - drink,
     remainder: base % 1_440,
-    activityRemainder: activity % 60,
+    activityRemainder: Math.floor((activity % unit) / TIME_UNITS_PER_MINUTE),
+    timeRemainder: activity % TIME_UNITS_PER_MINUTE,
     loss,
     drink,
   }

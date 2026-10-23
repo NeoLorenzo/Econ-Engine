@@ -4,7 +4,7 @@ import { stepValley, cloneValley } from './engine'
 import { ValleyChecker } from './invariants'
 import { createSurveyedValley, addTestLake } from './ruleFixtures'
 import { foragerPose } from '../valleyView/valleyViewModel'
-import { knownDrySegment } from './routes'
+import { knownDrySegment } from './legacyRoutes'
 
 function loneBody() {
   const state = createSurveyedValley({ ...FLAT_LAND, bandSize: 1, scattered: true })

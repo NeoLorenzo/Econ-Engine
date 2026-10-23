@@ -7,6 +7,19 @@ import { startTask } from './tasks'
 describe('lazy bodies', () => {
   const state = createValley(FLAT_LAND)
   const person = state.foragers[0]!
+  it('integrates short route edges exactly and charges standing after arrival', () => {
+    const task = startTask(state.config, person, 'walk', 0, 2, -1, 0, 'going home')
+    const routes = [
+      {
+        segments: [
+          { minutes: 1 / 3, timeUnits: 20_000, energyPerHour: 375 },
+          { minutes: 7 / 6, timeUnits: 70_000, energyPerHour: 250 },
+        ],
+      },
+    ]
+    expect(energyAt(task, 2, routes)).toEqual({ kcal: 65_993, remainder: 41, timeRemainder: 40_000 })
+    expect(waterAt(task, 2, routes)).toMatchObject({ ml: 6, activityRemainder: 41, timeRemainder: 40_000 })
+  })
   it('equals minute accumulation including existing remainders', () => {
     const task = { ...startTask(state.config, person, 'pick', 0, 600, 0, -1, 'foraging'), startEnergyRemainder: 17 }
     let kcal = 66_000,

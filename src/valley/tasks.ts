@@ -50,6 +50,8 @@ export function startTask(
     drinkMlPerMinute: config.drinkMlPerSecond * 60,
     startEnergyKcal: person.energyKcal,
     startEnergyRemainder: person.energyRemainder,
+    startEnergyTimeRemainder: person.energyTimeRemainder,
+    startWaterTimeRemainder: person.waterTimeRemainder,
     startWaterMl: person.waterDeficitMl,
     startWaterRemainder: person.waterBaseRemainder,
     startWaterActivityRemainder: person.waterActivityRemainder,

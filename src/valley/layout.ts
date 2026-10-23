@@ -1,3 +1,4 @@
+import { buildLattice } from './routes'
 import { buildPlaces } from './places'
 import { bankCircleWet, bankWaterHeight } from './banks'
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
@@ -353,6 +354,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const placeIndex = buildIndex(places, config.chunkCm, size)
   return {
     places,
+    lattice: buildLattice(config, terrain),
     placeIndex,
     placeChunks: placeIndex.buckets,
     camp,

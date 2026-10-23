@@ -5,7 +5,7 @@ import { carriedKcal, foodOfSource, fullRateOf, rateAtStock, spoil, worthWorking
 import { resolveValleyConfig } from './config'
 import { fishCapacity, fishGrowth, fishRate } from './fish'
 import { newHydration, updateThirst, waterSecond, waterThresholds } from './hydration'
-import { cloneGroundKnowledge, knownRoute } from './routes'
+import { cloneGroundKnowledge, knownRoute } from './legacyRoutes'
 import { cloneKnownBanks, frontier, observeGround, nearestKnownBanks } from './waterKnowledge'
 import { observeAround, cloneGroundViews } from './sight'
 import { cellOf, gradeOf, heightAt, speedOnGrade, terrainPercentOf, walkCost } from './terrain'
@@ -227,6 +227,10 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     return {
       ...newHydration(config),
       task: null,
+      knowledge: { nodes: new Uint8Array(layout.lattice.dry.length), revision: 0 },
+      routeCache: new Map(),
+      energyTimeRemainder: 0,
+      waterTimeRemainder: 0,
       lastWakeMinute: 0,
       energyRemainder: 0,
       waterObservations: [],
@@ -320,6 +324,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   return {
     fish,
     queue: new WakeQueue(),
+    routes: [],
     lastInterval: [],
     waterWithdrawals: new Map(),
     config,
@@ -387,6 +392,12 @@ const cloneForager = (forager: Forager): Forager => {
   return {
     ...forager,
     task: forager.task ? { ...forager.task } : null,
+    knowledge: {
+      ...forager.knowledge,
+      nodes: forager.knowledge.nodes.slice(),
+      fullyKnown: forager.knowledge.fullyKnown?.slice(),
+    },
+    routeCache: new Map(forager.routeCache),
     waterObservations: [...forager.waterObservations],
     groundKnowledge,
     knownBanks: cloneKnownBanks(forager.knownBanks),
@@ -455,6 +466,7 @@ export function cloneValley(state: ValleyState): ValleyState {
   return {
     ...state,
     queue: state.queue.clone(),
+    routes: [...state.routes],
     lastInterval: [...state.lastInterval],
     fish: state.fish.map((stock) => ({ ...stock })),
     waterWithdrawals: new Map(state.waterWithdrawals),

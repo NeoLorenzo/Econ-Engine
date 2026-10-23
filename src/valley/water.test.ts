@@ -12,7 +12,7 @@ import {
   knownDrySegment,
   observeRouteCells,
   type GroundKnowledge,
-} from './routes'
+} from './legacyRoutes'
 
 describe('Life 11 water rules', () => {
   it('keeps rounded movement clear of a wet corner even when the exact chord narrowly misses it', () => {

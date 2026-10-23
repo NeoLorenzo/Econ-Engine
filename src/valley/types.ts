@@ -1,6 +1,7 @@
+import type { Knowledge, Route, RouteLattice } from './routes'
 import type { Terrain } from './terrain'
 import type { Hydration, HydrationConfig } from './hydration'
-import type { GroundKnowledge } from './routes'
+import type { GroundKnowledge } from './legacyRoutes'
 import type { FishStock } from './fish'
 import type { WakeQueue } from './clock'
 
@@ -83,6 +84,7 @@ export interface FoodLot {
  */
 export interface ValleyConfig extends HydrationConfig {
   daysPerYear: number
+  routeCellCm: number
   walkKcalPerHour: number
   moderateSlowdownPerMille: number
   steepDownSlowdownPerMille: number
@@ -370,6 +372,7 @@ export interface PlaceTable {
 
 export interface ValleyLayout {
   places: PlaceTable
+  lattice: RouteLattice
   placeChunks: Int32Array[]
   placeIndex: PlantIndex
   camp: Point
@@ -530,6 +533,8 @@ export interface TaskRecord {
   drinkMlPerMinute: number
   startEnergyKcal: number
   startEnergyRemainder: number
+  startEnergyTimeRemainder?: number
+  startWaterTimeRemainder?: number
   startWaterMl: number
   startWaterRemainder: number
   startWaterActivityRemainder: number
@@ -539,6 +544,10 @@ export interface TaskRecord {
 
 export interface Forager extends Hydration {
   task: TaskRecord | null
+  knowledge: Knowledge
+  routeCache: Map<string, number>
+  energyTimeRemainder: number
+  waterTimeRemainder: number
   lastWakeMinute: number
   energyRemainder: number
   waterObservations: WaterObservationEvent[]
@@ -1116,6 +1125,7 @@ export interface ValleyTotals {
 
 export interface ValleyState {
   queue: WakeQueue
+  routes: Route[]
   lastInterval: ValleyEvent[]
   logStock: Int32Array
   felledMinute: Int32Array

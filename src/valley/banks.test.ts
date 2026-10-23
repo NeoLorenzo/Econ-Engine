@@ -8,7 +8,7 @@ import {
   bankWaterHeight,
   triangleHeight,
 } from './banks'
-import { knownRoute, knownDrySegment, routeCentre, routeAnchor } from './routes'
+import { knownRoute, knownDrySegment, routeCentre, routeAnchor } from './legacyRoutes'
 import { deriveWater } from './water'
 
 function bowl() {

@@ -1,6 +1,6 @@
 import { daylightSecondsLeft, estimateKnownWalk, isDaylight, walkLowerBound, walkSpeed } from './forager'
 import type { Forager, Good, Point, ValleyConfig, ValleyLayout } from './types'
-import type { GroundKnowledge } from './routes'
+import type { GroundKnowledge } from './legacyRoutes'
 
 // Thickets, hazel thickets, stands and outcrops as sites, which a forager spots from afar, checks up close, and walks
 // to when it checks what it knows or searches for food or wood.

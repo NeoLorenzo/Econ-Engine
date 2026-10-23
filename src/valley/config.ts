@@ -17,6 +17,7 @@ import type { Point, ValleyConfig } from './types'
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   daysPerYear: 90,
+  routeCellCm: 2_000,
   walkKcalPerHour: 250,
   moderateSlowdownPerMille: 1_300,
   steepDownSlowdownPerMille: 1_300,
@@ -652,6 +653,13 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     config.waterBaseMlPerDay > Number.MAX_SAFE_INTEGER - 86_399
   )
     errors.push('Water-loss numerators exceed supported exact integer limits')
+  if (
+    !Number.isSafeInteger(config.routeCellCm) ||
+    config.routeCellCm <= 0 ||
+    config.routeCellCm % config.terrainCellCm !== 0
+  )
+    errors.push('routeCellCm must be a positive multiple of terrainCellCm')
+  if (config.chunkCm % config.routeCellCm !== 0) errors.push('chunkCm must be a multiple of routeCellCm')
   return errors
 }
 
