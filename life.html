@@ -9,9 +9,75 @@
       content="Life 12: strangers scattered over a glacial valley forage, drink, meet, form groups, build huts and trade axes on a minute clock with wake-ups."
     />
     <title>Life 12 · Econ Engine</title>
+    <style>
+      /* Shown before any script or stylesheet loads, and by the app while it rebuilds the valley. */
+      body {
+        margin: 0;
+        background: #0a0d0c;
+      }
+      .life-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        place-items: center;
+        background: rgb(10 13 12 / 0.82);
+        font-family: system-ui, sans-serif;
+      }
+      .life-loading-card {
+        display: grid;
+        justify-items: center;
+        gap: 6px;
+        max-width: min(320px, calc(100vw - 32px));
+        padding: 24px;
+        border: 1px solid #34403a;
+        border-radius: 12px;
+        background: #0a0d0c;
+        text-align: center;
+      }
+      .life-loading-spinner {
+        width: 28px;
+        height: 28px;
+        margin-bottom: 8px;
+        border: 3px solid #34403a;
+        border-top-color: #d4f36a;
+        border-radius: 50%;
+        /* A transform animation runs on the compositor, so it keeps turning while the valley is built. */
+        animation: life-loading-turn 0.9s linear infinite;
+      }
+      .life-loading-title {
+        margin: 0;
+        color: #e8eeeb;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .life-loading-note {
+        margin: 0;
+        color: #8e9a94;
+        font-size: 13px;
+      }
+      @keyframes life-loading-turn {
+        to {
+          transform: rotate(1turn);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .life-loading-spinner {
+          animation-duration: 3s;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="life-loading" role="status" aria-live="polite">
+        <div class="life-loading-card">
+          <span class="life-loading-spinner" aria-hidden="true"></span>
+          <p class="life-loading-title">Generating the valley</p>
+          <p class="life-loading-note">Terrain, water and routes take about ten seconds to build.</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/valleyView/main.tsx"></script>
   </body>
 </html>

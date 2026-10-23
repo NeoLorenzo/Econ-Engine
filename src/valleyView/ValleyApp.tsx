@@ -100,6 +100,13 @@ const MAX_BAND = 100
 
 const startPair = (setup: Setup): Display => startDisplay(createValley(setup))
 
+/** The first valley, built once: development's strict mode runs state initialisers twice, and building takes seconds. */
+let firstPair: Display | null = null
+const startFirstPair = () => (firstPair ??= startPair(DEFAULT_SETUP))
+
+/** Runs `work` after the browser has painted, so a loading screen shown just before it is on screen meanwhile. */
+const afterPaint = (work: () => void) => requestAnimationFrame(() => setTimeout(work, 0))
+
 /** What the HUD shows, refreshed a few times a second rather than every frame. */
 interface Snapshot {
   pair: Display
@@ -140,7 +147,7 @@ const fireLabel = (fire: { lit: boolean; wood: number; nights: number }, dayligh
 export default function ValleyApp() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<ValleyScene | null>(null)
-  const [initialPair] = useState(() => startPair(DEFAULT_SETUP))
+  const [initialPair] = useState(startFirstPair)
   const pairRef = useRef<Display>(initialPair)
   const [running, setRunning] = useState(true)
   const [showFlow, setShowFlow] = useState(false)
@@ -159,6 +166,7 @@ export default function ValleyApp() {
   const [setupError, setSetupError] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0))
   const [sceneError, setSceneError] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
 
   const runningRef = useRef(running)
@@ -316,6 +324,17 @@ export default function ValleyApp() {
       ) as NumericSetup),
       ...switches,
     }
+    setLoading(true)
+    afterPaint(() => {
+      try {
+        build(parsed)
+      } finally {
+        setLoading(false)
+      }
+    })
+  }
+
+  const build = (parsed: Setup) => {
     const config = { ...VALLEY_DEFAULT_CONFIG, ...parsed }
     const errors = valleyConfigErrors(config)
     if (!errors.length && parsed.founders > MAX_BAND) errors.push(`The observer shows at most ${MAX_BAND} foragers`)
@@ -355,6 +374,15 @@ export default function ValleyApp() {
 
   return (
     <div className="life-app">
+      {loading && (
+        <div className="life-loading" role="status" aria-live="polite">
+          <div className="life-loading-card">
+            <span className="life-loading-spinner" aria-hidden="true" />
+            <p className="life-loading-title">Generating the valley</p>
+            <p className="life-loading-note">Terrain, water and routes take about ten seconds to build.</p>
+          </div>
+        </div>
+      )}
       <main className="life-world" ref={mountRef}>
         {sceneError && <p className="life-fallback">The 3D view needs WebGL, which this browser could not start.</p>}
       </main>

@@ -6,6 +6,10 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE12-Loading-059] - (2026-10-23)
+
+Generating the valley blocks the page for 5 to 12 seconds, and without a sign of work the page looks frozen. The page now carries a static loading card that shows before any script runs; React replaces it once the first valley exists. Reset shows the same card, waits for it to be painted, then checks the layout and builds the valley. The spinner turns with a transform animation, which the browser runs off the main thread, so it keeps turning while the valley is built. In development, strict mode built the first valley twice; it is now built once. The engine and the fingerprints are unchanged.
+
 ## [LIFE12-Refoundation-058] - (2026-10-23)
 
 Tasks 9 to 13 of the first re-foundation plan finish the first pull request.

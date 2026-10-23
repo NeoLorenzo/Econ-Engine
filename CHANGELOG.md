@@ -2,6 +2,12 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Loading-059] - (2026-10-23)
+
+### Added
+
+- Show a loading screen while the valley is generated: on page load before the first valley exists, and after Reset while the new one is built. The first valley is built once, even where development runs state initialisers twice.
+
 ## [LIFE12-Refoundation-058] - (2026-10-23)
 
 ### Changed
