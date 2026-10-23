@@ -531,8 +531,10 @@ export class ValleyChecker {
       }
       if (p.groupId !== null) {
         const g = state.groups[p.groupId]
-        if (!g || g.dissolvedMinute !== null || !g.members.includes(p.id)) errors.push('Member has no standing group')
-        else {
+        // The dead keep the group they died in, which may since have dissolved.
+        if (!g || (p.alive && g.dissolvedMinute !== null) || !g.members.includes(p.id))
+          errors.push('Member has no standing group')
+        else if (g.dissolvedMinute === null) {
           const slot = g.hearthSlots[g.members.indexOf(p.id)]!
           if (!pointEqual(p.hearth, hearthAround(state.config, g.flag, slot)))
             errors.push('Hearth is off its group slot')

@@ -240,7 +240,8 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
         gatheredWood += produced.wood
       }
     }
-    if (t.kind === 'cut' && cuts.has(`${event.minute}:${id}`)) produced.logs = 1
+    // Each cut record belongs to one task: a cut started and interrupted in the same minute produced nothing.
+    if (t.kind === 'cut' && cuts.delete(`${event.minute}:${id}`)) produced.logs = 1
     if (!same(produced, event.produced)) fail(`person ${id}: task production does not match its stock and rate`)
     tasks[id] = null
   }
