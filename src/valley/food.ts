@@ -7,7 +7,7 @@ export const foodOfSource = (layout: ValleyLayout, source: number): FoodKind =>
 /** The most a source holds. */
 export const capacityOf = (config: ValleyConfig, food: FoodKind) => {
   if (food === 'fish') throw new Error('Fish capacity requires a particular water body')
-  return food === 'berries' ? config.bushCapacityKcal : config.hazelCapacityKcal
+  return food === 'berries' ? config.berryThicketCapacityKcal : config.hazelThicketCapacityKcal
 }
 
 /** A forager's hourly rate for a food at a full source, for the day. */
@@ -103,4 +103,9 @@ export function takeOldest(lots: readonly FoodLot[], kcal: number) {
 export function addLots(lots: FoodLot[], added: readonly FoodLot[]) {
   if (!added.length) return lots
   return [...lots, ...added].sort((a, b) => a.harvestTick - b.harvestTick)
+}
+
+export const eatCarried = (lots: FoodLot[], room: number) => {
+  const eaten = takeOldest(lots, room)
+  return { rest: eaten.rest, takenKcal: eaten.takenKcal }
 }

@@ -16,9 +16,15 @@ export function fishCapacity(areaM2: number, minimumAreaM2: number, kgPerHectare
 }
 
 /** Exact hourly logistic growth, including large intermediate products. */
-export function fishGrowth(capacity: number, stock: number, remainder: number, percentPerYear: number) {
+export function fishGrowth(
+  capacity: number,
+  stock: number,
+  remainder: number,
+  percentPerYear: number,
+  periodsPerYear = 8_760,
+) {
   if (capacity === 0 || stock === capacity) return { grown: 0, remainder: 0 }
-  const unit = 876_000n * BigInt(capacity)
+  const unit = 100n * BigInt(periodsPerYear) * BigInt(capacity)
   const owed = BigInt(remainder) + BigInt(percentPerYear) * BigInt(stock) * BigInt(capacity - stock)
   const grown = Math.min(capacity - stock, Number(owed / unit))
   return { grown, remainder: grown === capacity - stock ? 0 : Number(owed % unit) }

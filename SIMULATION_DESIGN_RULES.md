@@ -654,6 +654,28 @@ Do not label a market as monopolized, balanced, converged, dominated, or otherwi
 
 ---
 
+## Life: realism and time
+
+The Life core (`src/valley/`) simulates people with bodies in a physical world, so it needs rules about physical realism that the economic rules above do not state. Rules 12, 13 and 27 already say that complexity must be earned and that a mechanism is added only when it changes the question. The rules below apply them to physics, biology and time. The [roadmap](docs/ROADMAP.md) records the goal they serve: civilization emerging from strangers, with nothing above the individual scripted.
+
+### Realism
+
+1. **A mechanism must explain something that happens.** Before adding anything, name the behaviour that is impossible without it. Evaporation explains nothing a person does; thirst explains where they walk.
+2. **Numbers need the right order of magnitude, not precision.** A walk of two kilometres takes about half an hour; it does not need a hiking function and a load equation. Calibration records magnitudes and their sources, not formulas.
+3. **Detail stops where decisions stop.** Model a thing to the resolution at which someone decides about it: a thicket, not a bush; a herd, not a deer. People are the only things modelled as individuals with full state.
+4. **One declared compression, never many fudges.** Time is compressed only through the days-per-year setting and the anchoring rule below. Nothing is shortened on its own.
+5. **Realism serves emergence, not the other way round.** A realistic detail that changes nothing that emerges goes. An unrealistic simplification that makes something emerge which would not in life goes too.
+6. **Checked against patterns, not instruments.** Validation compares the simulation with known shapes of human life: group sizes, leadership turnover, inequality, growth rates, settlement failure. Not litres of water a day.
+
+### Time
+
+7. **One clock, in minutes.** Every event, record and position has a minute. There is no second time system and no second rule set; playback speed only changes how many minutes advance per frame.
+8. **Nothing runs every minute.** Work happens at wake-ups, ordered by minute, then phase, then person id. A person wakes when a task ends, a body threshold arrives, something enters their perception, or someone addresses them; between wake-ups their position and body follow from their task. Each other system declares its cadence. Conservation is checked at every event that moves a quantity; the full invariant set runs once a day.
+9. **Every duration is day-anchored or year-anchored.** Day-anchored durations are fixed in hours and minutes: sleep, meals, thirst, walking, a day's work. Year-anchored durations are fractions of the year: seasons, pregnancy, childhood, ageing, growth, breeding, mastery. Days per year is a run setting from 8 to 365; year-anchored durations never fall below one day; rates per year are divided by the setting.
+10. **The observer owns the labels.** Group, chief, village and border are measurements the observer makes from state. None is a word in the engine.
+
+---
+
 # Core Philosophy
 
 Agent Econ should follow a simple hierarchy:

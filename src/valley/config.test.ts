@@ -6,6 +6,10 @@ import type { ValleyConfig } from './types'
 const errorsWith = (overrides: Partial<ValleyConfig>) => valleyConfigErrors({ ...VALLEY_DEFAULT_CONFIG, ...overrides })
 
 describe('valley configuration', () => {
+  it('requires aligned route and chunk grids', () => {
+    expect(errorsWith({ routeCellCm: 750 })).toContain('routeCellCm must be a positive multiple of terrainCellCm')
+    expect(errorsWith({ routeCellCm: 1_500 })).toContain('chunkCm must be a multiple of routeCellCm')
+  })
   it('accepts the canonical valley', () => {
     expect(valleyConfigErrors(VALLEY_DEFAULT_CONFIG)).toEqual([])
   })
@@ -44,7 +48,6 @@ describe('valley configuration', () => {
       'smallKettleMinRadiusCm must not exceed smallKettleMaxRadiusCm',
     )
     expect(errorsWith({ kettleDepthPerMille: 1_001 })).toContain('kettleDepthPerMille must be at most 1,000')
-    expect(errorsWith({ sightStepCm: 4_000 })).toContain('sightStepCm must not exceed placeCm')
     expect(errorsWith({ startAreaCm: 500_000 })).toContain('startAreaCm must not exceed the land’s width')
   })
 
@@ -52,9 +55,18 @@ describe('valley configuration', () => {
     expect(errorsWith({ reachCm: 2_500 })).toContain('reachCm must be less than perceptionRadiusCm')
   })
 
-  it('refuses starting stocks above capacity', () => {
-    expect(errorsWith({ initialBushKcal: 401 })).toContain('initialBushKcal must be between 0 and bushCapacityKcal')
-    expect(errorsWith({ initialTreeWood: 26 })).toContain('initialTreeWood must be between 0 and treeCapacityWood')
+  it('refuses founders out of range, or more than the start area holds', () => {
+    expect(errorsWith({ founders: 0 })).toContain('founders must be positive')
+    expect(errorsWith({ founders: 1_001 })).toContain('founders must be from 1 to 1,000')
+    // An 800 m square at 50 m spacing holds 17 × 17 starts.
+    expect(errorsWith({ founders: 289 })).toEqual([])
+    expect(errorsWith({ founders: 290 })).toContain(
+      'founders: the start area holds at most 289 people at startSpacingCm',
+    )
+  })
+
+  it('refuses stands whose logs are not whole trees', () => {
+    expect(errorsWith({ standLogs: 35 })).toContain('standLogs must be a whole number of logsPerTree')
   })
 
   it('refuses hours, thresholds and costs out of order', () => {
@@ -90,46 +102,36 @@ describe('valley configuration', () => {
     )
   })
 
-  it('refuses hazels that start above capacity, and a lake too large to count its growth exactly', () => {
-    expect(errorsWith({ initialHazelKcal: 2_000 })).toContain(
-      'initialHazelKcal must be between 0 and hazelCapacityKcal',
-    )
+  it('refuses a lake too large to count its growth exactly', () => {
     expect(errorsWith({ fishKgPerHectare: Number.MAX_SAFE_INTEGER })).toContain(
       'Fish capacity exceeds supported stock/remainder limits',
     )
     expect(errorsWith({ riverCatchmentM2: 0 })).toContain('riverCatchmentM2 must be positive')
   })
 
-  it('refuses plants that cannot hold a minute of work at the fastest rate', () => {
-    expect(errorsWith({ treeCapacityWood: 1, initialTreeWood: 1, woodPerHour: 60 })).toContain(
-      'A tree must hold a minute of gathering at the fastest rate',
+  it('refuses places that cannot hold a minute of work at the fastest rate', () => {
+    expect(errorsWith({ standWoodKg: 1, woodPerHour: 120 })).toContain(
+      'A stand must hold a minute of gathering at the fastest rate',
     )
   })
 
   it('refuses a band around the camp whose huts would not fit in the camp’s clearing', () => {
-    expect(errorsWith({ scattered: false, bandSize: 200 })).toContain(
+    expect(errorsWith({ scattered: false, founders: 200 })).toContain(
       'The band’s huts must fit inside the camp’s clearing',
     )
-    expect(errorsWith({ bandSize: 200 })).not.toContain('The band’s huts must fit inside the camp’s clearing')
+    expect(errorsWith({ founders: 200 })).not.toContain('The band’s huts must fit inside the camp’s clearing')
   })
 
   it('refuses a band of one that starts as one group', () => {
-    expect(errorsWith({ scattered: false, bandSize: 1 })).toContain(
+    expect(errorsWith({ scattered: false, founders: 1 })).toContain(
       'A band that starts as one group needs at least two foragers',
     )
-    expect(errorsWith({ bandSize: 1 })).toEqual([])
+    expect(errorsWith({ founders: 1 })).toEqual([])
   })
 
   it('refuses spacing and checking times that are not positive', () => {
     expect(errorsWith({ startSpacingCm: 0 })).toContain('startSpacingCm must be positive')
     expect(errorsWith({ exploreAfterHours: 0 })).toContain('exploreAfterHours must be positive')
-  })
-
-  it('refuses places too large to see whole from their centre', () => {
-    expect(errorsWith({ placeCm: 3_536 })).toContain(
-      'A place must fit in a forager’s view: placeCm² ≤ 2 · perceptionRadiusCm²',
-    )
-    expect(errorsWith({ placeCm: 3_535 })).toEqual([])
   })
 
   it('refuses a layout that cannot be drawn, or starts that cannot be placed', () => {
@@ -142,7 +144,7 @@ describe('valley configuration', () => {
         thicketCount: 40,
       }),
     ).toThrow('cannot all be placed')
-    expect(() => createValley({ ...FLAT_LAND, bandSize: 200 })).toThrow('The foragers’ starts cannot all be placed')
+    expect(() => createValley({ ...FLAT_LAND, founders: 200 })).toThrow('The foragers’ starts cannot all be placed')
   })
 
   it('lays hearths on a square spiral, ring by ring', () => {
@@ -205,17 +207,16 @@ describe('huts and axes', () => {
       'axeHours',
       'axeLogs',
       'logsPerTree',
-      'treeRegrowthDays',
+      'treeRegrowthYears',
       'hutRingCm',
     ] as const)
       expect(errorsWith({ [key]: 0 })).toContain(`${key} must be positive`)
-    for (const key of ['outcropCount', 'stonesPerOutcrop', 'stonesPerSpot', 'axeWood', 'fellWood'] as const)
+    for (const key of ['outcropCount', 'outcropStones', 'axeWood', 'fellWood'] as const)
       expect(errorsWith({ [key]: -1 })).toContain(`${key} must not be negative`)
-    expect(errorsWith({ initialBushWood: 3 })).toContain('initialBushWood must be between 0 and bushCapacityWood')
-    // Bushes may hold no sticks at all, but sticks they hold must be worth a minute's gathering.
-    expect(errorsWith({ bushCapacityWood: 0, initialBushWood: 0 })).toEqual([])
-    expect(errorsWith({ woodPerHour: 200 })).toContain(
-      'A bush that holds sticks must hold a minute of gathering at the fastest rate',
+    // Thickets may hold no sticks at all, but sticks they hold must be worth a minute's gathering.
+    expect(errorsWith({ berryThicketWoodKg: 0 })).toEqual([])
+    expect(errorsWith({ berryThicketWoodKg: 1, woodPerHour: 120 })).toContain(
+      'A thicket that holds sticks must hold a minute of gathering at the fastest rate',
     )
   })
 

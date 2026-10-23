@@ -72,25 +72,3 @@ export function weatherHuts(state: ValleyState, minute: number): WeatherEvent[] 
   }
   return events
 }
-
-/** Whether a tree felled at `felledMinute` with `logs` left grows back at midnight `minute`. */
-export const regrowsAt = (config: ValleyState['config'], felledMinute: number, logs: number, minute: number) =>
-  felledMinute >= 0 && logs === 0 && minute - felledMinute >= config.treeRegrowthDays * MINUTES_PER_DAY
-
-/**
- * Midnight: every felled tree with no logs left, felled at least `treeRegrowthDays` ago, stands again whole, with
- * `logsPerTree` logs; branches still lying there become its crown's. Returns the logs regrown.
- */
-export function regrowTrees(state: ValleyState, minute: number) {
-  let regrown = 0
-  for (let id = 0; id < state.treeLogs.length; id += 1) {
-    if (!regrowsAt(state.config, state.treeFelledMinute[id]!, state.treeLogs[id]!, minute)) continue
-    state.treeLogs[id] = state.config.logsPerTree
-    state.treeFelledMinute[id] = -1
-    regrown += state.config.logsPerTree
-  }
-  return regrown
-}
-
-/** Whether a tree stands: it holds every log until it is felled. */
-export const treeStands = (state: Pick<ValleyState, 'treeFelledMinute'>, id: number) => state.treeFelledMinute[id]! < 0

@@ -1,127 +1,56 @@
-import { createSurveyedValley as createValley, addTestLake } from '../valley/ruleFixtures'
+import { createSurveyedValley as createValley } from '../valley/ruleFixtures'
 import { FLAT_LAND } from '../valley/config'
 import { describe, expect, it } from 'vitest'
 import { cloneValley, stepValley } from '../valley/engine'
 import { meet } from '../valley/social'
 import type { ValleyState } from '../valley/types'
 import {
+  BUSHES_PER_THICKET,
   CAMERA_LIMITS,
-  advanceClock,
   campfireAt,
+  clampDistance,
   clearView,
+  closeTilt,
   contributionNote,
   daysOfFoodLeft,
-  groupContributions,
-  hearthAt,
-  pinPlacement,
-  clampDistance,
-  closeTilt,
+  decorOf,
   describeActivity,
-  displayedLoad,
-  fillInTurn,
-  foragerPose,
   foragerSummary,
+  groupContributions,
   groupFrame,
   groupInspection,
   groupName,
   knowledgeShades,
+  pinPlacement,
+  plantFill,
   plantInspection,
   siteRings,
+  startDisplay,
+  taskSummary,
   towardFire,
-  treeShape,
-  type DisplayPair,
 } from './valleyViewModel'
 
-/** The canonical valley at ten in the morning, with forager 0 hungry three metres from a bush that alone holds food. */
-function pairBesideBush(): DisplayPair {
-  const state: ValleyState = cloneValley(createValley(FLAT_LAND))
-  state.minute = 600
-  const forager = state.foragers[0]!
-  forager.x = state.layout.bushes.x[0]! - 300
-  forager.y = state.layout.bushes.y[0]!
-  forager.energyKcal = 63_000
-  forager.hungry = true
-  state.foodStock.fill(0)
-  state.foodStock[0] = 400
-  return { previous: state, next: stepValley(state), alpha: 0 }
-}
-
-describe('fishing', () => {
-  it('draws a fisher on the shore facing the water, holding a rod, and says so', () => {
-    const state: ValleyState = cloneValley(createValley(FLAT_LAND))
-    state.minute = 600
-    const forager = state.foragers[0]!
-    const bank = addTestLake(state)
-    Object.assign(forager, { x: bank.x, y: bank.y, energyKcal: 63_000, hungry: true })
-    forager.siteKnown.fill(1)
-    forager.siteChecked.fill(5)
-    state.foodStock.fill(0)
-    const pair = { previous: state, next: stepValley(state), alpha: 0.5 }
-    expect(foragerPose(pair, 0)).toMatchObject({ gesture: 'fish', heading: Math.atan2(0, 1) })
-    expect(describeActivity(pair, 0)).toBe('Fishing from the shore')
-  })
-})
-
-describe('drawing between two minutes', () => {
-  it('walks the walking seconds along a straight line, then picks', () => {
-    const pair = pairBesideBush()
-    const start = foragerPose({ ...pair, alpha: 0 }, 0)
-    expect(start).toMatchObject({ x: pair.previous.foragers[0]!.x, gesture: 'walk' })
-    // Two seconds of walking out of sixty: halfway through them at one-sixtieth of the minute.
-    const halfway = foragerPose({ ...pair, alpha: 1 / 60 }, 0)
-    expect(halfway.gesture).toBe('walk')
-    expect(halfway.x).toBeCloseTo((pair.previous.foragers[0]!.x + pair.next.foragers[0]!.x) / 2, 5)
-    const working = foragerPose({ ...pair, alpha: 0.5 }, 0)
-    expect(working).toMatchObject({ x: pair.next.foragers[0]!.x, y: pair.next.foragers[0]!.y, gesture: 'pick' })
-    expect(describeActivity(pair, 0)).toBe('Picking berries from a bush in thicket 1')
-  })
-
-  it('lays a sleeper down and draws only whole minutes at the fastest speed', () => {
+describe('plants drawn from place stocks', () => {
+  it('shares a thicket’s berries out among its bushes, the last emptying first', () => {
     const state = cloneValley(createValley(FLAT_LAND))
-    state.minute = 1_200
-    const pair = { previous: state, next: stepValley(state), alpha: 0.5 }
-    expect(foragerPose(pair, 0)).toMatchObject({ gesture: 'sleep', lying: 1 })
-    expect(foragerPose(pair, 0, false).x).toBe(pair.next.foragers[0]!.x)
+    const { bushes } = decorOf(state)
+    const first = Array.from({ length: bushes.count }, (_, id) => id).filter((id) => bushes.site[id] === 0)
+    expect(first).toHaveLength(BUSHES_PER_THICKET)
+    const capacity = state.foodStock[0]!
+    state.foodStock[0] = Math.round(capacity / 4)
+    const fills = first.map((id) => plantFill(startDisplay(state), 'bush', id)).sort((a, b) => b - a)
+    expect(fills.slice(0, 3).every((fill) => fill === 1)).toBe(true)
+    expect(fills.at(-1)).toBe(0)
+    expect(fills.reduce((total, fill) => total + fill, 0)).toBeCloseTo(BUSHES_PER_THICKET / 4, 1)
   })
 
-  it('puts the wood of the trip on the forager’s back and the rest by its hearth', () => {
-    const pair = pairBesideBush()
-    for (const state of [pair.previous, pair.next]) {
-      state.foragers[0]!.wood = 30
-      state.foragers[0]!.tripWood = 12
-    }
-    expect(displayedLoad(pair, 0)).toMatchObject({ onBack: 12, atHearth: 18 })
-  })
-
-  it('advances whole minutes and keeps the remainder, never more than a quarter second at once', () => {
-    expect(advanceClock(0.5, 1, 1)).toEqual({ steps: 0, alpha: 0.75 })
-    expect(advanceClock(0, 0.1, 60)).toEqual({ steps: 6, alpha: expect.closeTo(0, 9) })
-  })
-})
-
-describe('plants and the camera', () => {
-  it('shares a bush’s berries out one by one, the last emptying first', () => {
-    expect(fillInTurn(400, 400, 10)).toEqual(Array.from({ length: 10 }, () => 1))
-    expect(fillInTurn(100, 400, 4)).toEqual([1, 0, 0, 0])
-    expect(fillInTurn(0, 400, 3)).toEqual([0, 0, 0])
-  })
-
-  it('compares a plant’s true stock with what the followed forager remembers, or says it has never seen it', () => {
-    const known = cloneValley(createValley(FLAT_LAND))
-    known.minute = 30
-    known.foragers[0]!.foodMemory.stock[7] = 400
-    known.foragers[0]!.foodMemory.seen[7] = 5
-    known.foodStock[7] = 120
-    expect(plantInspection(known, 'bush', 7, 0)).toMatchObject({
-      stock: 120,
-      remembered: 400,
-      difference: -280,
-      seen: '24 min ago',
-    })
+  it('compares a place’s true stock with what the followed forager remembers, or says it has never seen it', () => {
     const state = cloneValley(createValley(FLAT_LAND))
     expect(plantInspection(state, 'bush', 7, 0)).toMatchObject({ remembered: null, seen: 'never' })
   })
+})
 
+describe('the camera', () => {
   it('keeps the camera between a person and the whole valley, tilting towards eye level close in', () => {
     expect(clampDistance(1)).toBe(CAMERA_LIMITS.nearest)
     expect(clampDistance(10_000)).toBe(CAMERA_LIMITS.farthest)
@@ -144,31 +73,17 @@ describe('days of food left', () => {
   })
 })
 
-describe('trees and huts', () => {
-  it('draws a standing tree upright over its dead branches, and a felled one lying, shorter for each log cut', () => {
-    const state = cloneValley(createValley(FLAT_LAND))
-    const standing = treeShape({ previous: state, next: state, alpha: 1 }, 0)
-    expect(standing).toMatchObject({ felled: false, trunk: 1, crown: 1, deadwood: 1 })
-    state.woodStock[0] = 5
-    expect(treeShape({ previous: state, next: state, alpha: 1 }, 0).deadwood).toBeCloseTo(5 / 25, 10)
-    state.treeFelledMinute[0] = 0
-    state.treeLogs[0] = 1
-    state.woodStock[0] = 15
-    const felled = treeShape({ previous: state, next: state, alpha: 1 }, 0)
-    expect(felled.felled).toBe(true)
-    expect(felled.trunk).toBeCloseTo(1 / 3, 10)
-    expect(felled.crown).toBeCloseTo(15 / 35, 10)
-    expect(felled.deadwood).toBe(0)
-  })
-
-  it('turns a member’s hut, and the member asleep in it, towards its group’s fire', () => {
-    const state = cloneValley(createValley({ ...FLAT_LAND, scattered: false }))
-    const hearth = state.foragers[3]!.hearth
-    // Slot 3 lies due east of the flag, so the fire is due west.
-    const toward = towardFire(state, 3, hearth.x, hearth.y)!
-    expect(toward.x).toBeCloseTo(-1, 10)
-    expect(toward.z).toBeCloseTo(0, 10)
-    expect(towardFire(cloneValley(createValley(FLAT_LAND)), 0, 100, 100)).toBeNull()
+describe('what a person is doing', () => {
+  it('describes the task under way and when its holder next wakes', () => {
+    const state = stepValley(createValley(FLAT_LAND), 1)
+    const task = state.foragers[0]!.task!
+    Object.assign(task, { kind: 'gather', reason: 'foraging', placeId: 3 })
+    expect(describeActivity(startDisplay(state), 0)).toBe('Picking berries at thicket 4')
+    Object.assign(task, { kind: 'walk', reason: 'exploring' })
+    expect(describeActivity(startDisplay(state), 0)).toBe('Exploring ground it has never seen')
+    const summary = taskSummary(state, 0)!
+    expect(summary).toMatchObject({ kind: 'walk', reason: 'exploring', startMinute: task.startMinute })
+    expect(summary.nextWake!.minute).toBeGreaterThanOrEqual(state.minute)
   })
 })
 
@@ -180,6 +95,8 @@ describe('groups and what a forager knows', () => {
     const [first, second] = state.foragers as [ValleyState['foragers'][0], ValleyState['foragers'][0]]
     second.x = first.x + 500
     second.y = first.y
+    first.metMinute[second.id] = 600
+    first.metPosition.set(second.id, { x: second.x, y: second.y })
     meet(state, first, 600)
     return state
   }
@@ -192,77 +109,51 @@ describe('groups and what a forager knows', () => {
 
   it('shows a forager’s group, its fellows and when it joined, and its group with what each member is doing', () => {
     const state = founded()
-    expect(foragerSummary(state, 0)).toMatchObject({ groupId: 0, fellows: ['Forager 2'], joinedMinutesAgo: 0 })
+    expect(foragerSummary(state, 0)).toMatchObject({ groupId: 0, fellows: ['Forager 2'], joinedMinutesAgo: 1 })
     expect(foragerSummary(state, 2)).toMatchObject({ groupId: null, fellows: [], joinedMinutesAgo: null })
     state.foragers[1]!.tripWood = 12
     state.foragers[1]!.wood = 20
-    const pair = { previous: state, next: stepValley(state), alpha: 0.5 }
-    const group = groupInspection(pair, 0)
+    const display = startDisplay(state)
+    const group = groupInspection(display, 0)
     expect(group).toMatchObject({ name: 'Group A', dissolved: false, joinedEver: 2, swapsLastDay: 0 })
     expect(group.members.map((member) => member.name)).toEqual(['Forager 1', 'Forager 2'])
     expect(group.members[1]!.loadKg).toBe(12)
-    expect(group.members[0]!.activity).toBe(describeActivity(pair, 0))
-    const frame = groupFrame(pair.next, 0)
-    const flag = pair.next.groups[0]!.flag
+    expect(group.members[0]!.activity).toBe(describeActivity(display, 0))
+    const frame = groupFrame(state, 0)
     for (const id of [0, 1]) {
-      const member = pair.next.foragers[id]!
+      const member = state.foragers[id]!
       expect(Math.hypot(member.x - frame.x, member.y - frame.y)).toBeLessThanOrEqual(frame.radiusCm)
     }
-    expect(Math.hypot(flag.x - frame.x, flag.y - frame.y)).toBeLessThanOrEqual(frame.radiusCm)
   })
 
-  it('shows what a forager carries and how fast it walks, and the sites it knows', () => {
+  it('shows the places a forager knows, ringing those it checked lately', () => {
     const state = founded()
     const forager = state.foragers[0]!
-    forager.tripWood = 30
-    forager.wood = 30
-    expect(foragerSummary(state, 0)).toMatchObject({ loadKg: 30, speedKmh: 4.32, sitesKnown: 0 })
-    forager.siteKnown[3] = 1
-    forager.siteKnown[35] = 1
-    forager.siteChecked[3] = 590
-    expect(foragerSummary(state, 0)).toMatchObject({ sitesKnown: 2, sitesCheckedLately: 1, sitesTotal: 80 })
+    forager.knownPlaces.fill(-1)
+    forager.knownPlaces[3] = 0
+    forager.knownPlaces[5] = 1
+    forager.placeCheckedMinute[3] = 590
+    forager.placeCheckedMinute[5] = -1
+    expect(foragerSummary(state, 0)).toMatchObject({
+      sitesKnown: 2,
+      sitesCheckedLately: 1,
+      sitesTotal: state.layout.places.count,
+    })
     expect(siteRings(state, 0).map((ring) => [ring.site, ring.fresh])).toEqual([
       [3, true],
-      [35, false],
+      [5, false],
     ])
   })
 
   it('shades ground never seen dark and ground seen at any time clear', () => {
-    const checking = founded()
-    checking.minute = 2_001
-    checking.foragers[0]!.groundKnowledge.observed.fill(0)
-    checking.foragers[0]!.groundKnowledge.observed[1] = 1
-    const known = knowledgeShades(checking, 0)
-    expect(known).toHaveLength(checking.layout.terrain.cells ** 2)
-    expect([known[0], known[1]]).toEqual([150, 0])
-  })
-
-  it('describes exploring and looking for company', () => {
-    const pair = pairBesideBush()
-    const event = pair.next.lastEvents.find((made) => made.foragerId === 0)!
-    for (const [reason, action, text] of [
-      ['exploring', 'walk', 'Exploring ground it has never seen'],
-      ['seeking company', 'walk', 'Looking for company'],
-      ['waiting for company', 'rest', 'Waiting for company at a flag'],
-    ] as const) {
-      Object.assign(event, { reason, action, workSeconds: 0, workedFor: null })
-      expect(describeActivity(pair, 0)).toBe(text)
-    }
-  })
-
-  it('describes checking, searching a site and taking a load home', () => {
-    const pair = pairBesideBush()
-    const event = pair.next.lastEvents.find((made) => made.foragerId === 0)!
-    for (const [change, text] of [
-      [{ reason: 'checking', action: 'walk', siteId: 3 }, 'Walking to thicket 4 to see what it holds'],
-      [{ reason: 'checking', action: 'rest', siteId: 33 }, 'Looking over hazel thicket 2'],
-      [{ reason: 'searching', action: 'walk', siteId: 66, workedFor: 'wood' }, 'Searching stand 3 for firewood'],
-      [{ reason: 'searching', action: 'walk', siteId: null, workedFor: 'food' }, 'Searching new ground for food'],
-      [{ reason: 'taking a load home', action: 'walk', loadWood: 30 }, 'Taking 30 kg of firewood home'],
-    ] as const) {
-      Object.assign(event, { workSeconds: 0, workedFor: null, ...change })
-      expect(describeActivity(pair, 0)).toBe(text)
-    }
+    const state = founded()
+    const nodes = state.foragers[0]!.knowledge.nodes
+    nodes.fill(0)
+    nodes[0] = 1
+    const shades = knowledgeShades(state, 0)
+    expect(shades).toHaveLength(state.layout.terrain.cells ** 2)
+    expect(shades[0]).toBe(0)
+    expect(shades.at(-1)).toBe(150)
   })
 })
 
@@ -275,36 +166,30 @@ describe('a group’s fire and what each member gives', () => {
     state.groups[0]!.given = state.groups[0]!.given.map((given, slot) => (slot === 1 ? fireWood : given))
     state.foragers[1]!.fireGiven = fireWood
     state.foragers[0]!.wood = 30
-    return { previous: state, next: stepValley(state), alpha: 0.5 }
+    return startDisplay(state)
   }
 
-  it('draws the fire burning at night, banked by day while it holds wood, and out otherwise', () => {
-    expect(campfireAt(together(20 * 60, 12), 0)).toMatchObject({ look: 'burning' })
-    expect(campfireAt(together(600, 12), 0)).toMatchObject({ look: 'banked' })
-    const out = together(600, 0)
-    out.next.groups[0]!.fireWood = 0
-    expect(campfireAt(out, 0)).toMatchObject({ look: 'out' })
-    expect(campfireAt(together(20 * 60 + 1, 0), 0)?.look).toBe('out')
+  it('turns a member’s hut, and the member asleep in it, towards its group’s fire', () => {
+    const state = together(600, 0).state
+    const hearth = state.foragers[3]!.hearth
+    // Slot 3 lies due east of the flag, so the fire is due west.
+    const toward = towardFire(state, 3, hearth.x, hearth.y)!
+    expect(toward.x).toBeCloseTo(-1, 10)
+    expect(toward.z).toBeCloseTo(0, 10)
+    expect(towardFire(cloneValley(createValley(FLAT_LAND)), 0, 100, 100)).toBeNull()
   })
 
-  it('lights no member’s own hearth while it sleeps by its group’s fire', () => {
-    const pair = together(20 * 60, 12)
-    expect(hearthAt(pair, 3)).toBeNull()
-    expect(describeActivity(pair, 3)).toBe('Sleeping warm by its group’s fire')
-    expect(describeActivity(together(20 * 60 + 1, 0), 3)).toBe('Sleeping cold: its group’s fire is out')
+  it('draws the fire banked by day while it holds wood, and out otherwise', () => {
+    expect(campfireAt(together(600, 12), 0)).toMatchObject({ look: 'banked' })
+    expect(campfireAt(together(600, 0), 0)).toMatchObject({ look: 'out' })
   })
 
   it('lists what each member has given the fire, its share, and says who gave most', () => {
-    const pair = together(20 * 60 + 1, 3)
-    const rows = groupContributions(pair.next, 0)
-    expect(rows).toHaveLength(8)
-    expect(rows[0]).toMatchObject({ name: 'Forager 1', given: 6, givenToday: 6, member: true })
-    expect(rows[1]).toMatchObject({ given: 3 })
-    expect(rows[0]!.share).toBeCloseTo(2 / 3, 10)
-    expect(contributionNote(rows)).toBe(
-      'Forager 1 has given the most, 67% of its wood (5.3 times an even share). Forager 3, Forager 4, Forager 5, Forager 6, Forager 7, Forager 8 have given nothing.',
-    )
-    expect(groupInspection(pair, 0).fire).toMatchObject({ wood: 9, lit: false, burnPerHour: 1 })
+    const display = together(20 * 60 + 1, 3)
+    const rows = groupContributions(display.state, 0)
+    expect(rows).toHaveLength(display.state.foragers.length)
+    expect(rows[1]).toMatchObject({ given: 3, member: true })
+    expect(contributionNote(rows)).toContain('Forager 2 has given the most')
   })
 })
 
@@ -319,7 +204,6 @@ describe('pins over a selected group', () => {
       { left: 608, top: 693, right: 1008, bottom: 752 },
     ]
     expect(clearView(1024, 768, cards)).toEqual({ left: 380, top: 24, right: 624, bottom: 669 })
-    // A phone: one card across the top, one across the bottom.
     // A phone: one card across the top and one across the bottom leave too little between them, so the middle third
     // of the view's height is kept.
     const phone = [

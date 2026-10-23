@@ -2,6 +2,66 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Observer-061] - (2026-10-23)
+
+### Changed
+
+- The loading card stays until the valley's first frame is drawn, so no blank page shows while the 3D view starts.
+- The page heading shows the day, season, time and the number alive, and holds New run.
+- The person panel shows the name, then what they are doing, then bars for energy, thirst and load, then rings for picking, wood and axe-making skill. The rest is in a Details section, closed by default.
+- The history panel is titled History and holds only its charts. The run's settings, the controls and the colour key are in an ⓘ window; the long description is removed.
+
+## [LIFE12-Settings-060] - (2026-10-23)
+
+### Added
+
+- The Life page opens on a settings screen: seed, days per year (8 to 365), world size (1 to 10 km), founders (1 to 100) and a scattered or together start, each with its range, and a Start button. Start shows the loading card while the valley is built. The settings are fixed for the run; the history panel states them, and New run returns to the settings screen, prefilled.
+- A world of another size than 4 km scales its counts of places and landforms with its area, so worlds of 1 to 3 km can be laid out.
+- Record a fingerprint for the forty-founder default on seed 20260813.
+
+### Changed
+
+- Forty founders by default. The eight-person fingerprint configurations and the flat test land name eight founders, so their 21 fingerprints are unchanged.
+- Remove Life 11's setup form and Reset; its other parameters are configuration only.
+
+## [LIFE12-Loading-059] - (2026-10-23)
+
+### Added
+
+- Show a loading screen while the valley is generated: on page load before the first valley exists, and after Reset while the new one is built. The first valley is built once, even where development runs state initialisers twice.
+
+## [LIFE12-Refoundation-058] - (2026-10-23)
+
+### Changed
+
+- Remove the per-minute representation: the old configuration keys, movement segments, per-second body records, plant memories and the Tobler and Pandolf tables. Validate the founders' range and start area, stands holding whole trees, and a minute's work at every place.
+- Port the observer to the wake-up engine. People are drawn from their task records at the displayed minute, which stays within the minute the state has reached. Map speeds, from a day a second, hide people. Places are drawn as decoration sharing out their stock. The person panel shows the task, its reason and the next wake-up, and the header shows the calendar. The page is **Life 12 · strangers**.
+- Each frame runs the engine once, and the minutes a frame may run double or halve with the frame budget.
+- Fix two checker faults found by the fingerprint runs: a cut started and interrupted in the same minute was credited with the previous cut's log, and a dead member of a group that later dissolved was reported as having no standing group.
+- Record new fingerprints for all 21 configurations and seeds. Delete the Life 11 specification, and update the architecture, validation, calibration and README documents for Life 12.
+
+## [LIFE12-Ledger-057] - (2026-10-23)
+
+- Replace the minute checker with interval replay of bodies, stocks, observations, tools, huts and external water withdrawals, plus physical routes, queues, event order, group/fire and regrowth checks.
+- Record world boundaries, fish growth and sleeping warmth changes; retain task-start loads for validating production and travel. Refresh the derived chunk index at interval endpoints.
+- Port the retained corruption cases and analytic examples. Check a canonical thirty-day run at daily intervals with all eight founders alive. Tasks 9–13 remain pending.
+
+## [LIFE12-Review-056] - (2026-10-23)
+
+- Cache shoreline connectors, index estimated bank candidates, bound real water-route searches to three, and reuse immutable perception/route calculations.
+- Reject founder draws without a route connector and choose sources connected through observed ground. All eight canonical founders survive thirty and ninety days; no thirst thresholds or resource amounts are relaxed.
+- Restore retained Life 11 fire, hut, social, food, carrying and water rule coverage, including the daily fire-contribution counter it exposed. List every deliberate removal and replacement in the lab notes.
+- Before Task 8, the canonical 90-day simulation takes 4.371 s (48.57 ms/day averaged); creation takes 7.264 s separately. The specification's subsecond goal remains unmet.
+
+## [LIFE12-Refoundation-055] - (2026-10-23, Task 7 checkpoint)
+
+### Changed
+
+- Implement the first seven tasks of the approved Life 12 re-foundation: configurable calendar, aggregate resource places, deterministic wake-up queue, lazy bodies and tasks, known dry lattice routes, and perception at wake-ups.
+- Port sleep, exploration, harvesting, drinking, loads, meetings, groups, shared fires, huts, axes and exchange into the wake-up pipeline. Preserve the owner's decisions on stock-dependent picking and configured walking pace.
+- Record interval events and daily summaries without advancing every person each minute. Retain independent three-log regrowth schedules within aggregate stands.
+- Stop before Task 8 for review. Lint passes; the full gate is blocked by the checker and observer ports scheduled in Tasks 8 and 10. Fingerprints, browser acceptance and canonical-year timing remain later plan tasks. See the matching lab-notes entry for every port choice and checkpoint limitations.
+
 ## [LIFE11-ContinuousBanks-054] - (2026-10-22)
 
 ### Changed

@@ -14,7 +14,7 @@ export const woodTarget = (config: ValleyConfig) => config.woodStockNights * nig
 
 /** Wood matters when there are trees and a night without a fire costs more than one with it. */
 export const woodMatters = (config: ValleyConfig) =>
-  config.standCount * config.treesPerStand > 0 && config.coldSleepKcalPerHour > config.sleepKcalPerHour
+  config.standCount * config.standLogs > 0 && config.coldSleepKcalPerHour > config.sleepKcalPerHour
 
 export const spareWood = (config: ValleyConfig, forager: Forager) => Math.max(0, forager.wood - woodTarget(config))
 

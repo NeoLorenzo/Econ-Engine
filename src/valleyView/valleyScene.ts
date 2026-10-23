@@ -34,13 +34,15 @@ import {
   carriesLog,
   clampDistance,
   clampTarget,
-  currentEvent,
   currentSwaps,
   daylightAt,
-  displayMinutes,
   displayedHutLogs,
   displayedLoad,
-  displayedStock,
+  decorOf,
+  plantFill,
+  rocksShown,
+  routePoints,
+  ROCKS_PER_OUTCROP,
   fillInTurn,
   foragerColor,
   foragerPose,
@@ -59,7 +61,8 @@ import {
   toMetres,
   towardFire,
   treeShape,
-  type DisplayPair,
+  type Decor,
+  type Display,
   type ForagerPose,
 } from './valleyViewModel'
 
@@ -120,7 +123,8 @@ export type ValleySelection = ValleyPlant | { kind: 'group'; id: number }
 
 export interface DrawOptions {
   showFlow: boolean
-  interpolate: boolean
+  /** At map speeds people are not drawn. */
+  drawPeople: boolean
   selected: ValleySelection | null
   /** A member of the selected group to pick out, as the viewer points at it in the group card. */
   highlightedId: number | null
@@ -135,7 +139,7 @@ export interface DrawOptions {
 export interface ValleyScene {
   /** Rebuilds the valley, its plants and its band for a new run. */
   setWorld(state: ValleyState): void
-  draw(pair: DisplayPair, options: DrawOptions): void
+  draw(display: Display, options: DrawOptions): void
   /** Moves the camera to take in a group's base and every living member, as last drawn, in the clear part of the view. */
   showGroup(groupId: number, clear?: ClearView | null): void
   /** The point on the land the camera looks at and how far it is, in centimetres from the land's north-west corner. */
@@ -290,6 +294,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   scene.add(world)
   let config: ValleyState['config'] | null = null
   let layout: ValleyState['layout'] | null = null
+  let decor: Decor | null = null
   let surface: GroundSurface | null = null
   const at = (x: number, y: number) => toMetres(config!, x, y)
   /** The ground's height in metres under a point of the scene given in metres. */
@@ -1157,7 +1162,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
    * its branches are gathered, until only the stump is left.
    */
   function placeTree(tree: number, shape: TreeDrawn) {
-    const { x, z } = at(layout!.trees.x[tree]!, layout!.trees.y[tree]!)
+    const { x, z } = at(decor!.trees.x[tree]!, decor!.trees.y[tree]!)
     const gy = groundY(x, z)
     const look = plantLook('tree', tree)
     const size = look.size
@@ -1254,8 +1259,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
   /** Lays a stone spot's stones in a little heap, each shown while it is there. */
   function placeRocks(spot: number, stones: number) {
-    const { x, z } = at(layout!.stones.x[spot]!, layout!.stones.y[spot]!)
-    const per = config!.stonesPerSpot
+    const { x, z } = at(decor!.stones.x[spot]!, decor!.stones.y[spot]!)
+    const per = ROCKS_PER_OUTCROP
     for (let slot = 0; slot < per; slot += 1) {
       const angle = spot * 1.7 + slot * 2.4
       const out = slot === 0 ? 0 : 0.35
@@ -1280,6 +1285,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     clearWorld()
     config = state.config
     layout = state.layout
+    decor = decorOf(state)
     surface = groundSurface(state.layout.terrain, state.layout.terrain.cells)
     const size = state.config.valleySizeCm / 100
     const terrainGeometry = terrainMeshGeometry(state, surface)
@@ -1369,12 +1375,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
     // Bushes: three leafy lobes each, with berries on their upper sides. Bushes and hazels are drawn in tiles of the
     // land, so only those near the camera are drawn.
-    const { bushes, trees } = state.layout
+    const { bushes, trees, foodPlants, stones } = decorOf(state)
     const positionsOf = (from: number, to: number) => {
       const xs = new Float32Array(to - from)
       const zs = new Float32Array(to - from)
       for (let id = from; id < to; id += 1) {
-        const spot = at(state.layout.foodPlants.x[id]!, state.layout.foodPlants.y[id]!)
+        const spot = at(foodPlants.x[id]!, foodPlants.y[id]!)
         xs[id - from] = spot.x
         zs[id - from] = spot.z
       }
@@ -1424,7 +1430,6 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
     // Hazels: a clump of stems, each topped by a leafy lobe, with clusters of nuts under the lower lobes. Hazels are
     // food plants after the bushes, so hazel `h` is food plant `bushes.count + h`.
-    const { foodPlants } = state.layout
     const hazelCount = foodPlants.count - bushes.count
     hazelLeaves = tiled(leafGeometry, hazelLeafMaterial, HAZEL_LOBES.length, bushes.count, foodPlants.count)
     hazelStems = tiled(stemGeometry, trunkMaterial, HAZEL_LOBES.length, bushes.count, foodPlants.count)
@@ -1479,10 +1484,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     treeDrawn = Array.from({ length: trees.count }, () => ({ felled: false, trunk: 1, crown: 1, deadwood: 1 }))
     for (let tree = 0; tree < trees.count; tree += 1) placeTree(tree, treeDrawn[tree]!)
     // Stone spots: a heap of grey stones each.
-    const { stones } = state.layout
-    rocks = new THREE.InstancedMesh(rockGeometry, rockMaterial, Math.max(1, stones.count * state.config.stonesPerSpot))
-    rockFill = new Int32Array(stones.count).fill(state.config.stonesPerSpot)
-    for (let spot = 0; spot < stones.count; spot += 1) placeRocks(spot, state.config.stonesPerSpot)
+    rocks = new THREE.InstancedMesh(rockGeometry, rockMaterial, Math.max(1, stones.count * ROCKS_PER_OUTCROP))
+    rockFill = new Int32Array(stones.count).fill(ROCKS_PER_OUTCROP)
+    for (let spot = 0; spot < stones.count; spot += 1) placeRocks(spot, ROCKS_PER_OUTCROP)
     // Bounds are taken with every berry ripe and every pile whole, the largest the plants can be.
     bushFill = new Float32Array(bushes.count).fill(-1)
     const ripe = fillInTurn(1, 1, BERRIES_PER_BUSH)
@@ -1679,13 +1683,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     figure.rod.visible = pose.gesture === 'fish'
   }
 
-  function draw(pair: DisplayPair, options: DrawOptions) {
+  function draw(display: Display, options: DrawOptions) {
     if (flow) flow.visible = options.showFlow
     if (!config || !layout) return
-    const { interpolate, followedId } = options
-    const state = pair.next
+    const { drawPeople, followedId } = options
+    const state = display.state
     drawn = state
-    const minutes = displayMinutes(pair, interpolate)
+    const minutes = display.minute
     const nowMs = minutes * 60_000
     const hourOfDay = (minutes / 60) % 24
     const light = daylightAt(hourOfDay, config.dawnHour, config.duskHour)
@@ -1714,7 +1718,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
     const followed = state.foragers[followedId]
     if (options.following && followed && !moved) {
-      const pose = foragerPose(pair, followedId, interpolate)
+      const pose = foragerPose(display, followedId)
       const spot = at(pose.x, pose.y)
       // Ease towards the forager rather than jump, so the view stays steady.
       const ease = Math.min(1, options.elapsedSeconds * 6)
@@ -1738,7 +1742,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     // Only plants whose drawn fill changed are redrawn, and only those drawn; one out of view is redrawn when it shows.
     let berriesChanged = false
     for (const bush of berryMesh!.visiblePlants()) {
-      const fill = displayedStock(pair, 'bush', bush, interpolate) / config.bushCapacityKcal
+      const fill = plantFill(display, 'bush', bush)
       if (Math.abs(fill - bushFill[bush]!) < 0.002) continue
       bushFill[bush] = fill
       placeBerries(bush, fillInTurn(fill, 1, BERRIES_PER_BUSH))
@@ -1747,8 +1751,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     if (berriesChanged) berryMesh!.instanceMatrix.needsUpdate = true
     let nutsChanged = false
     for (const hazel of nutMesh!.visiblePlants()) {
-      const id = layout.bushes.count + hazel
-      const fill = displayedStock(pair, 'hazel', id, interpolate) / config.hazelCapacityKcal
+      const fill = plantFill(display, 'hazel', hazel)
       if (Math.abs(fill - hazelFill[hazel]!) < 0.002) continue
       hazelFill[hazel] = fill
       placeNuts(hazel, fillInTurn(fill, 1, NUTS_PER_HAZEL))
@@ -1758,7 +1761,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     // Trees stand, or lie felled as they are cut up, and stone spots show the stones left on them.
     let treesChanged = false
     for (const tree of trunks!.visiblePlants()) {
-      const shape = treeShape(pair, tree, interpolate)
+      const shape = treeShape(display, tree)
       const drawnBefore = treeDrawn[tree]!
       if (
         shape.felled === drawnBefore.felled &&
@@ -1778,8 +1781,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       deadwood!.instanceMatrix.needsUpdate = true
     }
     let rocksChanged = false
-    for (let spot = 0; spot < layout.stones.count; spot += 1) {
-      const stones = state.stoneStock[spot]!
+    for (let spot = 0; spot < decor!.stones.count; spot += 1) {
+      const stones = rocksShown(state, spot)
       if (stones === rockFill[spot]) continue
       rockFill[spot] = stones
       placeRocks(spot, stones)
@@ -1801,7 +1804,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       }
       // The plan's logs stand for the hut's share of its whole, should `hutLogs` differ from the plan.
       const logs = hutModels[hut.id]!.logs
-      const shown = Math.floor((displayedHutLogs(pair, hut.id) * logs.length) / config.hutLogs)
+      const shown = Math.floor((displayedHutLogs(display, hut.id) * logs.length) / config.hutLogs)
       for (const [index, log] of logs.entries()) log.visible = index < shown
     }
 
@@ -1823,7 +1826,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         flag.group.position.y,
       )
       // The group's fire: a flame that grows with the nights of wood it holds, wood stacked beside it, ashes when out.
-      const fire = campfireAt(pair, group.id)
+      const fire = campfireAt(display, group.id)
       flag.fire.visible = fire !== null
       if (!fire) continue
       flag.fireFlame.visible = fire.look === 'burning'
@@ -1857,8 +1860,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     if (key !== routeKey && followed) {
       routeKey = key
       const vertices: number[] = []
-      let from = { x: followed.x, y: followed.y }
-      for (const to of followed.route) {
+      const points = routePoints(state, followedId)
+      let from = points[0] ?? { x: followed.x, y: followed.y }
+      for (const to of points.slice(1)) {
         // Drape every segment on the same contact surface as the person.
         const pieces = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 100))
         for (let piece = 0; piece < pieces; piece += 1)
@@ -1884,7 +1888,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       rememberedBanks.geometry = new THREE.BufferGeometry()
       rememberedBanks.geometry.setAttribute('position', new THREE.Float32BufferAttribute(banks, 3))
     }
-    const groundKey = `${followedId}:${followed?.groundKnowledge.revision}`
+    const groundKey = `${followedId}:${followed?.knowledge.revision}`
     if (knowledgeTexture && groundKey !== knowledgeKey && followed) {
       knowledgeKey = groundKey
       const n = layout!.terrain.cells
@@ -1901,7 +1905,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       knowledgeTexture.needsUpdate = true
     }
 
-    const poses = figures.map((_, id) => foragerPose(pair, id, interpolate))
+    const poses = figures.map((_, id) => foragerPose(display, id))
     // With a group selected, foragers outside it are drawn see-through.
     const selectedGroup = options.selected?.kind === 'group' ? state.groups[options.selected.id] : undefined
     const members = selectedGroup ? livingMembers(state, selectedGroup) : []
@@ -1922,6 +1926,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     for (const [id, figure] of figures.entries()) {
       const pose = poses[id]!
       const forager = state.foragers[id]!
+      figure.root.visible = drawPeople
       const spot = at(pose.x, pose.y)
       if (pose.heading !== null) figure.heading = pose.heading
       // A member lies down in its hut with its feet towards the fire and its head at the back, the hut's length.
@@ -1940,15 +1945,15 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       figure.material.color.set(!forager.alive ? DEAD : hex(foragerColor(config, forager)))
       figure.sash.visible = forager.groupId !== null
       if (forager.groupId !== null) figure.sashMaterial.color.set(hex(groupColor(forager.groupId)))
-      const load = displayedLoad(pair, id, interpolate)
+      const load = displayedLoad(display, id)
       const bundle = bundleScale(load.onBack, Math.max(config.woodLoad, 1))
       figure.bundle.visible = bundle > 0
       figure.bundle.scale.setScalar(Math.max(bundle, 0.01))
       const parcel = parcelScale(load.carriedKcal)
       figure.parcel.visible = parcel > 0
       figure.parcel.scale.setScalar(Math.max(parcel, 0.01))
-      figure.shoulderLog.visible = forager.alive && carriesLog(pair, id, interpolate)
-      figure.axe.visible = forager.alive && holdsAxe(pair, id) && pose.lying < 0.5
+      figure.shoulderLog.visible = forager.alive && carriesLog(display, id)
+      figure.axe.visible = forager.alive && holdsAxe(display, id) && pose.lying < 0.5
       const hearth = hearths[id]
       if (hearth) {
         placeHearth(
@@ -1960,7 +1965,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         const pile = bundleScale(load.atHearth, woodTarget(config))
         hearth.pile.visible = pile > 0
         hearth.pile.scale.setScalar(Math.max(pile, 0.01))
-        const lit = hearthAt(pair, id) === 'lit'
+        const lit = hearthAt(display, id) === 'lit'
         hearth.flame.visible = lit
         if (lit) hearth.flame.scale.set(0.6, 0.6 * (1 + 0.15 * Math.sin(nowMs / 80 + id * 1.7)), 0.6)
       }
@@ -2035,7 +2040,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       pin.arrow.style.transform = `rotate(${place.angle}rad)`
     }
 
-    const swaps = interpolate ? currentSwaps(pair) : []
+    const swaps = drawPeople ? currentSwaps(display) : []
     for (const [index, arc] of swapArcs.entries()) {
       const shown = index < swaps.length
       arc.line.visible = shown
@@ -2055,21 +2060,21 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       }
       positions.needsUpdate = true
       arc.line.geometry.computeBoundingSphere()
-      const woodAt = arcPoint(from, to, pair.alpha)
-      const foodAt = arcPoint(from, to, 1 - pair.alpha)
+      const woodAt = arcPoint(from, to, made.progress)
+      const foodAt = arcPoint(from, to, 1 - made.progress)
       arc.wood.position.set(woodAt.x, woodAt.y + groundY(woodAt.x, woodAt.z), woodAt.z)
       arc.food.position.set(foodAt.x, foodAt.y + groundY(foodAt.x, foodAt.z), foodAt.z)
     }
 
     // The followed forager's target: the tree it works for wood, or else its bush or hazel. The lake needs no ring.
-    const event = followed ? currentEvent(pair, followedId) : null
-    const foodTarget = followed?.targetFoodId ?? null
+    const task = followed?.alive ? followed.task : null
+    const targetPlace = task && task.placeId >= 0 && task.placeId < layout.places.count ? task.placeId : -1
+    const targetKind =
+      targetPlace < 0 ? null : (['bush', 'hazel', 'tree', 'stone'] as const)[layout.places.kind[targetPlace]!]!
     const targetPlant =
-      followed && event?.workedFor === 'wood' && followed.targetWoodId !== null
-        ? { kind: 'tree' as const, id: followed.targetWoodId }
-        : event?.workedFor === 'food' && foodTarget !== null && foodTarget >= 0
-          ? { kind: foodTarget < layout.bushes.count ? ('bush' as const) : ('hazel' as const), id: foodTarget }
-          : null
+      targetKind === null
+        ? null
+        : { kind: targetKind, id: (targetKind === 'hazel' ? decor!.bushes.count : 0) + decor!.firstOf[targetPlace]! }
     const ringAt = (ring: Mesh, chosen: ValleySelection | null) => {
       ring.visible = chosen !== null && chosen.kind !== 'lake' && (ring !== targetRing || followed!.alive)
       if (!chosen || chosen.kind === 'lake') return
@@ -2087,10 +2092,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       } else {
         const plants =
           chosen.kind === 'bush' || chosen.kind === 'hazel'
-            ? layout!.foodPlants
+            ? decor!.foodPlants
             : chosen.kind === 'stone'
-              ? layout!.stones
-              : layout!.trees
+              ? decor!.stones
+              : decor!.trees
         spot = at(plants.x[chosen.id]!, plants.y[chosen.id]!)
       }
       const radius =
@@ -2119,7 +2124,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       if (sourceFace !== undefined) return { kind: 'lake', id: waterBodyByFace[sourceFace]! }
     }
     if (instance === undefined) return null
-    const bushes = layout!.bushes.count
+    const bushes = decor!.bushes.count
     for (const [mesh, kind, per] of [
       [leaves, 'bush', BUSH_LOBES.length],
       [berryMesh, 'bush', BERRIES_PER_BUSH],
@@ -2134,7 +2139,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       const index = mesh?.indexOf(object, instance) ?? null
       if (index !== null) return { kind, id: (kind === 'hazel' ? bushes : 0) + Math.floor(index / per) }
     }
-    if (object === rocks) return { kind: 'stone', id: Math.floor(instance / config!.stonesPerSpot) }
+    if (object === rocks) return { kind: 'stone', id: Math.floor(instance / ROCKS_PER_OUTCROP) }
     return null
   }
 

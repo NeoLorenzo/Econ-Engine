@@ -1,178 +1,11 @@
-import { bankWaterHeight } from './banks'
+import { bankWaterHeight, bankCircleWet } from './banks'
 import { ringOffset } from './config'
-import { daylightSecondsLeft, reachableAndBack, walkSpeed } from './forager'
+import { routeFor } from './forager'
+import { routeNode } from './routes'
 import { distanceSq } from './geometry'
-import { nearestSeen } from './sight'
-import { knownRoute, knownDryFootprint } from './routes'
 import { cellOf } from './terrain'
-import { frontier } from './waterKnowledge'
-import { chooseSite, siteCentre } from './sites'
-import type {
-  ActionReason,
-  DissolveEvent,
-  Forager,
-  Group,
-  GroupEvent,
-  Point,
-  ValleyConfig,
-  ValleyLayout,
-  ValleyState,
-} from './types'
+import type { DissolveEvent, Forager, Group, GroupEvent, Point, ValleyConfig, ValleyLayout, ValleyState } from './types'
 
-// Places a forager has seen, exploring and searching unseen ground, flags, and meeting, founding, joining and
-// dissolving groups. A forager sees places, flags and others with long sight by day.
-
-/** Places along each side of the valley; the last row and column are cut at the valley's edge. */
-export const placesPerSide = (config: ValleyConfig) => Math.ceil(config.valleySizeCm / config.placeCm)
-
-export const placeCount = (config: ValleyConfig) => placesPerSide(config) ** 2
-
-/** The corners of place `place`: column `place mod n`, row `floor(place / n)`. */
-export function placeBounds(config: ValleyConfig, place: number) {
-  const n = placesPerSide(config)
-  const x0 = (place % n) * config.placeCm
-  const y0 = Math.floor(place / n) * config.placeCm
-  return {
-    x0,
-    y0,
-    x1: Math.min(config.valleySizeCm, x0 + config.placeCm),
-    y1: Math.min(config.valleySizeCm, y0 + config.placeCm),
-  }
-}
-
-/** Every place's corners and centre, by ID, kept per configuration; they hold no simulation state. */
-interface PlaceGrid {
-  x0: Int32Array
-  y0: Int32Array
-  x1: Int32Array
-  y1: Int32Array
-  cx: Int32Array
-  cy: Int32Array
-}
-
-const grids = new WeakMap<ValleyConfig, PlaceGrid>()
-
-function gridOf(config: ValleyConfig): PlaceGrid {
-  let grid = grids.get(config)
-  if (!grid) {
-    const count = placeCount(config)
-    grid = {
-      x0: new Int32Array(count),
-      y0: new Int32Array(count),
-      x1: new Int32Array(count),
-      y1: new Int32Array(count),
-      cx: new Int32Array(count),
-      cy: new Int32Array(count),
-    }
-    for (let place = 0; place < count; place += 1) {
-      const { x0, y0, x1, y1 } = placeBounds(config, place)
-      grid.x0[place] = x0
-      grid.y0[place] = y0
-      grid.x1[place] = x1
-      grid.y1[place] = y1
-      grid.cx[place] = Math.floor((x0 + x1) / 2)
-      grid.cy[place] = Math.floor((y0 + y1) / 2)
-    }
-    grids.set(config, grid)
-  }
-  return grid
-}
-
-/** The midpoint of a place's corners, rounded down. */
-export function placeCentre(config: ValleyConfig, place: number): Point {
-  const grid = gridOf(config)
-  return { x: grid.cx[place]!, y: grid.cy[place]! }
-}
-
-/** Whether all four corners of a place lie within `r` of a point, by default the perception radius. */
-export function placeInView(config: ValleyConfig, place: number, x: number, y: number, r = config.perceptionRadiusCm) {
-  const grid = gridOf(config)
-  const dx = Math.max(Math.abs(grid.x0[place]! - x), Math.abs(grid.x1[place]! - x))
-  const dy = Math.max(Math.abs(grid.y0[place]! - y), Math.abs(grid.y1[place]! - y))
-  return dx * dx + dy * dy <= r * r
-}
-
-/** Calls `visit` with every place that could lie wholly within `r` of a point. */
-function forEachPlaceNear(config: ValleyConfig, x: number, y: number, r: number, visit: (place: number) => void) {
-  const n = placesPerSide(config)
-  const column0 = Math.max(0, Math.floor((x - r) / config.placeCm))
-  const column1 = Math.min(n - 1, Math.floor((x + r) / config.placeCm))
-  const row0 = Math.max(0, Math.floor((y - r) / config.placeCm))
-  const row1 = Math.min(n - 1, Math.floor((y + r) / config.placeCm))
-  for (let row = row0; row <= row1; row += 1)
-    for (let column = column0; column <= column1; column += 1) visit(row * n + column)
-}
-
-/**
- * Marks every place never seen before that lies wholly within close sight as seen this minute; long sight marks the
- * places it sees from the forager's place (see `observeAround`). Ground once seen stays seen, so once every place has
- * been seen there is nothing to mark.
- */
-export function observePlaces(config: ValleyConfig, forager: Forager, minute: number) {
-  if (forager.placesSeen === placeCount(config)) return
-  const r = config.perceptionRadiusCm
-  forEachPlaceNear(config, forager.x, forager.y, r, (place) => {
-    if (forager.placeSeen[place]! >= 0) return
-    if (!placeInView(config, place, forager.x, forager.y, r)) return
-    if (forager.placeSeen[place]! < 0) forager.placesSeen += 1
-    forager.placeSeen[place] = minute
-  })
-}
-
-/** Exploring and searching go only to places never seen. */
-export const placeWanted = (forager: Forager, place: number) => forager.placeSeen[place]! < 0
-
-/**
- * The place a forager walks to explore or search: its target while that is still unseen and reachable, otherwise the
- * nearest unseen place it can reach and return home from before dusk, by the distance to its centre, ties to the
- * lowest ID; or null. It searches rings of places outwards and stops once no nearer place can remain. Sets the target.
- */
-export function choosePlace(config: ValleyConfig, forager: Forager, minute: number): number | null {
-  const grid = gridOf(config)
-  const wanted = (place: number) => placeWanted(forager, place)
-  const speed = walkSpeed(config, forager)
-  const reachable = (place: number) =>
-    reachableAndBack(config, forager, grid.cx[place]!, grid.cy[place]!, minute, speed)
-  const target = forager.exploreTarget
-  if (target !== null && wanted(target) && reachable(target)) return target
-  if (forager.placesSeen === placeCount(config)) {
-    forager.exploreTarget = null
-    return null
-  }
-  const n = placesPerSide(config)
-  const cx = Math.min(n - 1, Math.max(0, Math.floor(forager.x / config.placeCm)))
-  const cy = Math.min(n - 1, Math.max(0, Math.floor(forager.y / config.placeCm)))
-  let best: number | null = null
-  let bestSq = Infinity
-  // Nothing further than it can walk in the daylight left can be reached and left in time.
-  const range = daylightSecondsLeft(config, minute) * speed
-  for (let ring = 0; ring < n; ring += 1) {
-    // Every place in ring `ring` has its centre at least `(ring − 1) · placeCm` away.
-    const floor = Math.max(0, (ring - 1) * config.placeCm)
-    if (floor * floor > bestSq || floor > range) break
-    for (let row = cy - ring; row <= cy + ring; row += 1) {
-      if (row < 0 || row >= n) continue
-      const edge = row === cy - ring || row === cy + ring
-      for (let column = cx - ring; column <= cx + ring; column += edge ? 1 : 2 * ring) {
-        if (column >= 0 && column < n) {
-          const place = row * n + column
-          if (wanted(place)) {
-            const sq = distanceSq(forager.x, forager.y, grid.cx[place]!, grid.cy[place]!)
-            if ((sq < bestSq || (sq === bestSq && place < best!)) && reachable(place)) {
-              best = place
-              bestSq = sq
-            }
-          }
-        }
-        if (ring === 0) break
-      }
-    }
-  }
-  forager.exploreTarget = best
-  return best
-}
-
-/** The nearest other living forager within `radius`, ties to the lowest ID, or null. */
 export function nearestOther(forager: Forager, foragers: readonly Forager[], radius: number) {
   let best: Forager | null = null
   let bestSq = radius * radius
@@ -228,14 +61,14 @@ export function startingGroups(config: ValleyConfig, layout: ValleyLayout, forag
   ]
 }
 
-function availableSlot(config: ValleyConfig, group: Group, forager: Forager) {
+function availableSlot(state: ValleyState, group: Group, forager: Forager) {
+  const config = state.config
   const maximumRing = Math.ceil(config.perceptionRadiusCm / config.hutRingCm)
   const maximumSlots = 4 * maximumRing * (maximumRing + 1)
   for (let slot = 0; slot < maximumSlots; slot += 1) {
     if (group.hearthSlots.includes(slot)) continue
     const point = hearthAround(config, group.flag, slot)
-    if (knownDryFootprint(forager.groundKnowledge, point) && knownRoute(forager.groundKnowledge, forager, point))
-      return slot
+    if (!bankCircleWet(state.layout.lattice.banks, point, 100) && routeFor(state, forager, point)) return slot
   }
   return null
 }
@@ -255,14 +88,18 @@ const join = (config: ValleyConfig, group: Group, forager: Forager, minute: numb
  * group, or founds a new group with another forager without one, with the flag at their midpoint. Changes the state's
  * working copies in place.
  */
-export function meet(state: ValleyState, forager: Forager, minute: number): GroupEvent | null {
+export function meet(state: ValleyState, forager: Forager, minute: number): Exclude<GroupEvent, DissolveEvent> | null {
   const { config } = state
   if (forager.groupId !== null) return null
-  const other = nearestOther(forager, state.foragers, config.talkRadiusCm)
+  const seen = state.foragers
+    .filter((person) => forager.metMinute[person.id] === minute)
+    .map((person) => ({ ...person, ...forager.metPosition.get(person.id)! }))
+  const nearest = nearestOther(forager, seen, config.talkRadiusCm)
+  const other = nearest ? state.foragers[nearest.id]! : null
   if (!other) return null
   if (other.groupId !== null) {
     const group = state.groups[other.groupId]!
-    const slot = availableSlot(config, group, forager)
+    const slot = availableSlot(state, group, forager)
     if (slot === null) return null
     join(config, group, forager, minute, slot)
     return {
@@ -274,7 +111,8 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Grou
       hearth: forager.hearth,
     }
   }
-  const flag = { x: Math.floor((forager.x + other.x) / 2), y: Math.floor((forager.y + other.y) / 2) }
+  const observed = forager.metPosition.get(other.id)!
+  const flag = { x: Math.floor((forager.x + observed.x) / 2), y: Math.floor((forager.y + observed.y) / 2) }
   const water = state.layout.terrain.water
   if (
     water.shore
@@ -283,12 +121,16 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Grou
   )
     return null
   const group = newGroup(state.groups.length, flag, minute)
-  if (!knownDryFootprint(forager.groundKnowledge, flag, 100) || !knownDryFootprint(other.groundKnowledge, flag, 100))
+  if (
+    bankCircleWet(state.layout.lattice.banks, flag, 100) ||
+    routeNode(state.layout.lattice, forager.knowledge, flag) < 0 ||
+    routeNode(state.layout.lattice, other.knowledge, flag) < 0
+  )
     return null
-  const firstSlot = availableSlot(config, group, forager)
+  const firstSlot = availableSlot(state, group, forager)
   if (firstSlot === null) return null
   group.hearthSlots = [firstSlot]
-  const otherSlot = availableSlot(config, group, other)
+  const otherSlot = availableSlot(state, group, other)
   group.hearthSlots = []
   if (otherSlot === null) return null
   state.groups.push(group)
@@ -333,61 +175,4 @@ export function dissolveIfAlone(state: ValleyState, groupId: number, minute: num
     group.fireWood = 0
   }
   return { kind: 'dissolve', minute, groupId, survivorId: survivor?.id ?? null, fireWood }
-}
-
-export interface Goal {
-  x: number
-  y: number
-  reason: ActionReason
-  placeId: number | null
-  siteId: number | null
-}
-
-/**
- * Rules 5 and 6 for a forager whose needs are met: without a group, it walks towards the nearest forager it sees, or
- * to the nearest flag it knows and can reach and return from before dusk, or explores; with a group, it explores.
- * Null when there is nothing to do but rest.
- */
-export function idleGoal(state: ValleyState, forager: Forager, minute: number): Goal | null {
-  const { config } = state
-  if (forager.groupId === null) {
-    const seen = nearestSeen(state, forager, minute)
-    if (seen) return { x: seen.x, y: seen.y, reason: 'seeking company', placeId: null, siteId: null }
-    let flag: Point | null = null
-    let flagSq = Infinity
-    for (const id of forager.knownFlags) {
-      const spot = state.groups[id]!.flag
-      const sq = distanceSq(forager.x, forager.y, spot.x, spot.y)
-      if (sq < flagSq && reachableAndBack(config, forager, spot.x, spot.y, minute)) {
-        flag = spot
-        flagSq = sq
-      }
-    }
-    if (flag)
-      return {
-        ...flag,
-        reason: flagSq === 0 ? 'waiting for company' : 'seeking company',
-        placeId: null,
-        siteId: null,
-      }
-    return exploreGoal(state, forager, minute, 'seeking company')
-  }
-  return exploreGoal(state, forager, minute, null)
-}
-
-/**
- * Rule 6's choice: the nearest place never seen; then the nearest site not checked for `exploreAfterHours`. A forager seeking company records that as its reason instead.
- */
-function exploreGoal(state: ValleyState, forager: Forager, minute: number, seeking: ActionReason | null): Goal | null {
-  const { config, layout } = state
-  const place = choosePlace(config, forager, minute)
-  if (place !== null)
-    return { ...placeCentre(config, place), reason: seeking ?? 'exploring', placeId: place, siteId: null }
-  const site = chooseSite(config, layout, forager, minute, 'check', null)
-  if (site === null) {
-    const route = frontier(forager, forager, (point) => reachableAndBack(config, forager, point.x, point.y, minute))
-    const point = route?.at(-1)
-    return point ? { ...point, reason: seeking ?? 'exploring', placeId: null, siteId: null } : null
-  }
-  return { ...siteCentre(config, layout, site), reason: seeking ?? 'checking', placeId: null, siteId: site }
 }

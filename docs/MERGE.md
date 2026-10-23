@@ -1,6 +1,6 @@
 # Merge: Life Engine into Econ-Engine
 
-This is a direction document, not a specification. Nothing in it is implemented. It records a decision the owner made on 2026-10-10 and the plan that follows from it. The current MVP specifications remain authoritative for what the engine does, and the [simulation design rules](../SIMULATION_DESIGN_RULES.md) remain authoritative for how it must be built. It extends the [vision document](VISION.md) and replaces that document's incremental path. From step 10 on, its ladder is replaced by the [roadmap](ROADMAP.md), which the owner set on 2026-10-19.
+This is a direction document, not a specification. Nothing in it is implemented. It records a decision the owner made on 2026-10-10 and the plan that follows from it. The current MVP specifications remain authoritative for what the engine does, and the [simulation design rules](../SIMULATION_DESIGN_RULES.md) remain authoritative for how it must be built. It extends the [vision document](VISION.md) and replaces that document's incremental path. From step 10 on, its ladder is replaced by the [roadmap](ROADMAP.md), which the owner set on 2026-10-19 and reset on 2026-10-23.
 
 ## Decision
 
@@ -85,13 +85,13 @@ Firms, posted-price markets, employment and payroll, Government and fiscal trans
 
 Steps 0 to 9 each added one thing, answered one question that could come out either way, and were validated before the next began (design rule 12). They built the valley one mechanism at a time: a lone forager, a band, sharing, wood and skill, practice, real scale, groups, sight and loads, a shared fire, and tools and shelter. Life 9 holds everything they added. Their specifications, code and experiments were removed in update 039, so that the repository holds only the current step; they remain in git history, the changelog and the lab notes.
 
-The ladder went on to storage and claims, generations, and a medium of exchange, each asking an economic question. On 2026-10-19 the owner replaced those steps with the [roadmap](ROADMAP.md): the Life core's goal is now a realistic life, built world first, and economic institutions are watched for rather than built towards.
+The ladder went on to storage and claims, generations, and a medium of exchange, each asking an economic question. On 2026-10-19 the owner replaced those steps with the [roadmap](ROADMAP.md), whose goal was a realistic life, built world first. On 2026-10-23, after Life 11, the owner reset the roadmap from step 12 on: the goal is civilization emerging from strangers, realism is kept only where it explains a mechanism, time is one minute clock with wake-ups and a days-per-year setting, and the steps go social first, towards a chief and then borders.
 
 ## Changes to the vision
 
 The [vision](VISION.md) stands: primitives instead of institutions, the four layers, rules as data, observer-owned labels, collective authority, sources of change, politics and culture, and its validation targets. Two things change:
 
-- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above and, from step 10, the [roadmap](ROADMAP.md). The roadmap no longer builds towards a rules layer: institutions, if they appear, should grow out of a realistic life.
+- **The incremental path.** The vision planned to move MVP8's built-in institutions into a rules layer one at a time, starting with the fiscal phase. That top-down path is replaced by the ladder above and, from step 10, the [roadmap](ROADMAP.md). The roadmap no longer builds towards a rules layer: institutions, if they appear, grow out of people with bodies, needs, memories and relationships, and nothing above the individual is scripted.
 - **The unit of time.** The vision asked when a simulated day stops being the right unit. The answer is now: from step 0, because bodies act within a day. The step 0 specification chooses the tick.
 
 ## Risks

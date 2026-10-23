@@ -1,3 +1,5 @@
+import { buildLattice, routeNode, type RouteLattice } from './routes'
+import { buildPlaces } from './places'
 import { bankCircleWet, bankWaterHeight } from './banks'
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { ringOffset } from './config'
@@ -7,7 +9,6 @@ import type { PlantIndex, Plants, Point, ValleyConfig, ValleyLayout } from './ty
 
 const LAYOUT_STREAM_SALT = 0x5641_4c4c
 const SKILL_STREAM_SALT = 0x534b_494c
-const TURN_ORDER_STREAM_SALT = 0x5455_524e
 const START_STREAM_SALT = 0x5354_5254
 const CRAFT_STREAM_SALT = 0x4352_4146
 const AXE_STREAM_SALT = 0x4158_4553
@@ -29,38 +30,12 @@ export const deriveCraftSeed = (seed: number) => normalizeSeed(mixSeed((normaliz
 export const deriveAxeSeed = (seed: number, minute: number, foragerId: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ AXE_STREAM_SALT ^ mixSeed(minute * 1_024 + foragerId)) >>> 0))
 
-/** The turn order of minute `minute`, from a stream of its own, so any minute's order stands alone. */
-export const deriveTurnOrderSeed = (seed: number, minute: number) =>
-  normalizeSeed(mixSeed((normalizeSeed(seed) ^ TURN_ORDER_STREAM_SALT ^ mixSeed(minute)) >>> 0))
-
-/**
- * A seeded shuffle of the band's IDs, draw for draw the shuffle `seededShuffle` makes with `randomInt`, written out so
- * that a minute's order allocates nothing but the order itself.
- */
-export function turnOrder(seed: number, minute: number, bandSize: number) {
-  const order: number[] = []
-  for (let id = 0; id < bandSize; id += 1) order.push(id)
-  let state = deriveTurnOrderSeed(seed, minute)
-  for (let index = order.length - 1; index > 0; index -= 1) {
-    state = normalizeSeed(state)
-    state ^= state << 13
-    state ^= state >>> 17
-    state ^= state << 5
-    state >>>= 0
-    const selected = Math.floor((state / 0x1_0000_0000) * (index + 1))
-    const swap = order[index]!
-    order[index] = order[selected]!
-    order[selected] = swap
-  }
-  return order
-}
-
 /** Every forager's born skills, by ID: its foraging skill, then its wood skill, from the skill stream. */
 export function drawSkills(config: ValleyConfig): { foragingSkill: number; woodSkill: number }[] {
   const span = config.skillMaxPercent - config.skillMinPercent + 1
   let state = deriveSkillSeed(config.seed)
   const skills = []
-  for (let id = 0; id < config.bandSize; id += 1) {
+  for (let id = 0; id < config.founders; id += 1) {
     const forage = randomInt(state, span)
     const wood = randomInt(forage.state, span)
     state = wood.state
@@ -77,7 +52,7 @@ export function drawCraftSkills(config: ValleyConfig): number[] {
   const span = config.craftSkillMaxPercent - config.craftSkillMinPercent + 1
   let state = deriveCraftSeed(config.seed)
   const skills = []
-  for (let id = 0; id < config.bandSize; id += 1) {
+  for (let id = 0; id < config.founders; id += 1) {
     const draw = randomInt(state, span)
     state = draw.state
     skills.push(config.craftSkillMinPercent + draw.value)
@@ -85,7 +60,7 @@ export function drawCraftSkills(config: ValleyConfig): number[] {
   return skills
 }
 
-class LayoutError extends Error {}
+export class LayoutError extends Error {}
 
 /** Draws whole centimetres from the layout stream, in order. */
 class Draws {
@@ -102,17 +77,26 @@ class Draws {
  * uniformly over the square `startAreaCm` wide round the land's centre in forager ID order, each at least
  * `startSpacingCm` from the earlier ones and always on grass or dirt.
  */
-export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(config).ground): Point[] {
+export function drawStarts(
+  config: ValleyConfig,
+  ground: Uint8Array = terrainOf(config).ground,
+  lattice?: RouteLattice,
+): Point[] {
   let draws = new Draws(deriveStartSeed(config.seed, 0))
   const terrain = terrainOf(config)
   const origin = Math.floor((config.valleySizeCm - config.startAreaCm) / 2)
   const starts: Point[] = []
   let failed = 0
-  while (starts.length < config.bandSize) {
+  while (starts.length < config.founders) {
     const x = origin + draws.int(config.startAreaCm + 1)
     const y = origin + draws.int(config.startAreaCm + 1)
     const habitable = circleOnGround(terrain, ground, x, y, 40, BUSH_GROUNDS)
-    if (habitable && starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)) {
+    const connected = !lattice || routeNode(lattice, { nodes: lattice.dry, revision: 0 }, { x, y }) >= 0
+    if (
+      habitable &&
+      connected &&
+      starts.every((other) => distanceSq(x, y, other.x, other.y) >= config.startSpacingCm ** 2)
+    ) {
       starts.push({ x, y })
       draws = new Draws(deriveStartSeed(config.seed, starts.length))
       failed = 0
@@ -169,36 +153,6 @@ export function circleOnGround(
         )
           return false
   return true
-}
-
-/**
- * Plants drawn uniformly in the square around `centre`, kept within `radius`, `spacing` from the site's others, and on
- * ground they grow on.
- */
-function scatter(
-  draws: Draws,
-  count: number,
-  centre: Point,
-  radius: number,
-  spacing: number,
-  what: string,
-  growsAt: (x: number, y: number) => boolean,
-) {
-  const placed: Point[] = []
-  let failed = 0
-  while (placed.length < count) {
-    const x = centre.x + draws.int(2 * radius + 1) - radius
-    const y = centre.y + draws.int(2 * radius + 1) - radius
-    const fits =
-      distanceSq(x, y, centre.x, centre.y) <= radius * radius &&
-      growsAt(x, y) &&
-      placed.every((other) => distanceSq(x, y, other.x, other.y) >= spacing * spacing)
-    if (fits) {
-      placed.push({ x, y })
-      failed = 0
-    } else if ((failed += 1) >= PLACEMENT_DRAWS) throw new LayoutError(`${what} cannot all be placed`)
-  }
-  return placed
 }
 
 /** Two kinds of plant as one list, the first by ID then the second, each keeping its site. */
@@ -258,7 +212,6 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const draws = new Draws(deriveLayoutSeed(config.seed))
   const terrain = terrainOf(config)
   const base = terrain.ground
-  const on = (grounds: number) => (x: number, y: number) => onGround(terrain, base, x, y, grounds)
   const size = config.valleySizeCm
   let camp = { x: Math.floor(size / 2), y: Math.floor(size / 2) }
   if (!config.scattered) {
@@ -279,7 +232,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
         base,
         p.x,
         p.y,
-        config.hutRingCm * Math.ceil(Math.sqrt(config.bandSize)) + 200,
+        config.hutRingCm * Math.ceil(Math.sqrt(config.founders)) + 200,
         BUSH_GROUNDS,
       )
     })
@@ -328,51 +281,10 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   let next = 0
   const [thickets, hazelThickets, stands, outcrops] = kinds.map((count) => centres.slice(next, (next += count)))
   if (!thickets || !hazelThickets || !stands || !outcrops) throw new Error('Every kind of site has centres')
-  const bushSites = thickets.map((centre, id) =>
-    scatter(
-      draws,
-      config.bushesPerThicket,
-      centre,
-      config.thicketRadiusCm,
-      config.bushSpacingCm,
-      `Thicket ${id}'s bushes`,
-      on(BUSH_GROUNDS),
-    ),
-  )
-  const hazelSites = hazelThickets.map((centre, id) =>
-    scatter(
-      draws,
-      config.hazelsPerThicket,
-      centre,
-      config.hazelThicketRadiusCm,
-      config.hazelSpacingCm,
-      `Hazel thicket ${id}'s hazels`,
-      on(HAZEL_GROUNDS),
-    ),
-  )
-  const treeSites = stands.map((centre, id) =>
-    scatter(
-      draws,
-      config.treesPerStand,
-      centre,
-      config.standRadiusCm,
-      config.treeSpacingCm,
-      `Stand ${id}'s trees`,
-      on(TREE_GROUNDS),
-    ),
-  )
-  // Stones lie within their outcrop's circle, which is exposed stone.
-  const stoneSites = outcrops.map((centre, id) =>
-    scatter(
-      draws,
-      config.stonesPerOutcrop,
-      centre,
-      config.outcropRadiusCm,
-      config.stoneSpacingCm,
-      `Outcrop ${id}'s stones`,
-      () => true,
-    ),
-  )
+  const bushSites = thickets.map((centre) => [centre])
+  const hazelSites = hazelThickets.map((centre) => [centre])
+  const treeSites = stands.map((centre) => [centre])
+  const stoneSites = outcrops.map((centre) => [centre])
   const ground = base.slice()
   const half = Math.floor(terrain.cellCm / 2)
   for (const centre of outcrops) {
@@ -413,14 +325,21 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const trees = plantsOf(treeSites)
   const stones = plantsOf(stoneSites)
   const woodPlants = woodPlantsOf(trees, bushes)
+  const lattice = buildLattice(config, terrain)
   const hearths = config.scattered
-    ? drawStarts(config, ground)
-    : Array.from({ length: config.bandSize }, (_, slot) => {
+    ? drawStarts(config, ground, lattice)
+    : Array.from({ length: config.founders }, (_, slot) => {
         const offset = ringOffset(config, slot)
         return { x: camp.x + offset.x, y: camp.y + offset.y }
       })
   const sitePoints = plantsOf([...thickets, ...hazelThickets, ...stands, ...outcrops].map((centre) => [centre]))
+  const places = buildPlaces(config, [thickets, hazelThickets, stands, outcrops])
+  const placeIndex = buildIndex(places, config.chunkCm, size)
   return {
+    places,
+    lattice,
+    placeIndex,
+    placeChunks: placeIndex.buckets,
     camp,
     terrain,
     ground,

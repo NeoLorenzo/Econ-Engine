@@ -17,6 +17,8 @@ const TEST_SECONDS: Record<string, number> = {
   'fingerprintsTalent.test.ts': 130,
   'fingerprintsAlike.test.ts': 130,
   'fingerprintsFlat.test.ts': 130,
+  // One forty-founder run, measured at about 45 s alone.
+  'fingerprintsForty.test.ts': 110,
   'wagesProfits.test.ts': 20,
   'performance.test.ts': 20,
   'competitionGridExperiment.test.ts': 16,

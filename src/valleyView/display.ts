@@ -1,6 +1,21 @@
 import { palette } from '../ui/theme'
 import type { ValleyConfig } from '../valley/types'
 
+/** Decoration never consumes a simulation stream. */
+export function decorPoints(place: { id: number; x: number; y: number; radiusCm: number }, count: number) {
+  const hash = (value: number) => {
+    let word = Math.imul(value ^ (value >>> 16), 0x45d9f3b)
+    word = Math.imul(word ^ (word >>> 16), 0x45d9f3b)
+    return (word ^ (word >>> 16)) >>> 0
+  }
+  return Array.from({ length: count }, (_, index) => {
+    const seed = hash(Math.imul(place.id + 1, 65_537) + index)
+    const angle = (seed / 0x1_0000_0000) * 2 * Math.PI
+    const radius = Math.max(0, place.radiusCm - 1) * Math.sqrt(hash(seed + 1) / 0x1_0000_0000)
+    return { x: place.x + Math.round(radius * Math.cos(angle)), y: place.y + Math.round(radius * Math.sin(angle)) }
+  })
+}
+
 // What the observer shows of time, people and what wood costs them.
 
 export function clockLabel(hours: number) {

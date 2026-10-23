@@ -1,234 +1,121 @@
-import { describe, expect, it } from 'vitest'
-import { distance } from './geometry'
-import {
-  cloneGroundKnowledge,
-  forEachUnknownCell,
-  knownDrySegment,
-  knownRoute,
-  knownWalkSeconds,
-  observeRouteCells,
-  routeCentre,
-  routeFrontierCells,
-  type GroundKnowledge,
-} from './routes'
-import { cardinalCells } from './water'
+import { describe, expect, it, vi } from 'vitest'
+import { createSurveyedValley, addTestLake } from './ruleFixtures'
+import { FLAT_LAND } from './config'
+import { bankSegmentWet } from './banks'
+import * as bankGeometry from './banks'
+import { buildLattice, knownRoute, positionAlong, segmentMinutes, segmentKcal, type Knowledge } from './routes'
 
-const ground = (): GroundKnowledge => ({
-  cells: 7,
-  cellCm: 500,
-  observed: new Uint8Array(49).fill(1),
-  heights: Int32Array.from({ length: 49 }, (_, id) => (id % 7) * 17 - Math.floor(id / 7) * 11),
-  revision: 0,
+describe('known route lattice', () => {
+  function fixture(water = false) {
+    const state = createSurveyedValley(FLAT_LAND)
+    if (water) addTestLake(state)
+    const { terrain, ground } = state.layout
+    const lattice = buildLattice(state.config, terrain)
+    const knowledge: Knowledge = { nodes: new Uint8Array(lattice.dry.length).fill(1), revision: 1 }
+    const route = (from: { x: number; y: number }, to: { x: number; y: number }) =>
+      knownRoute(lattice, knowledge, terrain, ground, lattice.banks, state.config, 0, from, to)
+    return { state, lattice, knowledge, route }
+  }
+  it('reuses exact-point connectors without shoreline tests during route searches', () => {
+    const { route } = fixture(true)
+    const from = { x: 250, y: 750 },
+      to = { x: 23_000, y: 750 }
+    expect(route(from, to)).not.toBeNull()
+    const spy = vi.spyOn(bankGeometry, 'bankSegmentWet')
+    try {
+      expect(route(from, to)).not.toBeNull()
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+  it('bends around a known lake without crossing water', () => {
+    const { lattice, route } = fixture(true)
+    const path = route({ x: 250, y: 750 }, { x: 23_000, y: 750 })!
+    expect(path).not.toBeNull()
+    expect(path.segments.some((s) => s.y0 > 1_000 || s.y1 > 1_000)).toBe(true)
+    for (const s of path.segments)
+      expect(bankSegmentWet(lattice.banks, { x: s.x0, y: s.y0 }, { x: s.x1, y: s.y1 })).toBe(false)
+  })
+  it('does not use unseen dry nodes', () => {
+    const { route, knowledge } = fixture()
+    knowledge.nodes.fill(0)
+    expect(route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })).toBeNull()
+    knowledge.nodes.fill(1)
+    knowledge.revision += 1
+    expect(route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })).not.toBeNull()
+  })
+  it('does not cut diagonally across unseen adjoining ground', () => {
+    const { route, knowledge, lattice } = fixture()
+    knowledge.nodes.fill(0)
+    knowledge.nodes[0] = 1
+    knowledge.nodes[lattice.cells + 1] = 1
+    expect(route({ x: 1_000, y: 1_000 }, { x: 3_000, y: 3_000 })).toBeNull()
+  })
+  it('takes a shorter crossing only after observing it', () => {
+    const { route, knowledge, lattice } = fixture()
+    for (let row = 0; row < lattice.cells - 1; row += 1) knowledge.nodes[row * lattice.cells + 5] = 0
+    const before = route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })!
+    knowledge.nodes[5] = 1
+    knowledge.revision += 1
+    const after = route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })!
+    expect(after.minutes).toBeLessThan(before.minutes)
+  })
+  it('times segments and costs walking by slope class', () => {
+    const { state } = fixture()
+    const c = state.config
+    expect(segmentMinutes(c, 12_500, 0, false, 0, 125)).toBe(2)
+    expect(segmentMinutes(c, 12_500, 1, true, 0, 125)).toBe(3)
+    expect(segmentMinutes(c, 12_500, 2, true, 0, 125)).toBe(4)
+    expect(segmentKcal(c, 60, 1, true)).toBe(375)
+    expect(segmentKcal(c, 60, 2, false)).toBe(250)
+  })
+  it('preserves configured pace across many lattice edges', () => {
+    const { route } = fixture()
+    const path = route({ x: 1_000, y: 1_000 }, { x: 61_000, y: 1_000 })!
+    expect(path.minutes).toBe(10)
+  })
+  it('places a walker on its polyline with exact endpoints', () => {
+    const { route } = fixture(true)
+    const path = route({ x: 250, y: 750 }, { x: 23_000, y: 750 })!
+    expect(positionAlong(path, 0)).toEqual({ x: 250, y: 750 })
+    expect(positionAlong(path, path.minutes)).toEqual({ x: 23_000, y: 750 })
+    for (let m = 0; m < path.minutes; m += 0.1) {
+      const point = positionAlong(path, m)
+      const distance = Math.min(
+        ...path.segments.map((s) => {
+          const dx = s.x1 - s.x0,
+            dy = s.y1 - s.y0
+          const t = Math.max(0, Math.min(1, ((point.x - s.x0) * dx + (point.y - s.y0) * dy) / (dx * dx + dy * dy)))
+          return Math.hypot(point.x - s.x0 - t * dx, point.y - s.y0 - t * dy)
+        }),
+      )
+      expect(distance).toBeLessThanOrEqual(1)
+    }
+  })
 })
 
-describe('disposable route calculations', () => {
-  it('indexes unknown cells in row order and keeps divergent snapshots independent', () => {
-    const grid = ground()
-    grid.observed.fill(0)
-    const visit = (map: GroundKnowledge) => {
-      const result: number[] = []
-      forEachUnknownCell(map, 2, 5, 1, 6, (id) => result.push(id))
-      const expected = Array.from({ length: 49 }, (_, id) => id).filter(
-        (id) => Math.floor(id / 7) >= 1 && id % 7 >= 2 && id % 7 <= 5 && !map.observed[id],
-      )
-      expect(result).toEqual(expected)
+it('keeps forward and return paths exact after unrelated searches and load changes', () => {
+  const s = createSurveyedValley(FLAT_LAND),
+    l = s.layout.lattice,
+    p = s.foragers[0]!,
+    a = { x: 1000, y: 1000 },
+    b = { x: 61000, y: 21000 }
+  const run = (lattice: typeof l, load: number, reverse: boolean) =>
+    knownRoute(
+      lattice,
+      p.knowledge,
+      s.layout.terrain,
+      s.layout.ground,
+      lattice.banks,
+      s.config,
+      load,
+      reverse ? b : a,
+      reverse ? a : b,
+    )
+  for (const load of [0, 30, 0])
+    for (const reverse of [false, true]) {
+      run(l, load, !reverse)
+      expect(run(l, load, reverse)).toEqual(run({ ...l }, load, reverse))
     }
-    visit(grid)
-    const branch = cloneGroundKnowledge(grid)
-    branch.observed[32] = 1
-    branch.observed[31] = 2
-    branch.revision += 1
-    observeRouteCells(branch, [31, 32])
-    visit(branch)
-    branch.observed.fill(1)
-    branch.revision += 1
-    visit(branch)
-    visit(grid)
-    grid.observed[33] = 1
-    grid.revision += 1
-    observeRouteCells(grid, [33])
-    visit(grid)
-    visit(branch)
-  })
-
-  it('reuses canonical subpaths with exact connectors and ascent costs until knowledge changes', () => {
-    const grid = ground()
-    for (const id of [10, 17, 24, 31, 38]) grid.observed[id] = 0
-    const start = routeCentre(grid, 22),
-      end = routeCentre(grid, 26)
-    const path = knownRoute(grid, start, end)!
-    expect(path.length).toBeGreaterThan(3)
-    const branch = cloneGroundKnowledge(grid)
-    const verify = (map: GroundKnowledge) => {
-      for (const point of path.slice(0, -1)) {
-        const from = { x: point.x + 1, y: point.y - 1 }
-        const cold = { ...map, observed: map.observed.slice(), heights: map.heights.slice() }
-        expect(knownRoute(map, from, end)).toEqual(knownRoute(cold, from, end))
-        const height = (p: { x: number; y: number }) => map.heights[Math.floor(p.y / 500) * 7 + Math.floor(p.x / 500)]!
-        for (const speed of [75, 125])
-          expect(knownWalkSeconds(map, from, end, speed, 6, height)).toBe(
-            knownWalkSeconds(cold, from, end, speed, 6, height),
-          )
-      }
-    }
-    verify(branch)
-    branch.observed[24] = 1
-    branch.revision += 1
-    observeRouteCells(branch, [24])
-    verify(branch)
-    verify(grid)
-  })
-
-  it('keeps predecessor ties equal to exhaustive Dijkstra when resolved goals and partial searches are reused', () => {
-    const grid = ground()
-    for (const id of [10, 17, 24, 31, 38]) grid.observed[id] = 0
-    const verify = (map: GroundKnowledge) => {
-      const home = routeCentre(map, 43)
-      knownWalkSeconds(map, routeCentre(map, 12), home, 125, 6, () => 0, home)
-      for (const root of [8, 15, 22, 12, 19, 26]) {
-        const costs = new Float64Array(49).fill(Infinity)
-        const parents = new Int32Array(49).fill(-1)
-        const open = new Set<number>([root])
-        costs[root] = 0
-        while (open.size) {
-          const id = [...open].sort((a, b) => costs[a]! - costs[b]! || a - b)[0]!
-          open.delete(id)
-          for (let next = 0; next < 49; next += 1) {
-            const dx = Math.abs((next % 7) - (id % 7))
-            const dy = Math.abs(Math.floor(next / 7) - Math.floor(id / 7))
-            if (map.observed[next] !== 1 || dx > 1 || dy > 1 || (!dx && !dy)) continue
-            if (
-              dx &&
-              dy &&
-              (map.observed[Math.floor(id / 7) * 7 + (next % 7)] !== 1 ||
-                map.observed[Math.floor(next / 7) * 7 + (id % 7)] !== 1)
-            )
-              continue
-            const cost = costs[id]! + (dx && dy ? 707 : 500)
-            if (cost === costs[next] && id < parents[next]!) parents[next] = id
-            if (cost >= costs[next]!) continue
-            costs[next] = cost
-            parents[next] = id
-            open.add(next)
-          }
-        }
-        const start = routeCentre(map, root)
-        // Query both sides of the opening in mixed order, including repeated goals and failed budgets.
-        const targets =
-          root % 7 < 3
-            ? [12, 40, 19, 33, 26, 5, 47, 13, 41, 20, 34, 27, 6, 48, 12, 26]
-            : [8, 36, 15, 29, 22, 1, 43, 7, 35, 14, 28, 21, 0, 42, 8, 22]
-        for (const target of targets) {
-          const end = routeCentre(map, target)
-          knownWalkSeconds(map, end, home, 125, 6, () => 0, home)
-          knownWalkSeconds(map, start, end, 125, 6, () => 0, undefined, 1)
-          const cells = [target]
-          while (cells.at(-1) !== root) cells.push(parents[cells.at(-1)!]!)
-          const expected = cells.reverse().map((id) => routeCentre(map, id))
-          expected.push(end)
-          const direct =
-            knownDrySegment(map, start, end) &&
-            [-1, 1].every((dx) =>
-              [-1, 1].every((dy) =>
-                knownDrySegment(map, { x: start.x + dx, y: start.y + dy }, { x: end.x + dx, y: end.y + dy }),
-              ),
-            )
-          expect(knownRoute(map, start, end)).toEqual(direct ? [end] : expected)
-        }
-      }
-    }
-    verify(grid)
-    const earlier = cloneGroundKnowledge(grid)
-    grid.observed[10] = 1
-    grid.revision += 1
-    observeRouteCells(grid, [10])
-    verify(grid)
-    verify(earlier)
-  })
-
-  it('resumes a budget-limited search with exactly the cold route and cost', () => {
-    const grid: GroundKnowledge = {
-      cells: 33,
-      cellCm: 500,
-      observed: new Uint8Array(33 ** 2).fill(1),
-      heights: new Int32Array(33 ** 2),
-      revision: 0,
-    }
-    for (let row = 1; row < 32; row += 1) grid.observed[row * 33 + 16] = 2
-    const start = routeCentre(grid, 16 * 33 + 1)
-    const end = routeCentre(grid, 16 * 33 + 31)
-    const cold = { ...grid, observed: grid.observed.slice() }
-    const expected = knownWalkSeconds(cold, start, end, 125, 6, () => 0)
-    for (const budget of [0, 1, 30, 100, expected - 1, expected, expected + 1])
-      expect(knownWalkSeconds(grid, start, end, 125, 6, () => 0, undefined, budget) <= budget).toBe(expected <= budget)
-    expect(knownWalkSeconds(grid, start, end, 125, 6, () => 0)).toBe(expected)
-    expect(knownRoute(grid, start, end)).toEqual(knownRoute(cold, start, end))
-  })
-
-  it('keeps exact travel costs after root, load, climb, knowledge and branch changes', () => {
-    const grid = ground()
-    for (const cell of [10, 17, 24, 31, 38]) grid.observed[cell] = 0
-    const height = (point: { x: number; y: number }) =>
-      grid.heights[Math.floor(point.y / 500) * 7 + Math.floor(point.x / 500)]!
-    const verify = (map: GroundKnowledge) => {
-      for (const speed of [7, 125, 83, 7])
-        for (const climb of [6, 0, 9])
-          for (const reverse of [false, true])
-            for (const cell of [8, 15, 22]) {
-              const home = routeCentre(map, cell)
-              const away = routeCentre(map, 26)
-              const from = reverse ? away : home
-              const to = reverse ? home : away
-              const route = knownRoute(map, from, to, home)!
-              let expected = 0
-              let previous = from
-              for (const point of route) {
-                expected +=
-                  Math.ceil(distance(previous.x, previous.y, point.x, point.y) / speed) +
-                  Math.ceil((climb * Math.max(0, height(point) - height(previous))) / 100)
-                previous = point
-              }
-              expect(knownWalkSeconds(map, from, to, speed, climb, height, home)).toBe(expected)
-              for (const budget of [0, Math.floor(expected / 2), expected - 1, expected, expected + 1]) {
-                const bounded = knownWalkSeconds(map, from, to, speed, climb, height, home, budget)
-                expect(bounded <= budget).toBe(expected <= budget)
-                if (Number.isFinite(bounded)) expect(bounded).toBe(expected)
-              }
-            }
-    }
-    verify(grid)
-    const earlier = cloneGroundKnowledge(grid)
-    grid.observed[17] = 1
-    grid.revision += 1
-    observeRouteCells(grid, [17])
-    verify(grid)
-    verify(earlier)
-    verify(grid)
-  })
-
-  it('keeps the observed frontier exact as new ground closes and opens edges on separate branches', () => {
-    const grid = ground()
-    grid.observed.fill(0)
-    grid.observed[24] = 1
-    const verify = (map: GroundKnowledge) => {
-      const expected: number[] = []
-      for (let id = 0; id < map.observed.length; id += 1)
-        if (map.observed[id] === 1 && cardinalCells(map.cells, id).some((next) => map.observed[next] === 0))
-          expected.push(id)
-      expect([...routeFrontierCells(map)].sort((a, b) => a - b)).toEqual(expected)
-    }
-    verify(grid)
-    const earlier = cloneGroundKnowledge(grid)
-    const added = [17, 23, 25, 31]
-    for (const cell of added) grid.observed[cell] = 1
-    grid.revision += 1
-    observeRouteCells(grid, added)
-    verify(grid)
-    verify(earlier)
-    earlier.observed[18] = 2
-    earlier.revision += 1
-    observeRouteCells(earlier, [18])
-    verify(earlier)
-    verify(grid)
-  })
 })

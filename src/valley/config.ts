@@ -1,21 +1,37 @@
 import { isqrt } from './geometry'
-import { waterThresholds } from './hydration'
+import { waterThresholds } from './body'
 import { terrainOf } from './terrain'
 import { fishCapacity } from './fish'
 import type { Point, ValleyConfig } from './types'
 
 /**
- * The canonical Life 11 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
+ * The canonical Life 12 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
  * fall of up to 30 m with broken moraine fronts, drumlins, kames, clustered hummocks, kettle hollows and tunnel
- * valleys, lakes in hollows and connected downhill river reaches. Its grassland surface is grass, dirt or stone, and each plant grows on suitable ground: 800
- * thickets of 60 berry
- * bushes, 800 hazel thickets of 40 hazels, 300 stands of 12 trees and 100 outcrops of stones, as dense as Life 9.7's
- * valley. A band of 8 born with foraging skills from 75% to 125% starts scattered over the middle 800 m. Slopes slow
- * walking by Tobler's hiking function and cost energy by the Pandolf equation's grade term; the ground sets its
- * terrain factor; hills block long sight. Every member wants a hut of 23 logs, cut from felled trees with a ground
- * stone axe it makes or buys. Measurements and explicit estimates are sourced in docs/CALIBRATION.md.
+ * valleys, lakes in hollows and connected downhill river reaches. Its grassland surface is grass, dirt or stone.
+ * Resources are places with one stock each: 800 berry thickets, 800 hazel thickets, 300 stands of 36 logs and 100
+ * outcrops of 60 stones. Forty founders born with foraging skills from 75% to 125% start scattered over the middle
+ * 800 m. Slopes fall into three classes that slow walking and raise its cost; the ground sets its terrain factor.
+ * Every member wants a hut of 23 logs, cut from felled trees with a ground stone axe it makes or buys. A year has
+ * `daysPerYear` days. Measurements and explicit estimates are sourced in docs/CALIBRATION.md.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
+  daysPerYear: 90,
+  routeCellCm: 2_000,
+  walkKcalPerHour: 250,
+  moderateSlowdownPerMille: 1_300,
+  steepDownSlowdownPerMille: 1_300,
+  climbMinutesPerMetre: 1,
+  berryThicketCapacityKcal: 3_120,
+  berryThicketRegrowthKcalPerYear: 54_000,
+  berryThicketWoodKg: 120,
+  berryThicketWoodRegrowthKgPerYear: 12,
+  hazelThicketCapacityKcal: 75_000,
+  hazelThicketRegrowthKcalPerYear: 150_000,
+  standWoodKg: 300,
+  standDeadfallKgPerYear: 60,
+  standLogs: 36,
+  outcropStones: 60,
+  treeRegrowthYears: 20,
   riverCatchmentM2: 250_000,
   riverDepthCm: 50,
   drinkBankHeightCm: 100,
@@ -86,26 +102,11 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   dirtSlopePercent: 10,
   stoneSlopePercent: 30,
   dirtCurvatureCm: 40,
-  eyeHeightCm: 160,
-  sightStepCm: 3_000,
   startAreaCm: 80_000,
   thicketCount: 800,
-  bushesPerThicket: 60,
   thicketRadiusCm: 1_200,
-  bushSpacingCm: 200,
-  bushCapacityKcal: 52,
-  initialBushKcal: 52,
-  bushRegrowthKcalPerYear: 900,
-  bushCapacityWood: 2,
-  initialBushWood: 2,
-  bushRegrowthWoodPerDecade: 2,
   hazelThicketCount: 800,
-  hazelsPerThicket: 40,
   hazelThicketRadiusCm: 2_000,
-  hazelSpacingCm: 400,
-  hazelCapacityKcal: 1_875,
-  initialHazelKcal: 1_875,
-  hazelRegrowthKcalPerYear: 3_750,
   nutKcalPerHour: 3_500,
   nutKcalPerKg: 2_500,
   nutShelfLifeHours: 4_380,
@@ -113,12 +114,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   fishKcalPerKg: 600,
   fishShelfLifeHours: 24,
   standCount: 300,
-  treesPerStand: 12,
   standRadiusCm: 1_500,
-  treeSpacingCm: 400,
-  treeCapacityWood: 25,
-  initialTreeWood: 25,
-  treeDeadfallWoodPerYear: 5,
   fellWood: 10,
   siteSpacingCm: 5_000,
   siteMarginCm: 3_000,
@@ -141,13 +137,12 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   grassTerrainPercent: 120,
   dirtTerrainPercent: 120,
   stoneTerrainPercent: 150,
-  climbSecondsPerMetre: 6,
   loadSlowdownPerMille: 75,
   reserveMaxKcal: 70_000,
   initialReserveKcal: 66_000,
   hungryBelowKcal: 64_000,
   satiatedAtKcal: 68_000,
-  bandSize: 8,
+  founders: 40,
   berryShelfLifeHours: 48,
   fireWoodPerHour: 1,
   fireSleepKcalPerHour: 70,
@@ -165,19 +160,14 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   startPracticeHoursPerDay: 2,
   scattered: true,
   startSpacingCm: 5_000,
-  placeCm: 3_000,
   exploreAfterHours: 24,
   sightRadiusCm: 100_000,
   bodyKg: 60,
   berryKcalPerKg: 600,
   campfireWoodPerHour: 1,
   outcropCount: 100,
-  stonesPerOutcrop: 12,
   outcropRadiusCm: 1_000,
-  stoneSpacingCm: 300,
-  stonesPerSpot: 5,
   logsPerTree: 3,
-  treeRegrowthDays: 7_300,
   logKg: 35,
   logChopMinutes: 30,
   hutLogs: 23,
@@ -193,9 +183,10 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
 
 /**
  * A flat grassy land the size of Life 9.7's valley, 800 m square with its sites and lake: no relief or landforms.
- * Tests of rules that do not need the terrain run on it.
+ * Tests of rules that do not need the terrain run on it, with Life 11's eight founders.
  */
 export const FLAT_LAND: Partial<ValleyConfig> = {
+  founders: 8,
   valleySizeCm: 80_000,
   thicketCount: 32,
   hazelThicketCount: 32,
@@ -273,7 +264,11 @@ function computeSpiral(count: number) {
 
 /** Returns every rule the configuration breaks, except whether its layout can be drawn, which `createValley` finds. */
 export function valleyConfigErrors(config: ValleyConfig): string[] {
-  const errors: string[] = []
+  const calendarErrors =
+    Number.isInteger(config.daysPerYear) && config.daysPerYear >= 8 && config.daysPerYear <= 365
+      ? []
+      : ['daysPerYear must be an integer from 8 to 365']
+  const errors: string[] = [...calendarErrors]
   for (const [key, value] of Object.entries(config)) {
     if (BOOLEAN_KEYS.has(key)) {
       if (typeof value !== 'boolean') errors.push(`${key} must be true or false`)
@@ -318,20 +313,21 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   const positive: (keyof ValleyConfig)[] = [
     'valleySizeCm',
     'thicketCount',
-    'bushesPerThicket',
     'thicketRadiusCm',
-    'bushSpacingCm',
-    'bushCapacityKcal',
+    'berryThicketCapacityKcal',
     'hazelThicketRadiusCm',
-    'hazelSpacingCm',
-    'hazelCapacityKcal',
+    'hazelThicketCapacityKcal',
+    'standWoodKg',
+    'standLogs',
+    'walkKcalPerHour',
+    'moderateSlowdownPerMille',
+    'steepDownSlowdownPerMille',
+    'treeRegrowthYears',
     'nutKcalPerHour',
     'nutKcalPerKg',
     'fishKcalPerHour',
     'fishKcalPerKg',
     'standRadiusCm',
-    'treeSpacingCm',
-    'treeCapacityWood',
     'siteSpacingCm',
     'campClearingCm',
     'hutRingCm',
@@ -341,21 +337,18 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'talkRadiusCm',
     'berryKcalPerHour',
     'woodPerHour',
-    'bandSize',
+    'founders',
     'fireWoodPerHour',
     'woodStockNights',
     'practiceDays',
     'practiceHalfHours',
     'startSpacingCm',
-    'placeCm',
     'exploreAfterHours',
     'sightRadiusCm',
     'bodyKg',
     'berryKcalPerKg',
     'campfireWoodPerHour',
     'outcropRadiusCm',
-    'stoneSpacingCm',
-    'treeRegrowthDays',
     'logsPerTree',
     'logKg',
     'logChopMinutes',
@@ -405,23 +398,21 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'tunnelValleyMaxControlCm',
     'microCoarseWavelengthCm',
     'microFineWavelengthCm',
-    'eyeHeightCm',
-    'sightStepCm',
     'startAreaCm',
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
-    'bushRegrowthKcalPerYear',
-    'bushCapacityWood',
-    'bushRegrowthWoodPerDecade',
+    'berryThicketRegrowthKcalPerYear',
+    'berryThicketWoodKg',
+    'berryThicketWoodRegrowthKgPerYear',
     'hazelThicketCount',
-    'hazelsPerThicket',
-    'hazelRegrowthKcalPerYear',
+    'hazelThicketRegrowthKcalPerYear',
     'nutShelfLifeHours',
     'fishShelfLifeHours',
     'standCount',
-    'treesPerStand',
-    'treeDeadfallWoodPerYear',
+    'standDeadfallKgPerYear',
+    'outcropStones',
+    'climbMinutesPerMetre',
     'fellWood',
     'siteMarginCm',
     'sleepKcalPerHour',
@@ -430,8 +421,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'woodLoad',
     'termsMemoryHours',
     'outcropCount',
-    'stonesPerOutcrop',
-    'stonesPerSpot',
     'axeWood',
     'loadSlowdownPerMille',
     'reliefCm',
@@ -450,20 +439,12 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'dirtSlopePercent',
     'stoneSlopePercent',
     'dirtCurvatureCm',
-    'climbSecondsPerMetre',
   ]
   for (const key of notNegative) if ((config[key] as number) < 0) errors.push(`${key} must not be negative`)
   if (errors.length) return errors
   if (config.reachCm >= config.perceptionRadiusCm) errors.push('reachCm must be less than perceptionRadiusCm')
-  if (config.initialBushKcal < 0 || config.initialBushKcal > config.bushCapacityKcal)
-    errors.push('initialBushKcal must be between 0 and bushCapacityKcal')
-  if (config.initialHazelKcal < 0 || config.initialHazelKcal > config.hazelCapacityKcal)
-    errors.push('initialHazelKcal must be between 0 and hazelCapacityKcal')
-  // The lake's growth is owed in exact integers: what is owed at the most must stay a safe integer.
-  if (config.initialTreeWood < 0 || config.initialTreeWood > config.treeCapacityWood)
-    errors.push('initialTreeWood must be between 0 and treeCapacityWood')
-  if (config.initialBushWood < 0 || config.initialBushWood > config.bushCapacityWood)
-    errors.push('initialBushWood must be between 0 and bushCapacityWood')
+  if (config.founders > 1_000) errors.push('founders must be from 1 to 1,000')
+  if (config.standLogs % config.logsPerTree !== 0) errors.push('standLogs must be a whole number of logsPerTree')
   if (config.dawnHour < 0 || config.dawnHour >= config.duskHour || config.duskHour > 24)
     errors.push('Hours must satisfy 0 ≤ dawnHour < duskHour ≤ 24')
   if (
@@ -520,8 +501,11 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   if (config.kettleDepthPerMille > 1_000) errors.push('kettleDepthPerMille must be at most 1,000')
   if (config.dirtSlopePercent > config.stoneSlopePercent)
     errors.push('dirtSlopePercent must not exceed stoneSlopePercent')
-  if (config.sightStepCm > config.placeCm) errors.push('sightStepCm must not exceed placeCm')
   if (config.startAreaCm > config.valleySizeCm) errors.push('startAreaCm must not exceed the land’s width')
+  // Points at least startSpacingCm apart in a square startAreaCm wide: at most one per spacing cell, corners included.
+  const startRoom = (Math.floor(config.startAreaCm / config.startSpacingCm) + 1) ** 2
+  if (config.scattered && config.founders > startRoom)
+    errors.push(`founders: the start area holds at most ${startRoom} people at startSpacingCm`)
   // Heights times the lattice's interpolation weights must stay exact integers.
   const highestTerrain =
     config.reliefCm +
@@ -565,24 +549,21 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     for (const key of ['berryKcalPerHour', 'nutKcalPerHour', 'fishKcalPerHour'] as const)
       if (lowest(config[key]) <= config.pickKcalPerHour)
         errors.push(`${key} at the lowest skill and practice must be more than pickKcalPerHour`)
-    // A minute's work at the fastest rate must fit on a plant, or no full plant could ever be worked.
-    if (Math.ceil(highest(config.woodPerHour) / 60) > config.treeCapacityWood)
-      errors.push('A tree must hold a minute of gathering at the fastest rate')
-    if (config.bushCapacityWood > 0 && Math.ceil(highest(config.woodPerHour) / 60) > config.bushCapacityWood)
-      errors.push('A bush that holds sticks must hold a minute of gathering at the fastest rate')
+    // A minute's work at the fastest rate must fit in a full place, or no full place could ever be worked.
+    if (Math.ceil(highest(config.woodPerHour) / 60) > config.standWoodKg)
+      errors.push('A stand must hold a minute of gathering at the fastest rate')
+    if (config.berryThicketWoodKg > 0 && Math.ceil(highest(config.woodPerHour) / 60) > config.berryThicketWoodKg)
+      errors.push('A thicket that holds sticks must hold a minute of gathering at the fastest rate')
   }
   // A band that starts around the camp must have its huts in the camp's clearing, clear of every plant.
   if (!config.scattered) {
-    const outer = ringOf(config.bandSize - 1) * config.hutRingCm
+    const outer = ringOf(config.founders - 1) * config.hutRingCm
     const clear =
       config.campClearingCm -
       Math.max(config.thicketRadiusCm, config.hazelThicketRadiusCm, config.standRadiusCm, config.outcropRadiusCm)
     if (outer > clear) errors.push('The band’s huts must fit inside the camp’s clearing')
-    if (config.bandSize < 2) errors.push('A band that starts as one group needs at least two foragers')
+    if (config.founders < 2) errors.push('A band that starts as one group needs at least two foragers')
   }
-  // Standing at a place's centre must show all of it, or exploring could never see it.
-  if (config.placeCm ** 2 > 2 * config.perceptionRadiusCm ** 2)
-    errors.push('A place must fit in a forager’s view: placeCm² ≤ 2 · perceptionRadiusCm²')
   if (config.sightRadiusCm < config.perceptionRadiusCm)
     errors.push('Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm')
   // A site is checked from within perceptionRadiusCm − its radius of its centre, which must leave room to stand.
@@ -592,28 +573,20 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   )
     errors.push('A site must fit in close sight to be checked: perceptionRadiusCm > every site radius')
   if (2 * config.siteMarginCm >= config.valleySizeCm) errors.push('siteMarginCm must leave room for sites')
-  if ((config.valleySizeCm / config.terrainCellCm) ** 2 * config.bandSize * 5 > 512_000_000)
-    errors.push('Observed-ground memories exceed the supported 512 MB allocation')
+  if ((config.valleySizeCm / config.routeCellCm) ** 2 * config.founders > 512_000_000)
+    errors.push('Route-lattice memories exceed the supported 512 MB allocation')
   if (config.valleySizeCm > Math.floor(Math.sqrt(2 ** 51)))
     errors.push('Land coordinates exceed exact squared-distance limits')
-  const plants = [
-    config.thicketCount * config.bushesPerThicket,
-    config.hazelThicketCount * config.hazelsPerThicket,
-    config.standCount * config.treesPerStand,
-    config.outcropCount * config.stonesPerOutcrop,
-  ]
-  if (plants.some((count) => !Number.isSafeInteger(count)) || plants.reduce((a, b) => a + b, 0) > 2_000_000)
-    errors.push('Plant and stone allocations exceed the supported two million records')
+  if (config.thicketCount + config.hazelThicketCount + config.standCount + config.outcropCount > 2_000_000)
+    errors.push('Place allocations exceed the supported two million records')
   for (const key of [
-    'bushCapacityKcal',
-    'initialBushKcal',
-    'hazelCapacityKcal',
-    'initialHazelKcal',
-    'treeCapacityWood',
-    'initialTreeWood',
-    'bushCapacityWood',
-    'initialBushWood',
-    'stonesPerSpot',
+    'berryThicketCapacityKcal',
+    'berryThicketRegrowthKcalPerYear',
+    'hazelThicketCapacityKcal',
+    'hazelThicketRegrowthKcalPerYear',
+    'standWoodKg',
+    'standLogs',
+    'outcropStones',
     'logsPerTree',
   ] as const)
     if (config[key] > 2_147_483_647) errors.push(`${key} exceeds Int32 stock limits`)
@@ -632,6 +605,13 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     config.waterBaseMlPerDay > Number.MAX_SAFE_INTEGER - 86_399
   )
     errors.push('Water-loss numerators exceed supported exact integer limits')
+  if (
+    !Number.isSafeInteger(config.routeCellCm) ||
+    config.routeCellCm <= 0 ||
+    config.routeCellCm % config.terrainCellCm !== 0
+  )
+    errors.push('routeCellCm must be a positive multiple of terrainCellCm')
+  if (config.chunkCm % config.routeCellCm !== 0) errors.push('chunkCm must be a multiple of routeCellCm')
   return errors
 }
 
