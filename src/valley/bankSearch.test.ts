@@ -4,6 +4,7 @@ import { nearestBanks, knownComponents } from './bankSearch'
 import { createSurveyedValley, addTestLake } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { cloneValley } from './engine'
+import { learnBank } from './perception'
 import { cachedHeight, estimateMinutes, nodePoint, knownRoute } from './routes'
 function fixture() {
   const s = createSurveyedValley({ ...FLAT_LAND, founders: 1 })
@@ -40,7 +41,9 @@ describe('estimated bank candidates', () => {
     p.knownBanks.set(all.at(-1)!.id, all.at(-1)!)
     const n = cloneValley(s),
       q = n.foragers[0]!
-    q.knownBanks.set(all[0]!.id, all[0]!)
+    expect(q.knownBanks).toBe(p.knownBanks)
+    learnBank(q, { ...all[0]!, minute: 0 })
+    expect(q.knownBanks).not.toBe(p.knownBanks)
     expect(p.knownBanks.size).toBe(1)
     expect(q.knownBanks.size).toBe(2)
     const result = nearestBanks(n.layout.lattice, n.layout.terrain, n.config, q, 7500, 3)

@@ -6,6 +6,16 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE12-Speed-062] - (2026-10-24)
+
+The owner reported that 1 h / s ran far slower than its label. Measured in the browser with forty founders, it ran at about 11 simulated minutes a second at about 11 frames a second.
+
+**Cause.** Every step starts by copying the valley, so the step function stays pure. Measured in Node, that copy took about 140 ms, against about 0.35 ms per simulated minute for the simulation itself. 126 ms of it was each person's bank memory: a map of about 34,000 riverbank spots per person, copied for all forty. Each frame's step took over the 40 ms engine budget, so the page cut its allowance to one minute a frame.
+
+**Change.** Bank memories only grow, and only one place writes them: what a person sees. A copy now shares its original's map and marks it shared; before a person first learns a new bank, they get their own copy. Nothing that reads the memory changes, so every run is the same and the fingerprints are unchanged. A direct write to a copy's map would also change the original, so tests write through the same function.
+
+**Measured after.** Copying the valley takes about 2 ms and a one-minute step about 4 ms. In the browser, 1 min / s, 10 min / s and 1 h / s each run at their label, at 17 to 33 frames a second. 1 day / s reaches about 840 minutes a second at 8 frames a second: a simulated day still costs about 0.5 s of engine time, so the map speeds remain best effort. Creating the valley (about 9 s) and the first day (about 1.8 s) are unchanged.
+
 ## [LIFE12-Observer-061] - (2026-10-23)
 
 The third re-foundation pull request cleans up the observer at the owner's request. The engine and the fingerprints are unchanged.

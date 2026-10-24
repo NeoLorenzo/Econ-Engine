@@ -2,6 +2,12 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE12-Speed-062] - (2026-10-24)
+
+### Changed
+
+- A step no longer copies every person's bank memory. A copy shares its original's memory, and a person's memory is copied only when they first learn a new bank. Copying the valley for a step falls from about 140 ms to 2 ms with forty founders, so 1 h / s now runs at its label. The fingerprints are unchanged.
+
 ## [LIFE12-Observer-061] - (2026-10-23)
 
 ### Changed

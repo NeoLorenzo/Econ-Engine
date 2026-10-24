@@ -16,6 +16,19 @@ export interface ObservationEvent {
   seenPeople: { id: number; position: Point }[]
   stock: { placeId: number; food: number; wood: number; logs: number; stones: number } | null
 }
+/**
+ * Bank memories hold tens of thousands of banks and only grow, so a clone shares its original's map instead of copying
+ * it every step. A shared map is copied once, here, before the first bank its holder learns.
+ */
+const sharedBankMemories = new WeakSet<Map<number, BankMemory>>()
+export function shareBankMemory(banks: Map<number, BankMemory>) {
+  sharedBankMemories.add(banks)
+  return banks
+}
+export function learnBank(person: Forager, memory: BankMemory) {
+  if (sharedBankMemories.has(person.knownBanks)) person.knownBanks = new Map(person.knownBanks)
+  person.knownBanks.set(memory.id, memory)
+}
 export const peopleInChunk = (state: ValleyState, chunk: number): number[] => [...(state.peopleByChunk[chunk] ?? [])]
 export function reindexPeople(state: ValleyState, minute: number): void {
   const buckets: number[][] = Array.from({ length: state.layout.lattice.chunkCells ** 2 }, () => [])
@@ -88,7 +101,7 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
           for (const bank of banks.get(chunk) ?? [])
             if (!person.knownBanks.has(bank.id) && (bank.x - origin.x) ** 2 + (bank.y - origin.y) ** 2 <= sq) {
               const memory = { ...bank, minute }
-              person.knownBanks.set(bank.id, memory)
+              learnBank(person, memory)
               observation.banks.push(memory)
             }
         const dx = Math.max(
