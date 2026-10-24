@@ -5,11 +5,7 @@ import { createSurveyedValley, addTestLake } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { cloneValley } from './engine'
 import { learnBank } from './perception'
-<<<<<<< Updated upstream
-import { cachedHeight, estimateMinutes, nodePoint, knownRoute } from './routes'
-=======
 import { cachedHeight, estimateMinutes, knownComponents, knownRoute, routeTriangle } from './routes'
->>>>>>> Stashed changes
 function fixture() {
   const s = createSurveyedValley({ ...FLAT_LAND, founders: 1 })
   addTestLake(s)

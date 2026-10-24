@@ -1,9 +1,5 @@
-<<<<<<< Updated upstream
-import { reindexPeople, shareBankMemory } from './perception'
-=======
 import { reindexPeople, shareBankMemory, shareKnowledge, shareRouteCache } from './perception'
 import { knowledgeBytes } from './routes'
->>>>>>> Stashed changes
 import { measureTask } from './summary'
 import { WakeQueue } from './clock'
 import { MINUTES_PER_DAY, dayOf } from './calendar'
@@ -344,19 +340,8 @@ const cloneForager = (forager: Forager): Forager => {
     metMinute: forager.metMinute.slice(),
     metPosition: new Map(forager.metPosition),
     arrivalFrom: forager.arrivalFrom.slice(),
-<<<<<<< Updated upstream
-    knowledge: {
-      ...forager.knowledge,
-      nodes: forager.knowledge.nodes.slice(),
-      fullyKnown: forager.knowledge.fullyKnown?.slice(),
-      banksKnown: forager.knowledge.banksKnown?.slice(),
-      views: forager.knowledge.views ? new Set(forager.knowledge.views) : undefined,
-    },
-    routeCache: new Map(forager.routeCache),
-=======
     knowledge: shareKnowledge(forager.knowledge),
     routeCache: shareRouteCache(forager.routeCache),
->>>>>>> Stashed changes
     knownBanks: shareBankMemory(forager.knownBanks),
     fishMemory: new Map(forager.fishMemory),
     deathCauses: [...forager.deathCauses],

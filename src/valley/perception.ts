@@ -38,8 +38,6 @@ export function learnBank(person: Forager, memory: BankMemory) {
   if (sharedBankMemories.has(person.knownBanks)) person.knownBanks = new Map(person.knownBanks)
   person.knownBanks.set(memory.id, memory)
 }
-<<<<<<< Updated upstream
-=======
 /** Route caches only grow too, and are shared and copied the same way, before their holder remembers a new route. */
 const sharedRouteCaches = new WeakSet<Map<string, number>>()
 export function shareRouteCache(cache: Map<string, number>) {
@@ -72,7 +70,6 @@ export function ownKnowledge(person: Forager) {
 }
 /** Views already taken from a point: a cache, so its warmth never changes what is learnt. */
 const viewsSeen = new WeakMap<Knowledge, Set<string>>()
->>>>>>> Stashed changes
 export const peopleInChunk = (state: ValleyState, chunk: number): number[] => [...(state.peopleByChunk[chunk] ?? [])]
 export function reindexPeople(state: ValleyState, minute: number): void {
   const buckets: number[][] = Array.from({ length: state.layout.nav.chunkCells ** 2 }, () => [])
