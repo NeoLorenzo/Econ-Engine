@@ -6,6 +6,32 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE13-Mesh-063] - (2026-10-24)
+
+The owner found people stuck, and asked for walking like a game engine's navigation mesh: every bit of dry land walkable, water meshed too but not yet walkable, and the visible terrain drawn from the same low-poly triangles. This entry records the mesh step and what it took to run at a usable speed.
+
+**Why.** Life 12's 20 m route lattice counted a node as wet if any water touched it. That split the dry land into 561 sealed pockets; the largest held 21% of it, and every founder started outside that one. Within hours people had explored their pocket and rested with `no known route`. Measured at the water's 5 m resolution, 99.2% of the dry land is one connected piece.
+
+**The mesh.** Shores are chained from the hydrology and simplified to within 1 m. A quadtree refines the land where a cell's diagonals both miss the terrain by more than 1 m. Height refinement adds points wherever a dry 5 m point is still off, refusing only points that lie on a shore. A constrained Delaunay triangulation then takes the shores as edges. Each triangle's area type comes from its centroid, with a vote along shore edges, and every edge between ground and water is a shore, whether or not it was constrained. At 4 km the mesh has 86,958 vertices and 173,275 triangles (121,815 ground), built in about 2.3 to 2.9 s. The main land holds 0.9923 of the ground at 4 km and 0.9853 at 10 km (551,342 vertices and 1,100,957 triangles; layout 72.6 s, about 1.1 GB of heap). The checker finds no violations at either size.
+
+**Measured after.** Over four days with forty founders, rests with `no known route` fell from 6,908 ten-minute samples (about 1,151 person-hours) on Life 12 to none. Nobody fished in those four days, which is not a fault: nut rates are 2,500 to 4,000 kcal an hour against 440 to 700 for fish, and Life 12's fishers were people cut off from the groves.
+
+**Two behaviour faults the mesh exposed.** Once people could reach the woods and had axes, thirty days of forty founders took 753 s.
+- Starting a walk counted as entering its own chunk, which wakes everyone there to re-plan. A re-planned walk is itself a start, so ten cutters near one hearth re-planned each other about ten times a minute. A walk now enters only the chunks after its first, as the spec's word *enters* implies.
+- People who had explored all their land went to recheck the nearest remembered place without checking it could be reached. A grove seen across water was chosen, failed to route, and was chosen again at every wake-up: 1,106 times in two days. Rechecks now use the same reachability test as food and wood. Each failed route had also exhausted the whole known land in A* before giving up: 662 failures on day 15, about 100,000 triangles each.
+
+**Speed-ups that change no run.**
+- Route search first checks that the start and the target are on the same piece of known ground.
+- The pieces are a union-find, extended from the triangles learnt at each wake-up instead of relabelling 173,000 triangles. A check on 200 people-states found the carried pieces identical to rebuilt ones.
+- The frontier, the known ground bordering unknown triangles, is kept beside the pieces, so finding the nearest edge to explore no longer scans the mesh.
+- Route caches (about 1,460 routes a person by day 20) are shared between copies of the valley until written, as bank memories are. Copying the valley at day 20 fell from 17.7 ms to 3.5 ms.
+
+Together these bring thirty days of forty founders to about 2.5 to 4 minutes.
+
+**Open questions.**
+- Later days still cost about 9 s each. By day 20 most people have explored all they can reach and spend idle hours rechecking places: about 9,000 checking walks a day, each waking the chunks it enters. That follows the spec, but whether idle people should tour every known place daily is a question for the step that gives them other uses of time.
+- A* now takes most of the remaining time. Its heap order breaks ties, so a faster heap would need re-recorded fingerprints.
+
 ## [LIFE12-Speed-062] - (2026-10-24)
 
 The owner reported that 1 h / s ran far slower than its label. Measured in the browser with forty founders, it ran at about 11 simulated minutes a second at about 11 frames a second.

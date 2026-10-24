@@ -1,16 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  bankApproach,
-  bankViolations,
-  buildBanks,
-  bankCircleWet,
-  bankSegmentWet,
-  bankWaterHeight,
-  triangleHeight,
-} from './banks'
-import { knownRoute, buildLattice, nodePoint, routeNode } from './routes'
-import { VALLEY_DEFAULT_CONFIG } from './config'
-import type { Terrain } from './terrain'
+import { bankViolations, buildBanks, bankCircleWet, bankSegmentWet, bankWaterHeight, triangleHeight } from './banks'
 import { deriveWater } from './water'
 
 function bowl() {
@@ -52,35 +41,6 @@ describe('continuous water banks', () => {
     expect(bankSegmentWet(shore, { x: 10, y: 10 }, { x: 2490, y: 10 })).toBe(false)
     expect(bankCircleWet(shore, { x: 1250, y: 1250 }, 1)).toBe(true)
     expect(bankCircleWet(shore, { x: 10, y: 10 }, 1)).toBe(false)
-  })
-  it('routes to real dry bank approaches, including the dry part of a shore cell', () => {
-    const { water, shore } = bowl()
-    const height = (x: number, y: number) =>
-      triangleHeight(
-        shore.patches.get(Math.min(4, Math.floor(y / 500)) * 5 + Math.min(4, Math.floor(x / 500)))!.ground,
-        x,
-        y,
-      ) ?? 200
-    const config = { ...VALLEY_DEFAULT_CONFIG, routeCellCm: 500, valleySizeCm: 2_500 }
-    const terrain = { water, cells: 5, cellCm: 500, height: bowl().corners } as Terrain
-    const ground = new Uint8Array(25)
-    const lattice = buildLattice(config, terrain, shore)
-    const knowledge = { nodes: new Uint8Array(25).fill(1), revision: 1 }
-    let used = 0
-    for (const segment of shore.segments.values()) {
-      const bank = bankApproach(shore, segment, 100, 1000, height, water.bodies[segment.body]!.id, 0)
-      if (!bank) continue
-      const anchor = routeNode(lattice, knowledge, bank)
-      if (anchor < 0) continue
-      const start = nodePoint(lattice, anchor),
-        route = knownRoute(lattice, knowledge, terrain, ground, shore, config, 0, start, bank)
-      expect(route).not.toBeNull()
-      for (const leg of route!.segments)
-        expect(bankSegmentWet(shore, { x: leg.x0, y: leg.y0 }, { x: leg.x1, y: leg.y1 })).toBe(false)
-      expect(knownRoute(lattice, knowledge, terrain, ground, shore, config, 0, start, bank)).toEqual(route)
-      used++
-    }
-    expect(used).toBeGreaterThan(0)
   })
   it('checks polygon areas and rejects broken contour records', () => {
     const { water, shore } = bowl()

@@ -6,9 +6,9 @@ import type { ValleyConfig } from './types'
 const errorsWith = (overrides: Partial<ValleyConfig>) => valleyConfigErrors({ ...VALLEY_DEFAULT_CONFIG, ...overrides })
 
 describe('valley configuration', () => {
-  it('requires aligned route and chunk grids', () => {
-    expect(errorsWith({ routeCellCm: 750 })).toContain('routeCellCm must be a positive multiple of terrainCellCm')
-    expect(errorsWith({ routeCellCm: 1_500 })).toContain('chunkCm must be a multiple of routeCellCm')
+  it('requires the mesh’s relief squares to align with the terrain and the chunks', () => {
+    expect(errorsWith({ meshMaxEdgeCm: 3_000 })).toContain('meshMaxEdgeCm must be terrainCellCm times a power of two')
+    expect(errorsWith({ meshMaxEdgeCm: 16_000 })).toContain('chunkCm must be a multiple of meshMaxEdgeCm')
   })
   it('accepts the canonical valley', () => {
     expect(valleyConfigErrors(VALLEY_DEFAULT_CONFIG)).toEqual([])

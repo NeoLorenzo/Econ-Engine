@@ -74,7 +74,7 @@ describe('axes and huts at task boundaries', () => {
     person.wood = 36
     person.stone = 1
     person.shortOfWood = false
-    person.knowledge.nodes.fill(1)
+    person.knowledge.triangles.fill(255)
     state.queue.schedule({ minute: 600, phase: 1, id: 0, kind: 'end' })
     const next = stepValley(state, 601)
     expect(next.foragers[0]!.task?.kind).toBe('make')

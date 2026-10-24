@@ -22,7 +22,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
   }
   const placeMemory = before.foragers.map((p) => p.placeStock.slice()),
     fishMemory = before.foragers.map((p) => new Map(p.fishMemory))
-  const access = new Map(after.layout.lattice.accessBanks.map((bank) => [bank.id, bank]))
+  const access = new Map(after.layout.nav.accessBanks.map((bank) => [bank.id, bank]))
   const rates = before.foragers.map((p) => ({
     berries: p.forageRate,
     nuts: p.nutRate,
@@ -279,7 +279,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
           bank.bodyId !== source.bodyId ||
           bank.x !== source.x ||
           bank.y !== source.y ||
-          bank.connectorNode !== source.connectorNode
+          bank.triangle !== source.triangle
         )
           fail('Observed bank differs from immutable geography')
         banks[event.foragerId]!.set(bank.id, bank)

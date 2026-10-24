@@ -1,4 +1,4 @@
-import { bankWaterHeight } from '../valley/banks'
+import { GROUND_AREA, planeHeight, triangleAt } from '../valley/mesh'
 import { useEffect, useMemo, useRef } from 'react'
 import type { ValleyState } from '../valley/types'
 import { groupColor } from './valleyViewModel'
@@ -11,32 +11,27 @@ const MAP_GROUND = [
 ]
 const MAP_SIZE = 180
 
-/** The whole land, drawn once: each pixel coloured by its ground and shaded by its height and the slope facing north-west. */
+/**
+ * The whole land, drawn once from the ground mesh: each pixel coloured by the triangle under it, its ground or its
+ * water, and shaded by height and by the slope facing north-west.
+ */
 function landImage(layout: ValleyState['layout']) {
-  const { terrain, ground } = layout
-  const { cells, height } = terrain
-  const points = cells + 1
+  const { mesh, ground } = layout.nav
   const image = new ImageData(MAP_SIZE, MAP_SIZE)
   let highest = 1
-  for (const h of height) highest = Math.max(highest, h)
+  for (const h of mesh.vh) highest = Math.max(highest, h)
+  const step = mesh.sizeCm / MAP_SIZE
   for (let py = 0; py < MAP_SIZE; py += 1)
     for (let px = 0; px < MAP_SIZE; px += 1) {
-      const i = Math.min(cells - 1, Math.floor((px * cells) / MAP_SIZE))
-      const j = Math.min(cells - 1, Math.floor((py * cells) / MAP_SIZE))
-      const h = height[j * points + i]!
-      const slope = (height[(j + 1) * points + i + 1]! - h) / terrain.cellCm
-      const light = Math.max(0.55, Math.min(1.35, 0.75 + (0.45 * h) / highest - 4 * slope))
-      const wet = terrain.water.shore
-        ? bankWaterHeight(
-            terrain.water.shore,
-            {
-              x: ((px + 0.5) * cells * terrain.cellCm) / MAP_SIZE,
-              y: ((py + 0.5) * cells * terrain.cellCm) / MAP_SIZE,
-            },
-            terrain.water.level,
-          ) !== null
-        : terrain.water.body[j * cells + i]! >= 0
-      const colour = wet ? [46, 93, 120] : MAP_GROUND[ground[j * cells + i]!]!
+      const x = (px + 0.5) * step,
+        y = (py + 0.5) * step
+      const t = triangleAt(mesh, x, y)
+      const h = planeHeight(mesh, t, x, y),
+        ahead = triangleAt(mesh, Math.min(mesh.sizeCm, x + step / 2), Math.min(mesh.sizeCm, y + step / 2))
+      const slope =
+        (planeHeight(mesh, ahead, Math.min(mesh.sizeCm, x + step / 2), Math.min(mesh.sizeCm, y + step / 2)) - h) / step
+      const light = Math.max(0.55, Math.min(1.35, 0.75 + (0.45 * h) / highest - 8 * slope))
+      const colour = mesh.area[t] !== GROUND_AREA ? [46, 93, 120] : MAP_GROUND[ground[t]!]!
       const at = (py * MAP_SIZE + px) * 4
       image.data[at] = colour[0]! * light
       image.data[at + 1] = colour[1]! * light

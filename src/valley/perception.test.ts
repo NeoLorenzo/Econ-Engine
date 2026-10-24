@@ -14,22 +14,25 @@ describe('wake-up perception', () => {
     rester!.x = 61_000
     rester!.y = 21_000
     rester!.task = startTask(state.config, rester!, 'rest', 0, 60, -1, -1, 'satiated')
-    walker!.knowledge.nodes.fill(1)
+    walker!.knowledge.triangles.fill(255)
     reindexPeople(state, 0)
-    const lattice = state.layout.lattice
-    const route = knownRoute(
-      lattice,
-      walker!.knowledge,
-      state.layout.terrain,
-      state.layout.ground,
-      lattice.banks,
-      state.config,
-      0,
-      walker!,
-      rester!,
-    )!
+    const route = knownRoute(state.layout.nav, walker!.knowledge, state.config, 0, walker!, rester!)!
     scheduleArrivals(state, walker!.id, route, 0)
     expect(state.queue.entriesOf(rester!.id).filter((entry) => entry.kind === 'arrival')[0]!.minute).toBeGreaterThan(0)
+  })
+  it('does not wake people in the chunk a walk starts from', () => {
+    const state = createValley(FLAT_LAND)
+    const [walker, rester] = state.foragers
+    walker!.x = 21_000
+    walker!.y = 21_000
+    rester!.x = 21_500
+    rester!.y = 21_000
+    rester!.task = startTask(state.config, rester!, 'rest', 0, 60, -1, -1, 'satiated')
+    walker!.knowledge.triangles.fill(255)
+    reindexPeople(state, 0)
+    const route = knownRoute(state.layout.nav, walker!.knowledge, state.config, 0, walker!, { x: 23_000, y: 21_000 })!
+    scheduleArrivals(state, walker!.id, route, 0)
+    expect(state.queue.entriesOf(rester!.id).filter((entry) => entry.kind === 'arrival')).toEqual([])
   })
   it('learns place locations but stock only where it stands', () => {
     const state = createValley(FLAT_LAND)
@@ -62,20 +65,9 @@ describe('wake-up perception', () => {
     sleeper!.y = 21_000
     rester!.task = startTask(state.config, rester!, 'rest', 0, 60, -1, -1, 'satiated')
     sleeper!.task = startTask(state.config, sleeper!, 'sleep', 0, 360, -1, -1, 'night')
-    walker!.knowledge.nodes.fill(1)
+    walker!.knowledge.triangles.fill(255)
     reindexPeople(state, 0)
-    const lattice = state.layout.lattice
-    const route = knownRoute(
-      lattice,
-      walker!.knowledge,
-      state.layout.terrain,
-      state.layout.ground,
-      lattice.banks,
-      state.config,
-      0,
-      walker!,
-      { x: 23_000, y: 21_000 },
-    )!
+    const route = knownRoute(state.layout.nav, walker!.knowledge, state.config, 0, walker!, { x: 23_000, y: 21_000 })!
     scheduleArrivals(state, walker!.id, route, 0)
     expect(state.queue.entriesOf(rester!.id)).toContainEqual(expect.objectContaining({ minute: 0, kind: 'arrival' }))
     expect(state.queue.entriesOf(sleeper!.id).filter((entry) => entry.kind === 'arrival')).toEqual([])

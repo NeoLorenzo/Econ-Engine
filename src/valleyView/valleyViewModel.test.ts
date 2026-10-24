@@ -2,6 +2,8 @@ import { createSurveyedValley as createValley } from '../valley/ruleFixtures'
 import { FLAT_LAND } from '../valley/config'
 import { describe, expect, it } from 'vitest'
 import { cloneValley, stepValley } from '../valley/engine'
+import { learnTriangle } from '../valley/routes'
+import { triangleAt } from '../valley/mesh'
 import { meet } from '../valley/social'
 import type { ValleyState } from '../valley/types'
 import {
@@ -147,9 +149,10 @@ describe('groups and what a forager knows', () => {
 
   it('shades ground never seen dark and ground seen at any time clear', () => {
     const state = founded()
-    const nodes = state.foragers[0]!.knowledge.nodes
-    nodes.fill(0)
-    nodes[0] = 1
+    const knowledge = state.foragers[0]!.knowledge
+    knowledge.triangles.fill(0)
+    const cell = state.layout.terrain.cellCm
+    learnTriangle(knowledge, triangleAt(state.layout.nav.mesh, cell / 2, cell / 2))
     const shades = knowledgeShades(state, 0)
     expect(shades).toHaveLength(state.layout.terrain.cells ** 2)
     expect(shades[0]).toBe(0)

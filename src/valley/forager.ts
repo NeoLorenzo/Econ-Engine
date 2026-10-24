@@ -1,9 +1,9 @@
-import { nearestBanks, knownBodies, knownComponents } from './bankSearch'
+import { nearestBanks, knownBodies } from './bankSearch'
 import { planHut, salePrice, worthTo } from './axes'
 import { waterThresholds } from './body'
 import { capacityOf as foodCapacity, fullRateOf, rateAtStock, carriedKcal } from './food'
 import { knownTerms, buyingPays, sellingPays, wantedWood, spareWood } from './trade'
-import { nearestFrontier, estimateMinutes, routeNode } from './routes'
+import { nearestFrontier, estimateMinutes, knownComponents, routeTriangle } from './routes'
 import { cachedHeight } from './routes'
 import { carriedByFood, foodKg } from './food'
 import { minuteOfDay } from './calendar'
@@ -63,13 +63,9 @@ export function routeFor(state: ValleyState, person: Forager, target: Point): Ro
   const key = routeKey(state, person, target),
     saved = person.routeCache.get(key)
   if (saved !== undefined) return state.routes[saved]!
-  const lattice = state.layout.lattice
   return knownRoute(
-    lattice,
+    state.layout.nav,
     person.knowledge,
-    state.layout.terrain,
-    state.layout.ground,
-    lattice.banks,
     state.config,
     loadKg(state.config, loadOf(person)),
     person,
@@ -104,7 +100,7 @@ function estimate(state: ValleyState, person: Forager, point: Point) {
     person,
     point,
     walkSpeed(state.config, person) * 60,
-    cachedHeight(state.layout.terrain, point.x, point.y) - cachedHeight(state.layout.terrain, person.x, person.y),
+    cachedHeight(state.layout.nav.mesh, point.x, point.y) - cachedHeight(state.layout.nav.mesh, person.x, person.y),
   )
 }
 function workAt(
@@ -132,18 +128,11 @@ function workAt(
   }
 }
 function explore(state: ValleyState, person: Forager, reason: ActionReason): TaskChoice {
-  const point = nearestFrontier(state.layout.lattice, person.knowledge, person)
+  const point = nearestFrontier(state.layout.nav, person.knowledge, person)
   return point ? { kind: 'walk', placeId: -1, target: point, reason } : restChoice('no known route')
 }
 function waterGoal(state: ValleyState, person: Forager, minute: number, severe: boolean): TaskChoice {
-  const banks = nearestBanks(
-    state.layout.lattice,
-    state.layout.terrain,
-    state.config,
-    person,
-    walkSpeed(state.config, person) * 60,
-    3,
-  )
+  const banks = nearestBanks(state.layout.nav, state.config, person, walkSpeed(state.config, person) * 60, 3)
   let searches = 0
   for (const { bank, minutes } of banks) {
     const here = (person.x - bank.x) ** 2 + (person.y - bank.y) ** 2 <= state.config.reachCm ** 2
@@ -162,12 +151,12 @@ function waterGoal(state: ValleyState, person: Forager, minute: number, severe: 
   return explore(state, person, 'seeking water')
 }
 function reachablePoint(state: ValleyState, person: Forager, point: Point) {
-  const lattice = state.layout.lattice,
-    first = routeNode(lattice, person.knowledge, person),
-    last = routeNode(lattice, person.knowledge, point)
+  const nav = state.layout.nav,
+    first = routeTriangle(nav, person.knowledge, person),
+    last = routeTriangle(nav, person.knowledge, point)
   if (first < 0 || last < 0) return false
-  const labels = knownComponents(lattice, person.knowledge)
-  return labels[first] === labels[last]
+  const componentOf = knownComponents(nav, person.knowledge)
+  return componentOf(first) === componentOf(last)
 }
 export function foodGoal(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
   let best: TaskChoice | null = null,
@@ -219,8 +208,7 @@ export function foodGoal(state: ValleyState, person: Forager, minute: number): T
         : person.fishRate
       if (possibleRate <= bestScore) continue
       const candidate = nearestBanks(
-        state.layout.lattice,
-        state.layout.terrain,
+        state.layout.nav,
         state.config,
         person,
         walkSpeed(state.config, person) * 60,
@@ -346,7 +334,7 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
           ? restChoice('waiting for an axe being made')
           : { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home to wait for an axe' }
     }
-    const frontier = nearestFrontier(state.layout.lattice, person.knowledge, person)
+    const frontier = nearestFrontier(state.layout.nav, person.knowledge, person)
     if (frontier) return { kind: 'walk', placeId: -1, target: frontier, reason: 'exploring' }
     let target = -1,
       best = Infinity
@@ -362,7 +350,8 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
       if (
         travel < best &&
         travel + estimateMinutes(state.config, point, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 <
-          state.config.duskHour * 60 - minuteOfDay(minute)
+          state.config.duskHour * 60 - minuteOfDay(minute) &&
+        reachablePoint(state, person, point)
       ) {
         target = id
         best = travel

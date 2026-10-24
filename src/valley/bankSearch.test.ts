@@ -1,25 +1,30 @@
 import { describe, it, expect, vi } from 'vitest'
 import * as banks from './banks'
-import { nearestBanks, knownComponents } from './bankSearch'
+import { nearestBanks } from './bankSearch'
 import { createSurveyedValley, addTestLake } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { cloneValley } from './engine'
 import { learnBank } from './perception'
+<<<<<<< Updated upstream
 import { cachedHeight, estimateMinutes, nodePoint, knownRoute } from './routes'
+=======
+import { cachedHeight, estimateMinutes, knownComponents, knownRoute, routeTriangle } from './routes'
+>>>>>>> Stashed changes
 function fixture() {
   const s = createSurveyedValley({ ...FLAT_LAND, founders: 1 })
   addTestLake(s)
   const p = s.foragers[0]!
-  for (const b of s.layout.lattice.accessBanks) p.knownBanks.set(b.id, b)
+  for (const b of s.layout.nav.accessBanks) p.knownBanks.set(b.id, b)
   return { s, p }
 }
 describe('estimated bank candidates', () => {
   it('matches exhaustive estimate ordering around obstructing water', () => {
     const { s, p } = fixture(),
-      l = s.layout.lattice,
-      labels = knownComponents(l, p.knowledge)
+      nav = s.layout.nav,
+      componentOf = knownComponents(nav, p.knowledge),
+      home = componentOf(routeTriangle(nav, p.knowledge, p))
     const expected = [...p.knownBanks.values()]
-      .filter((b) => b.connectorNode !== undefined && labels[b.connectorNode]! >= 0)
+      .filter((b) => componentOf(routeTriangle(nav, p.knowledge, b)) === home)
       .map((bank) => ({
         bank,
         minutes: estimateMinutes(
@@ -27,12 +32,13 @@ describe('estimated bank candidates', () => {
           p,
           bank,
           7500,
-          cachedHeight(s.layout.terrain, bank.x, bank.y) - cachedHeight(s.layout.terrain, p.x, p.y),
+          cachedHeight(nav.mesh, bank.x, bank.y) - cachedHeight(nav.mesh, p.x, p.y),
         ),
       }))
       .sort((a, b) => a.minutes - b.minutes || a.bank.id - b.bank.id)
       .slice(0, 3)
-    expect(nearestBanks(l, s.layout.terrain, s.config, p, 7500, 3)).toEqual(expected)
+    expect(expected.length).toBe(3)
+    expect(nearestBanks(nav, s.config, p, 7500, 3)).toEqual(expected)
   })
   it('updates after a clone learns a new bank and does not change the original memory', () => {
     const { s, p } = fixture(),
@@ -46,19 +52,15 @@ describe('estimated bank candidates', () => {
     expect(q.knownBanks).not.toBe(p.knownBanks)
     expect(p.knownBanks.size).toBe(1)
     expect(q.knownBanks.size).toBe(2)
-    const result = nearestBanks(n.layout.lattice, n.layout.terrain, n.config, q, 7500, 3)
+    const result = nearestBanks(n.layout.nav, n.config, q, 7500, 3)
     expect(result.length).toBe(2)
   })
-  it('searches to a precomputed bank endpoint without shoreline geometry', () => {
+  it('routes to a precomputed bank point without shoreline geometry', () => {
     const { s, p } = fixture(),
-      l = s.layout.lattice,
-      b = l.accessBanks[0]!,
-      origin = nodePoint(l, b.connectorNode!)
+      b = s.layout.nav.accessBanks[0]!
     const spy = vi.spyOn(banks, 'bankSegmentWet')
     try {
-      expect(
-        knownRoute(l, p.knowledge, s.layout.terrain, s.layout.ground, l.banks, s.config, 0, origin, b),
-      ).not.toBeNull()
+      expect(knownRoute(s.layout.nav, p.knowledge, s.config, 0, p, b)).not.toBeNull()
       expect(spy.mock.calls.length).toBe(0)
     } finally {
       spy.mockRestore()

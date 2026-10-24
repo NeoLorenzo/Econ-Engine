@@ -36,7 +36,7 @@ export function RunSettingsScreen({
   return (
     <div className="life-settings-page">
       <form className="life-settings" onSubmit={submit} aria-label="Run settings">
-        <h1>Life 12 · strangers</h1>
+        <h1>Life 13 · strangers</h1>
         <p className="life-note">Choose the run’s settings. They are fixed once it starts; New run comes back here.</p>
         {RUN_SETTING_FIELDS.map(({ key, label, min, max }) => (
           <label key={key}>

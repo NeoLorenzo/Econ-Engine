@@ -1,9 +1,7 @@
-import { bankWaterHeight, bankCircleWet } from './banks'
 import { ringOffset } from './config'
 import { routeFor } from './forager'
-import { routeNode } from './routes'
+import { circleWalkable, routeTriangle } from './routes'
 import { distanceSq } from './geometry'
-import { cellOf } from './terrain'
 import type { DissolveEvent, Forager, Group, GroupEvent, Point, ValleyConfig, ValleyLayout, ValleyState } from './types'
 
 export function nearestOther(forager: Forager, foragers: readonly Forager[], radius: number) {
@@ -68,7 +66,7 @@ function availableSlot(state: ValleyState, group: Group, forager: Forager) {
   for (let slot = 0; slot < maximumSlots; slot += 1) {
     if (group.hearthSlots.includes(slot)) continue
     const point = hearthAround(config, group.flag, slot)
-    if (!bankCircleWet(state.layout.lattice.banks, point, 100) && routeFor(state, forager, point)) return slot
+    if (circleWalkable(state.layout.nav.mesh, point, 100) && routeFor(state, forager, point)) return slot
   }
   return null
 }
@@ -113,18 +111,11 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Excl
   }
   const observed = forager.metPosition.get(other.id)!
   const flag = { x: Math.floor((forager.x + observed.x) / 2), y: Math.floor((forager.y + observed.y) / 2) }
-  const water = state.layout.terrain.water
-  if (
-    water.shore
-      ? bankWaterHeight(water.shore, flag, water.level) !== null
-      : water.body[cellOf(state.layout.terrain, flag.x, flag.y)]! >= 0
-  )
-    return null
   const group = newGroup(state.groups.length, flag, minute)
   if (
-    bankCircleWet(state.layout.lattice.banks, flag, 100) ||
-    routeNode(state.layout.lattice, forager.knowledge, flag) < 0 ||
-    routeNode(state.layout.lattice, other.knowledge, flag) < 0
+    !circleWalkable(state.layout.nav.mesh, flag, 100) ||
+    routeTriangle(state.layout.nav, forager.knowledge, flag) < 0 ||
+    routeTriangle(state.layout.nav, other.knowledge, flag) < 0
   )
     return null
   const firstSlot = availableSlot(state, group, forager)

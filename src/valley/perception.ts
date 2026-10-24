@@ -1,6 +1,15 @@
 import { waterThresholds } from './body'
 import { placesWithin, placeAt } from './places'
-import { chunkOf, nodePoint, TIME_UNITS_PER_MINUTE, type Route, type RouteLattice } from './routes'
+import {
+  carryComponents,
+  chunkOf,
+  knows,
+  learnTriangle,
+  TIME_UNITS_PER_MINUTE,
+  type Knowledge,
+  type NavMap,
+  type Route,
+} from './routes'
 import { positionAt } from './tasks'
 import type { BankMemory, Forager, Point, ValleyState } from './types'
 
@@ -10,7 +19,7 @@ export interface ObservationEvent {
   foragerId: number
   origin: Point
   places: number[]
-  nodes: number[]
+  triangles: number[]
   banks: BankMemory[]
   people: number[]
   seenPeople: { id: number; position: Point }[]
@@ -29,19 +38,56 @@ export function learnBank(person: Forager, memory: BankMemory) {
   if (sharedBankMemories.has(person.knownBanks)) person.knownBanks = new Map(person.knownBanks)
   person.knownBanks.set(memory.id, memory)
 }
+<<<<<<< Updated upstream
+=======
+/** Route caches only grow too, and are shared and copied the same way, before their holder remembers a new route. */
+const sharedRouteCaches = new WeakSet<Map<string, number>>()
+export function shareRouteCache(cache: Map<string, number>) {
+  sharedRouteCaches.add(cache)
+  return cache
+}
+export function rememberRoute(person: Forager, key: string, routeId: number) {
+  if (sharedRouteCaches.has(person.routeCache)) person.routeCache = new Map(person.routeCache)
+  person.routeCache.set(key, routeId)
+}
+/**
+ * Triangle knowledge is shared with the previous state in the same way, and copied once before its holder learns a
+ * triangle, a chunk seen whole or a chunk of known banks.
+ */
+const sharedKnowledge = new WeakSet<Knowledge>()
+export function shareKnowledge(knowledge: Knowledge) {
+  sharedKnowledge.add(knowledge)
+  return knowledge
+}
+export function ownKnowledge(person: Forager) {
+  const k = person.knowledge
+  if (sharedKnowledge.has(k))
+    person.knowledge = {
+      triangles: k.triangles.slice(),
+      revision: k.revision,
+      fullyKnown: k.fullyKnown?.slice(),
+      banksKnown: k.banksKnown?.slice(),
+    }
+  return person.knowledge
+}
+/** Views already taken from a point: a cache, so its warmth never changes what is learnt. */
+const viewsSeen = new WeakMap<Knowledge, Set<string>>()
+>>>>>>> Stashed changes
 export const peopleInChunk = (state: ValleyState, chunk: number): number[] => [...(state.peopleByChunk[chunk] ?? [])]
 export function reindexPeople(state: ValleyState, minute: number): void {
-  const buckets: number[][] = Array.from({ length: state.layout.lattice.chunkCells ** 2 }, () => [])
+  const buckets: number[][] = Array.from({ length: state.layout.nav.chunkCells ** 2 }, () => [])
   for (const person of state.foragers)
     if (person.alive) {
       const point = positionAt(state, person, minute)
-      buckets[chunkOf(state.layout.lattice, point)]!.push(person.id)
+      buckets[chunkOf(state.layout.nav, point)]!.push(person.id)
     }
   state.peopleByChunk = buckets.map((ids) => Int32Array.from(ids))
 }
 export function observeAt(state: ValleyState, person: Forager, minute: number): ObservationEvent {
   const { layout, config } = state,
-    { lattice } = layout
+    { nav } = layout,
+    { mesh } = nav,
+    before = person.knowledge
   const origin = positionAt(state, person, minute),
     radius = config.sightRadiusCm,
     sq = radius ** 2
@@ -51,7 +97,7 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
     foragerId: person.id,
     origin,
     places: placesWithin(layout, origin.x, origin.y, radius),
-    nodes: [],
+    triangles: [],
     banks: [],
     people: [],
     seenPeople: [],
@@ -78,74 +124,70 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
       stones: state.stoneStock[placeId]!,
     }
   }
-  const full = (person.knowledge.fullyKnown ??= new Uint8Array(lattice.chunkCells ** 2))
-  const banks = lattice.bankChunks
-  const banksKnown = (person.knowledge.banksKnown ??= new Uint8Array(lattice.chunkCells ** 2))
-  const views = (person.knowledge.views ??= new Set<string>())
   const viewKey = `${origin.x},${origin.y}:${radius}`
-  const seenView = views.has(viewKey)
-  views.add(viewKey)
-  if (!seenView)
+  if (!viewsSeen.get(person.knowledge)?.has(viewKey))
     for (
-      let cy = Math.max(0, Math.floor((origin.y - radius) / lattice.chunkCm));
-      cy <= Math.min(lattice.chunkCells - 1, Math.floor((origin.y + radius) / lattice.chunkCm));
+      let cy = Math.max(0, Math.floor((origin.y - radius) / nav.chunkCm));
+      cy <= Math.min(nav.chunkCells - 1, Math.floor((origin.y + radius) / nav.chunkCm));
       cy += 1
     )
       for (
-        let cx = Math.max(0, Math.floor((origin.x - radius) / lattice.chunkCm));
-        cx <= Math.min(lattice.chunkCells - 1, Math.floor((origin.x + radius) / lattice.chunkCm));
+        let cx = Math.max(0, Math.floor((origin.x - radius) / nav.chunkCm));
+        cx <= Math.min(nav.chunkCells - 1, Math.floor((origin.x + radius) / nav.chunkCm));
         cx += 1
       ) {
-        const chunk = cy * lattice.chunkCells + cx
-        if (!banksKnown[chunk])
-          for (const bank of banks.get(chunk) ?? [])
+        const chunk = cy * nav.chunkCells + cx
+        if (!person.knowledge.banksKnown?.[chunk])
+          for (const bank of nav.bankChunks.get(chunk) ?? [])
             if (!person.knownBanks.has(bank.id) && (bank.x - origin.x) ** 2 + (bank.y - origin.y) ** 2 <= sq) {
               const memory = { ...bank, minute }
               learnBank(person, memory)
               observation.banks.push(memory)
             }
         const dx = Math.max(
-          Math.abs(cx * lattice.chunkCm - origin.x),
-          Math.abs(Math.min(config.valleySizeCm, (cx + 1) * lattice.chunkCm) - origin.x),
+          Math.abs(cx * nav.chunkCm - origin.x),
+          Math.abs(Math.min(config.valleySizeCm, (cx + 1) * nav.chunkCm) - origin.x),
         )
         const dy = Math.max(
-          Math.abs(cy * lattice.chunkCm - origin.y),
-          Math.abs(Math.min(config.valleySizeCm, (cy + 1) * lattice.chunkCm) - origin.y),
+          Math.abs(cy * nav.chunkCm - origin.y),
+          Math.abs(Math.min(config.valleySizeCm, (cy + 1) * nav.chunkCm) - origin.y),
         )
-        if (dx * dx + dy * dy <= sq) banksKnown[chunk] = 1
-        if (full[chunk]) continue
-        const firstX = (cx * lattice.chunkCm) / lattice.cellCm,
-          firstY = (cy * lattice.chunkCm) / lattice.cellCm
-        const lastX = Math.min(lattice.cells, firstX + lattice.chunkCm / lattice.cellCm),
-          lastY = Math.min(lattice.cells, firstY + lattice.chunkCm / lattice.cellCm)
+        const whole = dx * dx + dy * dy <= sq
+        if (whole && !person.knowledge.banksKnown?.[chunk])
+          (ownKnowledge(person).banksKnown ??= new Uint8Array(nav.chunkCells ** 2))[chunk] = 1
+        if (person.knowledge.fullyKnown?.[chunk]) continue
+        // A chunk wholly in sight is marked at once; otherwise each triangle by its centroid.
         let complete = true
-        for (let y = firstY; y < lastY; y += 1)
-          for (let x = firstX; x < lastX; x += 1) {
-            const id = y * lattice.cells + x
-            if (person.knowledge.nodes[id]) continue
-            const point = nodePoint(lattice, id)
-            if ((point.x - origin.x) ** 2 + (point.y - origin.y) ** 2 <= sq) {
-              person.knowledge.nodes[id] = 1
-              observation.nodes.push(id)
-            } else complete = false
-          }
-        if (complete) full[chunk] = 1
+        for (let k = mesh.chunkStart[chunk]!; k < mesh.chunkStart[chunk + 1]!; k++) {
+          const t = mesh.chunkTriangles[k]!
+          if (knows(person.knowledge, t)) continue
+          if (whole || (mesh.cx[t]! - origin.x) ** 2 + (mesh.cy[t]! - origin.y) ** 2 <= sq) {
+            learnTriangle(ownKnowledge(person), t)
+            observation.triangles.push(t)
+          } else complete = false
+        }
+        if (complete) (ownKnowledge(person).fullyKnown ??= new Uint8Array(nav.chunkCells ** 2))[chunk] = 1
       }
-  if (observation.nodes.length) person.knowledge.revision += 1
+  if (observation.triangles.length) person.knowledge.revision += 1
+  if (person.knowledge !== before || observation.triangles.length)
+    carryComponents(nav, before, person.knowledge, observation.triangles)
+  let views = viewsSeen.get(person.knowledge)
+  if (!views) viewsSeen.set(person.knowledge, (views = new Set()))
+  views.add(viewKey)
   // The index records each person's last wake-up; route entry notifications keep moving entries local.
   const talk = config.sightRadiusCm
   const candidates = new Set<number>()
   for (
-    let y = Math.max(0, Math.floor((origin.y - talk) / lattice.chunkCm));
-    y <= Math.min(lattice.chunkCells - 1, Math.floor((origin.y + talk) / lattice.chunkCm));
+    let y = Math.max(0, Math.floor((origin.y - talk) / nav.chunkCm));
+    y <= Math.min(nav.chunkCells - 1, Math.floor((origin.y + talk) / nav.chunkCm));
     y += 1
   )
     for (
-      let x = Math.max(0, Math.floor((origin.x - talk) / lattice.chunkCm));
-      x <= Math.min(lattice.chunkCells - 1, Math.floor((origin.x + talk) / lattice.chunkCm));
+      let x = Math.max(0, Math.floor((origin.x - talk) / nav.chunkCm));
+      x <= Math.min(nav.chunkCells - 1, Math.floor((origin.x + talk) / nav.chunkCm));
       x += 1
     )
-      for (const id of state.peopleByChunk[y * lattice.chunkCells + x] ?? []) candidates.add(id)
+      for (const id of state.peopleByChunk[y * nav.chunkCells + x] ?? []) candidates.add(id)
   for (const id of [...candidates].sort((a, b) => a - b)) {
     const other = state.foragers[id]!
     if (id === person.id || !other.alive) continue
@@ -168,7 +210,7 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
       person.knownFlags.push(group.id)
   return observation
 }
-export function chunksOfRoute(lattice: RouteLattice, route: Route): { chunk: number; minute: number }[] {
+export function chunksOfRoute(nav: NavMap, route: Route): { chunk: number; minute: number }[] {
   const result: { chunk: number; minute: number }[] = [],
     seen = new Set<number>()
   let units = 0
@@ -188,30 +230,28 @@ export function chunksOfRoute(lattice: RouteLattice, route: Route): { chunk: num
     ]) {
       if (a === b) continue
       for (
-        let line = (Math.floor(Math.min(a!, b!) / lattice.chunkCm) + 1) * lattice.chunkCm;
+        let line = (Math.floor(Math.min(a!, b!) / nav.chunkCm) + 1) * nav.chunkCm;
         line < Math.max(a!, b!);
-        line += lattice.chunkCm
+        line += nav.chunkCm
       )
         cuts.push((line - a!) / (b! - a!))
     }
     cuts.sort((a, b) => a - b)
-    add(chunkOf(lattice, { x: segment.x0, y: segment.y0 }), units)
+    add(chunkOf(nav, { x: segment.x0, y: segment.y0 }), units)
     for (let i = 1; i < cuts.length; i += 1) {
       const t = (cuts[i - 1]! + cuts[i]!) / 2
-      add(
-        chunkOf(lattice, { x: segment.x0 + t * dx, y: segment.y0 + t * dy }),
-        units + cuts[i - 1]! * segment.timeUnits,
-      )
+      add(chunkOf(nav, { x: segment.x0 + t * dx, y: segment.y0 + t * dy }), units + cuts[i - 1]! * segment.timeUnits)
     }
     units += segment.timeUnits
-    add(chunkOf(lattice, { x: segment.x1, y: segment.y1 }), units)
+    add(chunkOf(nav, { x: segment.x1, y: segment.y1 }), units)
   }
   return result
 }
 export function scheduleArrivals(state: ValleyState, walkerId: number, route: Route, startMinute: number): void {
   const walker = state.foragers[walkerId]!,
     fatal = waterThresholds(state.config).urgent
-  for (const entry of chunksOfRoute(state.layout.lattice, route)) {
+  // The first entry is the chunk the walk starts in: the walker is already there, so it enters nothing.
+  for (const entry of chunksOfRoute(state.layout.nav, route).slice(1)) {
     const minute = startMinute + entry.minute
     state.queue.schedule({
       minute,

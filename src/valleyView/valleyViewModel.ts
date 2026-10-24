@@ -10,7 +10,8 @@ import { isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
 import { practicePercents } from '../valley/practice'
 import { capacityOf } from '../valley/places'
-import { positionAlong } from '../valley/routes'
+import { knows, positionAlong } from '../valley/routes'
+import { triangleAt } from '../valley/mesh'
 import { siteKindOf } from '../valley/sites'
 import { livingMembers } from '../valley/social'
 import { positionAt } from '../valley/tasks'
@@ -1051,18 +1052,16 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
 
 /**
  * How dark to draw each terrain cell for what a forager knows, row by row from the valley's first row: cells whose
- * route node it has never known dark, and the rest clear, since known ground stays known. Values are 0–255.
+ * mesh triangle it has never seen dark, and the rest clear, since known ground stays known. Values are 0–255.
  */
 export function knowledgeShades(state: ValleyState, foragerId: number) {
-  const { terrain, lattice } = state.layout
-  const nodes = state.foragers[foragerId]!.knowledge.nodes
+  const { terrain, nav } = state.layout
+  const knowledge = state.foragers[foragerId]!.knowledge
   const shades = new Uint8Array(terrain.cells * terrain.cells)
   for (let row = 0; row < terrain.cells; row += 1)
     for (let col = 0; col < terrain.cells; col += 1) {
-      const node =
-        Math.floor(((row + 0.5) * terrain.cellCm) / lattice.cellCm) * lattice.cells +
-        Math.floor(((col + 0.5) * terrain.cellCm) / lattice.cellCm)
-      shades[row * terrain.cells + col] = nodes[node] ? 0 : 150
+      const t = triangleAt(nav.mesh, (col + 0.5) * terrain.cellCm, (row + 0.5) * terrain.cellCm)
+      shades[row * terrain.cells + col] = t >= 0 && knows(knowledge, t) ? 0 : 150
     }
   return shades
 }

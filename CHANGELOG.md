@@ -2,6 +2,31 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE13-Mesh-063] - (2026-10-24)
+
+### Added
+
+- Life 13, a new roadmap step before bodies and personality: a ground mesh over the whole valley. It is a constrained Delaunay triangulation whose edges follow every shore within 1 m, and whose heights stay within 1 m of the terrain at every dry 5 m point. Triangles are ground, lake or river, so later steps can let people wade, swim or sail without a new map.
+- People walk any known ground triangle. Routes are found over triangles and pulled straight through them, so a person walks round a pond by its own width, and along a 5 m strip of land the old 20 m grid could not use.
+- A bank point on the ground side of every shore edge.
+- Founders start on the main land, the largest walkable region.
+- The 3D view and the land map draw the ground and water from the mesh: flat-shaded triangles, each ground triangle in its ground's colour, water coloured by depth.
+- Mesh checks: winding, areas, neighbours, shores, heights and shoreline against the terrain and hydrology.
+
+### Changed
+
+- People remember the triangles they have seen instead of 20 m lattice nodes. A copy of the valley shares this memory until a person learns something new.
+- Configuration: `routeCellCm` is replaced by `meshMaxEdgeCm` (40 m), `meshHeightToleranceCm` (1 m) and `shoreToleranceCm` (1 m).
+- Starting a walk no longer counts as entering the chunk it starts in, so it no longer wakes everyone there. A group cutting logs near home had been re-planning each other about ten times a minute.
+- Rechecking a remembered place now skips places that cannot be reached over known ground, such as a grove seen across water. People who had explored all their land were choosing such a place, failing to route to it, and choosing it again at every wake-up.
+- Faster simulation without changing any run: route search first checks that start and target are on the same piece of known ground; those pieces, and the edge of the known ground, are extended as people see new triangles rather than rebuilt; route caches are shared between copies of the valley until written. Thirty days of forty founders take about 2.5 minutes instead of 12.5.
+- Every fingerprint is re-recorded, because every route changes.
+- Roadmap steps 13 to 24 become 14 to 25.
+
+### Removed
+
+- The 20 m route lattice, and the grid-based ground and water drawing.
+
 ## [LIFE12-Speed-062] - (2026-10-24)
 
 ### Changed

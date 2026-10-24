@@ -1,6 +1,6 @@
-import { cachedHeight, estimateMinutes, routeNode, type RouteLattice, type Knowledge } from './routes'
+import { cachedHeight, estimateMinutes, knownComponents, routeTriangle, type NavMap } from './routes'
+import type { GroundMesh } from './mesh'
 import type { BankMemory, Forager, ValleyConfig } from './types'
-import type { Terrain } from './terrain'
 interface Tree {
   x0: number
   y0: number
@@ -15,7 +15,7 @@ export interface BankIndex {
   all: Tree | null
   bodies: Map<number, Tree>
 }
-export function indexBanks(points: BankMemory[], terrain: Terrain): BankIndex {
+export function indexBanks(points: BankMemory[], mesh: GroundMesh): BankIndex {
   const build = (list: BankMemory[], depth = 0): Tree | null => {
     if (!list.length) return null
     let x0 = Infinity,
@@ -28,7 +28,7 @@ export function indexBanks(points: BankMemory[], terrain: Terrain): BankIndex {
       x1 = Math.max(x1, p.x)
       y0 = Math.min(y0, p.y)
       y1 = Math.max(y1, p.y)
-      height = Math.min(height, cachedHeight(terrain, p.x, p.y))
+      height = Math.min(height, cachedHeight(mesh, p.x, p.y))
     }
     if (list.length <= 12) return { x0, y0, x1, y1, height, points: list }
     const axis = depth % 2 ? 'y' : 'x'
@@ -52,45 +52,6 @@ export function indexBanks(points: BankMemory[], terrain: Terrain): BankIndex {
   }
   return { all: build([...points]), bodies: new Map([...byBody].map(([id, list]) => [id, build(list)!])) }
 }
-const componentCache = new WeakMap<Knowledge, { revision: number; labels: Int32Array }>()
-export function knownComponents(lattice: RouteLattice, knowledge: Knowledge) {
-  const saved = componentCache.get(knowledge)
-  if (saved?.revision === knowledge.revision) return saved.labels
-  const labels = new Int32Array(lattice.dry.length).fill(-1),
-    n = lattice.cells
-  const dirs = [
-    [-1, -1],
-    [0, -1],
-    [1, -1],
-    [-1, 0],
-    [1, 0],
-    [-1, 1],
-    [0, 1],
-    [1, 1],
-  ] as const
-  let label = 0
-  for (let root = 0; root < labels.length; root++) {
-    if (!lattice.dry[root] || !knowledge.nodes[root] || labels[root]! >= 0) continue
-    const todo = [root]
-    labels[root] = label
-    for (let i = 0; i < todo.length; i++) {
-      const id = todo[i]!
-      for (let d = 0; d < 8; d++) {
-        if (!(lattice.edges[id]! & (1 << d))) continue
-        const [dx, dy] = dirs[d]!,
-          next = id + dy * n + dx
-        if (dx && dy && (!knowledge.nodes[id + dx] || !knowledge.nodes[id + dy * n])) continue
-        if (knowledge.nodes[next] && labels[next]! < 0) {
-          labels[next] = label
-          todo.push(next)
-        }
-      }
-    }
-    label++
-  }
-  componentCache.set(knowledge, { revision: knowledge.revision, labels })
-  return labels
-}
 const bodyCache = new WeakMap<Map<number, BankMemory>, { size: number; ids: number[] }>()
 export function knownBodies(banks: Map<number, BankMemory>) {
   let value = bodyCache.get(banks)
@@ -103,8 +64,7 @@ export function knownBodies(banks: Map<number, BankMemory>) {
 /** Branch bounds use only geometry of already known candidates; the predicate enforces observed connectivity. */
 const queryCache = new WeakMap<Forager, Map<string, { bank: BankMemory; minutes: number }[]>>()
 export function nearestBanks(
-  lattice: RouteLattice,
-  terrain: Terrain,
+  nav: NavMap,
   config: ValleyConfig,
   person: Forager,
   speed: number,
@@ -119,13 +79,14 @@ export function nearestBanks(
   const key = `${person.x},${person.y}:${speed}:${count}:${bodyId}:${person.knowledge.revision}:${person.knownBanks.size}`
   const saved = cache.get(key)
   if (saved) return saved
-  const root = bodyId === undefined ? lattice.bankIndex.all : lattice.bankIndex.bodies.get(bodyId)
+  const root = bodyId === undefined ? nav.bankIndex.all : nav.bankIndex.bodies.get(bodyId)
   const results: { bank: BankMemory; minutes: number }[] = []
   if (!root) return results
-  const labels = knownComponents(lattice, person.knowledge),
-    anchor = routeNode(lattice, person.knowledge, person)
+  const componentOf = knownComponents(nav, person.knowledge),
+    anchor = routeTriangle(nav, person.knowledge, person)
   if (anchor < 0) return results
-  const height = cachedHeight(terrain, person.x, person.y)
+  const home = componentOf(anchor),
+    height = cachedHeight(nav.mesh, person.x, person.y)
   const bound = (tree: Tree) =>
     estimateMinutes(
       config,
@@ -139,9 +100,9 @@ export function nearestBanks(
     if (tree.points)
       for (const bank of tree.points) {
         if (!person.knownBanks.has(bank.id)) continue
-        const node = bank.connectorNode ?? routeNode(lattice, person.knowledge, bank)
-        if (node < 0 || labels[node] !== labels[anchor]) continue
-        const minutes = estimateMinutes(config, person, bank, speed, cachedHeight(terrain, bank.x, bank.y) - height)
+        const triangle = routeTriangle(nav, person.knowledge, bank)
+        if (triangle < 0 || componentOf(triangle) !== home) continue
+        const minutes = estimateMinutes(config, person, bank, speed, cachedHeight(nav.mesh, bank.x, bank.y) - height)
         if (
           results.length === count &&
           (minutes > results.at(-1)!.minutes ||

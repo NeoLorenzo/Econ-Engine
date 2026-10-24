@@ -20,6 +20,8 @@
     "agent:check": "node scripts/agent-check.mjs"
   },
   "dependencies": {
+    "@kninnug/constrainautor": "4.1.0",
+    "delaunator": "5.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "recharts": "^3.10.1",

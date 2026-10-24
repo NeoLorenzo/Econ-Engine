@@ -5,7 +5,7 @@ import { atHearth, chooseTask, isDaylight, routeFor, routeKey, nextHungry, walkS
 import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body'
 import { startTask, positionAt } from './tasks'
 import { nearestFrontier, chunkOf, estimateMinutes } from './routes'
-import { observeAt, reindexPeople, scheduleArrivals, peopleInChunk } from './perception'
+import { observeAt, reindexPeople, rememberRoute, scheduleArrivals, peopleInChunk } from './perception'
 import { carriedKcal, spoil, addLots, eatCarried } from './food'
 import { takeFrom } from './places'
 import { nextShortOfWood, swap } from './trade'
@@ -41,7 +41,7 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   if (choice.kind === 'walk' && choice.target) {
     let route = choice.route ?? routeFor(state, person, choice.target)
     if (!route) {
-      const frontier = nearestFrontier(state.layout.lattice, person.knowledge, person)
+      const frontier = nearestFrontier(state.layout.nav, person.knowledge, person)
       if (frontier) {
         route = routeFor(state, person, frontier)
         choice = { ...choice, target: frontier, placeId: -1 }
@@ -54,7 +54,7 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
       routeId = saved ?? state.routes.length
       if (saved === undefined) {
         state.routes.push(route)
-        person.routeCache.set(key, routeId)
+        rememberRoute(person, key, routeId)
       }
       end = minute + route.minutes
     } else choice = { kind: 'rest', placeId: -1, target: null, reason: 'no known route' }
@@ -443,7 +443,7 @@ export function arrival(state: ValleyState, entry: WakeEntry): boolean {
     return false
   }
   const person = state.foragers[entry.id]!
-  if (chunkOf(state.layout.lattice, positionAt(state, person, entry.minute)) !== entry.chunk) return false
+  if (chunkOf(state.layout.nav, positionAt(state, person, entry.minute)) !== entry.chunk) return false
   if (person.arrivalFrom[entry.walkerId] === entry.minute) return false
   person.arrivalFrom[entry.walkerId] = entry.minute
   return (
