@@ -1,4 +1,4 @@
-import { reindexPeople } from './perception'
+import { reindexPeople, shareBankMemory } from './perception'
 import { measureTask } from './summary'
 import { WakeQueue } from './clock'
 import { MINUTES_PER_DAY, dayOf } from './calendar'
@@ -347,7 +347,7 @@ const cloneForager = (forager: Forager): Forager => {
       views: forager.knowledge.views ? new Set(forager.knowledge.views) : undefined,
     },
     routeCache: new Map(forager.routeCache),
-    knownBanks: new Map(forager.knownBanks),
+    knownBanks: shareBankMemory(forager.knownBanks),
     fishMemory: new Map(forager.fishMemory),
     deathCauses: [...forager.deathCauses],
     carried: [...forager.carried],
