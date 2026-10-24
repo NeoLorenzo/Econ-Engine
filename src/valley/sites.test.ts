@@ -20,7 +20,7 @@ describe('place knowledge and rechecking', () => {
       person = state.foragers[0]!
     person.wood = 24
     person.shortOfWood = false
-    person.knowledge.nodes.fill(1)
+    person.knowledge.triangles.fill(255)
     person.knownPlaces.fill(600)
     person.placeStock.fill(0)
     person.placeCheckedMinute.fill(600)
@@ -95,15 +95,15 @@ describe('ported place and exploration rules', () => {
       p = s.foragers[0]!
     giveHut(s, p)
     p.axe = testAxe()
-    p.knowledge.nodes.fill(0)
+    p.knowledge.triangles.fill(0)
     p.knowledge.revision++
     observeAt(s, p, 600)
     // The analytic valley is smaller than sight: no frontier remains once it has all been surveyed.
-    expect(nearestFrontier(s.layout.lattice, p.knowledge, p)).toBeNull()
-    const n = s.layout.lattice.cells
-    p.knowledge.nodes[n * n - 1] = 0
+    expect(nearestFrontier(s.layout.nav, p.knowledge, p)).toBeNull()
+    const last = s.layout.nav.mesh.triangles - 1
+    p.knowledge.triangles[last >> 3]! &= ~(1 << (last & 7))
     p.knowledge.revision++
-    expect(nearestFrontier(s.layout.lattice, p.knowledge, p)).not.toBeNull()
+    expect(nearestFrontier(s.layout.nav, p.knowledge, p)).not.toBeNull()
     expect(chooseTask(s, p, 600).reason).toBe('exploring')
   })
 })

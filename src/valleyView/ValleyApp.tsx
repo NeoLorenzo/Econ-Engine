@@ -328,7 +328,7 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 12</span>
+        <span className="life-title">Life 13</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
             {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}

@@ -16,8 +16,8 @@ import { siteCount } from '../valley/sites'
 import { livingMembers } from '../valley/social'
 import { TiledInstances } from './tiledInstances'
 import { tiledSurface } from './tiledSurface'
-import { waterSurface } from './waterSurface'
-import { groundSurface, surfaceHeightAt, type GroundSurface } from './groundSurface'
+import { meshSurfaces, surfaceHeightAt } from './meshSurface'
+import type { GroundMesh } from '../valley/mesh'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
 import { hex, palette } from '../ui/theme'
@@ -83,6 +83,7 @@ const BERRY = 0xc8243f
 const HAZEL_LEAF = 0x4c8a35
 const NUT = 0x9a6a35
 const WATER = 0x2e5d78
+const WATER_SHALLOW = 0x5c93a8
 const TRUNK = 0x5a3d26
 const CROWN = 0x2a6236
 const FIREWOOD = 0x8a6a48
@@ -295,7 +296,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   let config: ValleyState['config'] | null = null
   let layout: ValleyState['layout'] | null = null
   let decor: Decor | null = null
-  let surface: GroundSurface | null = null
+  let surface: GroundMesh | null = null
   const at = (x: number, y: number) => toMetres(config!, x, y)
   /** The ground's height in metres under a point of the scene given in metres. */
   const groundY = (x: number, z: number) =>
@@ -313,111 +314,31 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   /**
-   * The ground as a mesh: the height field sampled at most at every lattice point, each vertex
-   * coloured by the ground of its cell, with a little shading by height so the hills read from above.
+   * The ground and water as the walking mesh itself, flat-shaded: each ground triangle in its ground's colour, each
+   * water triangle drawn as its bed beneath a surface coloured by depth.
    */
-  function terrainMeshGeometry(state: ValleyState, sampled: GroundSurface) {
-    const { ground } = state.layout
-    const { cells, cellCm, columns, along, heights } = sampled
-    const half = state.config.valleySizeCm / 200
-    const shore = state.layout.terrain.water.shore
-    const bankFloats = shore ? [...shore.patches.values()].reduce((sum, patch) => sum + patch.ground.length, 0) : 0
-    const positions = new Float32Array(along * along * 3 + bankFloats)
-    const colours = new Float32Array(positions.length)
-    const colour = new THREE.Color()
-    let highest = 1
-    for (const h of heights) highest = Math.max(highest, h)
-    for (const [row, j] of columns.entries())
-      for (const [column, i] of columns.entries()) {
-        const vertex = row * along + column
-        positions[vertex * 3] = (i * cellCm) / 100 - half
-        positions[vertex * 3 + 1] = heights[vertex]! / 100
-        positions[vertex * 3 + 2] = (j * cellCm) / 100 - half
-        // A ground cell is still exactly grass, dirt or stone in the simulation. For display, blend the nearby cells
-        // at shared vertices so threshold boundaries read as soil transitions rather than saw teeth in the decimated
-        // mesh.
-        let red = 0
-        let green = 0
-        let blue = 0
-        let samples = 0
-        for (let dj = -2; dj <= 2; dj += 1)
-          for (let di = -2; di <= 2; di += 1) {
-            const sampleI = Math.max(0, Math.min(cells - 1, i + di))
-            const sampleJ = Math.max(0, Math.min(cells - 1, j + dj))
-            colour.setHex(GROUND_COLOURS[ground[sampleJ * cells + sampleI]!]!)
-            red += colour.r
-            green += colour.g
-            blue += colour.b
-            samples += 1
-          }
-        colour.setRGB(red / samples, green / samples, blue / samples)
-        // Natural ground is never a single flat swatch. Two broad, low-contrast waves vary the albedo without moving
-        // the surface or painting arbitrary biome patches; the real mesh normals and the sun still carry the relief.
-        const xMetres = positions[vertex * 3]!
-        const zMetres = positions[vertex * 3 + 2]!
-        const grain =
-          0.96 + 0.025 * Math.sin(xMetres / 29 + zMetres / 43) + 0.015 * Math.sin(xMetres / 11 - zMetres / 17)
-        colour.multiplyScalar((0.7 + (0.6 * heights[vertex]!) / highest) * grain)
-        colours[vertex * 3] = colour.r
-        colours[vertex * 3 + 1] = colour.g
-        colours[vertex * 3 + 2] = colour.b
-      }
-    const indices: number[] = []
-    for (let row = 0; row < along - 1; row += 1)
-      for (let column = 0; column < along - 1; column += 1) {
-        const cell = columns[row]! * cells + columns[column]!
-        if (shore?.patches.has(cell) || state.layout.terrain.water.body[cell]! >= 0) continue
-        const a = row * along + column
-        indices.push(a, a + along, a + 1, a + 1, a + along, a + along + 1)
-      }
-    let bankVertex = along * along
-    if (shore)
-      for (const [cell, patch] of shore.patches) {
-        const i = cell % cells,
-          j = Math.floor(cell / cells)
-        const base = j * along + i
-        for (let triangle = 0; triangle < patch.ground.length; triangle += 9) {
-          for (const offset of [0, 6, 3]) {
-            const p = triangle + offset
-            const x = patch.ground[p]!,
-              y = patch.ground[p + 1]!
-            positions[bankVertex * 3] = x / 100 - half
-            positions[bankVertex * 3 + 1] = patch.ground[p + 2]! / 100
-            positions[bankVertex * 3 + 2] = y / 100 - half
-            const fx = x / cellCm - i,
-              fy = y / cellCm - j
-            for (let channel = 0; channel < 3; channel++)
-              colours[bankVertex * 3 + channel] =
-                colours[base * 3 + channel]! * (1 - fx) * (1 - fy) +
-                colours[(base + 1) * 3 + channel]! * fx * (1 - fy) +
-                colours[(base + along) * 3 + channel]! * (1 - fx) * fy +
-                colours[(base + along + 1) * 3 + channel]! * fx * fy
-            indices.push(bankVertex++)
-          }
-        }
-      }
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
-    geometry.setIndex(indices)
-    geometry.computeVertexNormals()
-    // Fine turf and stony texture belongs to lighting only. The mesh positions—and therefore every contact query—stay
-    // on the sampled simulation surface, while a small deterministic normal perturbation keeps close views from
-    // looking computer-smooth.
-    const normals = geometry.getAttribute('normal')
-    for (let vertex = 0; vertex < normals.count; vertex += 1) {
-      const x = positions[vertex * 3]!
-      const z = positions[vertex * 3 + 2]!
-      const grainX = Math.sin(x * 0.73 + z * 1.91) * 0.09
-      const grainZ = Math.sin(x * 1.37 - z * 0.61) * 0.09
-      const nx = normals.getX(vertex) + grainX
-      const ny = Math.max(0.15, normals.getY(vertex))
-      const nz = normals.getZ(vertex) + grainZ
-      const length = Math.hypot(nx, ny, nz)
-      normals.setXYZ(vertex, nx / length, ny / length, nz / length)
+  function meshGeometries(state: ValleyState) {
+    const rgb = (code: number) => {
+      const c = new THREE.Color(code)
+      return [c.r, c.g, c.b] as [number, number, number]
     }
-    normals.needsUpdate = true
-    return geometry
+    const built = meshSurfaces(
+      state.layout.nav.mesh,
+      state.layout.nav.ground,
+      GROUND_COLOURS.map(rgb),
+      rgb(0x635749),
+      rgb(WATER_SHALLOW),
+      rgb(WATER),
+    )
+    const terrain = new THREE.BufferGeometry()
+    terrain.setAttribute('position', new THREE.BufferAttribute(built.groundPositions, 3))
+    terrain.setAttribute('color', new THREE.BufferAttribute(built.groundColours, 3))
+    terrain.computeVertexNormals()
+    const water = new THREE.BufferGeometry()
+    water.setAttribute('position', new THREE.BufferAttribute(built.waterPositions, 3))
+    water.setAttribute('color', new THREE.BufferAttribute(built.waterColours, 3))
+    water.computeVertexNormals()
+    return { terrain, water, waterBodyByFace: built.waterBodyByFace }
   }
 
   // Shared geometry and materials.
@@ -1286,13 +1207,14 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     config = state.config
     layout = state.layout
     decor = decorOf(state)
-    surface = groundSurface(state.layout.terrain, state.layout.terrain.cells)
+    surface = state.layout.nav.mesh
     const size = state.config.valleySizeCm / 100
-    const terrainGeometry = terrainMeshGeometry(state, surface)
+    const surfaces = meshGeometries(state)
+    const terrainGeometry = surfaces.terrain
     ground = tiledSurface(
       THREE,
       terrainGeometry,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: false }),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }),
     )
     for (const tile of ground.children) {
       tile.receiveShadow = true
@@ -1305,16 +1227,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     outside.rotation.x = -Math.PI / 2
     outside.position.y = state.layout.terrain.height.reduce((min, h) => Math.min(min, h), 0) / 100 - 1
     const water = state.layout.terrain.water
-    const wet = waterSurface(surface)
-    const { vertices, bedVertices } = wet
-    waterBodyByFace = wet.waterBodyByFace
-    const waterGeometry = new THREE.BufferGeometry()
-    waterGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
-    waterGeometry.computeVertexNormals()
+    waterBodyByFace = surfaces.waterBodyByFace
+    const waterGeometry = surfaces.water
     lake = tiledSurface(
       THREE,
       waterGeometry,
-      new THREE.MeshStandardMaterial({ color: WATER, roughness: 0.25, metalness: 0.1 }),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.1, flatShading: true }),
       100,
       true,
     )
@@ -1360,17 +1278,6 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     flow = new THREE.LineSegments(arrowGeometry, new THREE.LineBasicMaterial({ color: 0xd6f5ff }))
     flow.visible = false
     world.add(flow)
-    const beds = new THREE.BufferGeometry()
-    beds.setAttribute('position', new THREE.Float32BufferAttribute(bedVertices, 3))
-    beds.computeVertexNormals()
-    lake.add(
-      tiledSurface(
-        THREE,
-        beds,
-        new THREE.MeshStandardMaterial({ color: 0x635749, side: THREE.DoubleSide, roughness: 1 }),
-      ),
-    )
-    beds.dispose()
     world.add(outside, ground, lake)
 
     // Bushes: three leafy lobes each, with berries on their upper sides. Bushes and hazels are drawn in tiles of the

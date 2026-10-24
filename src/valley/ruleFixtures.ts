@@ -1,5 +1,5 @@
-import { indexBanks } from './bankSearch'
-import { buildLattice, routeNode } from './routes'
+import { buildBanks } from './banks'
+import { buildNav } from './routes'
 import { reindexPeople } from './perception'
 import { createValley } from './engine'
 import { deriveWater } from './water'
@@ -10,7 +10,7 @@ import type { ValleyConfig, ValleyState } from './types'
 export function createSurveyedValley(overrides: Partial<ValleyConfig> = {}, withWater = false) {
   const state = createValley(overrides)
   for (const person of state.foragers) {
-    person.knowledge.nodes.fill(1)
+    person.knowledge.triangles.fill(255)
     person.knownPlaces.fill(0)
   }
   if (withWater) {
@@ -33,11 +33,11 @@ export function addTestLake(state: ValleyState, two = false) {
     state.config.riverCatchmentM2,
     state.config.riverDepthCm,
   )
-  state.layout = {
-    ...state.layout,
-    terrain: { ...terrain, water },
-    lattice: buildLattice(state.config, { ...terrain, water }),
-  }
+  water.shore = buildBanks(water, terrain.height)
+  for (const [index, body] of water.bodies.entries()) body.areaM2 = Math.floor(water.shore.area2[index]! / 20_000)
+  // A fresh terrain object, so the mesh is built again with the lake in it.
+  const wet = { ...terrain, water }
+  state.layout = { ...state.layout, terrain: wet, nav: buildNav(state.config, wet, state.layout.ground) }
   state.totals.initialKcal -= state.fishKcal
   state.fish = water.bodies.map((body) => {
     const capacity = fishCapacity(
@@ -50,27 +50,16 @@ export function addTestLake(state: ValleyState, two = false) {
   })
   state.fishKcal = state.fish.reduce((sum, body) => sum + body.stock, 0)
   state.totals.initialKcal += state.fishKcal
-  const wetCell = terrain.cells + 1
+  // The mesh's bank on the first lake nearest its western end.
+  const banks = state.layout.nav.accessBanks.filter((b) => b.bodyId === water.bodies[0]!.id)
   const bank = {
-    id: wetCell * 4 + 3,
-    bodyId: water.bodies[0]!.id,
-    wetCell,
-    dryCell: 2 * terrain.cells + 1,
-    x: 750,
-    y: 1_050,
+    ...banks.reduce((best, b) =>
+      (b.x - 750) ** 2 + (b.y - 1_050) ** 2 < (best.x - 750) ** 2 + (best.y - 1_050) ** 2 ? b : best,
+    ),
     minute: state.minute,
-    connectorNode: -1,
   }
-  bank.connectorNode = routeNode(
-    state.layout.lattice,
-    { nodes: state.layout.lattice.dry, revision: 0 },
-    { x: bank.x, y: bank.y },
-  )
-  // Register the explicit analytic access point in the same index used by production layouts.
-  state.layout.lattice.accessBanks.push(bank)
-  state.layout.lattice.bankIndex = indexBanks(state.layout.lattice.accessBanks, state.layout.terrain)
   for (const person of state.foragers) {
-    person.knowledge.nodes.fill(1)
+    person.knowledge.triangles.fill(255)
     person.knowledge.revision += 1
   }
   state.foragers[0]!.knownBanks.set(bank.id, bank)

@@ -1,6 +1,6 @@
-import { buildLattice, routeNode, type RouteLattice } from './routes'
+import { buildNav, circleWalkable, meshSettings, onWalkableGround, walkableTriangle } from './routes'
 import { buildPlaces } from './places'
-import { bankCircleWet, bankWaterHeight } from './banks'
+import { meshOf, type GroundMesh } from './mesh'
 import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { ringOffset } from './config'
 import { distanceSq } from './geometry'
@@ -77,21 +77,18 @@ class Draws {
  * uniformly over the square `startAreaCm` wide round the land's centre in forager ID order, each at least
  * `startSpacingCm` from the earlier ones and always on grass or dirt.
  */
-export function drawStarts(
-  config: ValleyConfig,
-  ground: Uint8Array = terrainOf(config).ground,
-  lattice?: RouteLattice,
-): Point[] {
+export function drawStarts(config: ValleyConfig, ground: Uint8Array = terrainOf(config).ground): Point[] {
   let draws = new Draws(deriveStartSeed(config.seed, 0))
-  const terrain = terrainOf(config)
+  const terrain = terrainOf(config),
+    mesh = meshOf(terrain, meshSettings(config))
   const origin = Math.floor((config.valleySizeCm - config.startAreaCm) / 2)
   const starts: Point[] = []
   let failed = 0
   while (starts.length < config.founders) {
     const x = origin + draws.int(config.startAreaCm + 1)
     const y = origin + draws.int(config.startAreaCm + 1)
-    const habitable = circleOnGround(terrain, ground, x, y, 40, BUSH_GROUNDS)
-    const connected = !lattice || routeNode(lattice, { nodes: lattice.dry, revision: 0 }, { x, y }) >= 0
+    const habitable = circleOnGround(terrain, mesh, ground, x, y, 40, BUSH_GROUNDS)
+    const connected = onMainLand(mesh, { x, y })
     if (
       habitable &&
       connected &&
@@ -112,15 +109,25 @@ export const HAZEL_GROUNDS = grows(GRASS, DIRT)
 export const TREE_GROUNDS = grows(GRASS, DIRT)
 export const OUTCROP_GROUNDS = grows(GRASS, DIRT, STONE)
 
-/** Whether a point's ground is one of `grounds`. */
-export const onGround = (terrain: Terrain, ground: Uint8Array, x: number, y: number, grounds: number) =>
-  (terrain.water.shore
-    ? bankWaterHeight(terrain.water.shore, { x, y }, terrain.water.level) === null
-    : terrain.water.body[cellOf(terrain, x, y)]! < 0) && ((grounds >> ground[cellOf(terrain, x, y)]!) & 1) === 1
+/** Whether a point stands in the mesh's largest walkable region. */
+export const onMainLand = (mesh: GroundMesh, p: Point) => {
+  const t = walkableTriangle(mesh, null, p)
+  return t >= 0 && mesh.region[t] === mesh.mainRegion
+}
+/** Whether a point is on walkable ground of the mesh and its terrain cell's ground is one of `grounds`. */
+export const onGround = (
+  terrain: Terrain,
+  mesh: GroundMesh,
+  ground: Uint8Array,
+  x: number,
+  y: number,
+  grounds: number,
+) => onWalkableGround(mesh, { x, y }) && ((grounds >> ground[cellOf(terrain, x, y)]!) & 1) === 1
 
 /** Whether the cell holding a point, and every cell whose centre lies within `radius` of it, is one of `grounds`. */
 export function circleOnGround(
   terrain: Terrain,
+  mesh: GroundMesh,
   ground: Uint8Array,
   x: number,
   y: number,
@@ -129,8 +136,7 @@ export function circleOnGround(
 ) {
   const size = terrain.cells * terrain.cellCm
   if (x - radius < 0 || y - radius < 0 || x + radius > size || y + radius > size) return false
-  if (!onGround(terrain, ground, x, y, grounds)) return false
-  if (terrain.water.shore && bankCircleWet(terrain.water.shore, { x, y }, radius)) return false
+  if (!onGround(terrain, mesh, ground, x, y, grounds) || !circleWalkable(mesh, { x, y }, radius)) return false
   const { cellCm, cells } = terrain
   const i0 = Math.max(0, Math.floor((x - radius) / cellCm))
   const i1 = Math.min(cells - 1, Math.floor((x + radius) / cellCm))
@@ -147,11 +153,7 @@ export function circleOnGround(
         ) <=
         radius * radius
       )
-        if (
-          (!terrain.water.shore && terrain.water.body[j * cells + i]! >= 0) ||
-          ((grounds >> ground[j * cells + i]!) & 1) === 0
-        )
-          return false
+        if (((grounds >> ground[j * cells + i]!) & 1) === 0) return false
   return true
 }
 
@@ -211,6 +213,7 @@ export function buildIndex(
 export function generateLayout(config: ValleyConfig): ValleyLayout {
   const draws = new Draws(deriveLayoutSeed(config.seed))
   const terrain = terrainOf(config)
+  const mesh = meshOf(terrain, meshSettings(config))
   const base = terrain.ground
   const size = config.valleySizeCm
   let camp = { x: Math.floor(size / 2), y: Math.floor(size / 2) }
@@ -227,13 +230,17 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
     })
     const valid = candidates.find((id) => {
       const p = point(id)
-      return circleOnGround(
-        terrain,
-        base,
-        p.x,
-        p.y,
-        config.hutRingCm * Math.ceil(Math.sqrt(config.founders)) + 200,
-        BUSH_GROUNDS,
+      return (
+        onMainLand(mesh, p) &&
+        circleOnGround(
+          terrain,
+          mesh,
+          base,
+          p.x,
+          p.y,
+          config.hutRingCm * Math.ceil(Math.sqrt(config.founders)) + 200,
+          BUSH_GROUNDS,
+        )
       )
     })
     if (valid === undefined) throw new LayoutError('No dry camp with room for the initial hearth slots')
@@ -251,7 +258,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
     let index = centres.length
     let kind = 0
     while (kind < kinds.length - 1 && index >= kinds[kind]!) index -= kinds[kind++]!
-    return circleOnGround(terrain, base, x, y, kindRadii[kind]!, kindGrounds[kind]!)
+    return circleOnGround(terrain, mesh, base, x, y, kindRadii[kind]!, kindGrounds[kind]!)
   }
   // A grid of cells `siteSpacingCm` wide holds every earlier centre too close to a draw in the nine cells round it.
   const spacing = config.siteSpacingCm
@@ -325,9 +332,9 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const trees = plantsOf(treeSites)
   const stones = plantsOf(stoneSites)
   const woodPlants = woodPlantsOf(trees, bushes)
-  const lattice = buildLattice(config, terrain)
+  const nav = buildNav(config, terrain, ground)
   const hearths = config.scattered
-    ? drawStarts(config, ground, lattice)
+    ? drawStarts(config, ground)
     : Array.from({ length: config.founders }, (_, slot) => {
         const offset = ringOffset(config, slot)
         return { x: camp.x + offset.x, y: camp.y + offset.y }
@@ -337,7 +344,7 @@ export function generateLayout(config: ValleyConfig): ValleyLayout {
   const placeIndex = buildIndex(places, config.chunkCm, size)
   return {
     places,
-    lattice,
+    nav,
     placeIndex,
     placeChunks: placeIndex.buckets,
     camp,

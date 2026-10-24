@@ -15,7 +15,7 @@ describe('water at wake-ups', () => {
     person.x = bank.x
     person.y = bank.y
     person.hearth = { x: bank.x, y: bank.y }
-    person.knowledge.nodes.fill(1)
+    person.knowledge.triangles.fill(255)
     person.waterDeficitMl = 700
     person.thirsty = true
     state.queue.schedule({ minute: 600, phase: 1, id: 0, kind: 'end' })
@@ -36,7 +36,7 @@ describe('water at wake-ups', () => {
       person = state.foragers[0]!
     state.minute = 600
     state.queue = new WakeQueue()
-    person.knowledge.nodes.fill(1)
+    person.knowledge.triangles.fill(255)
     person.energyKcal = 1
     person.waterDeficitMl = 5_999
     person.task = startTask(state.config, person, 'rest', 600, 660, -1, -1, 'no known route')

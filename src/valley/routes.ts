@@ -1,31 +1,34 @@
 import { indexBanks, type BankIndex } from './bankSearch'
-import { bankApproach, bankCircleWet, bankSegmentWet, buildBanks, type BankGeometry } from './banks'
 import { CellHeap } from './water'
-import { cellOf, heightAt, terrainPercentOf, type Ground, type Terrain } from './terrain'
+import { terrainPercentOf, type Ground, type Terrain } from './terrain'
 import { distance, distanceSq } from './geometry'
+import { GROUND_AREA, meshOf, planeHeight, triangleAt, type GroundMesh } from './mesh'
 import type { BankMemory, Point, ValleyConfig } from './types'
 
 /** Fixed-point duration, not a second simulation clock. Only wake-up minutes advance state. */
 export const TIME_UNITS_PER_MINUTE = 60_000
-export interface RouteLattice {
-  cellCm: number
-  cells: number
+/** The mesh as people walk it: the layout's ground classes per triangle and the bank points along its shores. */
+export interface NavMap {
+  mesh: GroundMesh
   chunkCm: number
   chunkCells: number
-  dry: Uint8Array
-  edges: Uint8Array
-  banks: BankGeometry
+  /** Ground class of each triangle, from the layout's ground, outcrops included, at its centroid. */
+  ground: Uint8Array
   accessBanks: BankMemory[]
   bankChunks: Map<number, BankMemory[]>
   bankIndex: BankIndex
-  components: Int32Array
 }
+/** Triangles seen, one bit each; chunks seen whole; chunks whose bank points are all known. */
 export interface Knowledge {
-  nodes: Uint8Array
+  triangles: Uint8Array
   revision: number
   fullyKnown?: Uint8Array
   banksKnown?: Uint8Array
-  views?: Set<string>
+}
+export const knowledgeBytes = (mesh: GroundMesh) => (mesh.triangles + 7) >> 3
+export const knows = (knowledge: Knowledge, t: number) => (knowledge.triangles[t >> 3]! >> (t & 7)) & 1
+export function learnTriangle(knowledge: Knowledge, t: number) {
+  knowledge.triangles[t >> 3]! |= 1 << (t & 7)
 }
 export type SlopeClass = 0 | 1 | 2
 export interface RouteSegment {
@@ -33,6 +36,8 @@ export interface RouteSegment {
   y0: number
   x1: number
   y1: number
+  /** The flat triangle this piece lies in. */
+  triangle: number
   lengthCm: number
   slope: SlopeClass
   uphill: boolean
@@ -48,130 +53,179 @@ export interface Route {
   timeUnits: number
   kcal: number
 }
-const directions = [
-  [-1, -1],
-  [0, -1],
-  [1, -1],
-  [-1, 0],
-  [1, 0],
-  [-1, 1],
-  [0, 1],
-  [1, 1],
-] as const
-export const nodePoint = (lattice: RouteLattice, id: number): Point => ({
-  x: ((id % lattice.cells) + 0.5) * lattice.cellCm,
-  y: (Math.floor(id / lattice.cells) + 0.5) * lattice.cellCm,
-})
-export const chunkOf = (lattice: RouteLattice, point: Point) =>
-  Math.floor(point.y / lattice.chunkCm) * lattice.chunkCells + Math.floor(point.x / lattice.chunkCm)
+export const chunkOf = (nav: NavMap, point: Point) =>
+  Math.floor(point.y / nav.chunkCm) * nav.chunkCells + Math.floor(point.x / nav.chunkCm)
 
-function drySegment(banks: BankGeometry, a: Point, b: Point): boolean {
-  if (bankCircleWet(banks, a, 1) || bankCircleWet(banks, b, 1) || bankSegmentWet(banks, a, b)) return false
-  for (const [dx, dy] of [
-    [-1, 0],
-    [1, 0],
-    [0, -1],
-    [0, 1],
-  ])
-    if (bankSegmentWet(banks, { x: a.x + dx!, y: a.y + dy! }, { x: b.x + dx!, y: b.y + dy! })) return false
+export const meshSettings = (config: ValleyConfig) => ({
+  valleySizeCm: config.valleySizeCm,
+  meshMaxEdgeCm: config.meshMaxEdgeCm,
+  meshHeightToleranceCm: config.meshHeightToleranceCm,
+  shoreToleranceCm: config.shoreToleranceCm,
+  chunkCm: config.chunkCm,
+})
+
+const crossXY = (ax: number, ay: number, bx: number, by: number, x: number, y: number) =>
+  (bx - ax) * (y - ay) - (by - ay) * (x - ax)
+function segmentDistanceSq(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const dx = bx - ax,
+    dy = by - ay,
+    t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)))
+  return (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2
+}
+/** Zero inside the closed triangle, else the squared distance to its nearest edge. */
+export function triangleDistanceSq(mesh: GroundMesh, t: number, x: number, y: number) {
+  const { tv, vx, vy } = mesh
+  let inside = true,
+    best = Infinity
+  for (let e = 0; e < 3; e++) {
+    const a = tv[3 * t + e]!,
+      b = tv[3 * t + ((e + 1) % 3)]!
+    if (crossXY(vx[a]!, vy[a]!, vx[b]!, vy[b]!, x, y) < 0) inside = false
+    best = Math.min(best, segmentDistanceSq(x, y, vx[a]!, vy[a]!, vx[b]!, vy[b]!))
+  }
+  return inside ? 0 : best
+}
+/** People are points rounded to whole centimetres, so a point within this of a walkable triangle stands on it. */
+export const NEAR_CM = 1
+/**
+ * The lowest-numbered walkable triangle holding a point, known to `knowledge` when one is given; failing that, the
+ * lowest within `NEAR_CM`. -1 when there is none.
+ */
+export function walkableTriangle(mesh: GroundMesh, knowledge: Knowledge | null, p: Point) {
+  const { bucketCm, buckets } = mesh
+  let best = -1,
+    bestNear = -1
+  for (
+    let by = Math.max(0, Math.floor((p.y - NEAR_CM) / bucketCm));
+    by <= Math.min(buckets - 1, Math.floor((p.y + NEAR_CM) / bucketCm));
+    by++
+  )
+    for (
+      let bx = Math.max(0, Math.floor((p.x - NEAR_CM) / bucketCm));
+      bx <= Math.min(buckets - 1, Math.floor((p.x + NEAR_CM) / bucketCm));
+      bx++
+    ) {
+      const bucket = by * buckets + bx
+      for (let k = mesh.bucketStart[bucket]!; k < mesh.bucketStart[bucket + 1]!; k++) {
+        const t = mesh.bucketTriangles[k]!
+        if ((best >= 0 && t >= best) || mesh.area[t] !== GROUND_AREA) continue
+        if (knowledge && !knows(knowledge, t)) continue
+        const d = triangleDistanceSq(mesh, t, p.x, p.y)
+        if (d === 0) best = t
+        else if (d <= NEAR_CM * NEAR_CM && (bestNear < 0 || t < bestNear)) bestNear = t
+      }
+    }
+  return best >= 0 ? best : bestNear
+}
+export const onWalkableGround = (mesh: GroundMesh, p: Point) => walkableTriangle(mesh, null, p) >= 0
+/** The known walkable triangle a person or place stands on, or -1. */
+export function routeTriangle(nav: NavMap, knowledge: Knowledge, point: Point & { triangle?: number }): number {
+  if (point.triangle !== undefined) return knows(knowledge, point.triangle) ? point.triangle : -1
+  return walkableTriangle(nav.mesh, knowledge, point)
+}
+/** No water within `radiusCm` of the point, and the point inside the valley. */
+export function circleWalkable(mesh: GroundMesh, p: Point, radiusCm: number) {
+  if (p.x - radiusCm < 0 || p.y - radiusCm < 0 || p.x + radiusCm > mesh.sizeCm || p.y + radiusCm > mesh.sizeCm)
+    return false
+  if (!onWalkableGround(mesh, p)) return false
+  const { bucketCm, buckets } = mesh
+  for (let by = Math.floor((p.y - radiusCm) / bucketCm); by <= Math.floor((p.y + radiusCm) / bucketCm); by++)
+    for (let bx = Math.floor((p.x - radiusCm) / bucketCm); bx <= Math.floor((p.x + radiusCm) / bucketCm); bx++) {
+      if (bx < 0 || by < 0 || bx >= buckets || by >= buckets) continue
+      const bucket = by * buckets + bx
+      for (let k = mesh.bucketStart[bucket]!; k < mesh.bucketStart[bucket + 1]!; k++) {
+        const t = mesh.bucketTriangles[k]!
+        if (mesh.area[t] !== GROUND_AREA && triangleDistanceSq(mesh, t, p.x, p.y) <= radiusCm * radiusCm) return false
+      }
+    }
   return true
 }
-
-export function buildLattice(
-  config: ValleyConfig,
-  terrain: Terrain,
-  banks = terrain.water.shore ?? buildBanks(terrain.water, terrain.height),
-): RouteLattice {
-  const cells = Math.ceil(config.valleySizeCm / config.routeCellCm)
-  const lattice: RouteLattice = {
-    cellCm: config.routeCellCm,
-    cells,
-    chunkCm: config.chunkCm,
-    chunkCells: Math.floor(config.valleySizeCm / config.chunkCm) + 1,
-    dry: new Uint8Array(cells * cells),
-    edges: new Uint8Array(cells * cells),
-    banks,
-    bankIndex: { all: null, bodies: new Map() },
-    accessBanks: [],
-    bankChunks: new Map(),
-    components: new Int32Array(cells * cells).fill(-1),
-  }
-  for (let id = 0; id < lattice.dry.length; id += 1) {
-    const p = nodePoint(lattice, id),
-      half = lattice.cellCm / 2
-    lattice.dry[id] =
-      p.x + half <= config.valleySizeCm && p.y + half <= config.valleySizeCm && !bankCircleWet(banks, p, half) ? 1 : 0
-  }
-  for (let id = 0; id < lattice.dry.length; id += 1) {
-    if (!lattice.dry[id]) continue
-    const x = id % cells,
-      y = Math.floor(id / cells),
-      a = nodePoint(lattice, id)
-    for (const [d, [dx, dy]] of directions.entries()) {
-      const nx = x + dx,
-        ny = y + dy,
-        next = ny * cells + nx
-      if (nx < 0 || ny < 0 || nx >= cells || ny >= cells || !lattice.dry[next]) continue
-      if (dx && dy && (!lattice.dry[y * cells + nx] || !lattice.dry[ny * cells + x])) continue
-      if (drySegment(banks, a, nodePoint(lattice, next))) lattice.edges[id] |= 1 << d
-    }
-  }
-  let component = 0
-  for (let root = 0; root < lattice.dry.length; root++) {
-    if (!lattice.dry[root] || lattice.components[root]! >= 0) continue
-    const todo = [root]
-    lattice.components[root] = component
-    for (let i = 0; i < todo.length; i++) {
-      const id = todo[i]!
-      for (let d = 0; d < directions.length; d++)
-        if (lattice.edges[id]! & (1 << d)) {
-          const [dx, dy] = directions[d]!,
-            next = id + dy * cells + dx
-          if (lattice.components[next]! < 0) {
-            lattice.components[next] = component
-            todo.push(next)
-          }
-        }
-    }
-    component++
-  }
-  const all = { nodes: lattice.dry, revision: 0 }
-  for (const segment of banks.segments.values()) {
-    const point = bankApproach(
-      banks,
-      segment,
-      config.reachCm,
-      config.drinkBankHeightCm,
-      (x, y) => cachedHeight(terrain, x, y),
-      terrain.water.bodies[segment.body]!.id,
-      0,
-    )
-    if (!point) continue
-    const connectorNode = routeNode(lattice, all, point)
-    if (connectorNode < 0) continue
-    const bank = { ...point, connectorNode }
-    lattice.accessBanks.push(bank)
-    const chunk = chunkOf(lattice, bank),
-      list = lattice.bankChunks.get(chunk) ?? []
-    list.push(bank)
-    lattice.bankChunks.set(chunk, list)
-  }
-  lattice.bankIndex = indexBanks(lattice.accessBanks, terrain)
-  return lattice
+/** A point inside a triangle in whole centimetres: its centroid, or failing that its first vertex. */
+export function trianglePoint(mesh: GroundMesh, t: number): Point {
+  if (triangleDistanceSq(mesh, t, mesh.cx[t]!, mesh.cy[t]!) === 0) return { x: mesh.cx[t]!, y: mesh.cy[t]! }
+  const v = mesh.tv[3 * t]!
+  return { x: mesh.vx[v]!, y: mesh.vy[v]! }
 }
 
-export function slopeClassOf(
-  _config: ValleyConfig,
-  terrain: Terrain,
-  a: Point,
-  b: Point,
-): { slope: SlopeClass; uphill: boolean } {
-  const rise = cachedHeight(terrain, b.x, b.y) - cachedHeight(terrain, a.x, a.y)
-  const length = Math.max(1, distance(a.x, a.y, b.x, b.y))
+/** The nav map of a layout; the mesh itself is shared by every layout of the same terrain and settings. */
+export function buildNav(config: ValleyConfig, terrain: Terrain, layoutGround: Uint8Array): NavMap {
+  const mesh = meshOf(terrain, meshSettings(config))
+  const ground = new Uint8Array(mesh.triangles)
+  for (let t = 0; t < mesh.triangles; t++) {
+    const cell =
+      Math.min(terrain.cells - 1, Math.floor(mesh.cy[t]! / terrain.cellCm)) * terrain.cells +
+      Math.min(terrain.cells - 1, Math.floor(mesh.cx[t]! / terrain.cellCm))
+    ground[t] = layoutGround[cell]!
+  }
+  const nav: NavMap = {
+    mesh,
+    chunkCm: config.chunkCm,
+    chunkCells: mesh.chunkCells,
+    ground,
+    accessBanks: [],
+    bankChunks: new Map(),
+    bankIndex: { all: null, bodies: new Map() },
+  }
+  // Each shore edge gives at most one bank point, set back into its walkable triangle by Life 11's approach rule.
+  const inset = Math.min(50, config.reachCm)
+  for (let t = 0; t < mesh.triangles; t++) {
+    if (mesh.area[t] !== GROUND_AREA) continue
+    for (let e = 0; e < 3; e++) {
+      const other = mesh.tn[3 * t + e]!
+      if (!mesh.shore[3 * t + e] || other < 0 || mesh.area[other] === GROUND_AREA) continue
+      const a = mesh.tv[3 * t + e]!,
+        b = mesh.tv[3 * t + ((e + 1) % 3)]!
+      const ax = mesh.vx[a]!,
+        ay = mesh.vy[a]!,
+        dx = mesh.vx[b]! - ax,
+        dy = mesh.vy[b]! - ay,
+        length = Math.sqrt(dx * dx + dy * dy)
+      if (!length || inset <= 0) continue
+      // The triangle lies left of its counter-clockwise edge.
+      const point = {
+        x: Math.round(ax + dx / 2 - (dy / length) * inset),
+        y: Math.round(ay + dy / 2 + (dx / length) * inset),
+      }
+      const at = triangleAt(mesh, point.x, point.y)
+      if (at < 0 || mesh.area[at] !== GROUND_AREA) continue
+      const level = Math.floor((mesh.vh[a]! + mesh.vh[b]!) / 2)
+      if (
+        planeHeight(mesh, at, point.x, point.y) - level > config.drinkBankHeightCm ||
+        segmentDistanceSq(point.x, point.y, ax, ay, ax + dx, ay + dy) > config.reachCm ** 2
+      )
+        continue
+      const bank: BankMemory = {
+        id: 3 * t + e,
+        bodyId: terrain.water.bodies[mesh.body[other]!]!.id,
+        x: point.x,
+        y: point.y,
+        minute: 0,
+        triangle: at,
+      }
+      nav.accessBanks.push(bank)
+      const chunk = chunkOf(nav, bank),
+        list = nav.bankChunks.get(chunk)
+      if (list) list.push(bank)
+      else nav.bankChunks.set(chunk, [bank])
+    }
+  }
+  nav.bankIndex = indexBanks(nav.accessBanks, mesh)
+  return nav
+}
+
+export function slopeClass(rise: number, lengthCm: number): { slope: SlopeClass; uphill: boolean } {
+  const length = Math.max(1, lengthCm)
   const slope: SlopeClass = Math.abs(rise) * 100 < length * 10 ? 0 : Math.abs(rise) * 100 <= length * 30 ? 1 : 2
   return { slope, uphill: rise > 0 }
 }
-function segmentTimeUnits(
+/** A piece's slope from its triangle's plane along its direction. */
+export function segmentSlope(mesh: GroundMesh, segment: Pick<RouteSegment, 'x0' | 'y0' | 'x1' | 'y1' | 'triangle'>) {
+  const rise =
+    planeHeight(mesh, segment.triangle, segment.x1, segment.y1) -
+    planeHeight(mesh, segment.triangle, segment.x0, segment.y0)
+  return slopeClass(rise, distance(segment.x0, segment.y0, segment.x1, segment.y1))
+}
+export function segmentTimeUnits(
   config: ValleyConfig,
   lengthCm: number,
   slope: SlopeClass,
@@ -205,159 +259,248 @@ export const estimateMinutes = (
 ) =>
   Math.ceil(distance(from.x, from.y, to.x, to.y) / speedCmPerMinute) +
   Math.ceil((config.climbMinutesPerMetre * Math.max(0, climbCm)) / 100)
-
-const heightCache = new WeakMap<Terrain, Map<number, number>>()
-export function cachedHeight(terrain: Terrain, x: number, y: number) {
-  let cache = heightCache.get(terrain)
-  if (!cache) {
-    cache = new Map()
-    heightCache.set(terrain, cache)
-  }
-  const key = x * (terrain.cells * terrain.cellCm + 1) + y
-  let value = cache.get(key)
-  if (value === undefined) {
-    value = heightAt(terrain, x, y)
-    cache.set(key, value)
-  }
-  return value
-}
-const connectors = new WeakMap<RouteLattice, Map<string, { ids: number[]; dry: Map<number, boolean> }>>()
-/** Geometry is immutable; knowledge filters cached connectors without changing them. */
-export function routeNode(
-  lattice: RouteLattice,
-  knowledge: Knowledge,
-  point: Point & { connectorNode?: number },
-): number {
-  if (point.connectorNode !== undefined) return knowledge.nodes[point.connectorNode] ? point.connectorNode : -1
-  const col = Math.floor(point.x / lattice.cellCm),
-    row = Math.floor(point.y / lattice.cellCm)
-  const centre = row * lattice.cells + col
-  if (point.x === (col + 0.5) * lattice.cellCm && point.y === (row + 0.5) * lattice.cellCm && lattice.dry[centre])
-    return knowledge.nodes[centre] ? centre : -1
-  let cache = connectors.get(lattice)
-  if (!cache) {
-    cache = new Map()
-    connectors.set(lattice, cache)
-  }
-  const key = `${point.x},${point.y}`
-  let record = cache.get(key)
-  if (!record) {
-    const ids: number[] = []
-    for (let y = Math.max(0, row - 1); y <= Math.min(lattice.cells - 1, row + 1); y++)
-      for (let x = Math.max(0, col - 1); x <= Math.min(lattice.cells - 1, col + 1); x++)
-        if (lattice.dry[y * lattice.cells + x]) ids.push(y * lattice.cells + x)
-    ids.sort((a, b) => {
-      const pa = nodePoint(lattice, a),
-        pb = nodePoint(lattice, b)
-      return distanceSq(point.x, point.y, pa.x, pa.y) - distanceSq(point.x, point.y, pb.x, pb.y) || a - b
-    })
-    record = { ids, dry: new Map() }
-    cache.set(key, record)
-  }
-  for (const id of record.ids) {
-    if (!knowledge.nodes[id]) continue
-    let dry = record.dry.get(id)
-    if (dry === undefined) {
-      dry = drySegment(lattice.banks, point, nodePoint(lattice, id))
-      record.dry.set(id, dry)
-    }
-    if (dry) return id
-  }
-  return -1
-}
-const searchBuffers = new WeakMap<
-  RouteLattice,
-  { costs: Float64Array; parents: Int32Array; seen: Uint32Array; closed: Uint32Array; stamp: number }
->()
-export function knownRoute(
-  lattice: RouteLattice,
-  knowledge: Knowledge,
-  terrain: Terrain,
-  ground: Uint8Array,
-  _banks: BankGeometry,
-  config: ValleyConfig,
-  loadKg: number,
-  from: Point,
-  to: Point,
-): Route | null {
-  const first = routeNode(lattice, knowledge, from),
-    last = routeNode(lattice, knowledge, to)
-  if (first < 0 || last < 0) return null
-  if (from.x === to.x && from.y === to.y) return { segments: [], minutes: 0, timeUnits: 0, kcal: 0 }
-  let buffers = searchBuffers.get(lattice)
-  if (!buffers) {
-    const n = lattice.dry.length
-    buffers = {
-      costs: new Float64Array(n),
-      parents: new Int32Array(n),
-      seen: new Uint32Array(n),
-      closed: new Uint32Array(n),
-      stamp: 0,
-    }
-    searchBuffers.set(lattice, buffers)
-  }
-  const { costs, parents, seen, closed } = buffers,
-    stamp = ++buffers.stamp
-  const heap = new CellHeap(),
-    n = lattice.cells,
-    diagonal = Math.floor(Math.sqrt(2 * lattice.cellCm ** 2))
-  const heuristic = (id: number) => {
-    const dx = Math.abs((id % n) - (last % n)),
-      dy = Math.abs(Math.floor(id / n) - Math.floor(last / n)),
-      common = Math.min(dx, dy)
-    return common * diagonal + (Math.max(dx, dy) - common) * lattice.cellCm
-  }
-  costs[first] = 0
-  seen[first] = stamp
-  heap.push(first, heuristic(first))
-  while (heap.length) {
-    const id = heap.popId()
-    if (closed[id] === stamp) continue
-    closed[id] = stamp
-    if (id === last) break
-    for (const [direction, [dx, dy]] of directions.entries()) {
-      if (!(lattice.edges[id]! & (1 << direction))) continue
-      const next = id + dy * n + dx
-      if (dx && dy && (!knowledge.nodes[id + dx] || !knowledge.nodes[id + dy * n])) continue
-      if (!knowledge.nodes[next] || closed[next] === stamp) continue
-      const cost = costs[id]! + (dx && dy ? diagonal : lattice.cellCm)
-      if (seen[next] !== stamp || cost < costs[next]! || (cost === costs[next] && id < parents[next]!)) {
-        costs[next] = cost
-        seen[next] = stamp
-        parents[next] = id
-        heap.push(next, cost + heuristic(next))
-      }
-    }
-  }
-  if (closed[last] !== stamp) return null
-  const nodes = [last]
-  while (nodes[nodes.length - 1] !== first) nodes.push(parents[nodes[nodes.length - 1]!]!)
-  nodes.reverse()
-  const points = [from, ...nodes.map((id) => nodePoint(lattice, id)), to]
-  const speed = Math.max(
+export const loadedSpeed = (config: ValleyConfig, loadKg: number) =>
+  Math.max(
     1,
     Math.floor(
       (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * loadKg)) /
         (1_000 * config.bodyKg),
     ),
   )
+
+const heightCache = new WeakMap<GroundMesh, Map<number, number>>()
+/** The mesh's surface height at a point, remembered per point. */
+export function cachedHeight(mesh: GroundMesh, x: number, y: number) {
+  let cache = heightCache.get(mesh)
+  if (!cache) {
+    cache = new Map()
+    heightCache.set(mesh, cache)
+  }
+  const key = x * (mesh.sizeCm + 1) + y
+  let value = cache.get(key)
+  if (value === undefined) {
+    const t = walkableTriangle(mesh, null, { x, y })
+    value = t >= 0 ? planeHeight(mesh, t, x, y) : planeHeight(mesh, Math.max(0, triangleAt(mesh, x, y)), x, y)
+    cache.set(key, value)
+  }
+  return value
+}
+
+const searchBuffers = new WeakMap<
+  GroundMesh,
+  {
+    costs: Float64Array
+    parents: Int32Array
+    px: Float64Array
+    py: Float64Array
+    seen: Uint32Array
+    closed: Uint32Array
+    stamp: number
+  }
+>()
+const length2 = (ax: number, ay: number, bx: number, by: number) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
+/**
+ * A* over known walkable triangles between their shared edges' midpoints, ties by triangle id. Returns the
+ * corridor of triangles from `first` to `last`, or null.
+ */
+export function corridorOf(
+  mesh: GroundMesh,
+  knowledge: Knowledge,
+  first: number,
+  last: number,
+  from: Point,
+  to: Point,
+): number[] | null {
+  let buffers = searchBuffers.get(mesh)
+  if (!buffers) {
+    const n = mesh.triangles
+    buffers = {
+      costs: new Float64Array(n),
+      parents: new Int32Array(n),
+      px: new Float64Array(n),
+      py: new Float64Array(n),
+      seen: new Uint32Array(n),
+      closed: new Uint32Array(n),
+      stamp: 0,
+    }
+    searchBuffers.set(mesh, buffers)
+  }
+  const { costs, parents, px, py, seen, closed } = buffers,
+    stamp = ++buffers.stamp
+  const { tv, tn, vx, vy, area } = mesh
+  const heap = new CellHeap()
+  costs[first] = 0
+  parents[first] = -1
+  px[first] = from.x
+  py[first] = from.y
+  seen[first] = stamp
+  heap.push(first, length2(from.x, from.y, to.x, to.y))
+  while (heap.length) {
+    const t = heap.popId()
+    if (closed[t] === stamp) continue
+    closed[t] = stamp
+    if (t === last) break
+    for (let e = 0; e < 3; e++) {
+      const next = tn[3 * t + e]!
+      if (next < 0 || area[next] !== GROUND_AREA || closed[next] === stamp || !knows(knowledge, next)) continue
+      const a = tv[3 * t + e]!,
+        b = tv[3 * t + ((e + 1) % 3)]!,
+        mx = (vx[a]! + vx[b]!) / 2,
+        my = (vy[a]! + vy[b]!) / 2
+      const cost = costs[t]! + length2(px[t]!, py[t]!, mx, my)
+      if (seen[next] !== stamp || cost < costs[next]! || (cost === costs[next] && t < parents[next]!)) {
+        costs[next] = cost
+        seen[next] = stamp
+        parents[next] = t
+        px[next] = mx
+        py[next] = my
+        heap.push(next, cost + length2(mx, my, to.x, to.y))
+      }
+    }
+  }
+  if (closed[last] !== stamp) return null
+  const corridor = [last]
+  while (corridor[corridor.length - 1] !== first) corridor.push(parents[corridor[corridor.length - 1]!]!)
+  return corridor.reverse()
+}
+/** The shared edge from each corridor triangle to the next, as its left and right ends seen walking forward. */
+function portalsOf(mesh: GroundMesh, corridor: number[]) {
+  const portals: [number, number][] = []
+  for (let i = 0; i + 1 < corridor.length; i++) {
+    const t = corridor[i]!,
+      next = corridor[i + 1]!
+    for (let e = 0; e < 3; e++)
+      if (mesh.tn[3 * t + e] === next) {
+        // Leaving a counter-clockwise triangle across edge a→b, b is on the left and a on the right.
+        portals.push([mesh.tv[3 * t + ((e + 1) % 3)]!, mesh.tv[3 * t + e]!])
+        break
+      }
+  }
+  return portals
+}
+/** The simple stupid funnel algorithm (Mononen): the shortest polyline within the corridor, turning at its vertices. */
+export function funnel(mesh: GroundMesh, portals: [number, number][], from: Point, to: Point): Point[] {
+  const { vx, vy } = mesh
+  const pts: { l: Point; r: Point }[] = [{ l: from, r: from }]
+  for (const [l, r] of portals) pts.push({ l: { x: vx[l]!, y: vy[l]! }, r: { x: vx[r]!, y: vy[r]! } })
+  pts.push({ l: to, r: to })
+  // Positive when c lies left of the ray a→b.
+  const side = (a: Point, b: Point, c: Point) => crossXY(a.x, a.y, b.x, b.y, c.x, c.y)
+  const same = (a: Point, b: Point) => a.x === b.x && a.y === b.y
+  const path: Point[] = [from]
+  let apex = from,
+    left = from,
+    right = from,
+    apexIndex = 0,
+    leftIndex = 0,
+    rightIndex = 0
+  for (let i = 1; i < pts.length; i++) {
+    const { l, r } = pts[i]!
+    // Tighten the right side: the new right end must not lie right of the current right.
+    if (side(apex, right, r) >= 0) {
+      if (same(apex, right) || side(apex, left, r) < 0) {
+        right = r
+        rightIndex = i
+      } else {
+        if (!same(path[path.length - 1]!, left)) path.push(left)
+        apex = left
+        apexIndex = leftIndex
+        left = right = apex
+        leftIndex = rightIndex = apexIndex
+        i = apexIndex
+        continue
+      }
+    }
+    if (side(apex, left, l) <= 0) {
+      if (same(apex, left) || side(apex, right, l) > 0) {
+        left = l
+        leftIndex = i
+      } else {
+        if (!same(path[path.length - 1]!, right)) path.push(right)
+        apex = right
+        apexIndex = rightIndex
+        left = right = apex
+        leftIndex = rightIndex = apexIndex
+        i = apexIndex
+        continue
+      }
+    }
+  }
+  if (!same(path[path.length - 1]!, to)) path.push(to)
+  return path
+}
+/**
+ * Cuts the path wherever it crosses a corridor edge, so each piece lies in one flat triangle. Cut points are rounded
+ * to whole centimetres and kept at least 1 cm from the ends of their edge.
+ */
+export function cutPath(
+  mesh: GroundMesh,
+  corridor: number[],
+  portals: [number, number][],
+  path: Point[],
+): { x0: number; y0: number; x1: number; y1: number; triangle: number }[] {
+  const { vx, vy } = mesh
+  const pieces: { x0: number; y0: number; x1: number; y1: number; triangle: number }[] = []
+  let ci = 0,
+    cur = path[0]!
+  const emit = (p: Point) => {
+    if (p.x !== cur.x || p.y !== cur.y) pieces.push({ x0: cur.x, y0: cur.y, x1: p.x, y1: p.y, triangle: corridor[ci]! })
+    cur = p
+  }
+  for (let k = 1; k < path.length; k++) {
+    const target = path[k]!
+    while (ci + 1 < corridor.length && triangleDistanceSq(mesh, corridor[ci]!, target.x, target.y) > 0) {
+      const [l, r] = portals[ci]!,
+        ax = vx[r]!,
+        ay = vy[r]!,
+        bx = vx[l]!,
+        by = vy[l]!
+      const da = crossXY(cur.x, cur.y, target.x, target.y, ax, ay),
+        db = crossXY(cur.x, cur.y, target.x, target.y, bx, by),
+        edge = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2)
+      let s = da === db ? 0.5 : da / (da - db)
+      if (edge >= 2) s = Math.max(1 / edge, Math.min(1 - 1 / edge, s))
+      else s = 0.5
+      emit({ x: Math.round(ax + s * (bx - ax)), y: Math.round(ay + s * (by - ay)) })
+      ci++
+    }
+    emit(target)
+  }
+  return pieces
+}
+export function knownRoute(
+  nav: NavMap,
+  knowledge: Knowledge,
+  config: ValleyConfig,
+  loadKg: number,
+  from: Point & { triangle?: number },
+  to: Point & { triangle?: number },
+): Route | null {
+  const mesh = nav.mesh,
+    first = routeTriangle(nav, knowledge, from),
+    last = routeTriangle(nav, knowledge, to)
+  if (first < 0 || last < 0) return null
+  if (from.x === to.x && from.y === to.y) return { segments: [], minutes: 0, timeUnits: 0, kcal: 0 }
+  // A search between separate pieces of known ground would exhaust the start's piece before failing.
+  const componentOf = knownComponents(nav, knowledge)
+  if (componentOf(first) !== componentOf(last)) return null
+  const corridor = corridorOf(mesh, knowledge, first, last, from, to)
+  if (!corridor) return null
+  const portals = portalsOf(mesh, corridor),
+    path = funnel(mesh, portals, from, to),
+    speed = loadedSpeed(config, loadKg)
   const segments: RouteSegment[] = []
   let timeUnits = 0,
     energy = 0
-  for (let i = 1; i < points.length; i += 1) {
-    const a = points[i - 1]!,
-      b = points[i]!,
-      lengthCm = distance(a.x, a.y, b.x, b.y)
+  for (const piece of cutPath(mesh, corridor, portals, path)) {
+    const lengthCm = distance(piece.x0, piece.y0, piece.x1, piece.y1)
     if (!lengthCm) continue
-    const { slope, uphill } = slopeClassOf(config, terrain, a, b)
-    const groundClass = ground[cellOf(terrain, a.x, a.y)]! as Ground
+    const { slope, uphill } = segmentSlope(mesh, piece)
+    const groundClass = nav.ground[piece.triangle]! as Ground
     const duration = segmentTimeUnits(config, lengthCm, slope, uphill, groundClass, speed)
     const energyPerHour = segmentEnergyRate(config, slope, uphill)
     segments.push({
-      x0: a.x,
-      y0: a.y,
-      x1: b.x,
-      y1: b.y,
+      ...piece,
       lengthCm,
       slope,
       uphill,
@@ -394,8 +537,101 @@ export function positionAlong(route: Route, elapsedMinutes: number): Point {
   }
   return { x: last.x1, y: last.y1 }
 }
+/**
+ * The connected pieces of known walkable triangles as a union-find (-1 for a triangle not known walkable), and the
+ * known walkable triangles that border an unknown one. Built once per knowledge, then carried forward as triangles
+ * are learnt.
+ */
+interface Components {
+  revision: number
+  parent: Int32Array
+  frontier: Set<number>
+}
+const componentCache = new WeakMap<Knowledge, Components>()
+function rootOf(parent: Int32Array, t: number) {
+  while (parent[t] !== t) {
+    parent[t] = parent[parent[t]!]!
+    t = parent[t]!
+  }
+  return t
+}
+function borders(mesh: GroundMesh, knowledge: Knowledge, t: number) {
+  for (let e = 0; e < 3; e++) {
+    const next = mesh.tn[3 * t + e]!
+    if (next >= 0 && !knows(knowledge, next)) return true
+  }
+  return false
+}
+function componentsOf(nav: NavMap, knowledge: Knowledge) {
+  const saved = componentCache.get(knowledge)
+  if (saved?.revision === knowledge.revision) return saved
+  const { mesh } = nav,
+    parent = new Int32Array(mesh.triangles).fill(-1),
+    frontier = new Set<number>()
+  const todo: number[] = []
+  for (let root = 0; root < mesh.triangles; root++) {
+    if (parent[root]! >= 0 || mesh.area[root] !== GROUND_AREA || !knows(knowledge, root)) continue
+    parent[root] = root
+    todo.length = 0
+    todo.push(root)
+    for (let i = 0; i < todo.length; i++) {
+      const t = todo[i]!
+      if (borders(mesh, knowledge, t)) frontier.add(t)
+      for (let e = 0; e < 3; e++) {
+        const next = mesh.tn[3 * t + e]!
+        if (next < 0 || parent[next]! >= 0 || mesh.area[next] !== GROUND_AREA || !knows(knowledge, next)) continue
+        parent[next] = root
+        todo.push(next)
+      }
+    }
+  }
+  const value = { revision: knowledge.revision, parent, frontier }
+  componentCache.set(knowledge, value)
+  return value
+}
+/** The piece of known walkable ground a triangle belongs to, as a number equal only within one piece; -1 if none. */
+export function knownComponents(nav: NavMap, knowledge: Knowledge) {
+  const { parent } = componentsOf(nav, knowledge)
+  return (t: number) => (t < 0 || parent[t]! < 0 ? -1 : rootOf(parent, t))
+}
+/**
+ * Carries the pieces of `before` forward to `after`, which knows `added` besides, instead of rebuilding them: new
+ * walkable triangles join their known walkable neighbours, and the frontier is rechecked around what was added.
+ */
+export function carryComponents(nav: NavMap, before: Knowledge, after: Knowledge, added: readonly number[]) {
+  const saved = componentCache.get(before)
+  if (!saved || saved.revision + (added.length ? 1 : 0) !== after.revision) return
+  const { mesh } = nav,
+    parent = before === after ? saved.parent : saved.parent.slice(),
+    frontier = before === after ? saved.frontier : new Set(saved.frontier)
+  for (const t of added) if (mesh.area[t] === GROUND_AREA) parent[t] = t
+  for (const t of added) {
+    if (parent[t]! < 0) continue
+    for (let e = 0; e < 3; e++) {
+      const next = mesh.tn[3 * t + e]!
+      if (next < 0 || parent[next]! < 0) continue
+      const a = rootOf(parent, t),
+        b = rootOf(parent, next)
+      if (a !== b) parent[Math.max(a, b)] = Math.min(a, b)
+    }
+  }
+  const recheck = (t: number) => {
+    if (parent[t]! < 0) return
+    if (borders(mesh, after, t)) frontier.add(t)
+    else frontier.delete(t)
+  }
+  for (const t of added) {
+    recheck(t)
+    for (let e = 0; e < 3; e++) {
+      const next = mesh.tn[3 * t + e]!
+      if (next >= 0) recheck(next)
+    }
+  }
+  componentCache.set(after, { revision: after.revision, parent, frontier })
+}
 const frontierCache = new WeakMap<Knowledge, Map<string, Point | null>>()
-export function nearestFrontier(lattice: RouteLattice, knowledge: Knowledge, from: Point): Point | null {
+/** The nearest known walkable triangle, reachable through known ground, with an unknown neighbour. */
+export function nearestFrontier(nav: NavMap, knowledge: Knowledge, from: Point): Point | null {
   let cache = frontierCache.get(knowledge)
   if (!cache) {
     cache = new Map()
@@ -403,40 +639,24 @@ export function nearestFrontier(lattice: RouteLattice, knowledge: Knowledge, fro
   }
   const key = `${from.x},${from.y}:${knowledge.revision}`
   if (cache.has(key)) return cache.get(key)!
-  const first = routeNode(lattice, knowledge, from)
+  const mesh = nav.mesh,
+    first = routeTriangle(nav, knowledge, from)
   if (first < 0) return null
-  const seen = new Uint8Array(lattice.dry.length),
-    pending = [first]
-  let best = -1,
-    bestSq = Infinity
-  seen[first] = 1
-  for (let index = 0; index < pending.length; index += 1) {
-    const id = pending[index]!,
-      x = id % lattice.cells,
-      y = Math.floor(id / lattice.cells)
-    let frontier = false
-    for (const [direction, [dx, dy]] of directions.entries()) {
-      const nx = x + dx,
-        ny = y + dy,
-        next = ny * lattice.cells + nx
-      if (nx < 0 || ny < 0 || nx >= lattice.cells || ny >= lattice.cells) continue
-      if (!knowledge.nodes[next]) frontier = true
-      if (dx && dy && (!knowledge.nodes[id + dx] || !knowledge.nodes[id + dy * lattice.cells])) continue
-      if (lattice.edges[id]! & (1 << direction) && knowledge.nodes[next] && !seen[next]) {
-        seen[next] = 1
-        pending.push(next)
-      }
-    }
-    if (frontier) {
-      const p = nodePoint(lattice, id),
-        sq = distanceSq(p.x, p.y, from.x, from.y)
-      if (sq > 0 && (sq < bestSq || (sq === bestSq && id < best))) {
-        bestSq = sq
-        best = id
-      }
+  const { parent, frontier } = componentsOf(nav, knowledge),
+    label = rootOf(parent, first)
+  let best: Point | null = null,
+    bestSq = Infinity,
+    bestId = -1
+  for (const t of frontier) {
+    if (rootOf(parent, t) !== label) continue
+    const p = trianglePoint(mesh, t),
+      sq = distanceSq(p.x, p.y, from.x, from.y)
+    if (sq > 0 && (sq < bestSq || (sq === bestSq && t < bestId))) {
+      bestSq = sq
+      bestId = t
+      best = p
     }
   }
-  const result = best < 0 ? null : nodePoint(lattice, best)
-  cache.set(key, result)
-  return result
+  cache.set(key, best)
+  return best
 }

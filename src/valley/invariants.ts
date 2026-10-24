@@ -1,4 +1,5 @@
-import { bankCircleWet, bankSegmentWet, bankViolations } from './banks'
+import { bankViolations } from './banks'
+import { GROUND_AREA, meshViolations } from './mesh'
 import { waterViolations } from './water'
 import { BUSH_GROUNDS, HAZEL_GROUNDS, TREE_GROUNDS, onGround } from './layout'
 import { STONE, cellOf } from './terrain'
@@ -6,10 +7,13 @@ import { positionAt } from './tasks'
 import {
   positionAlong,
   chunkOf,
-  nodePoint,
-  routeNode,
-  slopeClassOf,
+  knows,
+  meshSettings,
+  NEAR_CM,
+  onWalkableGround,
   segmentEnergyRate,
+  segmentSlope,
+  triangleDistanceSq,
   TIME_UNITS_PER_MINUTE,
 } from './routes'
 import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body'
@@ -28,6 +32,33 @@ const sum = (values: Iterable<number>) => {
 }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const pointEqual = (a: Point, b: Point) => a.x === b.x && a.y === b.y
+/** Every bank point stands on walkable ground within reach of its water. */
+function bankPointViolations(state: ValleyState) {
+  const { mesh, accessBanks } = state.layout.nav,
+    errors: string[] = []
+  for (const bank of accessBanks) {
+    const t = Math.floor(bank.id / 3),
+      e = bank.id % 3,
+      a = mesh.tv[3 * t + e]!,
+      b = mesh.tv[3 * t + ((e + 1) % 3)]!
+    const other = mesh.tn[bank.id]!
+    if (
+      !onWalkableGround(mesh, bank) ||
+      mesh.area[bank.triangle] !== GROUND_AREA ||
+      !mesh.shore[bank.id] ||
+      other < 0 ||
+      mesh.area[other] === GROUND_AREA ||
+      triangleDistanceSq(mesh, bank.triangle, bank.x, bank.y) !== 0
+    )
+      errors.push(`Bank ${bank.id} is not on walkable ground beside its water`)
+    const dx = mesh.vx[b]! - mesh.vx[a]!,
+      dy = mesh.vy[b]! - mesh.vy[a]!,
+      s = Math.max(0, Math.min(1, ((bank.x - mesh.vx[a]!) * dx + (bank.y - mesh.vy[a]!) * dy) / (dx * dx + dy * dy)))
+    if ((bank.x - mesh.vx[a]! - s * dx) ** 2 + (bank.y - mesh.vy[a]! - s * dy) ** 2 > state.config.reachCm ** 2)
+      errors.push(`Bank ${bank.id} is out of reach of its water`)
+  }
+  return errors
+}
 export function layoutViolations(state: ValleyState): string[] {
   const { config, layout } = state
   const { terrain, ground } = layout
@@ -39,10 +70,10 @@ export function layoutViolations(state: ValleyState): string[] {
   ] as const
   for (const [centres, plants, grounds, name] of kinds) {
     for (const [id, centre] of centres.entries())
-      if (!onGround(terrain, ground, centre.x, centre.y, grounds))
+      if (!onGround(terrain, layout.nav.mesh, ground, centre.x, centre.y, grounds))
         violations.push(`The site of ${name} ${id} lies on the wrong ground`)
     for (let id = 0; id < plants.count; id += 1)
-      if (!onGround(terrain, ground, plants.x[id]!, plants.y[id]!, grounds))
+      if (!onGround(terrain, layout.nav.mesh, ground, plants.x[id]!, plants.y[id]!, grounds))
         violations.push(`A ${name}, ${id}, grows on the wrong ground`)
   }
   for (let id = 0; id < layout.stones.count; id += 1)
@@ -64,7 +95,11 @@ export class ValleyChecker {
     this.geography = [
       ...layoutViolations(state),
       ...waterViolations(state.layout.terrain.water),
-      ...bankViolations(state.layout.lattice.banks, state.layout.terrain.water),
+      ...(state.layout.terrain.water.shore
+        ? bankViolations(state.layout.terrain.water.shore, state.layout.terrain.water)
+        : []),
+      ...meshViolations(state.layout.nav.mesh, state.layout.terrain, meshSettings(state.config)),
+      ...bankPointViolations(state),
     ]
     if (!annualShares(state)) this.geography.push('Calendar shares do not sum to the yearly allocation')
   }
@@ -99,16 +134,10 @@ export class ValleyChecker {
   }
   private positions(state: ValleyState) {
     const errors: string[] = [],
-      lattice = state.layout.lattice,
-      banks = lattice.banks
+      nav = state.layout.nav,
+      mesh = nav.mesh
     const dry = (point: Point) =>
-      Number.isSafeInteger(point.x) &&
-      Number.isSafeInteger(point.y) &&
-      point.x >= 0 &&
-      point.y >= 0 &&
-      point.x <= state.config.valleySizeCm &&
-      point.y <= state.config.valleySizeCm &&
-      !bankCircleWet(banks, point, 0)
+      Number.isSafeInteger(point.x) && Number.isSafeInteger(point.y) && onWalkableGround(mesh, point)
     const used = new Set<number>()
     for (let id = this.previous.routes.length; id < state.routes.length; id++) used.add(id)
     for (const p of state.foragers) {
@@ -127,7 +156,7 @@ export class ValleyChecker {
         .filter((index) => index >= 0)
       if (
         p.alive
-          ? buckets.length !== 1 || buckets[0] !== chunkOf(lattice, positionAt(state, p, state.minute))
+          ? buckets.length !== 1 || buckets[0] !== chunkOf(nav, positionAt(state, p, state.minute))
           : buckets.length !== 0
       )
         errors.push(`person ${p.id}: chunk index is inconsistent`)
@@ -144,10 +173,17 @@ export class ValleyChecker {
         const segment = route.segments[i]!,
           a = { x: segment.x0, y: segment.y0 },
           b = { x: segment.x1, y: segment.y1 }
-        if (!dry(a) || !dry(b) || bankSegmentWet(banks, a, b)) errors.push(`route ${id}: segment enters water`)
+        if (
+          !dry(a) ||
+          !dry(b) ||
+          mesh.area[segment.triangle] !== GROUND_AREA ||
+          triangleDistanceSq(mesh, segment.triangle, a.x, a.y) > NEAR_CM ** 2 ||
+          triangleDistanceSq(mesh, segment.triangle, b.x, b.y) > NEAR_CM ** 2
+        )
+          errors.push(`route ${id}: segment enters water`)
         if (i && !pointEqual(a, { x: route.segments[i - 1]!.x1, y: route.segments[i - 1]!.y1 }))
           errors.push(`route ${id}: disconnected polyline`)
-        const slope = slopeClassOf(state.config, state.layout.terrain, a, b)
+        const slope = segmentSlope(mesh, segment)
         if (
           slope.slope !== segment.slope ||
           slope.uphill !== segment.uphill ||
@@ -290,7 +326,7 @@ export class ValleyChecker {
       wood: p.placeWood.slice(),
       logs: p.placeLogs.slice(),
       checked: p.placeCheckedMinute.slice(),
-      nodes: p.knowledge.nodes.slice(),
+      triangles: p.knowledge.triangles.slice(),
       banks: new Map(p.knownBanks),
     }))
     for (const event of state.lastInterval) {
@@ -305,11 +341,11 @@ export class ValleyChecker {
             errors.push('Place observed beyond sight')
           m.places[id] = event.minute
         }
-        for (const id of event.nodes) {
-          const point = nodePoint(state.layout.lattice, id)
-          if ((point.x - event.origin.x) ** 2 + (point.y - event.origin.y) ** 2 > radius ** 2)
-            errors.push('Node observed beyond sight')
-          m.nodes[id] = 1
+        const mesh = state.layout.nav.mesh
+        for (const t of event.triangles) {
+          if ((mesh.cx[t]! - event.origin.x) ** 2 + (mesh.cy[t]! - event.origin.y) ** 2 > radius ** 2)
+            errors.push('Triangle observed beyond sight')
+          m.triangles[t >> 3]! |= 1 << (t & 7)
         }
         for (const bank of event.banks) {
           if ((bank.x - event.origin.x) ** 2 + (bank.y - event.origin.y) ** 2 > radius ** 2)
@@ -340,12 +376,9 @@ export class ValleyChecker {
           errors.push('A decision used an unknown bank')
         if (t.kind === 'walk') {
           const route = state.routes[t.routeId]!,
-            knowledge = { nodes: m.nodes, revision: 0 }
-          for (const segment of route.segments) {
-            const point = { x: segment.x1, y: segment.y1 },
-              id = routeNode(state.layout.lattice, knowledge, point)
-            if (id < 0) errors.push('A route used unseen ground')
-          }
+            knowledge = { triangles: m.triangles, revision: 0 }
+          for (const segment of route.segments)
+            if (!knows(knowledge, segment.triangle)) errors.push('A route used unseen ground')
         }
       }
     }
@@ -357,7 +390,7 @@ export class ValleyChecker {
         [p.placeWood, m.wood],
         [p.placeLogs, m.logs],
         [p.placeCheckedMinute, m.checked],
-        [p.knowledge.nodes, m.nodes],
+        [p.knowledge.triangles, m.triangles],
       ] as const)
         if (!same([...actual], [...expected])) errors.push(`person ${p.id}: memory changed without an observation`)
       if (!same([...p.knownBanks], [...m.banks])) errors.push('Bank memory changed without an observation')

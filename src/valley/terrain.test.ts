@@ -133,7 +133,7 @@ describe('the ground', () => {
       [layout.trees, TREE_GROUNDS],
     ] as const)
       for (let id = 0; id < plants.count; id += 1)
-        expect(onGround(terrain, ground, plants.x[id]!, plants.y[id]!, grounds)).toBe(true)
+        expect(onGround(terrain, layout.nav.mesh, ground, plants.x[id]!, plants.y[id]!, grounds)).toBe(true)
     for (const hearth of layout.hearths) expect(ground[cellOf(terrain, hearth.x, hearth.y)]).not.toBe(STONE)
   })
 

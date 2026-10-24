@@ -1,4 +1,5 @@
-import { reindexPeople, shareBankMemory } from './perception'
+import { reindexPeople, shareBankMemory, shareKnowledge, shareRouteCache } from './perception'
+import { knowledgeBytes } from './routes'
 import { measureTask } from './summary'
 import { WakeQueue } from './clock'
 import { MINUTES_PER_DAY, dayOf } from './calendar'
@@ -183,7 +184,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       metMinute: new Int32Array(config.founders).fill(-1),
       metPosition: new Map(),
       arrivalFrom: new Int32Array(config.founders).fill(-1),
-      knowledge: { nodes: new Uint8Array(layout.lattice.dry.length), revision: 0 },
+      knowledge: { triangles: new Uint8Array(knowledgeBytes(layout.nav.mesh)), revision: 0 },
       routeCache: new Map(),
       energyTimeRemainder: 0,
       waterTimeRemainder: 0,
@@ -256,12 +257,12 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     fish,
     queue,
     routes: [],
-    peopleByChunk: Array.from({ length: layout.lattice.chunkCells ** 2 }, (_, chunk) =>
+    peopleByChunk: Array.from({ length: layout.nav.chunkCells ** 2 }, (_, chunk) =>
       Int32Array.from(
         foragers
           .filter(
             (p) =>
-              Math.floor(p.y / config.chunkCm) * layout.lattice.chunkCells + Math.floor(p.x / config.chunkCm) === chunk,
+              Math.floor(p.y / config.chunkCm) * layout.nav.chunkCells + Math.floor(p.x / config.chunkCm) === chunk,
           )
           .map((p) => p.id),
       ),
@@ -339,14 +340,8 @@ const cloneForager = (forager: Forager): Forager => {
     metMinute: forager.metMinute.slice(),
     metPosition: new Map(forager.metPosition),
     arrivalFrom: forager.arrivalFrom.slice(),
-    knowledge: {
-      ...forager.knowledge,
-      nodes: forager.knowledge.nodes.slice(),
-      fullyKnown: forager.knowledge.fullyKnown?.slice(),
-      banksKnown: forager.knowledge.banksKnown?.slice(),
-      views: forager.knowledge.views ? new Set(forager.knowledge.views) : undefined,
-    },
-    routeCache: new Map(forager.routeCache),
+    knowledge: shareKnowledge(forager.knowledge),
+    routeCache: shareRouteCache(forager.routeCache),
     knownBanks: shareBankMemory(forager.knownBanks),
     fishMemory: new Map(forager.fishMemory),
     deathCauses: [...forager.deathCauses],

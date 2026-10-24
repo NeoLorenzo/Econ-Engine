@@ -160,8 +160,8 @@ describe('ported Life 11 corruption cases', () => {
         if (kind === 'sight') observe.origin = { x: -1000000, y: -1000000 }
         if (kind === 'stock check') observe.stock = { placeId: 0, food: 123, wood: 1, logs: 0, stones: 0 }
         if (kind === 'unseen route') {
-          observe.nodes = []
-          s.foragers[0]!.knowledge.nodes.fill(0)
+          observe.triangles = []
+          s.foragers[0]!.knowledge.triangles.fill(0)
         }
       }),
     ).not.toEqual([])

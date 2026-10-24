@@ -5,7 +5,7 @@ import { fishCapacity } from './fish'
 import type { Point, ValleyConfig } from './types'
 
 /**
- * The canonical Life 12 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
+ * The canonical Life 13 land: 4 km square of young moraine country in Mesolithic northern Europe, a broad rise and
  * fall of up to 30 m with broken moraine fronts, drumlins, kames, clustered hummocks, kettle hollows and tunnel
  * valleys, lakes in hollows and connected downhill river reaches. Its grassland surface is grass, dirt or stone.
  * Resources are places with one stock each: 800 berry thickets, 800 hazel thickets, 300 stands of 36 logs and 100
@@ -16,7 +16,9 @@ import type { Point, ValleyConfig } from './types'
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   daysPerYear: 90,
-  routeCellCm: 2_000,
+  meshMaxEdgeCm: 4_000,
+  meshHeightToleranceCm: 100,
+  shoreToleranceCm: 100,
   walkKcalPerHour: 250,
   moderateSlowdownPerMille: 1_300,
   steepDownSlowdownPerMille: 1_300,
@@ -362,6 +364,9 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'makeKcalPerHour',
     'terrainCellCm',
     'chunkCm',
+    'meshMaxEdgeCm',
+    'meshHeightToleranceCm',
+    'shoreToleranceCm',
     'reliefWavelengthCm',
     'iceFlowControlCm',
     'moraineMinHalfWidthCm',
@@ -573,8 +578,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   )
     errors.push('A site must fit in close sight to be checked: perceptionRadiusCm > every site radius')
   if (2 * config.siteMarginCm >= config.valleySizeCm) errors.push('siteMarginCm must leave room for sites')
-  if ((config.valleySizeCm / config.routeCellCm) ** 2 * config.founders > 512_000_000)
-    errors.push('Route-lattice memories exceed the supported 512 MB allocation')
   if (config.valleySizeCm > Math.floor(Math.sqrt(2 ** 51)))
     errors.push('Land coordinates exceed exact squared-distance limits')
   if (config.thicketCount + config.hazelThicketCount + config.standCount + config.outcropCount > 2_000_000)
@@ -605,13 +608,12 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     config.waterBaseMlPerDay > Number.MAX_SAFE_INTEGER - 86_399
   )
     errors.push('Water-loss numerators exceed supported exact integer limits')
-  if (
-    !Number.isSafeInteger(config.routeCellCm) ||
-    config.routeCellCm <= 0 ||
-    config.routeCellCm % config.terrainCellCm !== 0
-  )
-    errors.push('routeCellCm must be a positive multiple of terrainCellCm')
-  if (config.chunkCm % config.routeCellCm !== 0) errors.push('chunkCm must be a multiple of routeCellCm')
+  // Relief squares halve down to one terrain cell and tile the land; chunks hold whole squares.
+  const squares = config.meshMaxEdgeCm / config.terrainCellCm
+  if (!Number.isInteger(squares) || squares < 1 || (squares & (squares - 1)) !== 0)
+    errors.push('meshMaxEdgeCm must be terrainCellCm times a power of two')
+  if (config.valleySizeCm % config.meshMaxEdgeCm !== 0) errors.push('meshMaxEdgeCm must divide valleySizeCm')
+  if (config.chunkCm % config.meshMaxEdgeCm !== 0) errors.push('chunkCm must be a multiple of meshMaxEdgeCm')
   return errors
 }
 

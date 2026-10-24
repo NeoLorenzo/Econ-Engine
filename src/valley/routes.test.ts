@@ -1,22 +1,41 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSurveyedValley, addTestLake } from './ruleFixtures'
 import { FLAT_LAND } from './config'
-import { bankSegmentWet } from './banks'
+import { buildBanks } from './banks'
 import * as bankGeometry from './banks'
-import { buildLattice, knownRoute, positionAlong, segmentMinutes, segmentKcal, type Knowledge } from './routes'
+import { GROUND_AREA } from './mesh'
+import {
+  buildNav,
+  knownRoute,
+  NEAR_CM,
+  positionAlong,
+  segmentKcal,
+  segmentMinutes,
+  triangleDistanceSq,
+  type Knowledge,
+} from './routes'
+import { deriveWater } from './water'
+import type { ValleyState } from './types'
 
-describe('known route lattice', () => {
-  function fixture(water = false) {
-    const state = createSurveyedValley(FLAT_LAND)
-    if (water) addTestLake(state)
-    const { terrain, ground } = state.layout
-    const lattice = buildLattice(state.config, terrain)
-    const knowledge: Knowledge = { nodes: new Uint8Array(lattice.dry.length).fill(1), revision: 1 }
-    const route = (from: { x: number; y: number }, to: { x: number; y: number }) =>
-      knownRoute(lattice, knowledge, terrain, ground, lattice.banks, state.config, 0, from, to)
-    return { state, lattice, knowledge, route }
-  }
-  it('reuses exact-point connectors without shoreline tests during route searches', () => {
+function fixture(water = false) {
+  const state = createSurveyedValley(FLAT_LAND)
+  if (water) addTestLake(state)
+  const knowledge = state.foragers[0]!.knowledge
+  const route = (from: { x: number; y: number }, to: { x: number; y: number }) =>
+    knownRoute(state.layout.nav, knowledge, state.config, 0, from, to)
+  return { state, knowledge, route }
+}
+
+/** Forgets every triangle whose centroid passes `test`. */
+function forget(state: ValleyState, knowledge: Knowledge, test: (x: number, y: number) => boolean) {
+  const { mesh } = state.layout.nav
+  for (let t = 0; t < mesh.triangles; t++)
+    if (test(mesh.cx[t]!, mesh.cy[t]!)) knowledge.triangles[t >> 3]! &= ~(1 << (t & 7))
+  knowledge.revision += 1
+}
+
+describe('known routes over the ground mesh', () => {
+  it('reuses bank points without shoreline tests during route searches', () => {
     const { route } = fixture(true)
     const from = { x: 250, y: 750 },
       to = { x: 23_000, y: 750 }
@@ -29,37 +48,75 @@ describe('known route lattice', () => {
       spy.mockRestore()
     }
   })
-  it('bends around a known lake without crossing water', () => {
-    const { lattice, route } = fixture(true)
+  it('bends round a known lake without entering water', () => {
+    const { state, route } = fixture(true)
+    const { mesh } = state.layout.nav
     const path = route({ x: 250, y: 750 }, { x: 23_000, y: 750 })!
     expect(path).not.toBeNull()
-    expect(path.segments.some((s) => s.y0 > 1_000 || s.y1 > 1_000)).toBe(true)
-    for (const s of path.segments)
-      expect(bankSegmentWet(lattice.banks, { x: s.x0, y: s.y0 }, { x: s.x1, y: s.y1 })).toBe(false)
+    expect(path.segments.length).toBeGreaterThan(1)
+    for (const s of path.segments) {
+      expect(mesh.area[s.triangle]).toBe(GROUND_AREA)
+      // The path may run along the shore, never inside the lake's cells.
+      const mid = { x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2 }
+      expect(mid.x > 501 && mid.x < 20_499 && mid.y > 501 && mid.y < 999).toBe(false)
+    }
   })
-  it('does not use unseen dry nodes', () => {
-    const { route, knowledge } = fixture()
-    knowledge.nodes.fill(0)
+  it('bends round a 5 m pond only by about its width', () => {
+    const state = createSurveyedValley(FLAT_LAND)
+    const terrain = state.layout.terrain
+    const bed = new Int32Array(terrain.cells ** 2)
+    bed[40 * terrain.cells + 40] = -100
+    const water = deriveWater(
+      terrain.cells,
+      terrain.cellCm,
+      bed,
+      state.config.riverCatchmentM2,
+      state.config.riverDepthCm,
+    )
+    water.shore = buildBanks(water, terrain.height)
+    const wet = { ...terrain, water }
+    state.layout = { ...state.layout, terrain: wet, nav: buildNav(state.config, wet, state.layout.ground) }
+    const path = knownRoute(
+      state.layout.nav,
+      state.foragers[0]!.knowledge,
+      state.config,
+      0,
+      {
+        x: 10_000,
+        y: 20_250,
+      },
+      { x: 30_000, y: 20_250 },
+    )!
+    const length = path.segments.reduce((sum, s) => sum + s.lengthCm, 0)
+    expect(length).toBeGreaterThan(20_000)
+    expect(length).toBeLessThan(20_000 + 600)
+  })
+  it('does not use unseen ground', () => {
+    const { state, route, knowledge } = fixture()
+    forget(state, knowledge, () => true)
     expect(route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })).toBeNull()
-    knowledge.nodes.fill(1)
+    knowledge.triangles.fill(255)
     knowledge.revision += 1
     expect(route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })).not.toBeNull()
   })
-  it('does not cut diagonally across unseen adjoining ground', () => {
-    const { route, knowledge, lattice } = fixture()
-    knowledge.nodes.fill(0)
-    knowledge.nodes[0] = 1
-    knowledge.nodes[lattice.cells + 1] = 1
-    expect(route({ x: 1_000, y: 1_000 }, { x: 3_000, y: 3_000 })).toBeNull()
-  })
-  it('takes a shorter crossing only after observing it', () => {
-    const { route, knowledge, lattice } = fixture()
-    for (let row = 0; row < lattice.cells - 1; row += 1) knowledge.nodes[row * lattice.cells + 5] = 0
-    const before = route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })!
-    knowledge.nodes[5] = 1
+  it('takes a shorter crossing only after seeing it', () => {
+    const { state, route, knowledge } = fixture()
+    forget(state, knowledge, (x, y) => x > 9_000 && x < 11_000 && y > 12_000 && y < 70_000)
+    const before = route({ x: 1_000, y: 30_000 }, { x: 21_000, y: 30_000 })!
+    knowledge.triangles.fill(255)
     knowledge.revision += 1
-    const after = route({ x: 1_000, y: 1_000 }, { x: 21_000, y: 1_000 })!
+    const after = route({ x: 1_000, y: 30_000 }, { x: 21_000, y: 30_000 })!
     expect(after.minutes).toBeLessThan(before.minutes)
+  })
+  it('cuts a walk into joined pieces, each inside its own triangle', () => {
+    const { state, route } = fixture(true)
+    const { mesh } = state.layout.nav
+    const path = route({ x: 250, y: 750 }, { x: 61_000, y: 41_000 })!
+    for (const [i, s] of path.segments.entries()) {
+      expect(triangleDistanceSq(mesh, s.triangle, s.x0, s.y0)).toBeLessThanOrEqual(NEAR_CM ** 2)
+      expect(triangleDistanceSq(mesh, s.triangle, s.x1, s.y1)).toBeLessThanOrEqual(NEAR_CM ** 2)
+      if (i > 0) expect([s.x0, s.y0]).toEqual([path.segments[i - 1]!.x1, path.segments[i - 1]!.y1])
+    }
   })
   it('times segments and costs walking by slope class', () => {
     const { state } = fixture()
@@ -70,7 +127,7 @@ describe('known route lattice', () => {
     expect(segmentKcal(c, 60, 1, true)).toBe(375)
     expect(segmentKcal(c, 60, 2, false)).toBe(250)
   })
-  it('preserves configured pace across many lattice edges', () => {
+  it('keeps the configured pace across many triangles', () => {
     const { route } = fixture()
     const path = route({ x: 1_000, y: 1_000 }, { x: 61_000, y: 1_000 })!
     expect(path.minutes).toBe(10)
@@ -97,25 +154,16 @@ describe('known route lattice', () => {
 
 it('keeps forward and return paths exact after unrelated searches and load changes', () => {
   const s = createSurveyedValley(FLAT_LAND),
-    l = s.layout.lattice,
+    nav = s.layout.nav,
     p = s.foragers[0]!,
     a = { x: 1000, y: 1000 },
     b = { x: 61000, y: 21000 }
-  const run = (lattice: typeof l, load: number, reverse: boolean) =>
-    knownRoute(
-      lattice,
-      p.knowledge,
-      s.layout.terrain,
-      s.layout.ground,
-      lattice.banks,
-      s.config,
-      load,
-      reverse ? b : a,
-      reverse ? a : b,
-    )
+  const run = (load: number, reverse: boolean) =>
+    knownRoute(nav, p.knowledge, s.config, load, reverse ? b : a, reverse ? a : b)
   for (const load of [0, 30, 0])
     for (const reverse of [false, true]) {
-      run(l, load, !reverse)
-      expect(run(l, load, reverse)).toEqual(run({ ...l }, load, reverse))
+      const first = run(load, reverse)
+      run(load, !reverse)
+      expect(run(load, reverse)).toEqual(first)
     }
 })

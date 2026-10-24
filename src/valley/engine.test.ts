@@ -10,7 +10,7 @@ function at(minute: number) {
   state.queue = new WakeQueue()
   state.queue.schedule({ minute, phase: 1, id: 0, kind: 'end' })
   state.queue.schedule({ minute: (Math.floor(minute / 60) + 1) * 60, phase: 0, id: 0, kind: 'world' })
-  state.foragers[0]!.knowledge.nodes.fill(1)
+  state.foragers[0]!.knowledge.triangles.fill(255)
   return state
 }
 describe('wake-up engine', () => {
@@ -19,7 +19,7 @@ describe('wake-up engine', () => {
     for (const person of state.foragers) {
       person.wood = 36
       person.stone = 1
-      person.knowledge.nodes.fill(1)
+      person.knowledge.triangles.fill(255)
     }
     const before = cloneValley(state)
     const batch = stepValley(state, 1_440)
@@ -41,7 +41,7 @@ describe('wake-up engine', () => {
   it('walks home as one task and arrives at its recorded minute', () => {
     const state = at(1_080),
       person = state.foragers[0]!
-    person.x = person.hearth.x - 6_000
+    person.x = person.hearth.x - 20_000
     const walking = stepValley(state, 1_081)
     const task = walking.foragers[0]!.task!
     expect(task.kind).toBe('walk')
@@ -85,7 +85,7 @@ describe('food, water and wood tasks', () => {
       person.knownPlaces.fill(0)
       person.placeStock.fill(0)
       person.placeStock[0] = 1_000
-      person.knowledge.nodes.fill(1)
+      person.knowledge.triangles.fill(255)
       state.queue.schedule({ minute: 600, phase: 1, id: person.id, kind: 'end' })
     }
     const next = stepValley(state, 900)
@@ -120,7 +120,7 @@ describe('food, water and wood tasks', () => {
   it('takes a full wood load home', () => {
     const state = at(600),
       person = state.foragers[0]!
-    person.x -= 6_000
+    person.x -= 20_000
     person.wood = 30
     person.tripWood = 30
     person.hungry = false

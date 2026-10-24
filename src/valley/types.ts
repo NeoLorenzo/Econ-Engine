@@ -21,18 +21,17 @@ export interface Hydration {
 }
 
 import type { ObservationEvent } from './perception'
-import type { Knowledge, Route, RouteLattice } from './routes'
+import type { Knowledge, NavMap, Route } from './routes'
 import type { Terrain } from './terrain'
 import type { FishStock } from './fish'
 import type { WakeQueue } from './clock'
 
 export interface BankMemory extends Point {
-  connectorNode?: number
-  segmentId?: number
+  /** The shore half-edge of the walkable triangle it was set back from. */
   id: number
   bodyId: number
-  wetCell: number
-  dryCell: number
+  /** The walkable triangle holding the bank point. */
+  triangle: number
   minute: number
 }
 
@@ -75,7 +74,10 @@ export interface FoodLot {
  */
 export interface ValleyConfig extends HydrationConfig {
   daysPerYear: number
-  routeCellCm: number
+  /** The ground mesh: its largest relief square, how far its heights and shores may stray from the terrain's. */
+  meshMaxEdgeCm: number
+  meshHeightToleranceCm: number
+  shoreToleranceCm: number
   walkKcalPerHour: number
   moderateSlowdownPerMille: number
   steepDownSlowdownPerMille: number
@@ -327,7 +329,8 @@ export interface PlaceTable {
 
 export interface ValleyLayout {
   places: PlaceTable
-  lattice: RouteLattice
+  /** The ground mesh as people walk it, with the bank points along its shores. */
+  nav: NavMap
   placeChunks: Int32Array[]
   placeIndex: PlantIndex
   camp: Point

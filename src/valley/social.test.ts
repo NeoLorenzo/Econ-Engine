@@ -24,7 +24,7 @@ describe('meetings and exchange at wake-ups', () => {
     buyer!.wood = 0
     buyer!.energyKcal = 69_000
     buyer!.carried = [{ food: 'nuts', kcal: 5_000, harvestTick: 100 }]
-    for (const person of state.foragers) person.knowledge.nodes.fill(1)
+    for (const person of state.foragers) person.knowledge.triangles.fill(255)
     buyer!.lastWakeMinute = 590
     buyer!.task = startTask(state.config, buyer!, 'rest', 590, 650, -1, -1, 'waiting to swap')
     state.queue.schedule({ minute: 600, phase: 1, id: 0, kind: 'end' })
@@ -32,8 +32,10 @@ describe('meetings and exchange at wake-ups', () => {
     const next = stepValley(state, 601)
     expect(next.lastInterval.some((event) => event.kind === 'exchange')).toBe(true)
     expect(next.totals.wakeUps).toBeGreaterThan(1)
-    expect(next.foragers[1]!.lastWakeMinute).toBe(600)
-    expect(next.foragers[0]!.lastWakeMinute).toBe(600)
+    const started = next.lastInterval.flatMap((event) =>
+      event.kind === 'task-start' && event.minute === 600 ? [event.foragerId] : [],
+    )
+    expect(new Set(started)).toEqual(new Set([0, 1]))
   })
   it('founds a group through a meeting without moving either person', () => {
     const state = createValley({ ...FLAT_LAND, founders: 2 })
@@ -44,7 +46,7 @@ describe('meetings and exchange at wake-ups', () => {
       person.y = 40_000
       person.wood = 24
       person.shortOfWood = false
-      person.knowledge.nodes.fill(1)
+      person.knowledge.triangles.fill(255)
       state.queue.schedule({ minute: 600, phase: 1, id: person.id, kind: 'end' })
     }
     reindexPeople(state, 600)
