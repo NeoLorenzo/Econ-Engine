@@ -1,0 +1,995 @@
+[
+  {
+    "seed": 20260813,
+    "starts": [
+      {
+        "x": 235141,
+        "y": 168325
+      },
+      {
+        "x": 226054,
+        "y": 204603
+      },
+      {
+        "x": 181437,
+        "y": 231411
+      },
+      {
+        "x": 168443,
+        "y": 185267
+      },
+      {
+        "x": 173795,
+        "y": 184793
+      },
+      {
+        "x": 164028,
+        "y": 161575
+      },
+      {
+        "x": 216712,
+        "y": 160872
+      },
+      {
+        "x": 198418,
+        "y": 195194
+      },
+      {
+        "x": 234141,
+        "y": 198833
+      },
+      {
+        "x": 194474,
+        "y": 223880
+      },
+      {
+        "x": 162337,
+        "y": 231955
+      },
+      {
+        "x": 183656,
+        "y": 211017
+      },
+      {
+        "x": 177592,
+        "y": 170002
+      },
+      {
+        "x": 183241,
+        "y": 195268
+      },
+      {
+        "x": 226261,
+        "y": 160144
+      },
+      {
+        "x": 190896,
+        "y": 168940
+      },
+      {
+        "x": 162212,
+        "y": 185019
+      },
+      {
+        "x": 163946,
+        "y": 174648
+      },
+      {
+        "x": 191690,
+        "y": 177552
+      },
+      {
+        "x": 193560,
+        "y": 162889
+      },
+      {
+        "x": 166103,
+        "y": 210072
+      },
+      {
+        "x": 205752,
+        "y": 174310
+      },
+      {
+        "x": 183637,
+        "y": 175181
+      },
+      {
+        "x": 197421,
+        "y": 218728
+      },
+      {
+        "x": 173221,
+        "y": 209794
+      },
+      {
+        "x": 194776,
+        "y": 188742
+      },
+      {
+        "x": 178999,
+        "y": 178903
+      },
+      {
+        "x": 237804,
+        "y": 206946
+      },
+      {
+        "x": 235206,
+        "y": 187525
+      },
+      {
+        "x": 219400,
+        "y": 206131
+      },
+      {
+        "x": 190200,
+        "y": 186348
+      },
+      {
+        "x": 200593,
+        "y": 203963
+      },
+      {
+        "x": 224931,
+        "y": 177989
+      },
+      {
+        "x": 168969,
+        "y": 214275
+      },
+      {
+        "x": 221368,
+        "y": 196154
+      },
+      {
+        "x": 162167,
+        "y": 197711
+      },
+      {
+        "x": 161548,
+        "y": 202948
+      },
+      {
+        "x": 178616,
+        "y": 192436
+      },
+      {
+        "x": 176337,
+        "y": 201473
+      },
+      {
+        "x": 169232,
+        "y": 171988
+      }
+    ],
+    "skills": [
+      {
+        "foragingSkill": 75,
+        "woodSkill": 95
+      },
+      {
+        "foragingSkill": 122,
+        "woodSkill": 111
+      },
+      {
+        "foragingSkill": 84,
+        "woodSkill": 103
+      },
+      {
+        "foragingSkill": 81,
+        "woodSkill": 119
+      },
+      {
+        "foragingSkill": 75,
+        "woodSkill": 89
+      },
+      {
+        "foragingSkill": 104,
+        "woodSkill": 102
+      },
+      {
+        "foragingSkill": 84,
+        "woodSkill": 104
+      },
+      {
+        "foragingSkill": 104,
+        "woodSkill": 82
+      },
+      {
+        "foragingSkill": 121,
+        "woodSkill": 100
+      },
+      {
+        "foragingSkill": 123,
+        "woodSkill": 120
+      },
+      {
+        "foragingSkill": 97,
+        "woodSkill": 108
+      },
+      {
+        "foragingSkill": 89,
+        "woodSkill": 105
+      },
+      {
+        "foragingSkill": 124,
+        "woodSkill": 104
+      },
+      {
+        "foragingSkill": 108,
+        "woodSkill": 121
+      },
+      {
+        "foragingSkill": 92,
+        "woodSkill": 98
+      },
+      {
+        "foragingSkill": 97,
+        "woodSkill": 76
+      },
+      {
+        "foragingSkill": 92,
+        "woodSkill": 91
+      },
+      {
+        "foragingSkill": 75,
+        "woodSkill": 111
+      },
+      {
+        "foragingSkill": 83,
+        "woodSkill": 75
+      },
+      {
+        "foragingSkill": 94,
+        "woodSkill": 76
+      },
+      {
+        "foragingSkill": 113,
+        "woodSkill": 121
+      },
+      {
+        "foragingSkill": 88,
+        "woodSkill": 112
+      },
+      {
+        "foragingSkill": 83,
+        "woodSkill": 125
+      },
+      {
+        "foragingSkill": 120,
+        "woodSkill": 120
+      },
+      {
+        "foragingSkill": 102,
+        "woodSkill": 119
+      },
+      {
+        "foragingSkill": 79,
+        "woodSkill": 123
+      },
+      {
+        "foragingSkill": 92,
+        "woodSkill": 107
+      },
+      {
+        "foragingSkill": 120,
+        "woodSkill": 82
+      },
+      {
+        "foragingSkill": 99,
+        "woodSkill": 104
+      },
+      {
+        "foragingSkill": 75,
+        "woodSkill": 94
+      },
+      {
+        "foragingSkill": 85,
+        "woodSkill": 90
+      },
+      {
+        "foragingSkill": 120,
+        "woodSkill": 77
+      },
+      {
+        "foragingSkill": 82,
+        "woodSkill": 102
+      },
+      {
+        "foragingSkill": 118,
+        "woodSkill": 113
+      },
+      {
+        "foragingSkill": 123,
+        "woodSkill": 118
+      },
+      {
+        "foragingSkill": 125,
+        "woodSkill": 103
+      },
+      {
+        "foragingSkill": 101,
+        "woodSkill": 110
+      },
+      {
+        "foragingSkill": 82,
+        "woodSkill": 84
+      },
+      {
+        "foragingSkill": 122,
+        "woodSkill": 81
+      },
+      {
+        "foragingSkill": 93,
+        "woodSkill": 117
+      }
+    ],
+    "craft": [
+      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100
+    ]
+  },
+  {
+    "seed": 1,
+    "starts": [
+      {
+        "x": 206951,
+        "y": 218974
+      },
+      {
+        "x": 175765,
+        "y": 199538
+      },
+      {
+        "x": 229387,
+        "y": 168459
+      },
+      {
+        "x": 228741,
+        "y": 208353
+      },
+      {
+        "x": 204977,
+        "y": 199428
+      },
+      {
+        "x": 231530,
+        "y": 212906
+      },
+      {
+        "x": 226949,
+        "y": 181796
+      },
+      {
+        "x": 190174,
+        "y": 184882
+      },
+      {
+        "x": 229717,
+        "y": 192427
+      },
+      {
+        "x": 210593,
+        "y": 237136
+      },
+      {
+        "x": 168191,
+        "y": 177538
+      },
+      {
+        "x": 201164,
+        "y": 164401
+      },
+      {
+        "x": 214263,
+        "y": 164736
+      },
+      {
+        "x": 228046,
+        "y": 220154
+      },
+      {
+        "x": 224499,
+        "y": 224722
+      },
+      {
+        "x": 194130,
+        "y": 231582
+      },
+      {
+        "x": 223745,
+        "y": 199880
+      },
+      {
+        "x": 178147,
+        "y": 168608
+      },
+      {
+        "x": 170376,
+        "y": 161283
+      },
+      {
+        "x": 182073,
+        "y": 176824
+      },
+      {
+        "x": 196028,
+        "y": 189374
+      },
+      {
+        "x": 206370,
+        "y": 213858
+      },
+      {
+        "x": 164514,
+        "y": 207883
+      },
+      {
+        "x": 219451,
+        "y": 184900
+      },
+      {
+        "x": 195815,
+        "y": 214450
+      },
+      {
+        "x": 219032,
+        "y": 192958
+      },
+      {
+        "x": 225273,
+        "y": 212819
+      },
+      {
+        "x": 209049,
+        "y": 204947
+      },
+      {
+        "x": 227967,
+        "y": 235764
+      },
+      {
+        "x": 197909,
+        "y": 202207
+      },
+      {
+        "x": 224958,
+        "y": 174219
+      },
+      {
+        "x": 227568,
+        "y": 186881
+      },
+      {
+        "x": 225347,
+        "y": 163686
+      },
+      {
+        "x": 218633,
+        "y": 215832
+      },
+      {
+        "x": 189349,
+        "y": 238603
+      },
+      {
+        "x": 229769,
+        "y": 176775
+      },
+      {
+        "x": 184637,
+        "y": 205522
+      },
+      {
+        "x": 198090,
+        "y": 239040
+      },
+      {
+        "x": 235909,
+        "y": 160284
+      },
+      {
+        "x": 169257,
+        "y": 213433
+      }
+    ],
+    "skills": [
+      {
+        "foragingSkill": 78,
+        "woodSkill": 104
+      },
+      {
+        "foragingSkill": 94,
+        "woodSkill": 86
+      },
+      {
+        "foragingSkill": 78,
+        "woodSkill": 77
+      },
+      {
+        "foragingSkill": 121,
+        "woodSkill": 82
+      },
+      {
+        "foragingSkill": 85,
+        "woodSkill": 82
+      },
+      {
+        "foragingSkill": 91,
+        "woodSkill": 100
+      },
+      {
+        "foragingSkill": 116,
+        "woodSkill": 78
+      },
+      {
+        "foragingSkill": 121,
+        "woodSkill": 95
+      },
+      {
+        "foragingSkill": 87,
+        "woodSkill": 118
+      },
+      {
+        "foragingSkill": 93,
+        "woodSkill": 85
+      },
+      {
+        "foragingSkill": 110,
+        "woodSkill": 109
+      },
+      {
+        "foragingSkill": 117,
+        "woodSkill": 117
+      },
+      {
+        "foragingSkill": 123,
+        "woodSkill": 84
+      },
+      {
+        "foragingSkill": 100,
+        "woodSkill": 85
+      },
+      {
+        "foragingSkill": 101,
+        "woodSkill": 86
+      },
+      {
+        "foragingSkill": 100,
+        "woodSkill": 125
+      },
+      {
+        "foragingSkill": 122,
+        "woodSkill": 78
+      },
+      {
+        "foragingSkill": 120,
+        "woodSkill": 111
+      },
+      {
+        "foragingSkill": 90,
+        "woodSkill": 89
+      },
+      {
+        "foragingSkill": 120,
+        "woodSkill": 104
+      },
+      {
+        "foragingSkill": 84,
+        "woodSkill": 111
+      },
+      {
+        "foragingSkill": 98,
+        "woodSkill": 103
+      },
+      {
+        "foragingSkill": 84,
+        "woodSkill": 86
+      },
+      {
+        "foragingSkill": 97,
+        "woodSkill": 99
+      },
+      {
+        "foragingSkill": 125,
+        "woodSkill": 85
+      },
+      {
+        "foragingSkill": 111,
+        "woodSkill": 85
+      },
+      {
+        "foragingSkill": 125,
+        "woodSkill": 99
+      },
+      {
+        "foragingSkill": 92,
+        "woodSkill": 125
+      },
+      {
+        "foragingSkill": 89,
+        "woodSkill": 78
+      },
+      {
+        "foragingSkill": 115,
+        "woodSkill": 90
+      },
+      {
+        "foragingSkill": 84,
+        "woodSkill": 110
+      },
+      {
+        "foragingSkill": 97,
+        "woodSkill": 95
+      },
+      {
+        "foragingSkill": 105,
+        "woodSkill": 81
+      },
+      {
+        "foragingSkill": 105,
+        "woodSkill": 115
+      },
+      {
+        "foragingSkill": 76,
+        "woodSkill": 89
+      },
+      {
+        "foragingSkill": 78,
+        "woodSkill": 100
+      },
+      {
+        "foragingSkill": 113,
+        "woodSkill": 109
+      },
+      {
+        "foragingSkill": 83,
+        "woodSkill": 102
+      },
+      {
+        "foragingSkill": 98,
+        "woodSkill": 75
+      },
+      {
+        "foragingSkill": 95,
+        "woodSkill": 95
+      }
+    ],
+    "craft": [
+      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100
+    ]
+  },
+  {
+    "seed": 2,
+    "starts": [
+      {
+        "x": 198510,
+        "y": 227156
+      },
+      {
+        "x": 188473,
+        "y": 203682
+      },
+      {
+        "x": 213266,
+        "y": 189743
+      },
+      {
+        "x": 177888,
+        "y": 198710
+      },
+      {
+        "x": 223641,
+        "y": 217739
+      },
+      {
+        "x": 167303,
+        "y": 167431
+      },
+      {
+        "x": 229369,
+        "y": 204460
+      },
+      {
+        "x": 218300,
+        "y": 165243
+      },
+      {
+        "x": 180743,
+        "y": 168729
+      },
+      {
+        "x": 230257,
+        "y": 188185
+      },
+      {
+        "x": 237397,
+        "y": 178975
+      },
+      {
+        "x": 170126,
+        "y": 209034
+      },
+      {
+        "x": 184758,
+        "y": 209373
+      },
+      {
+        "x": 177151,
+        "y": 189552
+      },
+      {
+        "x": 238286,
+        "y": 212462
+      },
+      {
+        "x": 212697,
+        "y": 230140
+      },
+      {
+        "x": 163370,
+        "y": 160857
+      },
+      {
+        "x": 174983,
+        "y": 171127
+      },
+      {
+        "x": 170115,
+        "y": 217335
+      },
+      {
+        "x": 161781,
+        "y": 189718
+      },
+      {
+        "x": 232199,
+        "y": 235921
+      },
+      {
+        "x": 170249,
+        "y": 162266
+      },
+      {
+        "x": 183023,
+        "y": 182146
+      },
+      {
+        "x": 164333,
+        "y": 226038
+      },
+      {
+        "x": 164761,
+        "y": 183643
+      },
+      {
+        "x": 223558,
+        "y": 234322
+      },
+      {
+        "x": 216256,
+        "y": 234355
+      },
+      {
+        "x": 200242,
+        "y": 237157
+      },
+      {
+        "x": 236806,
+        "y": 184613
+      },
+      {
+        "x": 184576,
+        "y": 195659
+      },
+      {
+        "x": 183267,
+        "y": 160470
+      },
+      {
+        "x": 161475,
+        "y": 211760
+      },
+      {
+        "x": 217198,
+        "y": 213289
+      },
+      {
+        "x": 231300,
+        "y": 193204
+      },
+      {
+        "x": 211272,
+        "y": 181196
+      },
+      {
+        "x": 229635,
+        "y": 175878
+      },
+      {
+        "x": 164218,
+        "y": 206387
+      },
+      {
+        "x": 234155,
+        "y": 167920
+      },
+      {
+        "x": 229567,
+        "y": 217737
+      },
+      {
+        "x": 224441,
+        "y": 193035
+      }
+    ],
+    "skills": [
+      {
+        "foragingSkill": 106,
+        "woodSkill": 100
+      },
+      {
+        "foragingSkill": 125,
+        "woodSkill": 109
+      },
+      {
+        "foragingSkill": 94,
+        "woodSkill": 91
+      },
+      {
+        "foragingSkill": 92,
+        "woodSkill": 77
+      },
+      {
+        "foragingSkill": 92,
+        "woodSkill": 108
+      },
+      {
+        "foragingSkill": 89,
+        "woodSkill": 106
+      },
+      {
+        "foragingSkill": 120,
+        "woodSkill": 112
+      },
+      {
+        "foragingSkill": 122,
+        "woodSkill": 112
+      },
+      {
+        "foragingSkill": 88,
+        "woodSkill": 96
+      },
+      {
+        "foragingSkill": 76,
+        "woodSkill": 104
+      },
+      {
+        "foragingSkill": 113,
+        "woodSkill": 80
+      },
+      {
+        "foragingSkill": 98,
+        "woodSkill": 124
+      },
+      {
+        "foragingSkill": 81,
+        "woodSkill": 107
+      },
+      {
+        "foragingSkill": 94,
+        "woodSkill": 108
+      },
+      {
+        "foragingSkill": 75,
+        "woodSkill": 96
+      },
+      {
+        "foragingSkill": 75,
+        "woodSkill": 96
+      },
+      {
+        "foragingSkill": 95,
+        "woodSkill": 102
+      },
+      {
+        "foragingSkill": 105,
+        "woodSkill": 102
+      },
+      {
+        "foragingSkill": 80,
+        "woodSkill": 94
+      },
+      {
+        "foragingSkill": 81,
+        "woodSkill": 118
+      },
+      {
+        "foragingSkill": 92,
+        "woodSkill": 94
+      },
+      {
+        "foragingSkill": 110,
+        "woodSkill": 117
+      },
+      {
+        "foragingSkill": 117,
+        "woodSkill": 121
+      },
+      {
+        "foragingSkill": 91,
+        "woodSkill": 77
+      },
+      {
+        "foragingSkill": 82,
+        "woodSkill": 110
+      },
+      {
+        "foragingSkill": 96,
+        "woodSkill": 124
+      },
+      {
+        "foragingSkill": 76,
+        "woodSkill": 95
+      },
+      {
+        "foragingSkill": 119,
+        "woodSkill": 86
+      },
+      {
+        "foragingSkill": 91,
+        "woodSkill": 116
+      },
+      {
+        "foragingSkill": 77,
+        "woodSkill": 106
+      },
+      {
+        "foragingSkill": 102,
+        "woodSkill": 91
+      },
+      {
+        "foragingSkill": 124,
+        "woodSkill": 119
+      },
+      {
+        "foragingSkill": 75,
+        "woodSkill": 120
+      },
+      {
+        "foragingSkill": 122,
+        "woodSkill": 85
+      },
+      {
+        "foragingSkill": 117,
+        "woodSkill": 88
+      },
+      {
+        "foragingSkill": 111,
+        "woodSkill": 75
+      },
+      {
+        "foragingSkill": 125,
+        "woodSkill": 119
+      },
+      {
+        "foragingSkill": 112,
+        "woodSkill": 88
+      },
+      {
+        "foragingSkill": 122,
+        "woodSkill": 118
+      },
+      {
+        "foragingSkill": 90,
+        "woodSkill": 97
+      }
+    ],
+    "craft": [
+      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
+      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100
+    ]
+  }
+]

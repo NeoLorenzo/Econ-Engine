@@ -1,6 +1,6 @@
 import { loadOf, loadKg, speedForLoad } from './forager'
 import { describe, expect, it } from 'vitest'
-import { createValley } from './engine'
+import { createSurveyedValley as createValley } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { startTask, taskRates } from './tasks'
 

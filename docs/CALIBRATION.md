@@ -8,7 +8,7 @@ Each real-world figure is marked by how far it can be trusted:
 - **Derived:** computed here from a measured number; the working is shown.
 - **Estimate:** no source was found, so the figure is reasoned and needs a source before it is final.
 
-The reference body is a 60 kg adult, as in the current `bodyKg`. One MET is taken as 1 kcal per kilogram per hour, so 60 kcal an hour for this body.
+The reference body is a 60 kg adult, as in `referenceBodyKg`; Life 14 scales task energy to each adult's own weight. One MET is taken as 1 kcal per kilogram per hour, so 60 kcal an hour for this body.
 
 ## The headline
 
@@ -246,3 +246,9 @@ Later on 2026-10-19, after every forager starved in the implemented Life 9.6, th
 48. Klimadatastyrelsen. *Danmarks Højdemodel – Terræn (DHM/Terræn)*, nationwide bare-earth elevation data from airborne LiDAR. https://dataforsyningen.dk/data?filter=99%3Btag-103&view=gallery
 
 Life 11 continuous-bank refinement: the 5 m lattice still supplies drainage and channel samples, but habitat area now comes from non-overlapping water polygons clipped against the shared bank surface. Sum doubled integer square-centimetre areas, then floor once to square metres. No fish-density, hydration or terrain calibration parameter changes accompany this geometric correction. The existing need for measured lake/river comparisons remains.
+
+## Life 14: adult bodies and personality
+
+The approved [Life 14 specification](LIFE14_SPEC.md) uses Mesolithic European adult means: women 154 cm and 52 kg; men 165 cm and 62 kg; within-sex spreads 6 cm and 6 kg (Formicola and Giannecchini 1999; Ruff 2018). Grip means are 24 kg and 38 kg, spread 6 kg, following forager-horticulturalist field magnitudes (Gurven et al. 2006; Apicella 2014). Within-sex height/weight, height/grip and weight/grip correlations are 0.55, 0.35 and 0.40. These are magnitude targets, not calibrated trajectories.
+
+The ten Big Five correlations follow van der Linden et al. (2010), in O-C, O-E, O-A, O-N, C-E, C-A, C-N, E-A, E-N, A-N order: 0.20, 0.43, 0.21, -0.17, 0.29, 0.43, -0.43, 0.26, -0.36, -0.36. Trait effects on approach distance, bargaining share, stocks/satiation, dusk margin and novelty are directional estimates. Their strengths remain questions for later experiments. The carrying rule keeps average women's loads closer to men's than grip strength alone would, consistent with forager loads of roughly 15 to 25 kg or more (Lee 1979; Marlowe 2010). Full reference details are in the specification.

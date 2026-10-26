@@ -20,9 +20,16 @@ export function nightHoursLeft(config: ValleyConfig, minute: number) {
  * the fire holds less than the rest of the night needs, wood from its stock up to what the fire lacks, as far as it
  * holds. Returns the wood given, the part of it that was spare, and whether the fire was low.
  */
-export function feedAmount(config: ValleyConfig, wood: number, fireWood: number, burn: number, minute: number) {
+export function feedAmount(
+  config: ValleyConfig,
+  wood: number,
+  fireWood: number,
+  burn: number,
+  minute: number,
+  target = woodTarget(config),
+) {
   const need = burn * nightHoursLeft(config, minute)
-  const spare = Math.max(0, wood - woodTarget(config))
+  const spare = Math.max(0, wood - target)
   const low = fireWood < need
   const given = low ? Math.max(spare, Math.min(wood, need - fireWood)) : spare
   return { wood: given, spareWood: Math.min(given, spare), low }
@@ -66,7 +73,7 @@ export function burnFires(state: ValleyState, minute: number): FireEvent[] {
 export function feedFire(state: ValleyState, group: Group, forager: Forager, minute: number): FeedEvent | null {
   const { config } = state
   const burnPerHour = campfireBurn(config)
-  const amount = feedAmount(config, forager.wood, group.fireWood, burnPerHour, minute)
+  const amount = feedAmount(config, forager.wood, group.fireWood, burnPerHour, minute, forager.woodStockTarget)
   if (amount.wood <= 0) return null
   const event: FeedEvent = {
     kind: 'feed',

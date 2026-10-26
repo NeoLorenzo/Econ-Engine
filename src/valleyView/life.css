@@ -486,3 +486,26 @@
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
+
+.life-body {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.life-traits {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+}
+.life-trait {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.8fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+.life-trait > span:first-child {
+  text-transform: capitalize;
+}
+.life-trait meter {
+  width: 100%;
+}

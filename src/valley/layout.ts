@@ -1,3 +1,4 @@
+import { NatureDraws, drawNature, bodyFactor, personalityFactor } from './nature'
 import { buildNav, circleWalkable, meshSettings, onWalkableGround, walkableTriangle } from './routes'
 import { buildPlaces } from './places'
 import { meshOf, type GroundMesh } from './mesh'
@@ -11,6 +12,8 @@ const LAYOUT_STREAM_SALT = 0x5641_4c4c
 const SKILL_STREAM_SALT = 0x534b_494c
 const START_STREAM_SALT = 0x5354_5254
 const CRAFT_STREAM_SALT = 0x4352_4146
+const BODY_STREAM_SALT = 0x424f_4459
+const TRAITS_STREAM_SALT = 0x5452_4149
 const AXE_STREAM_SALT = 0x4158_4553
 
 /** A site or plant that has not found a place after this many draws makes the layout impossible. */
@@ -463,4 +466,12 @@ export function forEachRingOutwards(
       }
     }
   }
+}
+
+export function drawNatures(config: ValleyConfig) {
+  const bodies = new NatureDraws(normalizeSeed(mixSeed((normalizeSeed(config.seed) ^ BODY_STREAM_SALT) >>> 0)))
+  const traits = new NatureDraws(normalizeSeed(mixSeed((normalizeSeed(config.seed) ^ TRAITS_STREAM_SALT) >>> 0)))
+  const bf = bodyFactor(config),
+    tf = personalityFactor(config)
+  return Array.from({ length: config.founders }, () => drawNature(config, bodies, traits, bf, tf))
 }

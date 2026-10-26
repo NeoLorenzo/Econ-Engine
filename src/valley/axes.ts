@@ -1,3 +1,4 @@
+import { personConfig } from './nature'
 import { randomInt } from '../sim/rng'
 import { addLots, carriedKcal, takeOldest } from './food'
 import { walkSpeed } from './forager'
@@ -39,7 +40,7 @@ export const expectedQuality = (craft: number) => Math.max(1, Math.floor((3 * cr
 
 /** What an axe of quality `quality` is worth to a forager: its own cost, scaled by quality over what it would make. */
 export const worthTo = (config: ValleyConfig, forager: Forager, quality: number) =>
-  Math.floor((askOf(config, forager.craft) * quality) / expectedQuality(forager.craft))
+  Math.floor((askOf(personConfig(config, forager), forager.craft) * quality) / expectedQuality(forager.craft))
 
 /** The logs an axe of quality `quality` cuts before it wears out. */
 export const axeLife = (config: ValleyConfig, quality: number) =>
@@ -95,7 +96,11 @@ export function planHut(
       if (amount <= 0 || (kind === 2 && amount < config.standLogs !== fallen)) continue
       const point = { x: layout.places.x[id]!, y: layout.places.y[id]! },
         cm = distance(forager.x, forager.y, point.x, point.y)
-      if (cm / Math.max(1, _speed * 60) + 1 > config.duskHour * 60 - minuteOfDay(minute)) continue
+      if (
+        (cm + distance(point.x, point.y, forager.hearth.x, forager.hearth.y)) / Math.max(1, _speed * 60) + 1 >
+        config.duskHour * 60 - forager.duskMarginMinutes - minuteOfDay(minute)
+      )
+        continue
       if (cm < bestDistance) {
         best = id
         bestDistance = cm
@@ -259,7 +264,7 @@ function hear(forager: Forager, ask: HeardAsk) {
 function trySale(state: ValleyState, seller: Forager, buyer: Forager, minute: number): SaleEvent | null {
   const { config } = state
   const axe = seller.spareAxe!
-  const ask = askOf(config, seller.craft)
+  const ask = askOf(personConfig(config, seller), seller.craft)
   const worth = worthTo(config, buyer, axe.quality)
   if (worth <= ask) return null
   const price = salePrice(ask, worth)
@@ -304,7 +309,7 @@ export function exchangeAxes(state: ValleyState, trader: Forager, minute: number
     if (near.includes(seller) && !seller.spareAxe && !seller.promised) trader.heardAsk = null
   }
   if (trader.spareAxe) {
-    const ask = askOf(config, trader.craft)
+    const ask = askOf(personConfig(config, trader), trader.craft)
     const { quality } = trader.spareAxe
     for (const other of near) hear(other, { sellerId: trader.id, price: ask, quality, ready: true, minute })
     for (const other of near) {
@@ -316,7 +321,7 @@ export function exchangeAxes(state: ValleyState, trader: Forager, minute: number
       }
     }
   } else if (trader.promised) {
-    const ask = askOf(config, trader.craft)
+    const ask = askOf(personConfig(config, trader), trader.craft)
     const quality = expectedQuality(trader.craft)
     for (const other of near) hear(other, { sellerId: trader.id, price: ask, quality, ready: false, minute })
   }
@@ -329,13 +334,13 @@ export function exchangeAxes(state: ValleyState, trader: Forager, minute: number
           !other.making &&
           !other.promised &&
           !other.spareAxe &&
-          worthTo(config, trader, expectedQuality(other.craft)) > askOf(config, other.craft),
+          worthTo(config, trader, expectedQuality(other.craft)) > askOf(personConfig(config, other), other.craft),
       )
-      .sort((a, b) => askOf(config, a.craft) - askOf(config, b.craft) || a.id - b.id)
+      .sort((a, b) => askOf(personConfig(config, a), a.craft) - askOf(personConfig(config, b), b.craft) || a.id - b.id)
     const promiser = makers[0]
     if (promiser) {
       promiser.promised = true
-      const ask = askOf(config, promiser.craft)
+      const ask = askOf(personConfig(config, promiser), promiser.craft)
       const quality = expectedQuality(promiser.craft)
       hear(trader, { sellerId: promiser.id, price: ask, quality, ready: false, minute })
       events.push({ kind: 'promise', minute, promiserId: promiser.id, askerId: trader.id, ask, quality })
@@ -343,7 +348,7 @@ export function exchangeAxes(state: ValleyState, trader: Forager, minute: number
   }
   for (const other of near) {
     if (!other.spareAxe) continue
-    const ask = askOf(config, other.craft)
+    const ask = askOf(personConfig(config, other), other.craft)
     hear(trader, { sellerId: other.id, price: ask, quality: other.spareAxe.quality, ready: true, minute })
     const sale = trySale(state, other, trader, minute)
     if (sale) {

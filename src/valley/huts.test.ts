@@ -1,3 +1,4 @@
+import { personConfig } from './nature'
 import { bandAt, giveHut, testAxe } from './ruleTestFixtures'
 import { planHut, makeSeconds, expectedQuality, axeLife, logCut } from './axes'
 import { drawSkills } from './layout'
@@ -102,7 +103,9 @@ describe('axes and huts at task boundaries', () => {
       sale = events.find((e) => e.kind === 'sale')!
     expect(sale).toBeDefined()
     if (sale.kind === 'sale')
-      expect(sale.price).toBe(Math.floor((askOf(state.config, 150) + worthTo(state.config, buyer!, 100)) / 2))
+      expect(sale.price).toBe(
+        Math.floor((askOf(personConfig(state.config, seller!), 150) + worthTo(state.config, buyer!, 100)) / 2),
+      )
     expect([...seller!.carried, ...buyer!.carried].reduce((sum, lot) => sum + lot.kcal, 0)).toBe(10_000)
   })
 })

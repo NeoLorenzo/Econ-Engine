@@ -1,3 +1,5 @@
+import { pairTerms, sellerShare, bothGain } from './trade'
+import { personConfig } from './nature'
 import { positionAlong } from './routes'
 import { axeLife } from './axes'
 import { energyAt, waterAt } from './body'
@@ -118,7 +120,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       (t.startWaterTimeRemainder ?? 0) !== waterT[id]
     )
       fail(`person ${id}: task start body differs from its ledger`)
-    const c = after.config
+    const c = personConfig(after.config, after.foragers[id]!)
     if (t.kind !== 'sleep') {
       const rate =
         t.kind === 'walk'
@@ -144,7 +146,10 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     if (t.kind === 'pick' || t.kind === 'nuts') {
       const cap = t.kind === 'pick' ? c.berryThicketCapacityKcal : c.hazelThicketCapacityKcal,
         full = t.kind === 'pick' ? rates[id]!.berries : rates[id]!.nuts
-      const stock = placeMemory[id]![t.placeId]! < 0 ? cap : placeMemory[id]![t.placeId]!
+      const stock =
+        placeMemory[id]![t.placeId]! < 0
+          ? Math.floor((cap * after.foragers[id]!.expectedStockPerMille) / 1000)
+          : placeMemory[id]![t.placeId]!
       if (t.productionPerHour !== Math.floor((full * stock) / cap))
         fail('Food task rate does not match remembered stock')
     }
@@ -155,7 +160,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
         ? memory.capacity
           ? Math.floor((rates[id]!.fish * memory.stock) / memory.capacity)
           : 0
-        : rates[id]!.fish
+        : Math.floor((rates[id]!.fish * after.foragers[id]!.expectedStockPerMille) / 1000)
       if (t.productionPerHour !== rate) fail('Fishing rate does not match remembered body stock')
     }
     if (
@@ -233,7 +238,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
         produced.wood = Math.min(
           Math.floor(owed / 60),
           book.woodStock[t.placeId]!,
-          after.config.woodLoad - (t.startTripWood ?? 0),
+          after.foragers[id]!.loadCapacityKg - (t.startTripWood ?? 0),
         )
         book.woodStock[t.placeId]! -= produced.wood
         gather[id] = book.woodStock[t.placeId] ? owed % 60 : 0
@@ -284,6 +289,26 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
           fail('Observed bank differs from immutable geography')
         banks[event.foragerId]!.set(bank.id, bank)
       }
+    }
+    if (event.kind === 'exchange' || event.kind === 'quote') {
+      const seller = {
+        ...after.foragers[event.sellerId]!,
+        forageRate: rates[event.sellerId]!.berries,
+        woodRate: rates[event.sellerId]!.wood,
+      }
+      const buyer = {
+        ...after.foragers[event.buyerId]!,
+        forageRate: rates[event.buyerId]!.berries,
+        woodRate: rates[event.buyerId]!.wood,
+      }
+      if (
+        event.kcalPerWood !== pairTerms(seller, buyer, after.config.agreeablenessRule) ||
+        !bothGain(seller, buyer, event.kcalPerWood) ||
+        (event.kind === 'exchange' &&
+          (event.sellerSharePerMille !== sellerShare(seller, buyer, after.config.agreeablenessRule) ||
+            event.kcal !== event.wood * event.kcalPerWood))
+      )
+        fail('Exchange differs from agreeableness price')
     }
     if (event.kind === 'task-start') checkStart(event)
     if (event.kind === 'task-end') checkEnd(event)

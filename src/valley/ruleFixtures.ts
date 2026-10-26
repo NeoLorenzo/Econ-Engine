@@ -1,3 +1,4 @@
+import { deriveNature } from './nature'
 import { buildBanks } from './banks'
 import { buildNav } from './routes'
 import { reindexPeople } from './perception'
@@ -10,6 +11,16 @@ import type { ValleyConfig, ValleyState } from './types'
 export function createSurveyedValley(overrides: Partial<ValleyConfig> = {}, withWater = false) {
   const state = createValley(overrides)
   for (const person of state.foragers) {
+    Object.assign(
+      person,
+      deriveNature(state.config, {
+        sex: 1,
+        heightCm: 165,
+        weightKg: state.config.referenceBodyKg,
+        gripKg: state.config.referenceGripKg,
+        traits: { openness: 0, conscientiousness: 0, extraversion: 0, agreeableness: 0, neuroticism: 0 },
+      }),
+    )
     person.knowledge.triangles.fill(255)
     person.knownPlaces.fill(0)
   }

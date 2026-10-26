@@ -194,7 +194,7 @@ it('includes the carried load when judging the departure deadline', () => {
   p.y = 40000
   p.wood = 30
   p.tripWood = 0
-  expect(mustGoHome(s, p, 1071)).toBe(false)
+  expect(mustGoHome(s, p, 1071 - p.duskMarginMinutes)).toBe(false)
   p.tripWood = 30
-  expect(mustGoHome(s, p, 1071)).toBe(true)
+  expect(mustGoHome(s, p, 1071 - p.duskMarginMinutes)).toBe(true)
 })

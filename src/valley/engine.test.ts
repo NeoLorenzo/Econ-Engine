@@ -111,7 +111,7 @@ describe('food, water and wood tasks', () => {
     const state = at(1_080),
       person = state.foragers[0]!
     addTestLake(state)
-    person.waterDeficitMl = 1_790
+    person.waterDeficitMl = person.thirstThresholds.urgent - 10
     person.thirsty = true
     const next = stepValley(state, 1_090)
     expect(next.totals.wakeUps).toBeGreaterThan(1)
@@ -121,8 +121,8 @@ describe('food, water and wood tasks', () => {
     const state = at(600),
       person = state.foragers[0]!
     person.x -= 20_000
-    person.wood = 30
-    person.tripWood = 30
+    person.wood = person.loadCapacityKg
+    person.tripWood = person.loadCapacityKg
     person.hungry = false
     const next = stepValley(state, 601)
     expect(next.foragers[0]!.task).toMatchObject({ kind: 'walk', reason: 'taking a load home' })

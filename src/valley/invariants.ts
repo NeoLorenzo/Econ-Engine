@@ -1,3 +1,4 @@
+import { personConfig, natureViolations } from './nature'
 import { bankViolations } from './banks'
 import { GROUND_AREA, meshViolations } from './mesh'
 import { waterViolations } from './water'
@@ -138,7 +139,15 @@ export class ValleyChecker {
       mesh = nav.mesh
     const dry = (point: Point) =>
       Number.isSafeInteger(point.x) && Number.isSafeInteger(point.y) && onWalkableGround(mesh, point)
-    const used = new Set<number>()
+    const used = new Set<number>(),
+      owners = new Map<number, number>()
+    for (const p of state.foragers) if (p.task?.kind === 'walk') owners.set(p.task.routeId, p.id)
+    for (const e of state.lastInterval)
+      if ((e.kind === 'task-start' || e.kind === 'task-end') && e.task.kind === 'walk') {
+        if (owners.has(e.task.routeId) && owners.get(e.task.routeId) !== e.foragerId)
+          errors.push('Route shared between people')
+        owners.set(e.task.routeId, e.foragerId)
+      }
     for (let id = this.previous.routes.length; id < state.routes.length; id++) used.add(id)
     for (const p of state.foragers) {
       if (!dry(p) || !dry(positionAt(state, p, state.minute))) errors.push(`person ${p.id}: position is wet or invalid`)
@@ -167,6 +176,12 @@ export class ValleyChecker {
         errors.push('Missing recorded route')
         continue
       }
+      const owner = owners.get(id)
+      if (owner === undefined) {
+        errors.push(`route ${id}: no recorded walker`)
+        continue
+      }
+      const personal = personConfig(state.config, state.foragers[owner]!)
       let units = 0,
         energy = 0
       for (let i = 0; i < route.segments.length; i++) {
@@ -187,7 +202,7 @@ export class ValleyChecker {
         if (
           slope.slope !== segment.slope ||
           slope.uphill !== segment.uphill ||
-          segment.energyPerHour !== segmentEnergyRate(state.config, slope.slope, slope.uphill)
+          segment.energyPerHour !== segmentEnergyRate(personal, slope.slope, slope.uphill)
         )
           errors.push(`route ${id}: wrong grade or energy cost`)
         if (segment.timeUnits <= 0 || !Number.isSafeInteger(segment.timeUnits))
@@ -209,8 +224,16 @@ export class ValleyChecker {
           const route = state.routes[event.task.routeId]!
           if (!pointEqual(event.position, positionAlong(route, event.minute - event.task.startMinute)))
             errors.push('Recorded position lies off its route')
-          const speed = speedForLoad(state.config, event.task.startLoadKg ?? 0)
+          const speed = speedForLoad(
+            personConfig(state.config, state.foragers[event.foragerId]!),
+            event.task.startLoadKg ?? 0,
+          )
           for (const s of route.segments) {
+            if (
+              s.energyPerHour !==
+              segmentEnergyRate(personConfig(state.config, state.foragers[event.foragerId]!), s.slope, s.uphill)
+            )
+              errors.push('Route energy differs from person')
             let factor = 1000
             if (s.slope === 1 && s.uphill) factor = state.config.moderateSlowdownPerMille
             if (s.slope === 2) factor = s.uphill ? 2000 : state.config.steepDownSlowdownPerMille
@@ -264,10 +287,13 @@ export class ValleyChecker {
       ids.add(axe.id)
     }
     for (const p of state.foragers) {
+      errors.push(...natureViolations(state.config, p))
+      for (const key of ['sex', 'heightCm', 'weightKg', 'gripKg', 'traits'] as const)
+        if (!same(p[key], this.previous.foragers[p.id]![key])) errors.push(`Person nature changed: ${key}`)
       if (
         p.wood < 0 ||
         p.tripWood < 0 ||
-        p.tripWood > state.config.woodLoad ||
+        p.tripWood > p.loadCapacityKg ||
         p.tripWood > p.wood ||
         p.log < 0 ||
         p.log > 1 ||
@@ -306,7 +332,7 @@ export class ValleyChecker {
       }
       if (!pending.some((e) => e.kind === 'end' && e.minute === p.task!.endMinute))
         errors.push('Missing task-end wake-up')
-      const threshold = firstThresholdMinute(state.config, p.task, state.routes)
+      const threshold = firstThresholdMinute(personConfig(state.config, p), p.task, state.routes)
       if (
         threshold &&
         threshold.minute < p.task.endMinute &&
@@ -437,7 +463,11 @@ export class ValleyChecker {
             (h.abandonedMinute === null || h.abandonedMinute > e.minute),
         )
         const fire = g === null ? personalFire[e.foragerId]! : (fires[g!]?.lit ?? false)
-        if (task?.kind !== 'sleep' || e.energyPerHour !== sleepCostOf(state.config, warmthOf(fire, whole)))
+        if (
+          task?.kind !== 'sleep' ||
+          e.energyPerHour !==
+            sleepCostOf(personConfig(state.config, state.foragers[e.foragerId]!), warmthOf(fire, whole))
+        )
           errors.push('Warmth boundary differs from fire and hut records')
       }
       if (e.kind === 'task-end') active[e.foragerId] = null
@@ -450,24 +480,33 @@ export class ValleyChecker {
         if (!alive[e.foragerId]) errors.push('Dead person acted')
         positions[e.foragerId] = { ...e.position }
         if (e.kind === 'task-start') {
-          hungry[e.foragerId] = nextHungry(state.config, e.task.startEnergyKcal, hungry[e.foragerId]!)
-          if (e.task.startWaterMl >= waterThresholds(state.config).thirsty) thirsty[e.foragerId] = true
+          hungry[e.foragerId] = nextHungry(
+            personConfig(state.config, state.foragers[e.foragerId]!),
+            e.task.startEnergyKcal,
+            hungry[e.foragerId]!,
+          )
+          if (e.task.startWaterMl >= waterThresholds(personConfig(state.config, state.foragers[e.foragerId]!)).thirsty)
+            thirsty[e.foragerId] = true
           else if (e.task.startWaterMl <= state.config.drinkStopMl) thirsty[e.foragerId] = false
-          const severe = e.task.startWaterMl >= waterThresholds(state.config).urgent
+          const severe =
+            e.task.startWaterMl >= waterThresholds(personConfig(state.config, state.foragers[e.foragerId]!)).urgent
           if (severe && !['drink', 'walk', 'rest'].includes(e.task.kind))
             errors.push('Severe thirst did not interrupt work')
           if (e.task.kind === 'sleep') {
             const g = members[e.foragerId],
               fire = g === null ? personalFire[e.foragerId]! : (fires[g!]?.lit ?? false)
             // Hut weathering can change a continuing sleeper at a recorded rate boundary.
-            const expected = sleepCostOf(state.config, warmthOf(fire, e.task.wholeHut ?? false))
+            const expected = sleepCostOf(
+              personConfig(state.config, state.foragers[e.foragerId]!),
+              warmthOf(fire, e.task.wholeHut ?? false),
+            )
             if (e.task.energyPerHour !== expected) errors.push('Sleeping warmth does not match hut and fire')
           }
           if (
             e.task.kind === 'walk' &&
             ['exploring', 'checking', 'seeking company'].includes(e.task.reason) &&
             !hungry[e.foragerId] &&
-            (e.task.startTripWood ?? 0) >= state.config.woodLoad
+            (e.task.startTripWood ?? 0) >= state.foragers[e.foragerId]!.loadCapacityKg
           )
             errors.push('Exploring with a full wood load')
           if (e.task.reason === 'taking a load home' && (e.task.startTripWood ?? 0) <= 0)
@@ -482,12 +521,18 @@ export class ValleyChecker {
         const water = end ? waterAt(end.task, e.minute, state.routes).ml : before.foragers[e.foragerId]!.waterDeficitMl
         const causes = [
           ...(energy <= 0 ? ['starvation'] : []),
-          ...(water >= waterThresholds(state.config).fatal ? ['dehydration'] : []),
+          ...(water >= waterThresholds(personConfig(state.config, state.foragers[e.foragerId]!)).fatal
+            ? ['dehydration']
+            : []),
         ]
         if (!alive[e.foragerId] || !causes.length || e.cause !== causes.join(' and '))
           errors.push('Wrong death minute or cause')
         if (end) {
-          const threshold = firstThresholdMinute(state.config, end.task, state.routes)
+          const threshold = firstThresholdMinute(
+            personConfig(state.config, state.foragers[e.foragerId]!),
+            end.task,
+            state.routes,
+          )
           if (threshold && threshold.minute < e.minute) errors.push('A fatal threshold was missed')
         }
         alive[e.foragerId] = false
@@ -522,7 +567,14 @@ export class ValleyChecker {
       }
       if (e.kind === 'feed') {
         const f = fires[e.groupId],
-          amount = feedAmount(state.config, e.woodBefore, e.fireWoodBefore, e.burnPerHour, e.minute)
+          amount = feedAmount(
+            state.config,
+            e.woodBefore,
+            e.fireWoodBefore,
+            e.burnPerHour,
+            e.minute,
+            state.foragers[e.foragerId]!.woodStockTarget,
+          )
         if (!pointEqual(positions[e.foragerId]!, hearths[e.foragerId]!)) errors.push('Gift given away from its hearth')
         if (
           !f ||

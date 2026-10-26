@@ -1,10 +1,12 @@
+import { personConfig } from './nature'
 import { loadKg, loadOf } from './forager'
 import { positionAlong } from './routes'
 import type { ValleyState, Point } from './types'
 import { sleepCostOf } from './work'
 import type { ActionReason, Forager, TaskKind, TaskRecord, ValleyConfig, Warmth } from './types'
 
-export function taskRates(config: ValleyConfig, _person: Forager, kind: TaskKind, warmth: Warmth) {
+export function taskRates(config: ValleyConfig, person: Forager, kind: TaskKind, warmth: Warmth) {
+  config = personConfig(config, person)
   const energyPerHour =
     kind === 'sleep'
       ? sleepCostOf(config, warmth)
@@ -51,7 +53,7 @@ export function startTask(
     ...taskRates(config, person, kind, warmth),
     waterBaseMlPerDay: config.waterBaseMlPerDay,
     waterExtraMlPerKcal: config.waterExtraMlPerKcal,
-    restKcalPerHour: config.restKcalPerHour,
+    restKcalPerHour: person.rates.restKcalPerHour,
     drinkMlPerMinute: config.drinkMlPerSecond * 60,
     startEnergyKcal: person.energyKcal,
     startEnergyRemainder: person.energyRemainder,

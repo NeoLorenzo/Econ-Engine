@@ -1,3 +1,4 @@
+import { personConfig } from '../valley/nature'
 import { askOf, expectedQuality, usableAsk } from '../valley/axes'
 import { energyAt } from '../valley/body'
 import { dayOfYear, MINUTES_PER_DAY, seasonOf, yearOf, yearsToDays } from '../valley/calendar'
@@ -16,7 +17,7 @@ import { siteKindOf } from '../valley/sites'
 import { livingMembers } from '../valley/social'
 import { positionAt } from '../valley/tasks'
 import { GROUND_NAMES, cellOf, heightAt } from '../valley/terrain'
-import { knownTerms, nightHours, nightWood, woodMatters, woodTarget } from '../valley/trade'
+import { knownTerms, nightHours, nightWood, woodMatters } from '../valley/trade'
 import { PLACE_KINDS } from '../valley/types'
 import type { Group, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } from '../valley/types'
 import { decorPoints, foragerColor, foragerName, formatHours } from './display'
@@ -379,7 +380,7 @@ export function skillLevels(state: ValleyState, id: number) {
 export function thirstLevel(state: ValleyState, id: number) {
   const { config } = state
   const forager = state.foragers[id]!
-  const ml = (perMille: number) => config.bodyKg * perMille
+  const ml = (perMille: number) => forager.weightKg * perMille
   const urgent = ml(config.urgentThirstBodyPerMille)
   return {
     ml: forager.waterDeficitMl,
@@ -935,7 +936,7 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     gatherHours: Math.round(sum(forager.practiceLog.gather) / 3_600),
     ownTerms: forager.forageRate / forager.woodRate,
     wood: forager.wood,
-    woodTarget: woodTarget(config),
+    woodTarget: forager.woodStockTarget,
     tripWood: forager.tripWood,
     carriedKcal: carriedKcal(forager.carried),
     /** Its carried food by kind, in kilocalories. */
@@ -978,7 +979,7 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     craftSkill: forager.craftSkill,
     makePercent: percent.make,
     makeHours: Math.round(sum(forager.practiceLog.make) / 3_600),
-    ask: askOf(config, forager.craft),
+    ask: askOf(personConfig(config, forager), forager.craft),
     expectedQuality: expectedQuality(forager.craft),
     axe: forager.axe ? axePhrase(forager.axe, foragerId) : null,
     spareAxe: forager.spareAxe ? axePhrase(forager.spareAxe, foragerId) : null,
