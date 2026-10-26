@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createValley } from './engine'
+import { createSurveyedValley as createValley } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import { energyAt, firstThresholdMinute, waterAt } from './body'
 import { startTask } from './tasks'

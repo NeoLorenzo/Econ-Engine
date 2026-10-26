@@ -1833,6 +1833,10 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     for (const [id, figure] of figures.entries()) {
       const pose = poses[id]!
       const forager = state.foragers[id]!
+      // The standing model reaches 1.865 m above its root.
+      const heightScale = forager.heightCm / 186.5
+      const widthScale = 1 + (forager.weightKg - 57) / 300
+      figure.root.scale.set(widthScale, heightScale, widthScale)
       figure.root.visible = drawPeople
       const spot = at(pose.x, pose.y)
       if (pose.heading !== null) figure.heading = pose.heading
@@ -1853,7 +1857,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       figure.sash.visible = forager.groupId !== null
       if (forager.groupId !== null) figure.sashMaterial.color.set(hex(groupColor(forager.groupId)))
       const load = displayedLoad(display, id)
-      const bundle = bundleScale(load.onBack, Math.max(config.woodLoad, 1))
+      const bundle = bundleScale(load.onBack, Math.max(forager.loadCapacityKg, 1))
       figure.bundle.visible = bundle > 0
       figure.bundle.scale.setScalar(Math.max(bundle, 0.01))
       const parcel = parcelScale(load.carriedKcal)

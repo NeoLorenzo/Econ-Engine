@@ -38,7 +38,7 @@ describe('water at wake-ups', () => {
     state.queue = new WakeQueue()
     person.knowledge.triangles.fill(255)
     person.energyKcal = 1
-    person.waterDeficitMl = 5_999
+    person.waterDeficitMl = person.thirstThresholds.fatal - 1
     person.task = startTask(state.config, person, 'rest', 600, 660, -1, -1, 'no known route')
     state.queue.schedule({ minute: 601, phase: 1, id: 0, kind: 'threshold' })
     const dead = stepValley(state, 601),

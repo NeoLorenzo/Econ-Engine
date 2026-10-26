@@ -1,3 +1,4 @@
+import { personConfig } from './nature'
 import { nearestBanks, knownBodies } from './bankSearch'
 import { planHut, salePrice, worthTo } from './axes'
 import { waterThresholds } from './body'
@@ -39,14 +40,15 @@ export const loadKg = (config: ValleyConfig, load: Load) =>
 
 /**
  * Walking speed under a load of `kg`, in centimetres a second: it falls by `loadSlowdownPerMille` thousandths for each
- * body mass carried, `floor(walkCmPerSecond · (1,000 · bodyKg − loadSlowdownPerMille · kg) / (1,000 · bodyKg))`, never
+ * body mass carried, `floor(walkCmPerSecond · (1,000 · referenceBodyKg − loadSlowdownPerMille · kg) / (1,000 · referenceBodyKg))`, never
  * below 1. Walkers barely slow under a load; it costs them energy instead (see `walkCostForLoad`).
  */
 export const speedForLoad = (config: ValleyConfig, kg: number) =>
   Math.max(
     1,
     Math.floor(
-      (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * kg)) / (1_000 * config.bodyKg),
+      (config.walkCmPerSecond * (1_000 * config.referenceBodyKg - config.loadSlowdownPerMille * kg)) /
+        (1_000 * config.referenceBodyKg),
     ),
   )
 
@@ -56,7 +58,8 @@ export function nextHungry(config: ValleyConfig, energyKcal: number, hungry: boo
   return hungry
 }
 
-export const walkSpeed = (config: ValleyConfig, person: Forager) => speedForLoad(config, loadKg(config, loadOf(person)))
+export const walkSpeed = (config: ValleyConfig, person: Forager) =>
+  speedForLoad(personConfig(config, person), loadKg(config, loadOf(person)))
 export const routeKey = (state: ValleyState, person: Forager, target: Point) =>
   `${person.x},${person.y}:${target.x},${target.y}:${person.knowledge.revision}:${loadKg(state.config, loadOf(person))}`
 export function routeFor(state: ValleyState, person: Forager, target: Point): Route | null {
@@ -66,7 +69,7 @@ export function routeFor(state: ValleyState, person: Forager, target: Point): Ro
   return knownRoute(
     state.layout.nav,
     person.knowledge,
-    state.config,
+    personConfig(state.config, person),
     loadKg(state.config, loadOf(person)),
     person,
     target,
@@ -92,7 +95,7 @@ export function mustGoHome(state: ValleyState, person: Forager, minute: number) 
   if (atHearth(person)) return false
   if (!isDaylight(state.config, minute)) return true
   const home = estimate(state, person, person.hearth)
-  return home >= state.config.duskHour * 60 - minuteOfDay(minute)
+  return home >= state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
 }
 function estimate(state: ValleyState, person: Forager, point: Point) {
   return estimateMinutes(
@@ -101,6 +104,14 @@ function estimate(state: ValleyState, person: Forager, point: Point) {
     point,
     walkSpeed(state.config, person) * 60,
     cachedHeight(state.layout.nav.mesh, point.x, point.y) - cachedHeight(state.layout.nav.mesh, person.x, person.y),
+  )
+}
+function canVisit(state: ValleyState, person: Forager, point: Point, minute: number) {
+  return (
+    estimate(state, person, point) +
+      estimateMinutes(state.config, point, person.hearth, walkSpeed(state.config, person) * 60, 0) +
+      1 <
+    state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
   )
 }
 function workAt(
@@ -127,9 +138,13 @@ function workAt(
     expectedStock: stock,
   }
 }
-function explore(state: ValleyState, person: Forager, reason: ActionReason): TaskChoice {
+function explore(state: ValleyState, person: Forager, reason: ActionReason, ignoreMargin = false): TaskChoice {
   const point = nearestFrontier(state.layout.nav, person.knowledge, person)
-  return point ? { kind: 'walk', placeId: -1, target: point, reason } : restChoice('no known route')
+  if (point && (ignoreMargin || canVisit(state, person, point, state.minute)))
+    return { kind: 'walk', placeId: -1, target: point, reason }
+  return !ignoreMargin && !atHearth(person)
+    ? { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home' }
+    : restChoice('no known route')
 }
 function waterGoal(state: ValleyState, person: Forager, minute: number, severe: boolean): TaskChoice {
   const banks = nearestBanks(state.layout.nav, state.config, person, walkSpeed(state.config, person) * 60, 3)
@@ -140,7 +155,7 @@ function waterGoal(state: ValleyState, person: Forager, minute: number, severe: 
     if (
       !severe &&
       minutes + estimateMinutes(state.config, bank, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 >
-        state.config.duskHour * 60 - minuteOfDay(minute)
+        state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
     )
       continue
     if (searches++ >= 3) break
@@ -148,7 +163,7 @@ function waterGoal(state: ValleyState, person: Forager, minute: number, severe: 
     if (!route) continue
     return { ...workAt(state, person, bank.id, 'drink', 'seeking water', 0, 0), route }
   }
-  return explore(state, person, 'seeking water')
+  return explore(state, person, 'seeking water', severe)
 }
 function reachablePoint(state: ValleyState, person: Forager, point: Point) {
   const nav = state.layout.nav,
@@ -163,12 +178,12 @@ export function foodGoal(state: ValleyState, person: Forager, minute: number): T
     bestScore = -1,
     bestId = Infinity
   const consider = (id: number, kind: 'pick' | 'nuts' | 'fish', target: Point, rate: number, stock: number) => {
-    if (rate <= state.config.pickKcalPerHour || rate < bestScore) return
+    if (rate <= person.rates.pickKcalPerHour || rate < bestScore) return
     const lowerTravel = estimateMinutes(state.config, person, target, walkSpeed(state.config, person) * 60, 0)
     if ((3600 * rate) / (lowerTravel * 60 + 3600) < bestScore) return
     const travel = estimate(state, person, target)
     const home = estimateMinutes(state.config, target, person.hearth, walkSpeed(state.config, person) * 60, 0)
-    if (travel + home + 1 > state.config.duskHour * 60 - minuteOfDay(minute)) return
+    if (travel + home + 1 > state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)) return
     const score = (3_600 * rate) / (travel * 60 + 3_600)
     if ((score > bestScore || (score === bestScore && id < bestId)) && reachablePoint(state, person, target)) {
       bestScore = score
@@ -189,7 +204,10 @@ export function foodGoal(state: ValleyState, person: Forager, minute: number): T
     const kind = state.layout.places.kind[id]
     if (kind !== 0 && kind !== 1) continue
     const food = kind === 0 ? 'berries' : 'nuts',
-      stock = person.placeStock[id]! < 0 ? foodCapacity(state.config, food) : person.placeStock[id]!
+      stock =
+        person.placeStock[id]! < 0
+          ? Math.floor((foodCapacity(state.config, food) * person.expectedStockPerMille) / 1000)
+          : person.placeStock[id]!
     consider(
       id,
       kind === 0 ? 'pick' : 'nuts',
@@ -205,7 +223,7 @@ export function foodGoal(state: ValleyState, person: Forager, minute: number): T
         ? remembered.capacity
           ? Math.floor((person.fishRate * remembered.stock) / remembered.capacity)
           : 0
-        : person.fishRate
+        : Math.floor((person.fishRate * person.expectedStockPerMille) / 1000)
       if (possibleRate <= bestScore) continue
       const candidate = nearestBanks(
         state.layout.nav,
@@ -222,7 +240,7 @@ export function foodGoal(state: ValleyState, person: Forager, minute: number): T
         ? memory.capacity
           ? Math.floor((person.fishRate * memory.stock) / memory.capacity)
           : 0
-        : person.fishRate
+        : Math.floor((person.fishRate * person.expectedStockPerMille) / 1000)
       consider(bank.id, 'fish', bank, rate, memory?.stock ?? Math.floor(rate / 60))
     }
   return best
@@ -238,8 +256,8 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
     const stock =
       person.placeWood[id]! < 0
         ? kind === 0
-          ? state.config.berryThicketWoodKg
-          : state.config.standWoodKg
+          ? Math.floor((state.config.berryThicketWoodKg * person.expectedStockPerMille) / 1000)
+          : Math.floor((state.config.standWoodKg * person.expectedStockPerMille) / 1000)
         : person.placeWood[id]!
     if (stock <= 0) continue
     const target = { x: state.layout.places.x[id]!, y: state.layout.places.y[id]! },
@@ -247,7 +265,7 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
     if (!reachablePoint(state, person, target)) continue
     if (
       travel + estimateMinutes(state.config, target, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 >
-      state.config.duskHour * 60 - minuteOfDay(minute)
+      state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
     )
       continue
     if (travel < bestMinutes) {
@@ -269,22 +287,30 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
       )
 }
 export function chooseTask(state: ValleyState, person: Forager, minute: number): TaskChoice {
-  const severe = person.waterDeficitMl >= waterThresholds(state.config).urgent
+  const severe = person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).urgent
   if (severe) return waterGoal(state, person, minute, true)
   if (mustGoHome(state, person, minute))
     return { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home' }
   if (!isDaylight(state.config, minute)) return { kind: 'sleep', placeId: -1, target: null, reason: 'night' }
+  if (minuteOfDay(minute) >= state.config.duskHour * 60 - person.duskMarginMinutes)
+    return restChoice('too late to set out')
   if (person.thirsty) return waterGoal(state, person, minute, false)
   if (person.log && !atHearth(person))
     return { kind: 'walk', placeId: -1, target: person.hearth, reason: 'taking a log home' }
-  if (!person.hungry && person.tripWood >= state.config.woodLoad && !atHearth(person))
+  if (!person.hungry && person.tripWood >= person.loadCapacityKg && !atHearth(person))
     return { kind: 'walk', placeId: -1, target: person.hearth, reason: 'taking a load home' }
-  if (!person.hungry && person.tripWood > 0 && person.tripWood < state.config.woodLoad)
+  if (!person.hungry && person.tripWood > 0 && person.tripWood < person.loadCapacityKg)
     return woodGoal(state, person, minute) ?? explore(state, person, 'seeking wood')
   if (!person.hungry && !person.shortOfWood) {
     if (person.groupId === null) {
       const seen = [...person.metPosition.entries()]
-        .filter(([id]) => person.seenMinute[id] === minute && state.foragers[id]!.alive)
+        .filter(
+          ([id, point]) =>
+            person.seenMinute[id] === minute &&
+            state.foragers[id]!.alive &&
+            (point.x - person.x) ** 2 + (point.y - person.y) ** 2 <= person.companyRadiusCm ** 2 &&
+            canVisit(state, person, point, minute),
+        )
         .sort(
           (a, b) =>
             (a[1].x - person.x) ** 2 +
@@ -297,7 +323,13 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
       if (company) return { kind: 'walk', placeId: -1, target: company[1], reason: 'seeking company' }
       const flags = person.knownFlags
         .map((id) => state.groups[id])
-        .filter((g) => g && g.dissolvedMinute === null)
+        .filter(
+          (g) =>
+            g &&
+            g.dissolvedMinute === null &&
+            (g.flag.x - person.x) ** 2 + (g.flag.y - person.y) ** 2 <= person.companyRadiusCm ** 2 &&
+            canVisit(state, person, g.flag, minute),
+        )
         .map((g) => ({ group: g!, minutes: estimate(state, person, g!.flag) }))
         .sort((a, b) => a.minutes - b.minutes || a.group.id - b.group.id)
       if (flags.length) {
@@ -335,7 +367,15 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
           : { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home to wait for an axe' }
     }
     const frontier = nearestFrontier(state.layout.nav, person.knowledge, person)
-    if (frontier) return { kind: 'walk', placeId: -1, target: frontier, reason: 'exploring' }
+    if (
+      frontier &&
+      (frontier.x - person.hearth.x) ** 2 + (frontier.y - person.hearth.y) ** 2 <= person.exploringRangeCm ** 2 &&
+      estimate(state, person, frontier) +
+        estimateMinutes(state.config, frontier, person.hearth, walkSpeed(state.config, person) * 60, 0) +
+        1 <
+        state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
+    )
+      return { kind: 'walk', placeId: -1, target: frontier, reason: 'exploring' }
     let target = -1,
       best = Infinity
     for (let id = 0; id < state.layout.places.count; id += 1) {
@@ -350,7 +390,7 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
       if (
         travel < best &&
         travel + estimateMinutes(state.config, point, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 <
-          state.config.duskHour * 60 - minuteOfDay(minute) &&
+          state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute) &&
         reachablePoint(state, person, point)
       ) {
         target = id
@@ -370,7 +410,7 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
     if (work === 'wait') return restChoice('waiting to swap')
     if (work) {
       person.trip = work.trip
-      const good = work.good === 'wood' && person.tripWood >= state.config.woodLoad ? 'food' : work.good
+      const good = work.good === 'wood' && person.tripWood >= person.loadCapacityKg ? 'food' : work.good
       const choice =
         (good === 'food' ? foodGoal(state, person, minute) : woodGoal(state, person, minute)) ??
         explore(state, person, good === 'food' ? 'seeking food' : 'seeking wood')
@@ -381,10 +421,10 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
   }
   return restChoice()
 }
-export const fillingLoad = (config: ValleyConfig, person: Forager) =>
-  person.tripWood > 0 && person.tripWood < config.woodLoad
-export const carryingFullLoad = (config: ValleyConfig, person: Forager) =>
-  config.woodLoad > 0 && person.tripWood >= config.woodLoad
+export const fillingLoad = (_config: ValleyConfig, person: Forager) =>
+  person.tripWood > 0 && person.tripWood < person.loadCapacityKg
+export const carryingFullLoad = (_config: ValleyConfig, person: Forager) =>
+  person.loadCapacityKg > 0 && person.tripWood >= person.loadCapacityKg
 
 export type Work = { good: Good; forTrade: boolean; trip: Forager['trip'] } | 'wait' | null
 
@@ -403,7 +443,7 @@ export function chooseWork(config: ValleyConfig, forager: Forager, minute: numbe
       if (forager.trip && spare < forager.trip.goalSpareWood)
         return { good: 'wood', forTrade: true, trip: forager.trip }
       if (spare === 0) {
-        const request = Math.max(0, config.satiatedAtKcal - forager.energyKcal - carried)
+        const request = Math.max(0, forager.satiationKcal - forager.energyKcal - carried)
         const goalSpareWood = Math.ceil(request / terms)
         if (goalSpareWood > 0) return { good: 'wood', forTrade: true, trip: { goalSpareWood } }
       }

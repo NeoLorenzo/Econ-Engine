@@ -1,3 +1,4 @@
+import { TRAITS } from '../valley/nature'
 import { LandMap } from './LandMap'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SpecializationChart } from './SpecializationChart'
@@ -315,7 +316,7 @@ export default function ValleyApp({
   const foodLeft = daysOfFoodLeft(state, followed)
   const thirst = thirstLevel(state, followed)
   /** The load bar is full at the heavier of a load of wood and a log. */
-  const fullLoadKg = Math.max(config.woodLoad, config.logKg)
+  const fullLoadKg = Math.max(forager.loadCapacityKg, config.logKg)
 
   return (
     <div className="life-app">
@@ -328,7 +329,7 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 13</span>
+        <span className="life-title">Life 14</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
             {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
@@ -443,7 +444,7 @@ export default function ValleyApp({
                 style={{ left: percent(config.hungryBelowKcal) }}
                 title="Hungry below"
               />
-              <div className="life-energy-mark" style={{ left: percent(config.satiatedAtKcal) }} title="Satiated at" />
+              <div className="life-energy-mark" style={{ left: percent(forager.satiationKcal) }} title="Satiated at" />
             </div>
             <div className="life-energy-legend">
               <span>
@@ -500,6 +501,62 @@ export default function ValleyApp({
             </div>
           </div>
         </div>
+        <p className="life-body">
+          {forager.sex === 0 ? 'Woman' : 'Man'} · {forager.heightCm} cm · {forager.weightKg} kg · grip {forager.gripKg}{' '}
+          kg · carries {forager.loadCapacityKg} kg
+        </p>
+        <div className="life-traits">
+          {TRAITS.map((key) => {
+            const score = forager.traits[key]
+            const word =
+              score < -1500
+                ? 'very low'
+                : score < -500
+                  ? 'low'
+                  : score <= 500
+                    ? 'average'
+                    : score <= 1500
+                      ? 'high'
+                      : 'very high'
+            return (
+              <div className="life-trait" key={key}>
+                <span>{key}</span>
+                <meter
+                  min={-3000}
+                  max={3000}
+                  value={score}
+                  aria-label={key}
+                  title={`${(score / 1000).toFixed(2)} spreads`}
+                />
+                <span>{word}</span>
+              </div>
+            )
+          })}
+        </div>
+        <details className="life-details">
+          <summary>Recent exchanges</summary>
+          <ul>
+            {state.eventDays
+              .flat()
+              .filter(
+                (event) => event.kind === 'exchange' && (event.sellerId === followed || event.buyerId === followed),
+              )
+              .slice(-5)
+              .map(
+                (event, index) =>
+                  event.kind === 'exchange' && (
+                    <li key={index}>
+                      {event.wood} kg for {event.kcal} kcal · {event.kcalPerWood} kcal/kg ·{' '}
+                      {event.sellerSharePerMille === 500
+                        ? 'equal shares'
+                        : event.sellerSharePerMille > 500
+                          ? 'seller took the larger share'
+                          : 'buyer took the larger share'}
+                    </li>
+                  ),
+              )}
+          </ul>
+        </details>
         <SkillRings skills={skillLevels(state, followed)} />
         {standing.length > 0 && (
           <div className="valley-groups" role="group" aria-label="Groups">

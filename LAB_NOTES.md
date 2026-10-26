@@ -6,6 +6,22 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE14-Bodies-064] - (2026-10-26)
+
+Implemented the owner's approved Life 14 specification. Bodies and personality use separate named streams and integer normals and Cholesky factors. A person's own weight sets energy and thirst, grip sets wood capacity, and the five traits shift existing decisions. The checker recomputes derived quantities, checks immutable bodies and traits, uses each walker's own rates, and checks exchange prices against the parties' rates at that minute, including practice changes within an interval.
+
+**Acceptance measurements.** On seed 20260813, the forty founders are 21 women and 19 men. Women's means are 156.90 cm, 53.43 kg and 24.05 kg grip; men's are 166.26 cm, 60.95 kg and 38.11 kg grip. The maximum correlation gap across the specified 10,000-draw body samples per sex and trait sample is 0.01825, below the 0.05 bound. The unit fixtures also check means, spreads and the direction of every trait, larger loads taking longer to gather, and damaged body/rate/price records being rejected.
+
+**Replay.** The three Life 13 canonical fingerprints passed before engine edits. Frozen starts and born skills on all three fingerprint seeds remain identical. All 22 Life 14 fingerprints were recorded only after their complete thirty-day intervals passed the checker. Rule fixtures now state their reference-weight/reference-grip bodies and neutral traits where old numeric assertions depend on them.
+
+**Browser.** Edge showed a canonical man (178 cm, 66 kg, grip 43 kg, capacity 35 kg) and woman (153 cm, 60 kg, grip 26 kg, capacity 27 kg), each with five trait bars; loading completed and minute stepping worked. A daylight fixture using real engine records showed figures of different heights and an exchange of 24 kg for 1,608 kcal at 67 kcal/kg, with the buyer taking the larger gain share. No runtime console errors in those checks. The sandbox blocks Google Fonts, so the check used the existing system-font fallback and suppressed the unrelated missing favicon request.
+
+**Speed.** `node --max-old-space-size=8192 scripts/time-life.mjs 90 daily` completed one canonical ninety-day year with forty founders in 852.90 seconds (9.48 seconds per day), after 6.65 seconds of creation: 863,149 wake-ups, all forty alive. The first attempt with Node's default 4 GB heap exhausted memory before completing; the diagnostic retry with an 8 GB heap completed. The about-one-second target is not met, and long-run memory use remains a limitation. No performance sweep or behavioural calibration was run.
+
+**Final validation.** `npm run agent:check` passed lint, typecheck, the full test suite (including all 22 Life 14 fingerprints) and the production build. Browser checks passed as described above.
+
+The terrain, hydrology, mesh generation and MVP9 core are unchanged. Trait effect sizes, survival comparisons and specialisation remain questions for a later stable-engine experiment pass.
+
 ## [LIFE13-Mesh-063] - (2026-10-24)
 
 The owner found people stuck, and asked for walking like a game engine's navigation mesh: every bit of dry land walkable, water meshed too but not yet walkable, and the visible terrain drawn from the same low-poly triangles. This entry records the mesh step and what it took to run at a usable speed.

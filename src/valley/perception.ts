@@ -1,4 +1,3 @@
-import { waterThresholds } from './body'
 import { placesWithin, placeAt } from './places'
 import {
   carryComponents,
@@ -246,7 +245,7 @@ export function chunksOfRoute(nav: NavMap, route: Route): { chunk: number; minut
 }
 export function scheduleArrivals(state: ValleyState, walkerId: number, route: Route, startMinute: number): void {
   const walker = state.foragers[walkerId]!,
-    fatal = waterThresholds(state.config).urgent
+    fatal = walker.thirstThresholds.urgent
   // The first entry is the chunk the walk starts in: the walker is already there, so it enters nothing.
   for (const entry of chunksOfRoute(state.layout.nav, route).slice(1)) {
     const minute = startMinute + entry.minute

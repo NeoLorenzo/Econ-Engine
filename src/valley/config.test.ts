@@ -165,7 +165,7 @@ describe('valley configuration', () => {
 
 describe('sight and loads', () => {
   it('refuses a body, berries or sight that are not positive', () => {
-    expect(errorsWith({ bodyKg: 0 })).toContain('bodyKg must be positive')
+    expect(errorsWith({ referenceBodyKg: 0 })).toContain('referenceBodyKg must be positive')
     expect(errorsWith({ berryKcalPerKg: 0 })).toContain('berryKcalPerKg must be positive')
     expect(errorsWith({ sightRadiusCm: 0 })).toContain('sightRadiusCm must be positive')
   })

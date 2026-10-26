@@ -246,8 +246,15 @@ export const segmentMinutes = (
   ground: Ground,
   speed: number,
 ) => Math.ceil(segmentTimeUnits(config, lengthCm, slope, uphill, ground, speed) / TIME_UNITS_PER_MINUTE)
-export const segmentEnergyRate = (config: ValleyConfig, slope: SlopeClass, uphill: boolean) =>
-  slope && uphill ? Math.floor((config.walkKcalPerHour * (slope === 1 ? 3 : 4)) / 2) : config.walkKcalPerHour
+export const segmentEnergyRate = (
+  config: ValleyConfig & { moderateWalkKcalPerHour?: number; steepWalkKcalPerHour?: number },
+  slope: SlopeClass,
+  uphill: boolean,
+) =>
+  slope && uphill
+    ? (config[slope === 1 ? 'moderateWalkKcalPerHour' : 'steepWalkKcalPerHour'] ??
+      Math.floor((config.walkKcalPerHour * (slope === 1 ? 3 : 4)) / 2))
+    : config.walkKcalPerHour
 export const segmentKcal = (config: ValleyConfig, minutes: number, slope: SlopeClass, uphill: boolean) =>
   Math.floor((segmentEnergyRate(config, slope, uphill) * minutes) / 60)
 export const estimateMinutes = (
@@ -263,8 +270,8 @@ export const loadedSpeed = (config: ValleyConfig, loadKg: number) =>
   Math.max(
     1,
     Math.floor(
-      (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * loadKg)) /
-        (1_000 * config.bodyKg),
+      (config.walkCmPerSecond * (1_000 * config.referenceBodyKg - config.loadSlowdownPerMille * loadKg)) /
+        (1_000 * config.referenceBodyKg),
     ),
   )
 

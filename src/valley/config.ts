@@ -1,3 +1,4 @@
+import { natureConfigErrors } from './nature'
 import { isqrt } from './geometry'
 import { waterThresholds } from './body'
 import { terrainOf } from './terrain'
@@ -15,6 +16,29 @@ import type { Point, ValleyConfig } from './types'
  * `daysPerYear` days. Measurements and explicit estimates are sourced in docs/CALIBRATION.md.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
+  womanHeightCm: 154,
+  manHeightCm: 165,
+  heightSdCm: 6,
+  womanWeightKg: 52,
+  manWeightKg: 62,
+  weightSdKg: 6,
+  womanGripKg: 24,
+  manGripKg: 38,
+  gripSdKg: 6,
+  heightWeightPerMille: 550,
+  heightGripPerMille: 350,
+  weightGripPerMille: 400,
+  traitCorrelationsPerMille: [200, 430, 210, -170, 290, 430, -430, 260, -360, -360],
+  referenceGripKg: 31,
+  companyRadiusCm: 60_000,
+  duskMarginMinutes: 30,
+  exploreRangeCm: 150_000,
+  extraversionRule: { base: 1000, effect: 500, low: 0, high: 2000 },
+  agreeablenessRule: { base: 500, effect: 250, low: 100, high: 900 },
+  conscientiousnessRule: { base: 1000, effect: 250, low: 500, high: 1750 },
+  neuroticismRule: { base: 1000, effect: 500, low: 0, high: 4000 },
+  opennessRule: { base: 1000, effect: 500, low: 250, high: 3000 },
+  opennessExpectRule: { base: 750, effect: 250, low: 250, high: 1000 },
   daysPerYear: 90,
   meshMaxEdgeCm: 4_000,
   meshHeightToleranceCm: 100,
@@ -164,7 +188,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   startSpacingCm: 5_000,
   exploreAfterHours: 24,
   sightRadiusCm: 100_000,
-  bodyKg: 60,
+  referenceBodyKg: 60,
   berryKcalPerKg: 600,
   campfireWoodPerHour: 1,
   outcropCount: 100,
@@ -272,13 +296,14 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
       : ['daysPerYear must be an integer from 8 to 365']
   const errors: string[] = [...calendarErrors]
   for (const [key, value] of Object.entries(config)) {
+    if (key.endsWith('Rule') || key === 'traitCorrelationsPerMille') continue
     if (BOOLEAN_KEYS.has(key)) {
       if (typeof value !== 'boolean') errors.push(`${key} must be true or false`)
     } else if (!Number.isInteger(value)) errors.push(`${key} must be an integer`)
     else if (!Number.isSafeInteger(value)) errors.push(`${key} must be a safe integer`)
   }
   if (errors.length) return errors
-  const thresholds = waterThresholds(config)
+  const thresholds = waterThresholds(config, Math.min(config.womanWeightKg, config.manWeightKg) - 3 * config.weightSdKg)
   if (Object.values(thresholds).some((value) => !Number.isSafeInteger(value)))
     errors.push('Body water thresholds exceed safe integer limits')
   const maxFish =
@@ -347,7 +372,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'startSpacingCm',
     'exploreAfterHours',
     'sightRadiusCm',
-    'bodyKg',
+    'referenceBodyKg',
     'berryKcalPerKg',
     'campfireWoodPerHour',
     'outcropRadiusCm',
@@ -533,8 +558,10 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   if (config.reliefCm * (config.reliefWavelengthCm / config.terrainCellCm) ** 3 > 2 ** 52)
     errors.push('The broad relief is too high or too long to be computed exactly')
   const logSpeed =
-    (config.walkCmPerSecond * (1_000 * config.bodyKg - config.loadSlowdownPerMille * config.logKg)) /
-    (1_000 * config.bodyKg)
+    (config.walkCmPerSecond *
+      (1_000 * (Math.min(config.womanWeightKg, config.manWeightKg) - 3 * config.weightSdKg) -
+        config.loadSlowdownPerMille * config.logKg)) /
+    (1_000 * (Math.min(config.womanWeightKg, config.manWeightKg) - 3 * config.weightSdKg))
   if (Math.floor(logSpeed) < 1) errors.push('A forager must be able to carry a log at 1 cm a second')
   if (config.startPracticeHoursPerDay < 0 || config.startPracticeHoursPerDay > 24)
     errors.push('startPracticeHoursPerDay must be between 0 and 24')
@@ -614,6 +641,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     errors.push('meshMaxEdgeCm must be terrainCellCm times a power of two')
   if (config.valleySizeCm % config.meshMaxEdgeCm !== 0) errors.push('meshMaxEdgeCm must divide valleySizeCm')
   if (config.chunkCm % config.meshMaxEdgeCm !== 0) errors.push('chunkCm must be a multiple of meshMaxEdgeCm')
+  errors.push(...natureConfigErrors(config))
   return errors
 }
 

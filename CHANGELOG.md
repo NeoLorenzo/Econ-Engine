@@ -2,6 +2,13 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE14-Bodies-064] - (2026-10-26)
+
+- Adults now have sex, correlated height, weight and grip, and five correlated personality scores, drawn by integer arithmetic from isolated streams. Founder positions and born skills retain their Life 13 draws.
+- Individual bodies set wood capacity, loaded walking speed, energy rates and thirst thresholds. Personality sets approach distance, exchange gain share, wood stocks and satiation, the return-before-dusk margin, and idle exploration and unseen-stock expectations.
+- The checker recomputes personal quantities, verifies charges and historical exchange prices, and rejects changes to bodies or traits. Added distribution, rule, stream and corruption fixtures; Life 14 replaces the Life 13 spec and fingerprints.
+- Life 14's observer shows scaled figures, body measurements, five trait bars and recent exchange prices/shares. Terrain, hydrology, mesh generation and the MVP9 core are unchanged.
+
 ## [LIFE13-Mesh-063] - (2026-10-24)
 
 ### Added

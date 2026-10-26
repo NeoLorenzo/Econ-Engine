@@ -1,3 +1,4 @@
+import { traitFactor } from './nature'
 import { addLots, carriedKcal, takeOldest } from './food'
 import { distanceSq } from './geometry'
 import type { Forager, QuoteEvent, SwapEvent, ValleyConfig } from './types'
@@ -16,15 +17,17 @@ export const woodTarget = (config: ValleyConfig) => config.woodStockNights * nig
 export const woodMatters = (config: ValleyConfig) =>
   config.standCount * config.standLogs > 0 && config.coldSleepKcalPerHour > config.sleepKcalPerHour
 
-export const spareWood = (config: ValleyConfig, forager: Forager) => Math.max(0, forager.wood - woodTarget(config))
+export const spareWood = (_config: ValleyConfig, forager: Forager) =>
+  Math.max(0, forager.wood - forager.woodStockTarget)
 
-export const wantedWood = (config: ValleyConfig, forager: Forager) => Math.max(0, woodTarget(config) - forager.wood)
+export const wantedWood = (_config: ValleyConfig, forager: Forager) =>
+  Math.max(0, forager.woodStockTarget - forager.wood)
 
 /** Wood need with hysteresis: short below one night's wood, until it holds its target. */
-export function nextShortOfWood(config: ValleyConfig, wood: number, shortOfWood: boolean) {
+export function nextShortOfWood(config: ValleyConfig, wood: number, shortOfWood: boolean, target = woodTarget(config)) {
   if (!woodMatters(config)) return false
   if (wood < nightWood(config)) return true
-  if (wood >= woodTarget(config)) return false
+  if (wood >= target) return false
   return shortOfWood
 }
 
@@ -35,10 +38,15 @@ export const roomKcal = (config: ValleyConfig, forager: Forager) =>
 /** Negative when `a` is relatively better at gathering wood than `b`. */
 export const compareOwnTerms = (a: Forager, b: Forager) => a.forageRate * b.woodRate - b.forageRate * a.woodRate
 
-export const pairTerms = (seller: Forager, buyer: Forager) =>
-  Math.floor(
-    (seller.forageRate * buyer.woodRate + buyer.forageRate * seller.woodRate) / (2 * seller.woodRate * buyer.woodRate),
+export const sellerShare = (seller: Forager, buyer: Forager, rule = { base: 500, effect: 250, low: 100, high: 900 }) =>
+  traitFactor(rule, buyer.sellerShareInput - seller.sellerShareInput)
+export const pairTerms = (seller: Forager, buyer: Forager, rule?: ValleyConfig['agreeablenessRule']) => {
+  const share = sellerShare(seller, buyer, rule)
+  return Math.floor(
+    (seller.forageRate * buyer.woodRate * (1000 - share) + buyer.forageRate * seller.woodRate * share) /
+      (1000 * seller.woodRate * buyer.woodRate),
   )
+}
 
 export const bothGain = (seller: Forager, buyer: Forager, kcalPerWood: number) =>
   kcalPerWood * seller.woodRate > seller.forageRate && kcalPerWood * buyer.woodRate < buyer.forageRate
@@ -105,7 +113,7 @@ export function swap(config: ValleyConfig, trader: Forager, foragers: Forager[],
   for (const partner of partners) {
     const seller = selling ? trader : partner
     const buyer = selling ? partner : trader
-    const kcalPerWood = pairTerms(seller, buyer)
+    const kcalPerWood = pairTerms(seller, buyer, config.agreeablenessRule)
     if (!bothGain(seller, buyer, kcalPerWood)) continue
     const wood = swapWood(config, seller, buyer, kcalPerWood)
     if (wood < 1) {
@@ -117,6 +125,7 @@ export function swap(config: ValleyConfig, trader: Forager, foragers: Forager[],
     const kcal = wood * kcalPerWood
     const made: SwapEvent = {
       kind: 'swap',
+      sellerSharePerMille: sellerShare(seller, buyer, config.agreeablenessRule),
       minute,
       position: { x: trader.x, y: trader.y },
       sellerId: seller.id,

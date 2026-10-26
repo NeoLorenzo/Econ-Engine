@@ -4,12 +4,13 @@ import { TIME_UNITS_PER_MINUTE } from './routes'
 export const waterThresholds = (
   config: Pick<
     ValleyConfig,
-    'bodyKg' | 'thirstBodyPerMille' | 'urgentThirstBodyPerMille' | 'fatalWaterLossBodyPerMille'
+    'referenceBodyKg' | 'thirstBodyPerMille' | 'urgentThirstBodyPerMille' | 'fatalWaterLossBodyPerMille'
   >,
+  weightKg = config.referenceBodyKg,
 ) => ({
-  thirsty: Math.floor(config.bodyKg * config.thirstBodyPerMille),
-  urgent: Math.floor(config.bodyKg * config.urgentThirstBodyPerMille),
-  fatal: Math.floor(config.bodyKg * config.fatalWaterLossBodyPerMille),
+  thirsty: Math.floor(weightKg * config.thirstBodyPerMille),
+  urgent: Math.floor(weightKg * config.urgentThirstBodyPerMille),
+  fatal: Math.floor(weightKg * config.fatalWaterLossBodyPerMille),
 })
 
 /** Route times retain integer fractions of a minute, so lattice resolution cannot slow a walk. */

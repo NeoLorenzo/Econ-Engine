@@ -45,8 +45,8 @@ export function measureTask(state: ValleyState, person: Forager, minute: number)
     let cursor = from,
       rate = task.energyPerHour
     const add = (until: number) => {
-      if (rate === state.config.coldSleepKcalPerHour) state.today.coldSleepMinutes += until - cursor
-      if (rate === state.config.hutSleepKcalPerHour || rate === state.config.sleepKcalPerHour)
+      if (rate === person.rates.coldSleepKcalPerHour) state.today.coldSleepMinutes += until - cursor
+      if (rate === person.rates.hutSleepKcalPerHour || rate === person.rates.sleepKcalPerHour)
         state.today.hutSleepMinutes += until - cursor
       cursor = until
     }

@@ -112,7 +112,7 @@ No existing simulation test needed a new expected value: they assert behaviour r
 
 The eight-seed MVP8/MVP9 comparison is in [MVP9_SPEC.md](MVP9_SPEC.md#mvp8-and-mvp9-compared). The fast-mode browser check passed with a pause latency of 256 ms. In the browser, the 40×40 town, plot buildings, the overlay and scenery, clicking a plot, Locate, the 2D market map and the 375px layout were checked with no console errors.
 
-# Life 13
+# Life 14
 
 Use `npm run agent:check` as the implementation gate. On memory-constrained machines, `ECON_TEST_WORKERS=1` serializes the test workers.
 
@@ -120,10 +120,14 @@ Use `npm run agent:check` as the implementation gate. On memory-constrained mach
 
 Rule tests use small explicit fixtures. A canonical thirty-day run is checked at daily intervals with all eight founders alive. Observer tests check that people are drawn on their recorded route at every displayed minute, that the drawn minute stays within the minute the state has reached, that the step allowance grows and shrinks with the frame budget, and that map speeds hide people.
 
-The 22 fingerprints are checked thirty-day runs, partitioned by configuration for parallel validation: three seeds each for the eight-person canonical, together, no-practice, craft-talent, equal-skill and flat configurations and the twelve-person one, and one run of the forty-founder default on seed 20260813 (about three to four minutes). All 22 were re-recorded once for the ground mesh, after its rule and checker tests passed, since every route changes. A refactor or speed-up must leave them all unchanged. `runSettings.test.ts` checks the page's ranges, including 7 and 366 days rejected, and that a 1 km world can be laid out.
+The 22 fingerprints are checked thirty-day runs, partitioned by configuration for parallel validation: three seeds each for the eight-person canonical, together, no-practice, craft-talent, equal-skill and flat configurations and the twelve-person one, and one run of the forty-founder default on seed 20260813 (about three to four minutes). Life 13 fingerprints passed before the engine changed. Life 14 re-records all 22 after the rule and checker tests pass, because bodies and traits change trajectories. A refactor or speed-up must leave them all unchanged. `runSettings.test.ts` checks the page's ranges, including 7 and 366 days rejected, and that a 1 km world can be laid out.
 
-`node scripts/time-life.mjs 90 batch` times a canonical ninety-day year with the default forty founders; creation is reported separately. The benchmark excludes rendering and invariant checking.
+`node scripts/time-life.mjs 90 batch` times a canonical ninety-day year with the default forty founders; creation is reported separately. The benchmark excludes rendering and invariant checking. Life 14's ninety-day daily-interval measurement required `node --max-old-space-size=8192 scripts/time-life.mjs 90 daily`; the default 4 GB Node heap exhausted memory. It completed in 852.90 s with all forty founders alive. The speed target and long-run memory use remain unresolved.
 
 `mesh.test.ts` checks a flat field of 40 m triangles, a fixture lake flat at its level and walled by shore edges, and heights linear within a triangle; `routes.test.ts` checks routes round a lake and a 5 m pond, unseen ground, and segments cut inside their triangles.
 
 The browser check looks at the settings screen rejecting 7 and 366 days, Start showing the loading card, the low-poly ground and water, walking at 1 min / s, stepping, the task panel and the map at month-per-second speed, and the console.
+
+Life 14 adds bounded-normal moments, integer factorisation and positive-definiteness checks, 10,000 draws per sex for body magnitudes and correlations, and 10,000 trait sets for all ten correlations. Small fixtures verify carrying, loaded speed, energy and thirst, each trait's direction, and checker rejection of damaged bodies, derived quantities, task charges and exchange prices. Rule fixtures explicitly supply a reference-weight/reference-grip body and neutral traits when old numeric assertions need them. `life13-founders.json` freezes starts and born skills on all three fingerprint seeds; those streams must remain unchanged.
+
+Browser acceptance covers a woman's and a man's person panels, five trait bars, figures scaled by height and weight, minute stepping and an exchange line with its price and gain share. Results and the single canonical year measurement are recorded in update 064's lab notes.

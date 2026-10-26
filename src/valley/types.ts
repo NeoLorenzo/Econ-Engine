@@ -7,7 +7,7 @@ export interface HydrationConfig {
   initialWaterDeficitMl: number
   drinkStopMl: number
   drinkMlPerSecond: number
-  bodyKg: number
+  referenceBodyKg: number
   restKcalPerHour: number
 }
 
@@ -68,11 +68,76 @@ export interface FoodLot {
   harvestTick: number
 }
 
-/**
- * The valley's configuration. Lengths are whole centimetres, food and energy whole kilocalories, and wood whole
- * kilograms, so every balance is exact. Rates and costs stay per hour; a forager pays or takes them second by second.
- */
-export interface ValleyConfig extends HydrationConfig {
+export interface TraitRule {
+  base: number
+  effect: number
+  low: number
+  high: number
+}
+export interface NatureConfig {
+  womanHeightCm: number
+  manHeightCm: number
+  heightSdCm: number
+  womanWeightKg: number
+  manWeightKg: number
+  weightSdKg: number
+  womanGripKg: number
+  manGripKg: number
+  gripSdKg: number
+  heightWeightPerMille: number
+  heightGripPerMille: number
+  weightGripPerMille: number
+  traitCorrelationsPerMille: number[]
+  referenceGripKg: number
+  companyRadiusCm: number
+  duskMarginMinutes: number
+  exploreRangeCm: number
+  extraversionRule: TraitRule
+  agreeablenessRule: TraitRule
+  conscientiousnessRule: TraitRule
+  neuroticismRule: TraitRule
+  opennessRule: TraitRule
+  opennessExpectRule: TraitRule
+}
+export interface Personality {
+  openness: number
+  conscientiousness: number
+  extraversion: number
+  agreeableness: number
+  neuroticism: number
+}
+export interface PersonNature {
+  sex: 0 | 1
+  heightCm: number
+  weightKg: number
+  gripKg: number
+  traits: Personality
+  loadCapacityKg: number
+  rates: Record<EnergyRateKey, number>
+  thirstThresholds: { thirsty: number; urgent: number; fatal: number }
+  companyRadiusCm: number
+  sellerShareInput: number
+  woodStockTarget: number
+  satiationKcal: number
+  duskMarginMinutes: number
+  exploringRangeCm: number
+  expectedStockPerMille: number
+}
+export type EnergyRateKey =
+  | 'walkKcalPerHour'
+  | 'moderateWalkKcalPerHour'
+  | 'steepWalkKcalPerHour'
+  | 'pickKcalPerHour'
+  | 'gatherKcalPerHour'
+  | 'chopKcalPerHour'
+  | 'makeKcalPerHour'
+  | 'restKcalPerHour'
+  | 'sleepKcalPerHour'
+  | 'fireSleepKcalPerHour'
+  | 'hutSleepKcalPerHour'
+  | 'coldSleepKcalPerHour'
+/** Integer configuration; task costs and production rates are per hour and settled at wake-ups. */
+export interface ValleyConfig extends HydrationConfig, NatureConfig {
   daysPerYear: number
   /** The ground mesh: its largest relief square, how far its heights and shores may stray from the terrain's. */
   meshMaxEdgeCm: number
@@ -260,8 +325,6 @@ export interface ValleyConfig extends HydrationConfig {
   exploreAfterHours: number
   /** By day a forager sees thickets, stands, other foragers and flags this far; at night only `perceptionRadiusCm`. */
   sightRadiusCm: number
-  /** A forager's body, against which its load is weighed. */
-  bodyKg: number
   /** Carried berries weigh a kilogram for every this many kilocalories. */
   berryKcalPerKg: number
   /** Wood a group's fire burns in a night hour. */
@@ -499,7 +562,7 @@ export interface TaskRecord {
   rateChanges?: { minute: number; energyPerHour: number }[]
 }
 
-export interface Forager extends Hydration {
+export interface Forager extends Hydration, PersonNature {
   task: TaskRecord | null
   knowledge: Knowledge
   knownPlaces: Int32Array
@@ -716,6 +779,7 @@ export interface DeathEvent {
 }
 
 export interface SwapEvent {
+  sellerSharePerMille: number
   kind: 'swap'
   minute: number
   /** Where the forager whose turn it was stood. */
@@ -843,7 +907,7 @@ export type ValleyEvent =
   | (Omit<FoundEvent, 'kind'> & { kind: 'group-founded' })
   | (Omit<JoinEvent, 'kind'> & { kind: 'group-joined' })
   | (Omit<DissolveEvent, 'kind'> & { kind: 'group-dissolved' })
-  | { kind: 'exchange'; minute: number; sellerId: number; buyerId: number; wood: number; kcal: number }
+  | (Omit<SwapEvent, 'kind'> & { kind: 'exchange' })
   | { kind: 'meet'; minute: number; foragerId: number; otherId: number }
   | { kind: 'axe-request'; minute: number; foragerId: number; otherId: number }
   | { kind: 'delivery'; minute: number; foragerId: number; logs: number; hutId: number | null }
@@ -1001,6 +1065,7 @@ export interface ValleyTotals {
 }
 
 export interface ValleyState {
+  founderMetrics: ReturnType<typeof import('./nature').founderMetrics>
   queue: WakeQueue
   routes: Route[]
   peopleByChunk: Int32Array[]

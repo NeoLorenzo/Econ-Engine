@@ -1,3 +1,4 @@
+import { founderMetrics } from './nature'
 import { reindexPeople, shareBankMemory, shareKnowledge, shareRouteCache } from './perception'
 import { knowledgeBytes } from './routes'
 import { measureTask } from './summary'
@@ -6,7 +7,7 @@ import { MINUTES_PER_DAY, dayOf } from './calendar'
 import { resolveValleyConfig } from './config'
 import { fishCapacity } from './fish'
 import { newHydration } from './body'
-import { drawCraftSkills, drawSkills, generateLayout, LayoutError } from './layout'
+import { drawNatures, drawCraftSkills, drawSkills, generateLayout, LayoutError } from './layout'
 import { craftOf, noTaskSeconds, ratesOf, startingLog } from './practice'
 import { startingGroups } from './social'
 import { woodMatters } from './trade'
@@ -167,6 +168,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     return { bodyId: body.id, capacity, stock: capacity, remainder: 0, grown: 0, caught: 0 }
   })
   const fishKcal = fish.reduce((total, body) => total + body.stock, 0)
+  const natures = drawNatures(config)
   const skills = drawSkills(config)
   const craftSkills = drawCraftSkills(config)
   const foragers: Forager[] = layout.hearths.map((hearth, id) => {
@@ -174,6 +176,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     const born = skills[id]!
     return {
       ...newHydration(config),
+      ...natures[id]!,
       task: null,
       knownPlaces: new Int32Array(layout.places.count).fill(-1),
       placeCheckedMinute: new Int32Array(layout.places.count).fill(-1),
@@ -254,6 +257,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   queue.schedule({ minute: 60, phase: 0, id: 0, kind: 'world' })
   const partial = { foragers, foodStock, layout, fishKcal, woodStock, groups, huts: [], config }
   return {
+    founderMetrics: founderMetrics(foragers),
     fish,
     queue,
     routes: [],
@@ -328,6 +332,9 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
 const cloneForager = (forager: Forager): Forager => {
   return {
     ...forager,
+    traits: { ...forager.traits },
+    rates: { ...forager.rates },
+    thirstThresholds: { ...forager.thirstThresholds },
     task: forager.task
       ? { ...forager.task, rateChanges: forager.task.rateChanges?.map((change) => ({ ...change })) }
       : null,

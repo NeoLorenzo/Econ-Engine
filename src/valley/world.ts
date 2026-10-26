@@ -1,3 +1,4 @@
+import { personConfig } from './nature'
 import { burnFires } from './fire'
 import { isDaylight, atHearth } from './forager'
 import { tendFire, warmthOf, sleepCostOf } from './work'
@@ -65,13 +66,13 @@ export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
       events.push({ kind: 'fire', minute, foragerId: person.id, burned, lit: person.warm })
     }
     const fire = person.groupId === null ? person.warm : state.groups[person.groupId]!.fireLit
-    const rate = sleepCostOf(state.config, warmthOf(fire, hutWhole(state, person)))
+    const rate = sleepCostOf(personConfig(state.config, person), warmthOf(fire, hutWhole(state, person)))
     const previous = task.rateChanges?.at(-1)?.energyPerHour ?? task.energyPerHour
     if (rate !== previous) {
       task.rateChanges = [...(task.rateChanges ?? []), { minute, energyPerHour: rate }]
       events.push({ kind: 'rate-change', minute, foragerId: person.id, energyPerHour: rate })
       state.queue.cancelPerson(person.id, 'threshold')
-      const threshold = firstThresholdMinute(state.config, task, state.routes)
+      const threshold = firstThresholdMinute(personConfig(state.config, person), task, state.routes)
       if (threshold && threshold.minute < task.endMinute)
         state.queue.schedule({ minute: Math.max(minute, threshold.minute), phase: 1, id: person.id, kind: 'threshold' })
     }
