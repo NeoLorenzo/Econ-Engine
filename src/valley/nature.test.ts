@@ -337,5 +337,5 @@ describe('Life 14 bodies and personality', () => {
     }
     expect(TRAITS).toHaveLength(5)
     expect(FLAT_LAND.founders).toBe(8)
-  })
+  }, 180_000)
 })

@@ -2,6 +2,15 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE15-Planning-068] - (2026-10-27)
+
+- A new route's coarse plan runs over a person's pieces, the joined-up patches of known ground within each 200 m chunk, in place of whole chunks. Two pieces are linked where the person knows ground on both sides of a chunk border. A chain of pieces always holds a path, so the band search no longer fails and the search over everything a person knows is no longer needed.
+- The full search stays only as a guard; a walk that needed it is recorded as `full`, and the checker rejects it.
+- Pieces are worked out from knowledge when needed, cached per knowledge, and carried forward at each survey by dropping only the chunks where triangles were learnt.
+- Every trajectory changes: new fingerprints are recorded for every configuration except the flat land, which is unchanged.
+- New unit fixtures: a coarse plan round a wall of unknown ground, a chunk split into two pieces, a plan between two pieces of one chunk, and the checker rejecting a `full` walk.
+- The Life 15 specification is revised for update 068.
+
 ## [LIFE15-Speed-067] - (2026-10-27)
 
 - Each frame runs the engine in one step that checks its 40 ms budget between wake-ups, in place of many 15-minute steps that each copied the whole valley. At 1 month/s a frame had made about 48 copies.

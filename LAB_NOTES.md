@@ -6,6 +6,20 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE15-Planning-068] - (2026-10-27)
+
+Update 067 left days 11 to 17 at 1.2–4.6 s each and ordinary days at about 200–400 ms. The owner approved a revised Life 15 specification that plans coarse routes through pieces of known ground.
+
+**The cause, counted on the canonical forty, seed 20260813, in whole-day steps.** From day 12, most route-search work was the search over everything a person knew, run when a band search failed. On day 13 there were 980 new plans, and 328 band searches failed, 268 of them walks to a frontier; the full searches expanded 11.3 million triangles against 2.5 million in bands. On day 30, 18 failures still made three-quarters of the search work (0.43 against 0.14 million). The band failed because two chunks counted as linked whenever the person knew ground on both sides of any edge between them, though that ground could be separate patches inside a chunk, as it often is at the edge of what someone knows and around water.
+
+**After.** No walk on the canonical run needs the full search; every fingerprint run is checked with the guard rejected. Over the first 30 days, 6,123 coarse plans are no longer than the shortest path over the walker's known ground at the median, 9.0% longer at the 95th percentile and 20.8% at most. Whole-day times, before → after: day 12 2.0 → 1.9 s, day 13 4.6 → 2.5 s, day 16 1.7 → 1.2 s, day 30 347 → 249 ms. Days 11 to 17 now take 0.4–2.5 s, and days 20 to 45 about 180–420 ms. In off-screen Chrome on a production build at 1 month/s, from day 46: 15.9 frames and 3.2 days a second, against 15.6 frames and 2.4 days a second at update 067. The new run reached day 46 in 18 s from the start.
+
+**Short of the spec's expectation.** The spec expected the slow days at about 1–1.5 s. Day 12 barely improved: it had few failures (86) but about 8,500 wake-ups and 1,600 cutting and carrying walks for huts, and about 800 band searches a day still cost a millisecond each. A profile of days 12–13 after the change: route search 32% (of which A\* 25%), observation 25%, garbage collection 10%, choosing tasks 9%.
+
+**Speed work tried and dropped.** The spec allowed speed-ups that leave the trajectory unchanged, kept only if they measurably help. Skipping chunks wholly beyond sight in a survey, and reusing the A\* heap between searches, each left the fingerprints unchanged and changed day times by no more than run-to-run noise, so both were removed. What remains costly is the amount of work people do (band searches, surveys), not waste in doing it, so further gains need rules that change behaviour, or the engine moved off the main thread.
+
+**Not checked.** In the built-in browser, which was hidden and so throttled, the run played with a clean console, but a walk round a lake was not picked out by eye; the unit fixtures cover it.
+
 ## [LIFE15-Speed-067] - (2026-10-27)
 
 The owner found the view still far too laggy and set 1 month/s running smoothly as the goal. A month a second is 30 simulated days a second, so with the view drawing too, the engine must run a day in about 30 ms.

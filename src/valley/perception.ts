@@ -1,6 +1,7 @@
 import { placesWithin, placeAt } from './places'
 import {
   carryComponents,
+  carryPieces,
   chunkOf,
   knows,
   learnTriangle,
@@ -171,8 +172,10 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
         if (complete) (ownKnowledge(person).fullyKnown ??= new Uint8Array(nav.chunkCells ** 2))[chunk] = 1
       }
   if (observation.triangles.length) person.knowledge.revision += 1
-  if (person.knowledge !== before || observation.triangles.length)
+  if (person.knowledge !== before || observation.triangles.length) {
     carryComponents(nav, before, person.knowledge, observation.triangles)
+    carryPieces(nav, before, person.knowledge, observation.triangles)
+  }
   if (surveying) {
     let views = viewsSeen.get(person.knowledge)
     if (!views) viewsSeen.set(person.knowledge, (views = new Set()))

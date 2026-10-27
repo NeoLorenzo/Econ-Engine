@@ -578,55 +578,128 @@ export function cutPath(
   }
   return pieces
 }
-/** Whether a person knows walkable ground crossing between chunk `c` and its `k`-th listed neighbour. */
-function linkKnown(links: ChunkLinks, knowledge: Knowledge, k: number) {
-  for (let j = links.pairStart[k]!; j < links.pairStart[k + 1]!; j++)
-    if (knows(knowledge, links.pairs[2 * j]!) && knows(knowledge, links.pairs[2 * j + 1]!)) return true
-  return false
+/**
+ * A person's pieces of known ground within chunks: for each chunk worked out, the piece of each of its triangles,
+ * numbered by the lowest triangle id in it, or -1 where the triangle is unknown or not walkable. Chunks are worked out
+ * when needed, and carried forward as triangles are learnt by dropping only the chunks those lie in.
+ */
+interface Pieces {
+  revision: number
+  chunks: Map<number, Int32Array>
+}
+const pieceCache = new WeakMap<Knowledge, Pieces>()
+const slotCache = new WeakMap<GroundMesh, Int32Array>()
+/** Each triangle's position in its chunk's list. */
+function slotsOf(mesh: GroundMesh) {
+  let slots = slotCache.get(mesh)
+  if (!slots) {
+    slots = new Int32Array(mesh.triangles)
+    for (let c = 0; c < mesh.chunkCells ** 2; c++)
+      for (let k = mesh.chunkStart[c]!; k < mesh.chunkStart[c + 1]!; k++)
+        slots[mesh.chunkTriangles[k]!] = k - mesh.chunkStart[c]!
+    slotCache.set(mesh, slots)
+  }
+  return slots
+}
+function piecesOf(knowledge: Knowledge) {
+  let saved = pieceCache.get(knowledge)
+  if (saved?.revision !== knowledge.revision) {
+    saved = { revision: knowledge.revision, chunks: new Map() }
+    pieceCache.set(knowledge, saved)
+  }
+  return saved
+}
+/** The pieces of one chunk: known walkable triangles of the chunk sharing an edge are one piece. */
+function chunkPieces(mesh: GroundMesh, knowledge: Knowledge, pieces: Pieces, c: number) {
+  const saved = pieces.chunks.get(c)
+  if (saved) return saved
+  const start = mesh.chunkStart[c]!,
+    labels = new Int32Array(mesh.chunkStart[c + 1]! - start).fill(-1),
+    slots = slotsOf(mesh),
+    todo: number[] = []
+  const open = (t: number) => mesh.area[t] === GROUND_AREA && knows(knowledge, t) === 1
+  // Triangles are listed in id order, so each piece's first triangle is its lowest.
+  for (let i = 0; i < labels.length; i++) {
+    const root = mesh.chunkTriangles[start + i]!
+    if (labels[i]! >= 0 || !open(root)) continue
+    labels[i] = root
+    todo.length = 0
+    todo.push(root)
+    while (todo.length) {
+      const t = todo.pop()!
+      for (let e = 0; e < 3; e++) {
+        const next = mesh.tn[3 * t + e]!
+        if (next < 0 || mesh.chunk[next] !== c || labels[slots[next]!]! >= 0 || !open(next)) continue
+        labels[slots[next]!] = root
+        todo.push(next)
+      }
+    }
+  }
+  pieces.chunks.set(c, labels)
+  return labels
+}
+/** The piece of known walkable ground in its chunk that a triangle belongs to, or -1. */
+export function pieceOf(nav: NavMap, knowledge: Knowledge, t: number) {
+  const mesh = nav.mesh
+  return chunkPieces(mesh, knowledge, piecesOf(knowledge), mesh.chunk[t]!)[slotsOf(mesh)[t]!]!
+}
+/** Carries a person's pieces forward to `after`, which knows `added` besides: only the chunks of `added` are dropped. */
+export function carryPieces(nav: NavMap, before: Knowledge, after: Knowledge, added: readonly number[]) {
+  const saved = pieceCache.get(before)
+  if (!saved || saved.revision + (added.length ? 1 : 0) !== after.revision) return
+  const chunks = before === after ? saved.chunks : new Map(saved.chunks)
+  for (const t of added) chunks.delete(nav.mesh.chunk[t]!)
+  pieceCache.set(after, { revision: after.revision, chunks })
 }
 /**
- * The coarse plan: A* over chunks linked for the person, costed between chunk centres, ties by chunk number. Returns
- * the band of the chain's chunks and every chunk touching one of them, side or corner, or null if no chain is known.
+ * The coarse plan: A* over the person's linked pieces, costed between their chunks' centres, ties by piece number.
+ * Returns the band of the chain's chunks and every chunk touching one of them, side or corner, or null if no chain is
+ * known. A chain of pieces is joined-up known ground, so the band always holds a path.
  */
 export function coarseBand(nav: NavMap, knowledge: Knowledge, first: number, last: number): Uint8Array | null {
   const { mesh, links } = nav,
     cells = mesh.chunkCells,
-    from = mesh.chunk[first]!,
-    to = mesh.chunk[last]!
-  const centre = (c: number) => [(c % cells) + 0.5, Math.floor(c / cells) + 0.5] as const
-  const gap = (a: number, b: number) => {
-    const [ax, ay] = centre(a),
-      [bx, by] = centre(b)
-    return Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
-  }
-  const chain: number[] = [from]
+    pieces = piecesOf(knowledge),
+    slots = slotsOf(mesh)
+  const piece = (t: number) => chunkPieces(mesh, knowledge, pieces, mesh.chunk[t]!)[slots[t]!]!
+  const from = piece(first),
+    to = piece(last)
+  if (from < 0 || to < 0) return null
+  const gap = (a: number, b: number) =>
+    Math.sqrt(((a % cells) - (b % cells)) ** 2 + (Math.floor(a / cells) - Math.floor(b / cells)) ** 2)
+  const chain: number[] = [mesh.chunk[from]!]
   if (from !== to) {
-    const costs = new Float64Array(cells * cells).fill(Infinity),
-      parents = new Int32Array(cells * cells).fill(-1),
-      closed = new Uint8Array(cells * cells),
+    const goal = mesh.chunk[to]!,
+      costs = new Map<number, number>([[from, 0]]),
+      parents = new Map<number, number>([[from, -1]]),
+      closed = new Set<number>(),
       heap = new CellHeap()
-    costs[from] = 0
-    heap.push(from, gap(from, to))
+    heap.push(from, gap(mesh.chunk[from]!, goal))
     while (heap.length) {
-      const c = heap.popId()
-      if (closed[c]) continue
-      closed[c] = 1
-      if (c === to) break
+      const p = heap.popId()
+      if (closed.has(p)) continue
+      closed.add(p)
+      if (p === to) break
+      const c = mesh.chunk[p]!
       for (let k = links.start[c]!; k < links.start[c + 1]!; k++) {
-        const next = links.chunk[k]!
-        if (closed[next]) continue
-        const cost = costs[c]! + gap(c, next)
-        if (cost < costs[next]! || (cost === costs[next] && c < parents[next]!)) {
-          if (!linkKnown(links, knowledge, k)) continue
-          costs[next] = cost
-          parents[next] = c
-          heap.push(next, cost + gap(next, to))
+        const n = links.chunk[k]!,
+          cost = costs.get(p)! + gap(c, n)
+        for (let j = links.pairStart[k]!; j < links.pairStart[k + 1]!; j++) {
+          if (piece(links.pairs[2 * j]!) !== p) continue
+          const q = piece(links.pairs[2 * j + 1]!)
+          if (q < 0 || closed.has(q)) continue
+          const old = costs.get(q)
+          if (old === undefined || cost < old || (cost === old && p < parents.get(q)!)) {
+            costs.set(q, cost)
+            parents.set(q, p)
+            heap.push(q, cost + gap(n, goal))
+          }
         }
       }
     }
-    if (!closed[to]) return null
+    if (!closed.has(to)) return null
     chain.length = 0
-    for (let c = to; c >= 0; c = parents[c]!) chain.push(c)
+    for (let p = to; p >= 0; p = parents.get(p)!) chain.push(mesh.chunk[p]!)
   }
   const band = new Uint8Array(cells * cells)
   for (const c of chain) {
@@ -640,8 +713,9 @@ export function coarseBand(nav: NavMap, knowledge: Knowledge, first: number, las
 }
 export type PlanKind = 'coarse' | 'full'
 /**
- * A new corridor over known ground: within the band of a coarse chunk plan first, over all known ground if the band
- * holds none. Null when the two points are on separate pieces of known ground.
+ * A new corridor over known ground, within the band of a coarse plan over pieces. The band always holds a path; the
+ * search over all known ground is only a guard, recorded as `full`, that the checker rejects. Null when the two points
+ * are on separate pieces of known ground.
  */
 export function planCorridor(
   nav: NavMap,
