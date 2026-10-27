@@ -172,6 +172,7 @@ export class ValleyChecker {
             errors.push(`person ${p.id}: two leisure walks in a day`)
           leisure = e.minute
         }
+        if (e.kind === 'walk' && e.plan === 'full') errors.push(`person ${p.id}: a walk needed the full search`)
         if (e.kind === 'walk' && (e.plan === 'way' || e.plan === 'joined')) {
           const way = known.get(e.wayId)
           if (way) {
