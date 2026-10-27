@@ -33,6 +33,9 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   companyRadiusCm: 60_000,
   duskMarginMinutes: 30,
   exploreRangeCm: 150_000,
+  waysRemembered: 64,
+  wayRecheckMinutes: 1_440,
+  resurveyCm: 10_000,
   extraversionRule: { base: 1000, effect: 500, low: 0, high: 2000 },
   agreeablenessRule: { base: 500, effect: 250, low: 100, high: 900 },
   conscientiousnessRule: { base: 1000, effect: 250, low: 500, high: 1750 },
@@ -186,7 +189,6 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   startPracticeHoursPerDay: 2,
   scattered: true,
   startSpacingCm: 5_000,
-  exploreAfterHours: 24,
   sightRadiusCm: 100_000,
   referenceBodyKg: 60,
   berryKcalPerKg: 600,
@@ -370,8 +372,10 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'practiceDays',
     'practiceHalfHours',
     'startSpacingCm',
-    'exploreAfterHours',
     'sightRadiusCm',
+    'waysRemembered',
+    'wayRecheckMinutes',
+    'resurveyCm',
     'referenceBodyKg',
     'berryKcalPerKg',
     'campfireWoodPerHour',
@@ -598,6 +602,8 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   }
   if (config.sightRadiusCm < config.perceptionRadiusCm)
     errors.push('Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm')
+  if (config.waysRemembered > 1_000) errors.push('waysRemembered must be at most 1,000')
+  if (config.resurveyCm > config.sightRadiusCm) errors.push('resurveyCm must be at most sightRadiusCm')
   // A site is checked from within perceptionRadiusCm − its radius of its centre, which must leave room to stand.
   if (
     config.perceptionRadiusCm <=

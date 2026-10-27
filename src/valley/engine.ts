@@ -1,5 +1,5 @@
 import { founderMetrics } from './nature'
-import { reindexPeople, shareBankMemory, shareKnowledge, shareRouteCache } from './perception'
+import { reindexPeople, shareBankMemory, shareKnowledge } from './perception'
 import { knowledgeBytes } from './routes'
 import { measureTask } from './summary'
 import { WakeQueue } from './clock'
@@ -188,7 +188,10 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       metPosition: new Map(),
       arrivalFrom: new Int32Array(config.founders).fill(-1),
       knowledge: { triangles: new Uint8Array(knowledgeBytes(layout.nav.mesh)), revision: 0 },
-      routeCache: new Map(),
+      ways: [],
+      nextWayId: 0,
+      leisureMinute: -1,
+      survey: null,
       energyTimeRemainder: 0,
       waterTimeRemainder: 0,
       lastWakeMinute: 0,
@@ -256,21 +259,19 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   for (const person of foragers) queue.schedule({ minute: 0, phase: 1, id: person.id, kind: 'end' })
   queue.schedule({ minute: 60, phase: 0, id: 0, kind: 'world' })
   const partial = { foragers, foodStock, layout, fishKcal, woodStock, groups, huts: [], config }
+  const personChunk = Int32Array.from(
+    foragers,
+    (p) => Math.floor(p.y / config.chunkCm) * layout.nav.chunkCells + Math.floor(p.x / config.chunkCm),
+  )
   return {
     founderMetrics: founderMetrics(foragers),
     fish,
     queue,
     routes: [],
     peopleByChunk: Array.from({ length: layout.nav.chunkCells ** 2 }, (_, chunk) =>
-      Int32Array.from(
-        foragers
-          .filter(
-            (p) =>
-              Math.floor(p.y / config.chunkCm) * layout.nav.chunkCells + Math.floor(p.x / config.chunkCm) === chunk,
-          )
-          .map((p) => p.id),
-      ),
+      Int32Array.from(foragers.filter((p) => personChunk[p.id] === chunk).map((p) => p.id)),
     ),
+    personChunk,
     lastInterval: [],
     waterWithdrawals: new Map(),
     config,
@@ -348,7 +349,6 @@ const cloneForager = (forager: Forager): Forager => {
     metPosition: new Map(forager.metPosition),
     arrivalFrom: forager.arrivalFrom.slice(),
     knowledge: shareKnowledge(forager.knowledge),
-    routeCache: shareRouteCache(forager.routeCache),
     knownBanks: shareBankMemory(forager.knownBanks),
     fishMemory: new Map(forager.fishMemory),
     deathCauses: [...forager.deathCauses],
@@ -410,6 +410,7 @@ export function cloneValley(state: ValleyState): ValleyState {
     queue: state.queue.clone(),
     routes: [...state.routes],
     peopleByChunk: [...state.peopleByChunk],
+    personChunk: state.personChunk.slice(),
     lastInterval: [...state.lastInterval],
     fish: state.fish.map((stock) => ({ ...stock })),
     waterWithdrawals: new Map(state.waterWithdrawals),

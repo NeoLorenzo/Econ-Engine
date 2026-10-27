@@ -6,6 +6,7 @@ import { createValley } from './engine'
 import { FLAT_LAND } from './config'
 import { observeAt } from './perception'
 import { chooseTask } from './forager'
+import { findWalk, rememberWalk } from './ways'
 
 describe('place knowledge and rechecking', () => {
   it('keeps unknown stock optimistic, learning stock only at the place', () => {
@@ -15,21 +16,26 @@ describe('place knowledge and rechecking', () => {
     expect([...person.knownPlaces].some((m) => m === 600)).toBe(true)
     expect([...person.placeStock].filter((stock) => stock >= 0).length).toBeLessThanOrEqual(1)
   })
-  it('rechecks a remembered place after a day when no frontier remains', () => {
-    const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
-      person = state.foragers[0]!
-    person.wood = 24
-    person.shortOfWood = false
-    person.knowledge.triangles.fill(255)
-    person.knownPlaces.fill(600)
-    person.placeStock.fill(0)
-    person.placeCheckedMinute.fill(600)
-    person.hutId = 0
-    person.axe = { id: 0, makerId: 0, madeMinute: 0, quality: 100, logsLeft: 200 }
-    state.huts.push({ id: 0, builderId: 0, x: person.x, y: person.y, logs: 23, begunMinute: 0, abandonedMinute: null })
-    expect(chooseTask(state, person, 600 + 1_440).reason).toBe('checking')
-  })
 })
+
+/** An idle person at home with nothing left to explore, holding ways to two places, the first used longest ago. */
+function idleAtHome() {
+  const s = bandAt(),
+    p = s.foragers[0]!,
+    places = s.layout.places
+  giveHut(s, p)
+  p.axe = testAxe()
+  p.x = p.hearth.x
+  p.y = p.hearth.y
+  p.knowledge.triangles.fill(255)
+  p.knowledge.revision++
+  p.knownPlaces.fill(600)
+  p.placeStock.fill(0)
+  p.placeCheckedMinute.fill(600)
+  const far = [0, 40].map((id) => ({ x: places.x[id]!, y: places.y[id]! }))
+  far.forEach((point, i) => rememberWalk(s, p, findWalk(s, p, point, true, 0)!, 500 + i))
+  return { s, p, far }
+}
 
 describe('ported place and exploration rules', () => {
   it('numbers thickets then hazels then stands then outcrops', () => {
@@ -59,6 +65,8 @@ describe('ported place and exploration rules', () => {
       p = s.foragers[0]!
     observeAt(s, p, 600)
     const id = p.knownPlaces.findIndex((m) => m === 600)
+    // A sighting is taken again at the next survey.
+    p.survey = null
     observeAt(s, p, 601)
     expect(p.knownPlaces[id]).toBe(601)
     expect(p.placeCheckedMinute[id]).toBe(-1)
@@ -79,16 +87,21 @@ describe('ported place and exploration rules', () => {
       target: { x: 50000, y: 20000 },
     })
   })
-  it('checks only known sites that leave time to return before dusk', () => {
-    const s = bandAt(),
-      p = s.foragers[0]!
-    giveHut(s, p)
-    p.axe = testAxe()
-    p.knownPlaces.fill(-1)
-    p.placeCheckedMinute.fill(-1)
-    expect(chooseTask(s, p, 600).reason).not.toBe('checking')
-    p.knownPlaces.fill(0)
-    expect(chooseTask(s, p, 1079).reason).not.toBe('checking')
+  it('takes one walk a day along the way from home used longest ago, then goes home to rest', () => {
+    const { s, p, far } = idleAtHome()
+    expect(chooseTask(s, p, 600)).toMatchObject({ kind: 'walk', reason: 'out for a walk', target: far[0] })
+    p.leisureMinute = 600
+    expect(chooseTask(s, p, 700).kind).toBe('rest')
+    p.x = far[0]!.x
+    p.y = far[0]!.y
+    expect(chooseTask(s, p, 700)).toMatchObject({ kind: 'walk', reason: 'going home to rest', target: p.hearth })
+    p.x = p.hearth.x
+    p.y = p.hearth.y
+    expect(chooseTask(s, p, 600 + 1_440).reason).toBe('out for a walk')
+  })
+  it('walks out only when there is time to return before dusk', () => {
+    const { s, p } = idleAtHome()
+    expect(chooseTask(s, p, 1079).kind).toBe('rest')
   })
   it('explores unknown ground before revisiting exhausted places', () => {
     const s = bandAt(),

@@ -35,14 +35,9 @@ export interface Display {
   state: ValleyState
   /** The minute drawn, continuously: `state.minute <= minute < state.minute + 1`. */
   minute: number
-  /**
-   * The most minutes the next frame may advance. A step has a fixed cost (copying the state) besides its cost per
-   * minute, so this is found by trial: it doubles while steps stay within the frame budget and halves when they do not.
-   */
-  allowance: number
 }
 
-export const startDisplay = (state: ValleyState): Display => ({ state, minute: state.minute, allowance: 1 })
+export const startDisplay = (state: ValleyState): Display => ({ state, minute: state.minute })
 
 export interface ValleySpeed {
   label: string
@@ -78,12 +73,17 @@ export const MAX_FRAME_SECONDS = 0.25
  */
 export const SIMULATION_FRAME_BUDGET_MS = 40
 
-/** The allowance never grows past a season a frame. */
-const MAX_ALLOWANCE_MINUTES = 90 * MINUTES_PER_DAY
+/**
+ * A frame runs the engine in steps of at most this many minutes, checking its budget between them, so no frame runs far
+ * past its budget. Early in a run a step takes about a millisecond; later, as people know more ground and plan longer
+ * routes, an hour can take hundreds, so steps are short.
+ */
+export const SIMULATION_SLICE_MINUTES = 15
 
 /**
- * Advances the displayed minute by the wall time elapsed at `speed`, running the engine once up to the last whole
- * minute at or before it. When the engine cannot keep up within `budgetMs`, the clock advances less.
+ * Advances the displayed minute by the wall time elapsed at `speed`, running the engine up to the last whole minute at
+ * or before it. When the engine cannot keep up within `budgetMs`, it stops at the last step finished, and the clock
+ * advances less.
  */
 export function advanceDisplay(
   display: Display,
@@ -92,21 +92,14 @@ export function advanceDisplay(
   budgetMs = SIMULATION_FRAME_BUDGET_MS,
   now: () => number = () => performance.now(),
 ): Display {
-  const wanted = Math.min(MAX_FRAME_SECONDS, Math.max(0, elapsedSeconds)) * speed.minutesPerSecond
-  const target = display.minute + Math.min(wanted, display.allowance)
+  const target = display.minute + Math.min(MAX_FRAME_SECONDS, Math.max(0, elapsedSeconds)) * speed.minutesPerSecond
   const toMinute = Math.floor(target)
-  if (toMinute <= display.state.minute) return { ...display, minute: target }
+  if (toMinute <= display.state.minute) return { state: display.state, minute: target }
   const started = now()
-  const state = stepValley(display.state, toMinute)
-  const tookMs = now() - started
-  const used = toMinute - display.state.minute
-  const allowance =
-    tookMs > budgetMs
-      ? Math.max(1, Math.floor(display.allowance / 2))
-      : used * 2 >= display.allowance
-        ? Math.min(MAX_ALLOWANCE_MINUTES, display.allowance * 2)
-        : display.allowance
-  return { state, minute: target, allowance }
+  let state = display.state
+  do state = stepValley(state, Math.min(toMinute, state.minute + SIMULATION_SLICE_MINUTES))
+  while (state.minute < toMinute && now() - started < budgetMs)
+  return { state, minute: state.minute < toMinute ? state.minute : target }
 }
 
 /** Runs the engine to the next whole minute and shows it. */
@@ -520,7 +513,8 @@ const REASONS: Partial<Record<string, string>> = {
   'waiting for company': 'Waiting for company at a flag',
   exploring: 'Exploring ground it has never seen',
   searching: 'Searching for food or wood',
-  checking: 'Checking what a place holds',
+  'out for a walk': 'Out for a walk along a way it knows',
+  'going home to rest': 'Walking home to rest',
   'taking a load home': 'Taking firewood home',
   'taking a log home': 'Carrying a log home for its hut',
   'making an axe': 'Making an axe',
@@ -553,6 +547,21 @@ export function describeActivity(display: Display, foragerId: number) {
   return place && task.kind !== 'walk' ? `${what} at ${place}` : what
 }
 
+const WALK_PLANS = {
+  way: 'on a known way',
+  joined: 'joining a known way',
+  coarse: 'planning a new way',
+  full: 'planning a new way',
+} as const
+/** How a person's current walk was found, in words, from its walk record; null for other tasks or unrecorded walks. */
+export function walkWording(state: ValleyState, foragerId: number) {
+  const task = state.foragers[foragerId]!.task
+  if (task?.kind !== 'walk') return null
+  for (let day = state.eventDays.length - 1; day >= 0; day -= 1)
+    for (const e of state.eventDays[day]!)
+      if (e.kind === 'walk' && e.foragerId === foragerId && e.routeId === task.routeId) return WALK_PLANS[e.plan]
+  return null
+}
 /** The followed person's task and next wake-up, for the person panel. */
 export function taskSummary(state: ValleyState, foragerId: number) {
   const task = state.foragers[foragerId]!.task
@@ -561,6 +570,7 @@ export function taskSummary(state: ValleyState, foragerId: number) {
     ? {
         kind: task.kind,
         reason: task.reason,
+        way: walkWording(state, foragerId),
         startMinute: task.startMinute,
         endMinute: task.endMinute,
         nextWake: next && { minute: next.minute, kind: next.kind },
@@ -885,19 +895,19 @@ export interface SiteRing {
   x: number
   y: number
   radiusCm: number
-  /** Checked within `exploreAfterHours`. */
+  /** Checked within the last day. */
   fresh: boolean
 }
 
 /** The places the followed forager knows, and whether it checked each lately. */
 export function siteRings(state: ValleyState, foragerId: number): SiteRing[] {
-  const { config, layout } = state
+  const { layout } = state
   const forager = state.foragers[foragerId]!
   const rings: SiteRing[] = []
   for (let site = 0; site < layout.places.count; site += 1) {
     if (forager.knownPlaces[site]! < 0) continue
     const checked = forager.placeCheckedMinute[site]!
-    const fresh = checked >= 0 && state.minute - checked < 60 * config.exploreAfterHours
+    const fresh = checked >= 0 && state.minute - checked < MINUTES_PER_DAY
     rings.push({
       site,
       x: layout.places.x[site]!,
@@ -967,9 +977,9 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     heightM: heightAt(state.layout.terrain, forager.x, forager.y) / 100,
     sitesKnown: known,
     sitesTotal: state.layout.places.count,
-    /** Places it has checked within `exploreAfterHours`. */
+    /** Places it has checked within the last day. */
     sitesCheckedLately: forager.placeCheckedMinute.filter(
-      (checked) => checked >= 0 && state.minute - checked < 60 * config.exploreAfterHours,
+      (checked) => checked >= 0 && state.minute - checked < MINUTES_PER_DAY,
     ).length,
     /** The wood it has put into fires, and its group's fire, if it sleeps by one. */
     fireGiven: forager.fireGiven,

@@ -329,7 +329,7 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 14</span>
+        <span className="life-title">Life 15</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
             {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
@@ -600,6 +600,7 @@ export default function ValleyApp({
                 <dt>Task</dt>
                 <dd>
                   {task.kind}, {task.reason}
+                  {task.way && `, ${task.way}`}
                 </dd>
               </>
             )}
@@ -607,6 +608,8 @@ export default function ValleyApp({
             <dd className="num">
               {Math.round(summary.seenShare * 100)}% of the land, {summary.sitesKnown} sites
             </dd>
+            <dt>Ways</dt>
+            <dd className="num">Knows {forager.ways.length}</dd>
             <dt>Carries</dt>
             <dd className="num">
               {summary.carriedKcal ? carriedPhrase(summary.carriedByFood) : 'no food'}

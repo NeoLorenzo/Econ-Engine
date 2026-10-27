@@ -17,6 +17,18 @@ export interface NavMap {
   accessBanks: BankMemory[]
   bankChunks: Map<number, BankMemory[]>
   bankIndex: BankIndex
+  links: ChunkLinks
+}
+/**
+ * The walkable edges between triangles of different chunks: for chunk `c`, its neighbours are
+ * `chunk[start[c]..start[c+1])`, and the triangle pairs crossing to neighbour `k` are `pairs[2j], pairs[2j+1]` for
+ * `j` in `pairStart[k]..pairStart[k+1]`, the first in `c`.
+ */
+export interface ChunkLinks {
+  start: Int32Array
+  chunk: Int32Array
+  pairStart: Int32Array
+  pairs: Int32Array
 }
 /** Triangles seen, one bit each; chunks seen whole; chunks whose bank points are all known. */
 export interface Knowledge {
@@ -147,6 +159,48 @@ export function trianglePoint(mesh: GroundMesh, t: number): Point {
   return { x: mesh.vx[v]!, y: mesh.vy[v]! }
 }
 
+const linkCache = new WeakMap<GroundMesh, ChunkLinks>()
+/** Lists, once per mesh, every edge between walkable triangles of different chunks, by chunk and neighbour. */
+function linksOf(mesh: GroundMesh): ChunkLinks {
+  const saved = linkCache.get(mesh)
+  if (saved) return saved
+  const byChunk = new Map<number, Map<number, number[]>>()
+  for (let t = 0; t < mesh.triangles; t++) {
+    if (mesh.area[t] !== GROUND_AREA) continue
+    for (let e = 0; e < 3; e++) {
+      const u = mesh.tn[3 * t + e]!
+      if (u < 0 || mesh.area[u] !== GROUND_AREA || mesh.chunk[u] === mesh.chunk[t]) continue
+      let neighbours = byChunk.get(mesh.chunk[t]!)
+      if (!neighbours) byChunk.set(mesh.chunk[t]!, (neighbours = new Map()))
+      const pairs = neighbours.get(mesh.chunk[u]!)
+      if (pairs) pairs.push(t, u)
+      else neighbours.set(mesh.chunk[u]!, [t, u])
+    }
+  }
+  const chunks = mesh.chunkCells * mesh.chunkCells,
+    start = new Int32Array(chunks + 1),
+    chunk: number[] = [],
+    pairStart: number[] = [0],
+    pairs: number[] = []
+  for (let c = 0; c < chunks; c++) {
+    start[c] = chunk.length
+    for (const [other, list] of [...(byChunk.get(c) ?? [])].sort((a, b) => a[0] - b[0])) {
+      chunk.push(other)
+      pairs.push(...list)
+      pairStart.push(pairs.length / 2)
+    }
+  }
+  start[chunks] = chunk.length
+  const links = {
+    start,
+    chunk: Int32Array.from(chunk),
+    pairStart: Int32Array.from(pairStart),
+    pairs: Int32Array.from(pairs),
+  }
+  linkCache.set(mesh, links)
+  return links
+}
+
 /** The nav map of a layout; the mesh itself is shared by every layout of the same terrain and settings. */
 export function buildNav(config: ValleyConfig, terrain: Terrain, layoutGround: Uint8Array): NavMap {
   const mesh = meshOf(terrain, meshSettings(config))
@@ -165,6 +219,7 @@ export function buildNav(config: ValleyConfig, terrain: Terrain, layoutGround: U
     accessBanks: [],
     bankChunks: new Map(),
     bankIndex: { all: null, bodies: new Map() },
+    links: linksOf(mesh),
   }
   // Each shore edge gives at most one bank point, set back into its walkable triangle by Life 11's approach rule.
   const inset = Math.min(50, config.reachCm)
@@ -308,7 +363,7 @@ const searchBuffers = new WeakMap<
 const length2 = (ax: number, ay: number, bx: number, by: number) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
 /**
  * A* over known walkable triangles between their shared edges' midpoints, ties by triangle id. Returns the
- * corridor of triangles from `first` to `last`, or null.
+ * corridor of triangles from `first` to `last`, or null. With a band, only triangles in the band's chunks are crossed.
  */
 export function corridorOf(
   mesh: GroundMesh,
@@ -317,6 +372,7 @@ export function corridorOf(
   last: number,
   from: Point,
   to: Point,
+  band?: Uint8Array,
 ): number[] | null {
   let buffers = searchBuffers.get(mesh)
   if (!buffers) {
@@ -350,6 +406,7 @@ export function corridorOf(
     for (let e = 0; e < 3; e++) {
       const next = tn[3 * t + e]!
       if (next < 0 || area[next] !== GROUND_AREA || closed[next] === stamp || !knows(knowledge, next)) continue
+      if (band && !band[mesh.chunk[next]!]) continue
       const a = tv[3 * t + e]!,
         b = tv[3 * t + ((e + 1) % 3)]!,
         mx = (vx[a]! + vx[b]!) / 2,
@@ -371,7 +428,7 @@ export function corridorOf(
   return corridor.reverse()
 }
 /** The shared edge from each corridor triangle to the next, as its left and right ends seen walking forward. */
-function portalsOf(mesh: GroundMesh, corridor: number[]) {
+function portalsOf(mesh: GroundMesh, corridor: ArrayLike<number>) {
   const portals: [number, number][] = []
   for (let i = 0; i + 1 < corridor.length; i++) {
     const t = corridor[i]!,
@@ -442,7 +499,7 @@ export function funnel(mesh: GroundMesh, portals: [number, number][], from: Poin
  */
 export function cutPath(
   mesh: GroundMesh,
-  corridor: number[],
+  corridor: ArrayLike<number>,
   portals: [number, number][],
   path: Point[],
 ): { x0: number; y0: number; x1: number; y1: number; triangle: number }[] {
@@ -475,6 +532,89 @@ export function cutPath(
   }
   return pieces
 }
+/** Whether a person knows walkable ground crossing between chunk `c` and its `k`-th listed neighbour. */
+function linkKnown(links: ChunkLinks, knowledge: Knowledge, k: number) {
+  for (let j = links.pairStart[k]!; j < links.pairStart[k + 1]!; j++)
+    if (knows(knowledge, links.pairs[2 * j]!) && knows(knowledge, links.pairs[2 * j + 1]!)) return true
+  return false
+}
+/**
+ * The coarse plan: A* over chunks linked for the person, costed between chunk centres, ties by chunk number. Returns
+ * the band of the chain's chunks and every chunk touching one of them, side or corner, or null if no chain is known.
+ */
+export function coarseBand(nav: NavMap, knowledge: Knowledge, first: number, last: number): Uint8Array | null {
+  const { mesh, links } = nav,
+    cells = mesh.chunkCells,
+    from = mesh.chunk[first]!,
+    to = mesh.chunk[last]!
+  const centre = (c: number) => [(c % cells) + 0.5, Math.floor(c / cells) + 0.5] as const
+  const gap = (a: number, b: number) => {
+    const [ax, ay] = centre(a),
+      [bx, by] = centre(b)
+    return Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
+  }
+  const chain: number[] = [from]
+  if (from !== to) {
+    const costs = new Float64Array(cells * cells).fill(Infinity),
+      parents = new Int32Array(cells * cells).fill(-1),
+      closed = new Uint8Array(cells * cells),
+      heap = new CellHeap()
+    costs[from] = 0
+    heap.push(from, gap(from, to))
+    while (heap.length) {
+      const c = heap.popId()
+      if (closed[c]) continue
+      closed[c] = 1
+      if (c === to) break
+      for (let k = links.start[c]!; k < links.start[c + 1]!; k++) {
+        const next = links.chunk[k]!
+        if (closed[next]) continue
+        const cost = costs[c]! + gap(c, next)
+        if (cost < costs[next]! || (cost === costs[next] && c < parents[next]!)) {
+          if (!linkKnown(links, knowledge, k)) continue
+          costs[next] = cost
+          parents[next] = c
+          heap.push(next, cost + gap(next, to))
+        }
+      }
+    }
+    if (!closed[to]) return null
+    chain.length = 0
+    for (let c = to; c >= 0; c = parents[c]!) chain.push(c)
+  }
+  const band = new Uint8Array(cells * cells)
+  for (const c of chain) {
+    const x = c % cells,
+      y = Math.floor(c / cells)
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++)
+        if (x + dx >= 0 && x + dx < cells && y + dy >= 0 && y + dy < cells) band[(y + dy) * cells + x + dx] = 1
+  }
+  return band
+}
+export type PlanKind = 'coarse' | 'full'
+/**
+ * A new corridor over known ground: within the band of a coarse chunk plan first, over all known ground if the band
+ * holds none. Null when the two points are on separate pieces of known ground.
+ */
+export function planCorridor(
+  nav: NavMap,
+  knowledge: Knowledge,
+  first: number,
+  last: number,
+  from: Point,
+  to: Point,
+): { corridor: number[]; plan: PlanKind } | null {
+  // A search between separate pieces of known ground would exhaust the start's piece before failing.
+  const componentOf = knownComponents(nav, knowledge)
+  if (componentOf(first) !== componentOf(last)) return null
+  const band = coarseBand(nav, knowledge, first, last)
+  const banded = band && corridorOf(nav.mesh, knowledge, first, last, from, to, band)
+  if (banded) return { corridor: banded, plan: 'coarse' }
+  const corridor = corridorOf(nav.mesh, knowledge, first, last, from, to)
+  return corridor && { corridor, plan: 'full' }
+}
+/** The shortest route over everything the person knows, without a coarse plan. */
 export function knownRoute(
   nav: NavMap,
   knowledge: Knowledge,
@@ -483,16 +623,26 @@ export function knownRoute(
   from: Point & { triangle?: number },
   to: Point & { triangle?: number },
 ): Route | null {
-  const mesh = nav.mesh,
-    first = routeTriangle(nav, knowledge, from),
+  const first = routeTriangle(nav, knowledge, from),
     last = routeTriangle(nav, knowledge, to)
   if (first < 0 || last < 0) return null
   if (from.x === to.x && from.y === to.y) return { segments: [], minutes: 0, timeUnits: 0, kcal: 0 }
-  // A search between separate pieces of known ground would exhaust the start's piece before failing.
   const componentOf = knownComponents(nav, knowledge)
   if (componentOf(first) !== componentOf(last)) return null
-  const corridor = corridorOf(mesh, knowledge, first, last, from, to)
-  if (!corridor) return null
+  const corridor = corridorOf(nav.mesh, knowledge, first, last, from, to)
+  return corridor && corridorRoute(nav, config, loadKg, corridor, from, to)
+}
+/** The path pulled tight along a corridor from one point to another, cut into timed pieces for a load. */
+export function corridorRoute(
+  nav: NavMap,
+  config: ValleyConfig,
+  loadKg: number,
+  corridor: ArrayLike<number>,
+  from: Point,
+  to: Point,
+): Route {
+  const mesh = nav.mesh
+  if (from.x === to.x && from.y === to.y) return { segments: [], minutes: 0, timeUnits: 0, kcal: 0 }
   const portals = portalsOf(mesh, corridor),
     path = funnel(mesh, portals, from, to),
     speed = loadedSpeed(config, loadKg)

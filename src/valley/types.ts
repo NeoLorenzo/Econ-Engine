@@ -92,6 +92,12 @@ export interface NatureConfig {
   companyRadiusCm: number
   duskMarginMinutes: number
   exploreRangeCm: number
+  /** The most ways a person remembers; past it, the way used longest ago is forgotten. */
+  waysRemembered: number
+  /** A way is reconsidered when used this long after it was planned, if new ground has been seen since. */
+  wayRecheckMinutes: number
+  /** The still landscape is surveyed again once a person stands this far from their last survey. */
+  resurveyCm: number
   extraversionRule: TraitRule
   agreeablenessRule: TraitRule
   conscientiousnessRule: TraitRule
@@ -322,7 +328,6 @@ export interface ValleyConfig extends HydrationConfig, NatureConfig {
   /** Scattered starts lie at least this far apart. */
   startSpacingCm: number
   /** A thicket or stand not checked for this many hours is worth checking again. */
-  exploreAfterHours: number
   /** By day a forager sees thickets, stands, other foragers and flags this far; at night only `perceptionRadiusCm`. */
   sightRadiusCm: number
   /** Carried berries weigh a kilogram for every this many kilocalories. */
@@ -562,6 +567,18 @@ export interface TaskRecord {
   rateChanges?: { minute: number; energyPerHour: number }[]
 }
 
+/** A corridor of triangles a person walked between two points, from `a` to `b`; immutable. */
+export interface Way {
+  id: number
+  a: Point
+  b: Point
+  corridor: Int32Array
+  plannedMinute: number
+  revision: number
+  usedMinute: number
+}
+/** How a walk's corridor was found. */
+export type WalkPlan = 'way' | 'joined' | 'coarse' | 'full'
 export interface Forager extends Hydration, PersonNature {
   task: TaskRecord | null
   knowledge: Knowledge
@@ -574,7 +591,13 @@ export interface Forager extends Hydration, PersonNature {
   metMinute: Int32Array
   metPosition: Map<number, Point>
   arrivalFrom: Int32Array
-  routeCache: Map<string, number>
+  /** Ways walked to places, banks and home, never changed in place: a change makes a new list. */
+  ways: readonly Way[]
+  nextWayId: number
+  /** When the person last set out on a leisure walk, or -1. */
+  leisureMinute: number
+  /** Where the still landscape was last surveyed, or null before the first survey. */
+  survey: Point | null
   energyTimeRemainder: number
   waterTimeRemainder: number
   lastWakeMinute: number
@@ -678,7 +701,8 @@ export type ActionReason =
   | 'waiting for company'
   | 'exploring'
   | 'searching'
-  | 'checking'
+  | 'out for a walk'
+  | 'going home to rest'
   | 'taking a load home'
   | 'taking a log home'
   | 'making an axe'
@@ -898,7 +922,16 @@ export type WakeEvent =
   | { kind: 'world'; minute: number }
   | TaskEvent
   | ObservationEvent
-  | { kind: 'walk'; minute: number; foragerId: number; routeId: number }
+  | {
+      kind: 'walk'
+      minute: number
+      foragerId: number
+      routeId: number
+      /** How the corridor was found; `wayId` is the way walked or joined, else -1. */
+      plan: WalkPlan
+      rechecked: boolean
+      wayId: number
+    }
   | { kind: 'regrowth'; minute: number; placeId: number; kcal: number; wood: number; logs: number }
   | { kind: 'fish-regrowth'; minute: number; bodyId: number; kcal: number; remainder: number }
   | { kind: 'rate-change'; minute: number; foragerId: number; energyPerHour: number }
@@ -1069,6 +1102,8 @@ export interface ValleyState {
   queue: WakeQueue
   routes: Route[]
   peopleByChunk: Int32Array[]
+  /** Each person's chunk when people were last located, or -1 for the dead: `peopleByChunk` by person. */
+  personChunk: Int32Array
   lastInterval: ValleyEvent[]
   logStock: Int32Array
   felledMinute: Int32Array

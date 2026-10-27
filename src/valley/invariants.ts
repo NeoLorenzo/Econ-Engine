@@ -20,6 +20,7 @@ import {
 import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body'
 import { loadKg, loadOf, speedForLoad, nextHungry, isDaylight } from './forager'
 import { carriedKcal } from './food'
+import { MINUTES_PER_DAY } from './calendar'
 import { axeLife } from './axes'
 import { hearthAround, livingMembers } from './social'
 import { sleepCostOf, warmthOf } from './work'
@@ -116,6 +117,7 @@ export class ValleyChecker {
       this.memoryOnly,
       this.order,
       this.regrowth,
+      this.ways,
     ]) {
       try {
         found.push(...check.call(this, state))
@@ -129,6 +131,66 @@ export class ValleyChecker {
   assert(state: ValleyState) {
     const errors = this.check(state)
     if (errors.length) throw new Error(`Valley invariants violated: ${errors.slice(0, 8).join('; ')}`)
+  }
+  /** Every way is a known walkable corridor between its ends; walks on ways keep to them; surveys follow the rule. */
+  private ways(state: ValleyState) {
+    const errors: string[] = [],
+      mesh = state.layout.nav.mesh,
+      config = state.config
+    for (const p of state.foragers) {
+      const before = this.previous.foragers[p.id]!
+      if (p.ways.length > config.waysRemembered) errors.push(`person ${p.id}: too many ways`)
+      const ends = new Set<string>()
+      for (const way of p.ways) {
+        const key = [`${way.a.x},${way.a.y}`, `${way.b.x},${way.b.y}`].sort().join(':')
+        if (ends.has(key)) errors.push(`person ${p.id}: two ways between the same ends`)
+        ends.add(key)
+        if (way.id < 0 || way.id >= p.nextWayId || way.usedMinute > state.minute || way.plannedMinute > way.usedMinute)
+          errors.push(`person ${p.id}: way ${way.id} has an invalid number or minute`)
+        const c = way.corridor
+        if (
+          !c.length ||
+          triangleDistanceSq(mesh, c[0]!, way.a.x, way.a.y) > NEAR_CM ** 2 ||
+          triangleDistanceSq(mesh, c[c.length - 1]!, way.b.x, way.b.y) > NEAR_CM ** 2
+        )
+          errors.push(`person ${p.id}: way ${way.id} does not hold its ends`)
+        for (let i = 0; i < c.length; i++) {
+          const t = c[i]!
+          if (mesh.area[t] !== GROUND_AREA || !knows(p.knowledge, t))
+            errors.push(`person ${p.id}: way ${way.id} crosses unknown or wet ground`)
+          if (i && ![0, 1, 2].some((e) => mesh.tn[3 * c[i - 1]! + e] === t))
+            errors.push(`person ${p.id}: way ${way.id} has a gap`)
+        }
+      }
+      const known = new Map([...before.ways, ...p.ways].map((w) => [w.id, w]))
+      let survey = before.survey,
+        leisure = before.leisureMinute
+      for (const e of state.lastInterval) {
+        if (!('foragerId' in e) || e.foragerId !== p.id) continue
+        if (e.kind === 'task-start' && e.task.reason === 'out for a walk' && e.task.startMinute === e.minute) {
+          if (leisure >= 0 && Math.floor(leisure / MINUTES_PER_DAY) === Math.floor(e.minute / MINUTES_PER_DAY))
+            errors.push(`person ${p.id}: two leisure walks in a day`)
+          leisure = e.minute
+        }
+        if (e.kind === 'walk' && (e.plan === 'way' || e.plan === 'joined')) {
+          const way = known.get(e.wayId)
+          if (way) {
+            const triangles = new Set(way.corridor)
+            if (state.routes[e.routeId]!.segments.some((segment) => !triangles.has(segment.triangle)))
+              errors.push(`person ${p.id}: a walk left the way it took`)
+          } else if (e.wayId < before.nextWayId) errors.push(`person ${p.id}: a walk took an unknown way`)
+        }
+        if (e.kind === 'observe') {
+          const due = !survey || (survey.x - e.origin.x) ** 2 + (survey.y - e.origin.y) ** 2 >= config.resurveyCm ** 2
+          if (due !== e.surveyed) errors.push(`person ${p.id}: survey taken against the rule`)
+          if (due) survey = e.origin
+        }
+      }
+      if (survey !== p.survey && !(survey && p.survey && pointEqual(survey, p.survey)))
+        errors.push(`person ${p.id}: survey point changed without a survey`)
+      if (leisure !== p.leisureMinute) errors.push(`person ${p.id}: leisure walk not recorded`)
+    }
+    return errors
   }
   private bodyCharges(state: ValleyState) {
     return replayInterval(this.previous, state)
@@ -504,7 +566,7 @@ export class ValleyChecker {
           }
           if (
             e.task.kind === 'walk' &&
-            ['exploring', 'checking', 'seeking company'].includes(e.task.reason) &&
+            ['exploring', 'out for a walk', 'seeking company'].includes(e.task.reason) &&
             !hungry[e.foragerId] &&
             (e.task.startTripWood ?? 0) >= state.foragers[e.foragerId]!.loadCapacityKg
           )

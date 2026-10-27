@@ -2,6 +2,24 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE15-Habits-066] - (2026-10-27)
+
+- Life 15, habitual routes. People remember the ways they walk between their hearth, places and bank points, up to 64 each, and take them again in either direction, or join one part-way. A way is planned again once a day has passed and they have seen new ground since, or at once if it crosses ground they no longer know; the way used longest ago is forgotten first.
+- A new route is planned coarse to fine: first a chain of 200 m chunks linked across ground the person knows, then the exact path within that band, falling back to all known ground when the band holds no path.
+- People survey the still landscape again only after moving 100 m from their last survey point; stock where they stand, people and fires are still seen at every wake-up.
+- Idle people no longer tour every place they know. With nothing left to explore nearby, a person at home takes one walk a day out along the remembered way from home they used longest ago, and otherwise rests; away from home they walk home to rest. `exploreAfterHours` and the `checking` reason are removed.
+- Configuration adds `waysRemembered` (64), `wayRecheckMinutes` (1,440) and `resurveyCm` (100 m). The per-person route cache is removed.
+- Walk events record how the walk was found (`way`, `joined`, `coarse` or `full`), whether a way was rechecked, and the way used; observations record whether they were a survey. The checker checks every person's ways, walks along ways and the survey rule.
+- The observer draws the followed person's ways on the ground, the most recently used brightest, names how the current walk was found, and shows how many ways they know.
+- All 22 fingerprints are re-recorded. Life 15 replaces the Life 14 spec; roadmap steps 15 to 25 become 16 to 26.
+
+## [LIFE14-Speed-065] - (2026-10-27)
+
+- Faster 3D view: bushes, hazels and the ground are drawn in 500 m tiles, and only near the camera; berries, nuts and deadwood only within 300 m and without shadows; the followed forager's route, rings and known ground are redrawn at most four times a second. A typical view went from about 7,000 draw calls to about 100.
+- Faster simulation without changing any run: people's chunks are recorded at wake-ups rather than every chunk list being rebuilt; looking for the place at a point searches only as far as the widest place; exchange is skipped for a person with no living group-mate, and copies only group members. Three early days take 0.44 s instead of 0.99 s.
+- Each frame runs the engine in 15-minute steps until its 40 ms budget is spent, in place of one step whose size was found by trial, so a slow stretch no longer freezes the view for a whole step.
+- Fingerprints are unchanged.
+
 ## [LIFE14-Bodies-064] - (2026-10-26)
 
 - Adults now have sex, correlated height, weight and grip, and five correlated personality scores, drawn by integer arithmetic from isolated streams. Founder positions and born skills retain their Life 13 draws.

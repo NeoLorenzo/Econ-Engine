@@ -47,7 +47,7 @@ describe('wake-up perception', () => {
     expect(person.placeStock[another]).toBe(-1)
   })
   it('sees nothing beyond its sight radius', () => {
-    const state = createValley({ ...FLAT_LAND, sightRadiusCm: 3_000 })
+    const state = createValley({ ...FLAT_LAND, sightRadiusCm: 3_000, resurveyCm: 3_000 })
     const person = state.foragers[0]!
     person.x = state.layout.places.x[0]! + 3_001
     person.y = state.layout.places.y[0]!

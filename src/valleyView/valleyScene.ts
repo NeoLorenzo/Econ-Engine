@@ -12,6 +12,7 @@ import type {
 } from 'three'
 
 import { isDaylight } from '../valley/forager'
+import { corridorRoute } from '../valley/routes'
 import { siteCount } from '../valley/sites'
 import { livingMembers } from '../valley/social'
 import { TiledInstances } from './tiledInstances'
@@ -73,10 +74,19 @@ const DAY_SKY = 0x7fa6b8
 const OUTSIDE = 0x2c4a30
 /** The grassland's surface colours: grass, dirt and stone, by ground code. */
 const GROUND_COLOURS = [0x4f7a42, 0x785b3b, 0x85827a]
-/** Bushes and hazels are drawn in square tiles this wide, and only those near the camera. */
-const PLANT_TILE_M = 100
+/**
+ * Bushes and hazels are drawn in square tiles this wide, and only those near the camera. Each tile is a draw call, and
+ * one in its shadow, so tiles are wide: 100 m tiles made over 7,000 calls a frame.
+ */
+const PLANT_TILE_M = 500
+/** Ground, water and the knowledge overlay are cut into tiles this wide, for culling at the same cost per call. */
+const SURFACE_TILE_M = 500
 /** Bushes and hazels are drawn within this many metres of the camera's target, more when it is further away. */
 const PLANT_DRAW_M = 500
+/** Berries, nuts and deadwood, too small to see from afar, are drawn only within this many metres of the target. */
+const DETAIL_DRAW_M = 300
+/** The followed forager's route, rings and known ground are redrawn at most this often, in milliseconds. */
+const OVERLAY_INTERVAL_MS = 250
 /** The canonical 4 km land is drawn at its full 5 m terrain lattice, so its 15-60 m relief is not averaged away. */
 const LEAF = 0x2f7a3c
 const BERRY = 0xc8243f
@@ -482,9 +492,17 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     new THREE.BufferGeometry(),
     new THREE.PointsMaterial({ color: 0x9be4f4, size: 0.55, depthWrite: false }),
   )
-  scene.add(plannedRoute, rememberedBanks)
+  // The followed person's remembered ways, brighter the more recently used.
+  const rememberedWays = new THREE.LineSegments(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false }),
+  )
+  scene.add(plannedRoute, rememberedBanks, rememberedWays)
   let routeKey = ''
   let banksKey = ''
+  let waysDrawn: { id: number; ways: ValleyState['foragers'][number]['ways'] } | null = null
+  let overlaysFor = -1
+  let overlaysDrawnMs = -Infinity
   const selectRing = new THREE.Mesh(
     ringGeometry.clone(),
     new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }),
@@ -1203,6 +1221,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function setWorld(state: ValleyState) {
     routeKey = ''
     banksKey = ''
+    waysDrawn = null
     clearWorld()
     config = state.config
     layout = state.layout
@@ -1215,6 +1234,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       THREE,
       terrainGeometry,
       new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }),
+      SURFACE_TILE_M,
     )
     for (const tile of ground.children) {
       tile.receiveShadow = true
@@ -1233,7 +1253,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       THREE,
       waterGeometry,
       new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.1, flatShading: true }),
-      100,
+      SURFACE_TILE_M,
       true,
     )
     for (const tile of lake.children) tile.receiveShadow = true
@@ -1402,7 +1422,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const ripeNuts = fillInTurn(1, 1, NUTS_PER_HAZEL)
     for (let hazel = 0; hazel < hazelCount; hazel += 1) placeNuts(hazel, ripeNuts)
     for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh, trunks, crowns, stumps, deadwood, rocks]) {
-      mesh.castShadow = true
+      // Berries, nuts and sticks are too small to cast a shadow worth a second pass.
+      mesh.castShadow = mesh !== berryMesh && mesh !== nutMesh && mesh !== deadwood
       mesh.receiveShadow = mesh === leaves || mesh === hazelLeaves || mesh === rocks
       mesh.instanceMatrix.needsUpdate = true
       mesh.computeBoundingSphere()
@@ -1440,6 +1461,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -4,
       }),
+      SURFACE_TILE_M,
     )
     const wetShade = waterGeometry.clone()
     const wetPositions = wetShade.getAttribute('position')
@@ -1449,7 +1471,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       wetUv[index * 2 + 1] = 1 - (wetPositions.getZ(index) + size / 2) / size
     }
     wetShade.setAttribute('uv', new THREE.BufferAttribute(wetUv, 2))
-    knowledge.add(tiledSurface(THREE, wetShade, knowledge.material as MeshBasicMaterial))
+    knowledge.add(tiledSurface(THREE, wetShade, knowledge.material as MeshBasicMaterial, SURFACE_TILE_M))
     waterGeometry.dispose()
     wetShade.dispose()
     terrainGeometry.dispose()
@@ -1516,8 +1538,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     camera.position.set(cx, Math.max(lookHeight + distance * Math.sin(pitch), groundY(cx, cz) + 1.5), cz)
     camera.lookAt(target.x, lookHeight, target.z)
     // Bushes and hazels are drawn only in the tiles near what the camera looks at.
-    for (const mesh of [leaves, berryMesh, hazelLeaves, hazelStems, nutMesh, trunks, crowns, stumps, deadwood])
+    for (const mesh of [leaves, hazelLeaves, hazelStems, trunks, crowns, stumps])
       mesh?.showNear(target.x, target.z, PLANT_DRAW_M + distance)
+    for (const mesh of [berryMesh, nutMesh, deadwood]) mesh?.showNear(target.x, target.z, DETAIL_DRAW_M)
     // Near things need a near plane close in; the whole valley needs a far one.
     camera.near = Math.max(0.05, distance / 200)
     camera.far = Math.max(2_000, distance * 8)
@@ -1748,8 +1771,15 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     }
 
     // The thickets and stands the followed forager knows, redrawn only when the minute or forager changes.
+    // At speed they change every frame, so they are redrawn a few times a second, and at once for another forager.
+    const wallMs = performance.now()
+    const overlaysDue = followedId !== overlaysFor || wallMs - overlaysDrawnMs >= OVERLAY_INTERVAL_MS
+    if (overlaysDue) {
+      overlaysFor = followedId
+      overlaysDrawnMs = wallMs
+    }
     const ringsKey = `${followedId}:${state.minute}`
-    if (followed && ringsKey !== sitesKey) {
+    if (followed && overlaysDue && ringsKey !== sitesKey) {
       sitesKey = ringsKey
       for (const loop of siteLoops) loop.visible = false
       for (const ring of siteRings(state, followedId)) {
@@ -1764,7 +1794,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
     // Shades the ground for what the followed forager knows, redrawn only when the minute or forager changes.
     const key = `${followedId}:${state.minute}`
-    if (key !== routeKey && followed) {
+    if (key !== routeKey && followed && overlaysDue) {
       routeKey = key
       const vertices: number[] = []
       const points = routePoints(state, followedId)
@@ -1783,8 +1813,32 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       plannedRoute.geometry = new THREE.BufferGeometry()
       plannedRoute.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
     }
+    rememberedWays.visible = !!followed
+    if (followed && overlaysDue && (waysDrawn?.id !== followedId || waysDrawn.ways !== followed.ways)) {
+      waysDrawn = { id: followedId, ways: followed.ways }
+      const vertices: number[] = [],
+        colors: number[] = []
+      const ranked = [...followed.ways].sort((a, b) => a.usedMinute - b.usedMinute || a.id - b.id)
+      ranked.forEach((way, rank) => {
+        const shade = 0.35 + (0.65 * (rank + 1)) / ranked.length
+        const path = corridorRoute(state.layout.nav, state.config, 0, way.corridor, way.a, way.b).segments
+        for (const segment of path) {
+          const pieces = Math.max(1, Math.ceil(segment.lengthCm / 10_000))
+          for (let piece = 0; piece < pieces; piece += 1)
+            for (const t of [piece / pieces, (piece + 1) / pieces]) {
+              const p = at(segment.x0 + (segment.x1 - segment.x0) * t, segment.y0 + (segment.y1 - segment.y0) * t)
+              vertices.push(p.x, groundY(p.x, p.z) + 0.1, p.z)
+              colors.push(shade, shade * 0.93, shade * 0.8)
+            }
+        }
+      })
+      rememberedWays.geometry.dispose()
+      rememberedWays.geometry = new THREE.BufferGeometry()
+      rememberedWays.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+      rememberedWays.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    }
     const bankKey = `${followedId}:${followed?.knownBanks.size}`
-    if (bankKey !== banksKey && followed) {
+    if (bankKey !== banksKey && followed && overlaysDue) {
       banksKey = bankKey
       const banks: number[] = []
       for (const bank of followed.knownBanks.values()) {
@@ -1796,7 +1850,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       rememberedBanks.geometry.setAttribute('position', new THREE.Float32BufferAttribute(banks, 3))
     }
     const groundKey = `${followedId}:${followed?.knowledge.revision}`
-    if (knowledgeTexture && groundKey !== knowledgeKey && followed) {
+    if (knowledgeTexture && groundKey !== knowledgeKey && followed && overlaysDue) {
       knowledgeKey = groundKey
       const n = layout!.terrain.cells
       const shades = knowledgeShades(state, followedId)
@@ -2271,6 +2325,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       plannedRoute.material.dispose()
       rememberedBanks.geometry.dispose()
       rememberedBanks.material.dispose()
+      rememberedWays.geometry.dispose()
+      rememberedWays.material.dispose()
       for (const line of memberLines) {
         line.geometry.dispose()
         ;(line.material as InstanceType<Three['LineBasicMaterial']>).dispose()

@@ -2,11 +2,12 @@ import { personConfig } from './nature'
 import { measureTask } from './summary'
 import type { WakeEntry, WakeKind } from './clock'
 import { MINUTES_PER_DAY, minuteOfDay } from './calendar'
-import { atHearth, chooseTask, isDaylight, routeFor, routeKey, nextHungry, walkSpeed } from './forager'
+import { atHearth, chooseTask, isDaylight, routeFor, nextHungry, walkSpeed } from './forager'
 import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body'
 import { startTask, positionAt } from './tasks'
 import { nearestFrontier, chunkOf, estimateMinutes } from './routes'
-import { observeAt, reindexPeople, rememberRoute, scheduleArrivals, peopleInChunk } from './perception'
+import { observeAt, locatePeople, scheduleArrivals, peopleInChunk } from './perception'
+import { rememberWalk, type WalkFound } from './ways'
 import { carriedKcal, spoil, addLots, eatCarried } from './food'
 import { takeFrom } from './places'
 import { nextShortOfWood, swap } from './trade'
@@ -16,6 +17,7 @@ import { feedFire } from './fire'
 import { warmthOf, tendFire } from './work'
 import { beginAxe, workAxe, cutAt, logCut, exchangeAxes } from './axes'
 import type { Forager, ValleyEvent, ValleyState } from './types'
+import type { TaskChoice } from './forager'
 
 function bodyWake(state: ValleyState, person: Forager, minute: number) {
   const task = person.task
@@ -35,29 +37,37 @@ function bodyWake(state: ValleyState, person: Forager, minute: number) {
   state.totals.metabolizedKcal += spent
   return { spent, loss: water.loss, drink: water.drink }
 }
+/** Whether a walk goes to a place, a bank point or home, the ends a person keeps ways to. */
+function habitualTarget(state: ValleyState, person: Forager, choice: TaskChoice) {
+  const target = choice.target!,
+    { places } = state.layout
+  if (target.x === person.hearth.x && target.y === person.hearth.y) return true
+  if (choice.placeId < 0) return false
+  const bank = person.knownBanks.get(choice.placeId)
+  if (bank && bank.x === target.x && bank.y === target.y) return true
+  return choice.placeId < places.count && places.x[choice.placeId] === target.x && places.y[choice.placeId] === target.y
+}
 function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   let choice = chooseTask(state, person, minute),
-    routeId = -1
+    routeId = -1,
+    found: WalkFound | null = null
   let end = minute + 60
   if (choice.kind === 'walk' && choice.target) {
-    let route = choice.route ?? routeFor(state, person, choice.target)
-    if (!route) {
+    let walk = choice.walk ?? routeFor(state, person, choice.target, habitualTarget(state, person, choice))
+    if (!walk) {
       const frontier = nearestFrontier(state.layout.nav, person.knowledge, person)
       if (frontier) {
-        route = routeFor(state, person, frontier)
+        walk = routeFor(state, person, frontier)
         choice = { ...choice, target: frontier, placeId: -1 }
       }
     }
-    if (route?.segments.length) {
-      const endpoint = route.segments[route.segments.length - 1]!
-      const key = routeKey(state, person, { x: endpoint.x1, y: endpoint.y1 }),
-        saved = person.routeCache.get(key)
-      routeId = saved ?? state.routes.length
-      if (saved === undefined) {
-        state.routes.push(route)
-        rememberRoute(person, key, routeId)
-      }
-      end = minute + route.minutes
+    if (walk?.route.segments.length) {
+      rememberWalk(state, person, walk, minute)
+      if (choice.reason === 'out for a walk') person.leisureMinute = minute
+      found = walk
+      routeId = state.routes.length
+      state.routes.push(walk.route)
+      end = minute + walk.route.minutes
     } else choice = { kind: 'rest', placeId: -1, target: null, reason: 'no known route' }
   }
   if (choice.kind === 'sleep')
@@ -163,7 +173,15 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
     },
   ]
   if (choice.kind === 'walk' && routeId >= 0) {
-    events.push({ kind: 'walk', minute, foragerId: person.id, routeId })
+    events.push({
+      kind: 'walk',
+      minute,
+      foragerId: person.id,
+      routeId,
+      plan: found!.plan,
+      rechecked: found!.rechecked,
+      wayId: found!.way?.id ?? -1,
+    })
     scheduleArrivals(state, person.id, state.routes[routeId]!, minute)
   }
   return events
@@ -243,6 +261,58 @@ function creditTask(state: ValleyState, person: Forager, minute: number, events:
   }
   return produced
 }
+/** The waking person offers and asks for wood and axes among the people it may trade with. */
+function exchange(state: ValleyState, id: number, minute: number, events: ValleyEvent[]) {
+  // Acceptance reads the counterparty's body at this minute without ending its task or paying it twice. Only members
+  // of the trader's group may trade with it, so everyone else is passed as they are, never read past their group.
+  const groupId = state.foragers[id]!.groupId
+  const views = state.foragers.map((other) => {
+    if (other.groupId !== groupId) return other
+    const point = positionAt(state, other, minute)
+    const energy = other.task ? Math.max(0, energyAt(other.task, minute, state.routes).kcal) : other.energyKcal
+    const water = other.task ? waterAt(other.task, minute, state.routes).ml : other.waterDeficitMl
+    return {
+      ...other,
+      ...point,
+      energyKcal: energy,
+      waterDeficitMl: water,
+      alive: other.alive && energy > 0 && water < waterThresholds(personConfig(state.config, other)).fatal,
+    }
+  })
+  const trader = views[id]!
+  const exchanged = swap(state.config, trader, views, minute)
+  events.push(...exchanged.quotes)
+  for (const trade of exchanged.swaps) {
+    events.push({ ...trade, kind: 'exchange' })
+    state.totals.swappedWood += trade.wood
+    state.totals.swappedKcal += trade.kcal
+    state.today.swaps += 1
+    state.today.swappedWood += trade.wood
+    state.today.swappedKcal += trade.kcal
+    state.totals.firstSwapMinute ??= minute
+    address(state, trade.sellerId === id ? trade.buyerId : trade.sellerId, minute)
+  }
+  for (const event of exchangeAxes({ ...state, foragers: views }, trader, minute)) {
+    events.push(event)
+    if (event.kind === 'promise') {
+      events.push({ kind: 'axe-request', minute, foragerId: event.askerId, otherId: event.promiserId })
+      address(state, event.promiserId, minute)
+    }
+    if (event.kind === 'sale') address(state, event.sellerId === id ? event.buyerId : event.sellerId, minute)
+  }
+  for (const view of views) {
+    const owner = state.foragers[view.id]!
+    owner.carried = view.carried
+    owner.wood = view.wood
+    owner.swapTotals = view.swapTotals
+    owner.heardTerms = view.heardTerms
+    owner.axe = view.axe
+    owner.spareAxe = view.spareAxe
+    owner.heardAsk = view.heardAsk
+    owner.promised = view.promised
+    owner.axeTotals = view.axeTotals
+  }
+}
 export function personWake(state: ValleyState, id: number, minute: number, _kind: WakeKind): ValleyEvent[] {
   const person = state.foragers[id]!
   if (!person.alive) return []
@@ -314,7 +384,7 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
         if (dissolved.survivorId !== null) address(state, dissolved.survivorId, minute)
       }
     }
-    reindexPeople(state, minute)
+    locatePeople(state, minute)
     return events
   }
   const spoiled = spoil(state.config, person.carried, minute)
@@ -334,7 +404,7 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
   if (person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).thirsty) person.thirsty = true
   else if (person.waterDeficitMl <= state.config.drinkStopMl) person.thirsty = false
   if (atHearth(person)) person.tripWood = 0
-  reindexPeople(state, minute)
+  locatePeople(state, minute)
   const observation = observeAt(state, person, minute)
   events.push(observation)
   const meeting = meet(state, person, minute)
@@ -355,52 +425,12 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
     other.y = point.y
     if (other.lastWakeMinute !== minute) address(state, otherId, minute)
   }
-  // Acceptance reads the counterparty's body at this minute without ending its task or paying it twice.
-  const views = state.foragers.map((other) => {
-    const point = positionAt(state, other, minute)
-    const energy = other.task ? Math.max(0, energyAt(other.task, minute, state.routes).kcal) : other.energyKcal
-    const water = other.task ? waterAt(other.task, minute, state.routes).ml : other.waterDeficitMl
-    return {
-      ...other,
-      ...point,
-      energyKcal: energy,
-      waterDeficitMl: water,
-      alive: other.alive && energy > 0 && water < waterThresholds(personConfig(state.config, other)).fatal,
-    }
-  })
-  const trader = views[id]!
-  const exchanged = swap(state.config, trader, views, minute)
-  events.push(...exchanged.quotes)
-  for (const trade of exchanged.swaps) {
-    events.push({ ...trade, kind: 'exchange' })
-    state.totals.swappedWood += trade.wood
-    state.totals.swappedKcal += trade.kcal
-    state.today.swaps += 1
-    state.today.swappedWood += trade.wood
-    state.today.swappedKcal += trade.kcal
-    state.totals.firstSwapMinute ??= minute
-    address(state, trade.sellerId === id ? trade.buyerId : trade.sellerId, minute)
-  }
-  for (const event of exchangeAxes({ ...state, foragers: views }, trader, minute)) {
-    events.push(event)
-    if (event.kind === 'promise') {
-      events.push({ kind: 'axe-request', minute, foragerId: event.askerId, otherId: event.promiserId })
-      address(state, event.promiserId, minute)
-    }
-    if (event.kind === 'sale') address(state, event.sellerId === id ? event.buyerId : event.sellerId, minute)
-  }
-  for (const view of views) {
-    const owner = state.foragers[view.id]!
-    owner.carried = view.carried
-    owner.wood = view.wood
-    owner.swapTotals = view.swapTotals
-    owner.heardTerms = view.heardTerms
-    owner.axe = view.axe
-    owner.spareAxe = view.spareAxe
-    owner.heardAsk = view.heardAsk
-    owner.promised = view.promised
-    owner.axeTotals = view.axeTotals
-  }
+  // Exchange needs another living member of the trader's group; without one, neither wood nor axes change hands.
+  if (
+    person.groupId !== null &&
+    state.foragers.some((other) => other.id !== id && other.alive && other.groupId === person.groupId)
+  )
+    exchange(state, id, minute, events)
   if (atHearth(person)) {
     const logs = person.log
     if (layLog(state, person, minute))
@@ -437,7 +467,7 @@ export function arrival(state: ValleyState, entry: WakeEntry): boolean {
   )
     return false
   if (entry.id === entry.walkerId) {
-    reindexPeople(state, entry.minute)
+    locatePeople(state, entry.minute)
     for (const id of peopleInChunk(state, entry.chunk!))
       if (id !== entry.id) {
         const person = state.foragers[id]!

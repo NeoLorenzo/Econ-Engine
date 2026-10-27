@@ -17,6 +17,8 @@ export interface ObservationEvent {
   minute: number
   foragerId: number
   origin: Point
+  /** Whether the still landscape was surveyed; otherwise only what changes was looked at. */
+  surveyed: boolean
   places: number[]
   triangles: number[]
   banks: BankMemory[]
@@ -36,16 +38,6 @@ export function shareBankMemory(banks: Map<number, BankMemory>) {
 export function learnBank(person: Forager, memory: BankMemory) {
   if (sharedBankMemories.has(person.knownBanks)) person.knownBanks = new Map(person.knownBanks)
   person.knownBanks.set(memory.id, memory)
-}
-/** Route caches only grow too, and are shared and copied the same way, before their holder remembers a new route. */
-const sharedRouteCaches = new WeakSet<Map<string, number>>()
-export function shareRouteCache(cache: Map<string, number>) {
-  sharedRouteCaches.add(cache)
-  return cache
-}
-export function rememberRoute(person: Forager, key: string, routeId: number) {
-  if (sharedRouteCaches.has(person.routeCache)) person.routeCache = new Map(person.routeCache)
-  person.routeCache.set(key, routeId)
 }
 /**
  * Triangle knowledge is shared with the previous state in the same way, and copied once before its holder learns a
@@ -69,14 +61,23 @@ export function ownKnowledge(person: Forager) {
 }
 /** Views already taken from a point: a cache, so its warmth never changes what is learnt. */
 const viewsSeen = new WeakMap<Knowledge, Set<string>>()
-export const peopleInChunk = (state: ValleyState, chunk: number): number[] => [...(state.peopleByChunk[chunk] ?? [])]
-export function reindexPeople(state: ValleyState, minute: number): void {
-  const buckets: number[][] = Array.from({ length: state.layout.nav.chunkCells ** 2 }, () => [])
+/** The people in a chunk when people were last located, by id. */
+export function peopleInChunk(state: ValleyState, chunk: number): number[] {
+  const ids: number[] = []
+  for (let id = 0; id < state.personChunk.length; id += 1) if (state.personChunk[id] === chunk) ids.push(id)
+  return ids
+}
+/** Records each living person's chunk at `minute`; wake-ups do this often, so the chunk lists are not rebuilt. */
+export function locatePeople(state: ValleyState, minute: number): void {
   for (const person of state.foragers)
-    if (person.alive) {
-      const point = positionAt(state, person, minute)
-      buckets[chunkOf(state.layout.nav, point)]!.push(person.id)
-    }
+    state.personChunk[person.id] = person.alive ? chunkOf(state.layout.nav, positionAt(state, person, minute)) : -1
+}
+/** Locates people and rebuilds the chunk lists, which the state keeps between steps. */
+export function reindexPeople(state: ValleyState, minute: number): void {
+  locatePeople(state, minute)
+  const buckets: number[][] = Array.from({ length: state.layout.nav.chunkCells ** 2 }, () => [])
+  for (let id = 0; id < state.personChunk.length; id += 1)
+    if (state.personChunk[id]! >= 0) buckets[state.personChunk[id]!]!.push(id)
   state.peopleByChunk = buckets.map((ids) => Int32Array.from(ids))
 }
 export function observeAt(state: ValleyState, person: Forager, minute: number): ObservationEvent {
@@ -87,12 +88,17 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
   const origin = positionAt(state, person, minute),
     radius = config.sightRadiusCm,
     sq = radius ** 2
+  // The still landscape is surveyed again only once the person has moved far enough from their last survey.
+  const surveying =
+    !person.survey || (person.survey.x - origin.x) ** 2 + (person.survey.y - origin.y) ** 2 >= config.resurveyCm ** 2
+  if (surveying) person.survey = origin
   const observation: ObservationEvent = {
     kind: 'observe',
     minute,
     foragerId: person.id,
     origin,
-    places: placesWithin(layout, origin.x, origin.y, radius),
+    surveyed: surveying,
+    places: surveying ? placesWithin(layout, origin.x, origin.y, radius) : [],
     triangles: [],
     banks: [],
     people: [],
@@ -121,7 +127,7 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
     }
   }
   const viewKey = `${origin.x},${origin.y}:${radius}`
-  if (!viewsSeen.get(person.knowledge)?.has(viewKey))
+  if (surveying && !viewsSeen.get(person.knowledge)?.has(viewKey))
     for (
       let cy = Math.max(0, Math.floor((origin.y - radius) / nav.chunkCm));
       cy <= Math.min(nav.chunkCells - 1, Math.floor((origin.y + radius) / nav.chunkCm));
@@ -167,24 +173,23 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
   if (observation.triangles.length) person.knowledge.revision += 1
   if (person.knowledge !== before || observation.triangles.length)
     carryComponents(nav, before, person.knowledge, observation.triangles)
-  let views = viewsSeen.get(person.knowledge)
-  if (!views) viewsSeen.set(person.knowledge, (views = new Set()))
-  views.add(viewKey)
+  if (surveying) {
+    let views = viewsSeen.get(person.knowledge)
+    if (!views) viewsSeen.set(person.knowledge, (views = new Set()))
+    views.add(viewKey)
+  }
   // The index records each person's last wake-up; route entry notifications keep moving entries local.
   const talk = config.sightRadiusCm
-  const candidates = new Set<number>()
-  for (
-    let y = Math.max(0, Math.floor((origin.y - talk) / nav.chunkCm));
-    y <= Math.min(nav.chunkCells - 1, Math.floor((origin.y + talk) / nav.chunkCm));
-    y += 1
-  )
-    for (
-      let x = Math.max(0, Math.floor((origin.x - talk) / nav.chunkCm));
-      x <= Math.min(nav.chunkCells - 1, Math.floor((origin.x + talk) / nav.chunkCm));
-      x += 1
-    )
-      for (const id of state.peopleByChunk[y * nav.chunkCells + x] ?? []) candidates.add(id)
-  for (const id of [...candidates].sort((a, b) => a - b)) {
+  const [x0, x1] = [Math.floor((origin.x - talk) / nav.chunkCm), Math.floor((origin.x + talk) / nav.chunkCm)]
+  const [y0, y1] = [Math.floor((origin.y - talk) / nav.chunkCm), Math.floor((origin.y + talk) / nav.chunkCm)]
+  const candidates: number[] = []
+  for (let id = 0; id < state.personChunk.length; id += 1) {
+    const chunk = state.personChunk[id]!
+    if (chunk < 0) continue
+    const [x, y] = [chunk % nav.chunkCells, Math.floor(chunk / nav.chunkCells)]
+    if (x >= x0 && x <= x1 && y >= y0 && y <= y1) candidates.push(id)
+  }
+  for (const id of candidates) {
     const other = state.foragers[id]!
     if (id === person.id || !other.alive) continue
     const point = positionAt(state, other, minute)
