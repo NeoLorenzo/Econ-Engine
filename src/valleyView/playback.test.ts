@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { FLAT_LAND } from '../valley/config'
+import { stepValley } from '../valley/engine'
 import { createSurveyedValley } from '../valley/ruleFixtures'
 import {
   advanceDisplay,
   foragerPose,
   mapSpeedMinutesPerSecond,
   routePoints,
-  SIMULATION_SLICE_MINUTES,
   startDisplay,
   VALLEY_SPEEDS,
   type Display,
@@ -57,22 +57,35 @@ describe('drawing people from task records', () => {
     expect(walked).toBeGreaterThan(0)
   })
 
-  it('runs the engine in hour steps until the frame budget is spent, and at least one step a frame', () => {
+  it('runs the engine until the frame budget is spent, and at least one wake-up minute a frame', () => {
     const ticking = (ms: number) => {
       let t = 0
       return () => (t += ms)
     }
-    const start0 = start().state.minute
-    // Each clock reading is 10 ms later: four steps fit within 40 ms, and the clock stops at the last one finished.
-    let display: Display = advanceDisplay(start(), 0.25, { minutesPerSecond: 1_440 }, 40, ticking(10))
-    expect(display.minute).toBe(start0 + 4 * SIMULATION_SLICE_MINUTES)
+    const first = start()
+    const wakeUpsTo = (minute: number) => stepValley(first.state, minute).totals.wakeUps
+    // Each clock reading is 100 ms later, past the budget at once: the frame runs only the first wake-up minute after
+    // the one it starts at.
+    let display: Display = advanceDisplay(first, 0.25, { minutesPerSecond: 1_440 }, 40, ticking(100))
+    expect(display.minute).toBeGreaterThan(first.minute)
+    // Wake-ups due at the starting minute itself run in the next step.
+    expect(wakeUpsTo(display.minute - 1)).toBe(wakeUpsTo(first.minute + 1))
     expect(display.state.minute).toBe(display.minute)
-    display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, ticking(100))
-    expect(display.minute).toBe(start0 + 5 * SIMULATION_SLICE_MINUTES)
-    // With time to spare, the frame reaches the minute wanted.
+    // Each reading is 10 ms later: the step stops between wake-ups, short of the minute wanted.
+    const before = display.minute
+    display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, ticking(10))
+    expect(display.minute).toBeGreaterThan(before)
+    expect(display.minute).toBeLessThan(before + 360)
+    expect(display.state.minute).toBe(display.minute)
+    // With time to spare, the frame reaches the minute wanted, and matches a step there in one go.
+    const reached = display.minute
     display = advanceDisplay(display, 0.1, { minutesPerSecond: 1_440 }, 40, ticking(0))
-    expect(display.minute).toBeCloseTo(start0 + 5 * SIMULATION_SLICE_MINUTES + 144)
+    expect(display.minute).toBeCloseTo(reached + 144)
     expect(display.state.minute).toBe(Math.floor(display.minute))
+    const direct = stepValley(first.state, display.state.minute)
+    expect(display.state.foragers.map((p) => [p.x, p.y, p.energyKcal])).toEqual(
+      direct.foragers.map((p) => [p.x, p.y, p.energyKcal]),
+    )
   })
 
   it('stops drawing people from map speeds up', () => {

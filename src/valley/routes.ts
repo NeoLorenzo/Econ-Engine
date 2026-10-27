@@ -133,7 +133,53 @@ export const onWalkableGround = (mesh: GroundMesh, p: Point) => walkableTriangle
 /** The known walkable triangle a person or place stands on, or -1. */
 export function routeTriangle(nav: NavMap, knowledge: Knowledge, point: Point & { triangle?: number }): number {
   if (point.triangle !== undefined) return knows(knowledge, point.triangle) ? point.triangle : -1
-  return walkableTriangle(nav.mesh, knowledge, point)
+  const { mesh } = nav
+  if (!Number.isInteger(point.x) || !Number.isInteger(point.y)) return walkableTriangle(mesh, knowledge, point)
+  // The same as `walkableTriangle`: the lowest known triangle holding the point, else the lowest known one near it.
+  const { inside, near } = groundAt(mesh, point)
+  for (const t of inside) if (knows(knowledge, t)) return t
+  for (const t of near) if (knows(knowledge, t)) return t
+  return -1
+}
+const groundCache = new WeakMap<GroundMesh, Map<number, { inside: number[]; near: number[] }>>()
+/** The walkable triangles holding a whole-centimetre point, and those within `NEAR_CM` of it, each in id order. */
+function groundAt(mesh: GroundMesh, p: Point) {
+  let cache = groundCache.get(mesh)
+  if (!cache) {
+    cache = new Map()
+    groundCache.set(mesh, cache)
+  }
+  const key = p.x * (mesh.sizeCm + 1) + p.y
+  let found = cache.get(key)
+  if (!found) {
+    found = { inside: [], near: [] }
+    const { bucketCm, buckets } = mesh
+    for (
+      let by = Math.max(0, Math.floor((p.y - NEAR_CM) / bucketCm));
+      by <= Math.min(buckets - 1, Math.floor((p.y + NEAR_CM) / bucketCm));
+      by++
+    )
+      for (
+        let bx = Math.max(0, Math.floor((p.x - NEAR_CM) / bucketCm));
+        bx <= Math.min(buckets - 1, Math.floor((p.x + NEAR_CM) / bucketCm));
+        bx++
+      ) {
+        const bucket = by * buckets + bx
+        for (let k = mesh.bucketStart[bucket]!; k < mesh.bucketStart[bucket + 1]!; k++) {
+          const t = mesh.bucketTriangles[k]!
+          if (mesh.area[t] !== GROUND_AREA) continue
+          const d = triangleDistanceSq(mesh, t, p.x, p.y)
+          if (d === 0) found.inside.push(t)
+          else if (d <= NEAR_CM * NEAR_CM) found.near.push(t)
+        }
+      }
+    found.inside = [...new Set(found.inside)].sort((a, b) => a - b)
+    found.near = [...new Set(found.near)].sort((a, b) => a - b)
+    // People stop at many points; a bounded cache keeps a long run's memory flat.
+    if (cache.size >= 500_000) cache.clear()
+    cache.set(key, found)
+  }
+  return found
 }
 /** No water within `radiusCm` of the point, and the point inside the valley. */
 export function circleWalkable(mesh: GroundMesh, p: Point, radiusCm: number) {

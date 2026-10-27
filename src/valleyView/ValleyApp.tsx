@@ -1,11 +1,12 @@
 import { TRAITS } from '../valley/nature'
 import { LandMap } from './LandMap'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SpecializationChart } from './SpecializationChart'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
 import { isDaylight } from '../valley/forager'
+import type { ValleyState } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
 import {
   advanceDisplay,
@@ -56,6 +57,8 @@ interface Snapshot {
 }
 
 const HUD_INTERVAL_MS = 100
+/** At map speeds no one walks on screen, and refreshing the panels had taken a quarter of the page's time. */
+const MAP_HUD_INTERVAL_MS = 500
 
 const formatChange = (change: number) =>
   change ? ` (${change > 0 ? '+' : '−'}${Math.abs(change).toLocaleString('en-US')})` : ''
@@ -222,7 +225,7 @@ export default function ValleyApp({
             drawn = true
             readyRef.current()
           }
-          if (now - lastHud >= HUD_INTERVAL_MS) {
+          if (now - lastHud >= (speed.map ? MAP_HUD_INTERVAL_MS : HUD_INTERVAL_MS)) {
             lastHud = now
             clearRef.current = measureClear(mount)
             if (now - rate.atMs >= 1_000)
@@ -311,7 +314,6 @@ export default function ValleyApp({
   const standing = state.groups.filter((made) => made.dissolvedMinute === null)
   const summary = foragerSummary(state, followed)
   const fire = fireSaving(config)
-  const days = daySeries(state, followed)
   const percent = (value: number) => `${(value / config.reserveMaxKcal) * 100}%`
   const foodLeft = daysOfFoodLeft(state, followed)
   const thirst = thirstLevel(state, followed)
@@ -1015,88 +1017,7 @@ export default function ValleyApp({
             </button>
           </summary>
           <SpecializationChart points={specializationPoints(state)} config={config} followed={followed} woodUnit="kg" />
-          {days.length > 1 && (
-            <>
-              <TimeChart
-                data={ownTermsByDay(state, followed)}
-                height={100}
-                format={(value) => String(Math.round(value))}
-                domain={[0, 'auto']}
-                series={[
-                  { key: 'highest', name: 'Wood costs, highest', color: TERMS_COLORS.forager },
-                  { key: 'lowest', name: 'Wood costs, lowest', color: TERMS_COLORS.gatherer },
-                  { key: 'followed', name: `Wood costs ${name}`, color: palette.accent, dashed: true },
-                ]}
-              />
-              <TimeChart
-                data={days}
-                height={100}
-                format={(value) => String(Math.round(value))}
-                domain={[0, 'auto']}
-                series={[
-                  { key: 'swappedWood', name: 'Wood swapped each day, kg', color: palette.accent },
-                  { key: 'coldHours', name: 'Hours slept cold each day', color: palette.firmA, dashed: true },
-                  { key: 'alive', name: 'Alive', color: palette.household },
-                ]}
-              />
-              <TimeChart
-                data={days}
-                height={90}
-                format={(value) => String(Math.round(value))}
-                domain={[0, 'auto']}
-                series={[
-                  { key: 'groups', name: 'Groups', color: palette.accent },
-                  { key: 'loners', name: 'Without a group', color: palette.firmA, dashed: true },
-                ]}
-              />
-              <TimeChart
-                data={days}
-                height={90}
-                format={(value) => String(Math.round(value))}
-                domain={[0, 'auto']}
-                series={[
-                  { key: 'axesMade', name: 'Axes made each day', color: palette.accent },
-                  { key: 'axesSold', name: 'Axes sold each day', color: palette.positive },
-                  { key: 'hutsWhole', name: 'Huts whole', color: palette.firmA, dashed: true },
-                ]}
-              />
-              <TimeChart
-                data={days}
-                height={110}
-                format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
-                series={[
-                  { key: 'reserve', name: `${name}’s reserve at day’s end`, color: palette.accent },
-                  { key: 'stock', name: 'Berries per bush, kcal', color: palette.positive, dashed: true },
-                ]}
-              />
-              <TimeChart
-                data={days}
-                height={100}
-                format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
-                domain={[0, 'auto']}
-                series={[
-                  { key: 'nutsTaken', name: 'Nuts taken each day, kcal', color: palette.accent },
-                  { key: 'berriesTaken', name: 'Berries taken each day, kcal', color: palette.positive },
-                  { key: 'fishTaken', name: 'Fish taken each day, kcal', color: palette.household, dashed: true },
-                ]}
-              />
-              <TimeChart
-                data={days}
-                height={90}
-                format={(value) => `${Math.round(value)}%`}
-                domain={[0, 100]}
-                series={[
-                  { key: 'hazelPercent', name: 'Nuts on the hazels, % of full', color: palette.accent },
-                  {
-                    key: 'fishPercent',
-                    name: 'Fish in inland water, % of full',
-                    color: palette.household,
-                    dashed: true,
-                  },
-                ]}
-              />
-            </>
-          )}
+          <HistoryCharts state={state} followed={followed} name={name} />
         </details>
       </section>
 
@@ -1141,6 +1062,104 @@ export default function ValleyApp({
     </div>
   )
 }
+
+/**
+ * The run's history charts. They show finished days only, so they are drawn again only when a day ends, the followed
+ * forager changes or a new run starts, not at every refresh of the panels.
+ */
+const HistoryCharts = memo(
+  function HistoryCharts({ state, followed, name }: { state: ValleyState; followed: number; name: string }) {
+    const days = daySeries(state, followed)
+    if (days.length <= 1) return null
+    return (
+      <>
+        <TimeChart
+          data={ownTermsByDay(state, followed)}
+          height={100}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'highest', name: 'Wood costs, highest', color: TERMS_COLORS.forager },
+            { key: 'lowest', name: 'Wood costs, lowest', color: TERMS_COLORS.gatherer },
+            { key: 'followed', name: `Wood costs ${name}`, color: palette.accent, dashed: true },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={100}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'swappedWood', name: 'Wood swapped each day, kg', color: palette.accent },
+            { key: 'coldHours', name: 'Hours slept cold each day', color: palette.firmA, dashed: true },
+            { key: 'alive', name: 'Alive', color: palette.household },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'groups', name: 'Groups', color: palette.accent },
+            { key: 'loners', name: 'Without a group', color: palette.firmA, dashed: true },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'axesMade', name: 'Axes made each day', color: palette.accent },
+            { key: 'axesSold', name: 'Axes sold each day', color: palette.positive },
+            { key: 'hutsWhole', name: 'Huts whole', color: palette.firmA, dashed: true },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={110}
+          format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
+          series={[
+            { key: 'reserve', name: `${name}’s reserve at day’s end`, color: palette.accent },
+            { key: 'stock', name: 'Berries per bush, kcal', color: palette.positive, dashed: true },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={100}
+          format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'nutsTaken', name: 'Nuts taken each day, kcal', color: palette.accent },
+            { key: 'berriesTaken', name: 'Berries taken each day, kcal', color: palette.positive },
+            { key: 'fishTaken', name: 'Fish taken each day, kcal', color: palette.household, dashed: true },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => `${Math.round(value)}%`}
+          domain={[0, 100]}
+          series={[
+            { key: 'hazelPercent', name: 'Nuts on the hazels, % of full', color: palette.accent },
+            {
+              key: 'fishPercent',
+              name: 'Fish in inland water, % of full',
+              color: palette.household,
+              dashed: true,
+            },
+          ]}
+        />
+      </>
+    )
+  },
+  (before, after) =>
+    before.followed === after.followed &&
+    before.name === after.name &&
+    before.state.layout === after.state.layout &&
+    before.state.days.length === after.state.days.length,
+)
 
 /** Carried food by kind, as a phrase: "1,200 kcal of nuts and 300 of fish". */
 function carriedPhrase(food: { berries: number; nuts: number; fish: number }) {

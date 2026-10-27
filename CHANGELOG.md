@@ -2,6 +2,18 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE15-Speed-067] - (2026-10-27)
+
+- Each frame runs the engine in one step that checks its 40 ms budget between wake-ups, in place of many 15-minute steps that each copied the whole valley. At 1 month/s a frame had made about 48 copies.
+- Copies of the valley share each person's traits, rates and thirst thresholds, which never change after birth, so a person's working settings are no longer rebuilt after every step.
+- Choosing wood skips places no nearer than the best so far before testing whether they can be reached, and a person's own piece of known ground is found once per choice rather than once per place.
+- The ground under a whole-centimetre point is found once and remembered.
+- The followed person's known-ground shading finds the triangle under each map cell once per valley, not at every redraw: about 75 ms a redraw before, under 2 ms after.
+- The rings round the places the followed person knows are draped on the ground once, not again at every overlay redraw.
+- At map speeds the panels refresh twice a second instead of ten times, and the history charts are drawn again only when a day ends, the followed person changes or a run starts.
+- A day around day 30 of forty founders, run as the view runs it, takes about 300 ms instead of about 560 ms. Fingerprints are unchanged.
+- In an off-screen production page at 1 month/s, past day 35: about 15.6 frames and 2.4 days a second, against 8.5 frames and 1.3 days before.
+
 ## [LIFE15-Habits-066] - (2026-10-27)
 
 - Life 15, habitual routes. People remember the ways they walk between their hearth, places and bank points, up to 64 each, and take them again in either direction, or join one part-way. A way is planned again once a day has passed and they have seen new ground since, or at once if it crosses ground they no longer know; the way used longest ago is forgotten first.
