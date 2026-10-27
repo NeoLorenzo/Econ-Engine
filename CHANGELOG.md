@@ -2,6 +2,13 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE14-Speed-065] - (2026-10-27)
+
+- Faster 3D view: bushes, hazels and the ground are drawn in 500 m tiles, and only near the camera; berries, nuts and deadwood only within 300 m and without shadows; the followed forager's route, rings and known ground are redrawn at most four times a second. A typical view went from about 7,000 draw calls to about 100.
+- Faster simulation without changing any run: people's chunks are recorded at wake-ups rather than every chunk list being rebuilt; looking for the place at a point searches only as far as the widest place; exchange is skipped for a person with no living group-mate, and copies only group members. Three early days take 0.44 s instead of 0.99 s.
+- Each frame runs the engine in 15-minute steps until its 40 ms budget is spent, in place of one step whose size was found by trial, so a slow stretch no longer freezes the view for a whole step.
+- Fingerprints are unchanged.
+
 ## [LIFE14-Bodies-064] - (2026-10-26)
 
 - Adults now have sex, correlated height, weight and grip, and five correlated personality scores, drawn by integer arithmetic from isolated streams. Founder positions and born skills retain their Life 13 draws.

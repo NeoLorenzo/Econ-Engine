@@ -6,6 +6,18 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE14-Speed-065] - (2026-10-27)
+
+The owner found the view laggy at 1 h/s, dropping frames at 1 day/s and a slideshow at 1 month/s, which it never reached. They chose, in order: fix the drawing, speed up the engine, then smooth the frames by stepping the engine in slices (over moving the engine to a background thread, which would first need the view rewritten to draw from a small snapshot rather than the whole state).
+
+**Drawing.** Measured in Chrome on an Intel UHD integrated GPU (2560×1318 canvas): about 7,000 draw calls and 4 million triangles a frame, most of them 100 m plant and ground tiles drawn twice (once for shadows). 500 m tiles, plants drawn only near the camera, no shadows for berries, nuts and sticks, and overlays redrawn at most every 250 ms bring a typical view to about 100 calls and 0.5 million triangles. Zoomed in and paused went from 14 to about 51 fps; zoomed out tops out near 25–30 fps, which looks like the GPU's limit.
+
+**Engine.** Profiled with Node's inspector over three early days. Rebuilding every chunk's people list at each wake-up, `placeAt` searching a fixed wide radius, and `exchange` copying every person's view at every wake-up dominated. Recording each person's chunk instead (with the same stale-read semantics, so runs are identical), bounding `placeAt` by the widest place, and skipping or narrowing exchange took the three days from 992 ms to 440 ms. All fingerprints pass unchanged.
+
+**Frames.** Each frame now runs 15-minute steps until its 40 ms budget is spent, always at least one. In Chrome: 1 h/s runs at about 61 fps; 1 day/s keeps full speed at about 45 fps (p95 frame 67 ms).
+
+**Still slow.** At 1 month/s the view runs at about 8 fps, and from day 9 to 14 the clock gains only about a third of a day a second. Single wake-ups late in a run cannot be sliced. The engine slows sharply as people learn the valley: on day 12 a simulated hour takes about 400 ms, against about 1 ms on day 2. A profile of day 12 puts A* route search (`corridorOf`, 25% inclusive) and `observeAt` (23%) on top, both growing with how much ground people know. That is the next speed target. Whether a worker thread is worth its rewrite is left until then.
+
 ## [LIFE14-Bodies-064] - (2026-10-26)
 
 Implemented the owner's approved Life 14 specification. Bodies and personality use separate named streams and integer normals and Cholesky factors. A person's own weight sets energy and thirst, grip sets wood capacity, and the five traits shift existing decisions. The checker recomputes derived quantities, checks immutable bodies and traits, uses each walker's own rates, and checks exchange prices against the parties' rates at that minute, including practice changes within an interval.

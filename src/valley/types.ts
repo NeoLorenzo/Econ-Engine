@@ -1069,6 +1069,8 @@ export interface ValleyState {
   queue: WakeQueue
   routes: Route[]
   peopleByChunk: Int32Array[]
+  /** Each person's chunk when people were last located, or -1 for the dead: `peopleByChunk` by person. */
+  personChunk: Int32Array
   lastInterval: ValleyEvent[]
   logStock: Int32Array
   felledMinute: Int32Array

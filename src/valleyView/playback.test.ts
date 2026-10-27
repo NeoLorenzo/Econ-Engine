@@ -6,6 +6,7 @@ import {
   foragerPose,
   mapSpeedMinutesPerSecond,
   routePoints,
+  SIMULATION_SLICE_MINUTES,
   startDisplay,
   VALLEY_SPEEDS,
   type Display,
@@ -56,26 +57,22 @@ describe('drawing people from task records', () => {
     expect(walked).toBeGreaterThan(0)
   })
 
-  it('doubles the minutes a frame runs while steps fit the budget, and halves them, to one at least, when not', () => {
-    const fast = (() => {
+  it('runs the engine in hour steps until the frame budget is spent, and at least one step a frame', () => {
+    const ticking = (ms: number) => {
       let t = 0
-      return () => (t += 5)
-    })()
-    let display: Display = start()
-    for (let frame = 0; frame < 4; frame += 1)
-      display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, fast)
-    expect(display.minute).toBe(1 + 2 + 4 + 8)
-    expect(display.allowance).toBe(16)
-    const slow = (() => {
-      let t = 0
-      return () => (t += 100)
-    })()
-    display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, slow)
-    expect(display.minute).toBe(15 + 16)
-    expect(display.allowance).toBe(8)
-    for (let frame = 0; frame < 6; frame += 1)
-      display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, slow)
-    expect(display.allowance).toBe(1)
+      return () => (t += ms)
+    }
+    const start0 = start().state.minute
+    // Each clock reading is 10 ms later: four steps fit within 40 ms, and the clock stops at the last one finished.
+    let display: Display = advanceDisplay(start(), 0.25, { minutesPerSecond: 1_440 }, 40, ticking(10))
+    expect(display.minute).toBe(start0 + 4 * SIMULATION_SLICE_MINUTES)
+    expect(display.state.minute).toBe(display.minute)
+    display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, ticking(100))
+    expect(display.minute).toBe(start0 + 5 * SIMULATION_SLICE_MINUTES)
+    // With time to spare, the frame reaches the minute wanted.
+    display = advanceDisplay(display, 0.1, { minutesPerSecond: 1_440 }, 40, ticking(0))
+    expect(display.minute).toBeCloseTo(start0 + 5 * SIMULATION_SLICE_MINUTES + 144)
+    expect(display.state.minute).toBe(Math.floor(display.minute))
   })
 
   it('stops drawing people from map speeds up', () => {

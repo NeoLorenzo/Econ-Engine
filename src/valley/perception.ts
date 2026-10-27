@@ -69,14 +69,23 @@ export function ownKnowledge(person: Forager) {
 }
 /** Views already taken from a point: a cache, so its warmth never changes what is learnt. */
 const viewsSeen = new WeakMap<Knowledge, Set<string>>()
-export const peopleInChunk = (state: ValleyState, chunk: number): number[] => [...(state.peopleByChunk[chunk] ?? [])]
-export function reindexPeople(state: ValleyState, minute: number): void {
-  const buckets: number[][] = Array.from({ length: state.layout.nav.chunkCells ** 2 }, () => [])
+/** The people in a chunk when people were last located, by id. */
+export function peopleInChunk(state: ValleyState, chunk: number): number[] {
+  const ids: number[] = []
+  for (let id = 0; id < state.personChunk.length; id += 1) if (state.personChunk[id] === chunk) ids.push(id)
+  return ids
+}
+/** Records each living person's chunk at `minute`; wake-ups do this often, so the chunk lists are not rebuilt. */
+export function locatePeople(state: ValleyState, minute: number): void {
   for (const person of state.foragers)
-    if (person.alive) {
-      const point = positionAt(state, person, minute)
-      buckets[chunkOf(state.layout.nav, point)]!.push(person.id)
-    }
+    state.personChunk[person.id] = person.alive ? chunkOf(state.layout.nav, positionAt(state, person, minute)) : -1
+}
+/** Locates people and rebuilds the chunk lists, which the state keeps between steps. */
+export function reindexPeople(state: ValleyState, minute: number): void {
+  locatePeople(state, minute)
+  const buckets: number[][] = Array.from({ length: state.layout.nav.chunkCells ** 2 }, () => [])
+  for (let id = 0; id < state.personChunk.length; id += 1)
+    if (state.personChunk[id]! >= 0) buckets[state.personChunk[id]!]!.push(id)
   state.peopleByChunk = buckets.map((ids) => Int32Array.from(ids))
 }
 export function observeAt(state: ValleyState, person: Forager, minute: number): ObservationEvent {
@@ -172,19 +181,16 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
   views.add(viewKey)
   // The index records each person's last wake-up; route entry notifications keep moving entries local.
   const talk = config.sightRadiusCm
-  const candidates = new Set<number>()
-  for (
-    let y = Math.max(0, Math.floor((origin.y - talk) / nav.chunkCm));
-    y <= Math.min(nav.chunkCells - 1, Math.floor((origin.y + talk) / nav.chunkCm));
-    y += 1
-  )
-    for (
-      let x = Math.max(0, Math.floor((origin.x - talk) / nav.chunkCm));
-      x <= Math.min(nav.chunkCells - 1, Math.floor((origin.x + talk) / nav.chunkCm));
-      x += 1
-    )
-      for (const id of state.peopleByChunk[y * nav.chunkCells + x] ?? []) candidates.add(id)
-  for (const id of [...candidates].sort((a, b) => a - b)) {
+  const [x0, x1] = [Math.floor((origin.x - talk) / nav.chunkCm), Math.floor((origin.x + talk) / nav.chunkCm)]
+  const [y0, y1] = [Math.floor((origin.y - talk) / nav.chunkCm), Math.floor((origin.y + talk) / nav.chunkCm)]
+  const candidates: number[] = []
+  for (let id = 0; id < state.personChunk.length; id += 1) {
+    const chunk = state.personChunk[id]!
+    if (chunk < 0) continue
+    const [x, y] = [chunk % nav.chunkCells, Math.floor(chunk / nav.chunkCells)]
+    if (x >= x0 && x <= x1 && y >= y0 && y <= y1) candidates.push(id)
+  }
+  for (const id of candidates) {
     const other = state.foragers[id]!
     if (id === person.id || !other.alive) continue
     const point = positionAt(state, other, minute)

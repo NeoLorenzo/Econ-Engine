@@ -65,9 +65,15 @@ export function placesWithin(layout: ValleyLayout, x: number, y: number, radiusC
   return ids
 }
 
+/** The widest place's radius, by layout: a place contains a point only within it. */
+const widestRadius = new WeakMap<ValleyLayout, number>()
 export function placeAt(layout: ValleyLayout, x: number, y: number): number {
-  let radius = 0
-  for (const value of layout.places.radiusCm) radius = Math.max(radius, value)
+  let radius = widestRadius.get(layout)
+  if (radius === undefined) {
+    radius = 0
+    for (const value of layout.places.radiusCm) radius = Math.max(radius, value)
+    widestRadius.set(layout, radius)
+  }
   for (const id of placesWithin(layout, x, y, radius))
     if ((layout.places.x[id]! - x) ** 2 + (layout.places.y[id]! - y) ** 2 <= layout.places.radiusCm[id]! ** 2) return id
   return -1
