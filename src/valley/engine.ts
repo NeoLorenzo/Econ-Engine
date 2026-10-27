@@ -330,12 +330,11 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   }
 }
 
+// Traits, rates and thirst thresholds are set at birth and never change, so copies share them; sharing `rates` also
+// keeps `personConfig`'s cache warm across steps.
 const cloneForager = (forager: Forager): Forager => {
   return {
     ...forager,
-    traits: { ...forager.traits },
-    rates: { ...forager.rates },
-    thirstThresholds: { ...forager.thirstThresholds },
     task: forager.task
       ? { ...forager.task, rateChanges: forager.task.rateChanges?.map((change) => ({ ...change })) }
       : null,
@@ -461,13 +460,21 @@ function finishDay(state: ValleyState, minute: number) {
   state.eventDays.push([])
   if (state.eventDays.length > EVENT_HISTORY_DAYS) state.eventDays.shift()
 }
-export function stepValley(previous: ValleyState, toMinute = previous.minute + 1): ValleyState {
+/**
+ * Runs the valley to `toMinute`. When `stop` is given, it is asked between wake-ups at different minutes once a minute
+ * has been run; if it answers true, the step ends at the last minute run, exactly as a step to that minute would.
+ */
+export function stepValley(previous: ValleyState, toMinute = previous.minute + 1, stop?: () => boolean): ValleyState {
   if (!Number.isSafeInteger(toMinute) || toMinute < previous.minute)
     throw new Error('Target minute must be a safe integer at or after the current minute')
   const state = cloneValley(previous)
   state.lastInterval = []
   if (toMinute === previous.minute) return state
   while (state.queue.peek() && state.queue.peek()!.minute <= toMinute) {
+    if (stop && state.queue.peek()!.minute > state.minute && state.minute > previous.minute && stop()) {
+      toMinute = state.minute
+      break
+    }
     const entry = state.queue.pop()!
     if (entry.minute < previous.minute) throw new Error('A wake-up cannot be in the past')
     state.minute = entry.minute

@@ -154,18 +154,23 @@ function waterGoal(state: ValleyState, person: Forager, minute: number, severe: 
   }
   return explore(state, person, 'seeking water', severe)
 }
-function reachablePoint(state: ValleyState, person: Forager, point: Point) {
-  const nav = state.layout.nav,
-    first = routeTriangle(nav, person.knowledge, person),
-    last = routeTriangle(nav, person.knowledge, point)
-  if (first < 0 || last < 0) return false
-  const componentOf = knownComponents(nav, person.knowledge)
-  return componentOf(first) === componentOf(last)
+/** Whether a point is on the same piece of known ground as the person; the person's own piece is found once. */
+function reachability(state: ValleyState, person: Forager) {
+  const nav = state.layout.nav
+  let first: number | undefined, componentOf: ((t: number) => number) | undefined
+  return (point: Point) => {
+    first ??= routeTriangle(nav, person.knowledge, person)
+    const last = routeTriangle(nav, person.knowledge, point)
+    if (first < 0 || last < 0) return false
+    componentOf ??= knownComponents(nav, person.knowledge)
+    return componentOf(first) === componentOf(last)
+  }
 }
 export function foodGoal(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
   let best: TaskChoice | null = null,
     bestScore = -1,
     bestId = Infinity
+  const reachable = reachability(state, person)
   const consider = (id: number, kind: 'pick' | 'nuts' | 'fish', target: Point, rate: number, stock: number) => {
     if (rate <= person.rates.pickKcalPerHour || rate < bestScore) return
     const lowerTravel = estimateMinutes(state.config, person, target, walkSpeed(state.config, person) * 60, 0)
@@ -174,7 +179,7 @@ export function foodGoal(state: ValleyState, person: Forager, minute: number): T
     const home = estimateMinutes(state.config, target, person.hearth, walkSpeed(state.config, person) * 60, 0)
     if (travel + home + 1 > state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)) return
     const score = (3_600 * rate) / (travel * 60 + 3_600)
-    if ((score > bestScore || (score === bestScore && id < bestId)) && reachablePoint(state, person, target)) {
+    if ((score > bestScore || (score === bestScore && id < bestId)) && reachable(target)) {
       bestScore = score
       bestId = id
       best = workAt(
@@ -238,6 +243,7 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
   let best = -1,
     bestMinutes = Infinity,
     bestStock = 0
+  const reachable = reachability(state, person)
   for (let id = 0; id < state.layout.places.count; id += 1) {
     if (person.knownPlaces[id]! < 0) continue
     const kind = state.layout.places.kind[id]
@@ -251,7 +257,8 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
     if (stock <= 0) continue
     const target = { x: state.layout.places.x[id]!, y: state.layout.places.y[id]! },
       travel = estimate(state, person, target)
-    if (!reachablePoint(state, person, target)) continue
+    // Only a nearer place can win, so the costlier tests come after this one.
+    if (travel >= bestMinutes || !reachable(target)) continue
     if (
       travel + estimateMinutes(state.config, target, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 >
       state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)

@@ -1785,10 +1785,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       for (const ring of siteRings(state, followedId)) {
         const loop = siteLoops[ring.site]
         if (!loop) continue
-        const spot = at(ring.x, ring.y)
         loop.visible = true
         loop.material = ring.fresh ? freshSiteMaterial : staleSiteMaterial
+        // A place and its radius never move, so its ring is draped on the ground once.
+        if (loop.userData.draped) continue
+        const spot = at(ring.x, ring.y)
         drapeLoop(loop, spot.x, spot.z, ring.radiusCm / 100 + 1.5, 0.06)
+        loop.userData.draped = true
       }
     }
 

@@ -74,16 +74,10 @@ export const MAX_FRAME_SECONDS = 0.25
 export const SIMULATION_FRAME_BUDGET_MS = 40
 
 /**
- * A frame runs the engine in steps of at most this many minutes, checking its budget between them, so no frame runs far
- * past its budget. Early in a run a step takes about a millisecond; later, as people know more ground and plan longer
- * routes, an hour can take hundreds, so steps are short.
- */
-export const SIMULATION_SLICE_MINUTES = 15
-
-/**
  * Advances the displayed minute by the wall time elapsed at `speed`, running the engine up to the last whole minute at
- * or before it. When the engine cannot keep up within `budgetMs`, it stops at the last step finished, and the clock
- * advances less.
+ * or before it. The engine checks the budget between wake-ups, so one step a frame suffices: copying the valley for
+ * each of many short steps had cost more than the wake-ups themselves at high speeds. When the engine cannot keep up
+ * within `budgetMs`, it stops at the last minute it ran, and the clock advances less.
  */
 export function advanceDisplay(
   display: Display,
@@ -96,9 +90,7 @@ export function advanceDisplay(
   const toMinute = Math.floor(target)
   if (toMinute <= display.state.minute) return { state: display.state, minute: target }
   const started = now()
-  let state = display.state
-  do state = stepValley(state, Math.min(toMinute, state.minute + SIMULATION_SLICE_MINUTES))
-  while (state.minute < toMinute && now() - started < budgetMs)
+  const state = stepValley(display.state, toMinute, () => now() - started >= budgetMs)
   return { state, minute: state.minute < toMinute ? state.minute : target }
 }
 
@@ -1066,15 +1058,32 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
  * mesh triangle it has never seen dark, and the rest clear, since known ground stays known. Values are 0–255.
  */
 export function knowledgeShades(state: ValleyState, foragerId: number) {
-  const { terrain, nav } = state.layout
   const knowledge = state.foragers[foragerId]!.knowledge
-  const shades = new Uint8Array(terrain.cells * terrain.cells)
-  for (let row = 0; row < terrain.cells; row += 1)
-    for (let col = 0; col < terrain.cells; col += 1) {
-      const t = triangleAt(nav.mesh, (col + 0.5) * terrain.cellCm, (row + 0.5) * terrain.cellCm)
-      shades[row * terrain.cells + col] = t >= 0 && knows(knowledge, t) ? 0 : 150
-    }
+  const cellTriangles = cellTrianglesOf(state.layout)
+  const shades = new Uint8Array(cellTriangles.length)
+  for (let cell = 0; cell < cellTriangles.length; cell += 1) {
+    const t = cellTriangles[cell]!
+    shades[cell] = t >= 0 && knows(knowledge, t) ? 0 : 150
+  }
   return shades
+}
+const cellTriangleCache = new WeakMap<ValleyState['layout'], Int32Array>()
+/** The triangle at the centre of each terrain cell, found once per layout: the search is the costly part of shading. */
+function cellTrianglesOf(layout: ValleyState['layout']) {
+  let cells = cellTriangleCache.get(layout)
+  if (!cells) {
+    const { terrain, nav } = layout
+    cells = new Int32Array(terrain.cells * terrain.cells)
+    for (let row = 0; row < terrain.cells; row += 1)
+      for (let col = 0; col < terrain.cells; col += 1)
+        cells[row * terrain.cells + col] = triangleAt(
+          nav.mesh,
+          (col + 0.5) * terrain.cellCm,
+          (row + 0.5) * terrain.cellCm,
+        )
+    cellTriangleCache.set(layout, cells)
+  }
+  return cells
 }
 
 /** The part of the view, in pixels from its top left, that the cards over it leave clear. */
