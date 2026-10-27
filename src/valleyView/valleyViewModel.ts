@@ -513,7 +513,8 @@ const REASONS: Partial<Record<string, string>> = {
   'waiting for company': 'Waiting for company at a flag',
   exploring: 'Exploring ground it has never seen',
   searching: 'Searching for food or wood',
-  checking: 'Checking what a place holds',
+  'out for a walk': 'Out for a walk along a way it knows',
+  'going home to rest': 'Walking home to rest',
   'taking a load home': 'Taking firewood home',
   'taking a log home': 'Carrying a log home for its hut',
   'making an axe': 'Making an axe',
@@ -546,6 +547,21 @@ export function describeActivity(display: Display, foragerId: number) {
   return place && task.kind !== 'walk' ? `${what} at ${place}` : what
 }
 
+const WALK_PLANS = {
+  way: 'on a known way',
+  joined: 'joining a known way',
+  coarse: 'planning a new way',
+  full: 'planning a new way',
+} as const
+/** How a person's current walk was found, in words, from its walk record; null for other tasks or unrecorded walks. */
+export function walkWording(state: ValleyState, foragerId: number) {
+  const task = state.foragers[foragerId]!.task
+  if (task?.kind !== 'walk') return null
+  for (let day = state.eventDays.length - 1; day >= 0; day -= 1)
+    for (const e of state.eventDays[day]!)
+      if (e.kind === 'walk' && e.foragerId === foragerId && e.routeId === task.routeId) return WALK_PLANS[e.plan]
+  return null
+}
 /** The followed person's task and next wake-up, for the person panel. */
 export function taskSummary(state: ValleyState, foragerId: number) {
   const task = state.foragers[foragerId]!.task
@@ -554,6 +570,7 @@ export function taskSummary(state: ValleyState, foragerId: number) {
     ? {
         kind: task.kind,
         reason: task.reason,
+        way: walkWording(state, foragerId),
         startMinute: task.startMinute,
         endMinute: task.endMinute,
         nextWake: next && { minute: next.minute, kind: next.kind },
@@ -878,19 +895,19 @@ export interface SiteRing {
   x: number
   y: number
   radiusCm: number
-  /** Checked within `exploreAfterHours`. */
+  /** Checked within the last day. */
   fresh: boolean
 }
 
 /** The places the followed forager knows, and whether it checked each lately. */
 export function siteRings(state: ValleyState, foragerId: number): SiteRing[] {
-  const { config, layout } = state
+  const { layout } = state
   const forager = state.foragers[foragerId]!
   const rings: SiteRing[] = []
   for (let site = 0; site < layout.places.count; site += 1) {
     if (forager.knownPlaces[site]! < 0) continue
     const checked = forager.placeCheckedMinute[site]!
-    const fresh = checked >= 0 && state.minute - checked < 60 * config.exploreAfterHours
+    const fresh = checked >= 0 && state.minute - checked < MINUTES_PER_DAY
     rings.push({
       site,
       x: layout.places.x[site]!,
@@ -960,9 +977,9 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     heightM: heightAt(state.layout.terrain, forager.x, forager.y) / 100,
     sitesKnown: known,
     sitesTotal: state.layout.places.count,
-    /** Places it has checked within `exploreAfterHours`. */
+    /** Places it has checked within the last day. */
     sitesCheckedLately: forager.placeCheckedMinute.filter(
-      (checked) => checked >= 0 && state.minute - checked < 60 * config.exploreAfterHours,
+      (checked) => checked >= 0 && state.minute - checked < MINUTES_PER_DAY,
     ).length,
     /** The wood it has put into fires, and its group's fire, if it sleeps by one. */
     fireGiven: forager.fireGiven,

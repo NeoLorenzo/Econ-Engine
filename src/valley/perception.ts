@@ -17,6 +17,8 @@ export interface ObservationEvent {
   minute: number
   foragerId: number
   origin: Point
+  /** Whether the still landscape was surveyed; otherwise only what changes was looked at. */
+  surveyed: boolean
   places: number[]
   triangles: number[]
   banks: BankMemory[]
@@ -36,16 +38,6 @@ export function shareBankMemory(banks: Map<number, BankMemory>) {
 export function learnBank(person: Forager, memory: BankMemory) {
   if (sharedBankMemories.has(person.knownBanks)) person.knownBanks = new Map(person.knownBanks)
   person.knownBanks.set(memory.id, memory)
-}
-/** Route caches only grow too, and are shared and copied the same way, before their holder remembers a new route. */
-const sharedRouteCaches = new WeakSet<Map<string, number>>()
-export function shareRouteCache(cache: Map<string, number>) {
-  sharedRouteCaches.add(cache)
-  return cache
-}
-export function rememberRoute(person: Forager, key: string, routeId: number) {
-  if (sharedRouteCaches.has(person.routeCache)) person.routeCache = new Map(person.routeCache)
-  person.routeCache.set(key, routeId)
 }
 /**
  * Triangle knowledge is shared with the previous state in the same way, and copied once before its holder learns a
@@ -96,12 +88,17 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
   const origin = positionAt(state, person, minute),
     radius = config.sightRadiusCm,
     sq = radius ** 2
+  // The still landscape is surveyed again only once the person has moved far enough from their last survey.
+  const surveying =
+    !person.survey || (person.survey.x - origin.x) ** 2 + (person.survey.y - origin.y) ** 2 >= config.resurveyCm ** 2
+  if (surveying) person.survey = origin
   const observation: ObservationEvent = {
     kind: 'observe',
     minute,
     foragerId: person.id,
     origin,
-    places: placesWithin(layout, origin.x, origin.y, radius),
+    surveyed: surveying,
+    places: surveying ? placesWithin(layout, origin.x, origin.y, radius) : [],
     triangles: [],
     banks: [],
     people: [],
@@ -130,7 +127,7 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
     }
   }
   const viewKey = `${origin.x},${origin.y}:${radius}`
-  if (!viewsSeen.get(person.knowledge)?.has(viewKey))
+  if (surveying && !viewsSeen.get(person.knowledge)?.has(viewKey))
     for (
       let cy = Math.max(0, Math.floor((origin.y - radius) / nav.chunkCm));
       cy <= Math.min(nav.chunkCells - 1, Math.floor((origin.y + radius) / nav.chunkCm));
@@ -176,9 +173,11 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
   if (observation.triangles.length) person.knowledge.revision += 1
   if (person.knowledge !== before || observation.triangles.length)
     carryComponents(nav, before, person.knowledge, observation.triangles)
-  let views = viewsSeen.get(person.knowledge)
-  if (!views) viewsSeen.set(person.knowledge, (views = new Set()))
-  views.add(viewKey)
+  if (surveying) {
+    let views = viewsSeen.get(person.knowledge)
+    if (!views) viewsSeen.set(person.knowledge, (views = new Set()))
+    views.add(viewKey)
+  }
   // The index records each person's last wake-up; route entry notifications keep moving entries local.
   const talk = config.sightRadiusCm
   const [x0, x1] = [Math.floor((origin.x - talk) / nav.chunkCm), Math.floor((origin.x + talk) / nav.chunkCm)]

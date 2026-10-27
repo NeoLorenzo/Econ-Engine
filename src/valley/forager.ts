@@ -7,8 +7,8 @@ import { knownTerms, buyingPays, sellingPays, wantedWood, spareWood } from './tr
 import { nearestFrontier, estimateMinutes, knownComponents, routeTriangle } from './routes'
 import { cachedHeight } from './routes'
 import { carriedByFood, foodKg } from './food'
-import { minuteOfDay } from './calendar'
-import { knownRoute, type Route } from './routes'
+import { MINUTES_PER_DAY, minuteOfDay } from './calendar'
+import { findWalk, type WalkFound } from './ways'
 import type { ActionReason, Forager, Good, Point, TaskKind, ValleyConfig, ValleyState } from './types'
 export { MINUTES_PER_DAY, minuteOfDay } from './calendar'
 export const isDaylight = (config: ValleyConfig, minute: number) =>
@@ -60,23 +60,12 @@ export function nextHungry(config: ValleyConfig, energyKcal: number, hungry: boo
 
 export const walkSpeed = (config: ValleyConfig, person: Forager) =>
   speedForLoad(personConfig(config, person), loadKg(config, loadOf(person)))
-export const routeKey = (state: ValleyState, person: Forager, target: Point) =>
-  `${person.x},${person.y}:${target.x},${target.y}:${person.knowledge.revision}:${loadKg(state.config, loadOf(person))}`
-export function routeFor(state: ValleyState, person: Forager, target: Point): Route | null {
-  const key = routeKey(state, person, target),
-    saved = person.routeCache.get(key)
-  if (saved !== undefined) return state.routes[saved]!
-  return knownRoute(
-    state.layout.nav,
-    person.knowledge,
-    personConfig(state.config, person),
-    loadKg(state.config, loadOf(person)),
-    person,
-    target,
-  )
+/** A walk to a target, by a remembered way where `habitual` and one serves, else by a new plan. */
+export function routeFor(state: ValleyState, person: Forager, target: Point, habitual = false): WalkFound | null {
+  return findWalk(state, person, target, habitual, loadKg(state.config, loadOf(person)))
 }
 export interface TaskChoice {
-  route?: Route
+  walk?: WalkFound
   productionPerHour?: number
   expectedStock?: number
   desiredCarriedKcal?: number
@@ -159,9 +148,9 @@ function waterGoal(state: ValleyState, person: Forager, minute: number, severe: 
     )
       continue
     if (searches++ >= 3) break
-    const route = routeFor(state, person, bank)
-    if (!route) continue
-    return { ...workAt(state, person, bank.id, 'drink', 'seeking water', 0, 0), route }
+    const walk = routeFor(state, person, bank, true)
+    if (!walk) continue
+    return { ...workAt(state, person, bank.id, 'drink', 'seeking water', 0, 0), walk }
   }
   return explore(state, person, 'seeking water', severe)
 }
@@ -376,34 +365,9 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
         state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
     )
       return { kind: 'walk', placeId: -1, target: frontier, reason: 'exploring' }
-    let target = -1,
-      best = Infinity
-    for (let id = 0; id < state.layout.places.count; id += 1) {
-      if (
-        person.knownPlaces[id]! < 0 ||
-        (person.placeCheckedMinute[id]! >= 0 &&
-          minute - person.placeCheckedMinute[id]! < state.config.exploreAfterHours * 60)
-      )
-        continue
-      const point = { x: state.layout.places.x[id]!, y: state.layout.places.y[id]! },
-        travel = estimate(state, person, point)
-      if (
-        travel < best &&
-        travel + estimateMinutes(state.config, point, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 <
-          state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute) &&
-        reachablePoint(state, person, point)
-      ) {
-        target = id
-        best = travel
-      }
-    }
-    if (target >= 0)
-      return {
-        kind: 'walk',
-        placeId: -1,
-        target: { x: state.layout.places.x[target]!, y: state.layout.places.y[target]! },
-        reason: 'checking',
-      }
+    if (!atHearth(person)) return { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home to rest' }
+    const walk = leisureWalk(state, person, minute)
+    if (walk) return walk
   }
   if (person.hungry || person.shortOfWood) {
     const work = chooseWork(state.config, person, minute)
@@ -420,6 +384,28 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
     }
   }
   return restChoice()
+}
+/** Once a day, a walk out along the remembered way from home used longest ago whose far end leaves time to return before dusk. */
+const pointEqual = (a: Point, b: Point) => a.x === b.x && a.y === b.y
+function leisureWalk(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
+  if (
+    person.leisureMinute >= 0 &&
+    Math.floor(person.leisureMinute / MINUTES_PER_DAY) === Math.floor(minute / MINUTES_PER_DAY)
+  )
+    return null
+  const left = state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute),
+    speed = walkSpeed(state.config, person) * 60
+  const home = person.hearth
+  const ways = person.ways
+    .filter((w) => pointEqual(w.a, home) || pointEqual(w.b, home))
+    .sort((a, b) => a.usedMinute - b.usedMinute || a.id - b.id)
+  for (const way of ways) {
+    const far = pointEqual(way.a, home) ? way.b : way.a
+    if (2 * estimateMinutes(state.config, home, far, speed, 0) + 1 >= left) continue
+    const walk = routeFor(state, person, far, true)
+    return walk ? { kind: 'walk', placeId: -1, target: far, reason: 'out for a walk', walk } : null
+  }
+  return null
 }
 export const fillingLoad = (_config: ValleyConfig, person: Forager) =>
   person.tripWood > 0 && person.tripWood < person.loadCapacityKg

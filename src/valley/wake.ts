@@ -2,11 +2,12 @@ import { personConfig } from './nature'
 import { measureTask } from './summary'
 import type { WakeEntry, WakeKind } from './clock'
 import { MINUTES_PER_DAY, minuteOfDay } from './calendar'
-import { atHearth, chooseTask, isDaylight, routeFor, routeKey, nextHungry, walkSpeed } from './forager'
+import { atHearth, chooseTask, isDaylight, routeFor, nextHungry, walkSpeed } from './forager'
 import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body'
 import { startTask, positionAt } from './tasks'
 import { nearestFrontier, chunkOf, estimateMinutes } from './routes'
-import { observeAt, locatePeople, rememberRoute, scheduleArrivals, peopleInChunk } from './perception'
+import { observeAt, locatePeople, scheduleArrivals, peopleInChunk } from './perception'
+import { rememberWalk, type WalkFound } from './ways'
 import { carriedKcal, spoil, addLots, eatCarried } from './food'
 import { takeFrom } from './places'
 import { nextShortOfWood, swap } from './trade'
@@ -16,6 +17,7 @@ import { feedFire } from './fire'
 import { warmthOf, tendFire } from './work'
 import { beginAxe, workAxe, cutAt, logCut, exchangeAxes } from './axes'
 import type { Forager, ValleyEvent, ValleyState } from './types'
+import type { TaskChoice } from './forager'
 
 function bodyWake(state: ValleyState, person: Forager, minute: number) {
   const task = person.task
@@ -35,29 +37,37 @@ function bodyWake(state: ValleyState, person: Forager, minute: number) {
   state.totals.metabolizedKcal += spent
   return { spent, loss: water.loss, drink: water.drink }
 }
+/** Whether a walk goes to a place, a bank point or home, the ends a person keeps ways to. */
+function habitualTarget(state: ValleyState, person: Forager, choice: TaskChoice) {
+  const target = choice.target!,
+    { places } = state.layout
+  if (target.x === person.hearth.x && target.y === person.hearth.y) return true
+  if (choice.placeId < 0) return false
+  const bank = person.knownBanks.get(choice.placeId)
+  if (bank && bank.x === target.x && bank.y === target.y) return true
+  return choice.placeId < places.count && places.x[choice.placeId] === target.x && places.y[choice.placeId] === target.y
+}
 function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   let choice = chooseTask(state, person, minute),
-    routeId = -1
+    routeId = -1,
+    found: WalkFound | null = null
   let end = minute + 60
   if (choice.kind === 'walk' && choice.target) {
-    let route = choice.route ?? routeFor(state, person, choice.target)
-    if (!route) {
+    let walk = choice.walk ?? routeFor(state, person, choice.target, habitualTarget(state, person, choice))
+    if (!walk) {
       const frontier = nearestFrontier(state.layout.nav, person.knowledge, person)
       if (frontier) {
-        route = routeFor(state, person, frontier)
+        walk = routeFor(state, person, frontier)
         choice = { ...choice, target: frontier, placeId: -1 }
       }
     }
-    if (route?.segments.length) {
-      const endpoint = route.segments[route.segments.length - 1]!
-      const key = routeKey(state, person, { x: endpoint.x1, y: endpoint.y1 }),
-        saved = person.routeCache.get(key)
-      routeId = saved ?? state.routes.length
-      if (saved === undefined) {
-        state.routes.push(route)
-        rememberRoute(person, key, routeId)
-      }
-      end = minute + route.minutes
+    if (walk?.route.segments.length) {
+      rememberWalk(state, person, walk, minute)
+      if (choice.reason === 'out for a walk') person.leisureMinute = minute
+      found = walk
+      routeId = state.routes.length
+      state.routes.push(walk.route)
+      end = minute + walk.route.minutes
     } else choice = { kind: 'rest', placeId: -1, target: null, reason: 'no known route' }
   }
   if (choice.kind === 'sleep')
@@ -163,7 +173,15 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
     },
   ]
   if (choice.kind === 'walk' && routeId >= 0) {
-    events.push({ kind: 'walk', minute, foragerId: person.id, routeId })
+    events.push({
+      kind: 'walk',
+      minute,
+      foragerId: person.id,
+      routeId,
+      plan: found!.plan,
+      rechecked: found!.rechecked,
+      wayId: found!.way?.id ?? -1,
+    })
     scheduleArrivals(state, person.id, state.routes[routeId]!, minute)
   }
   return events

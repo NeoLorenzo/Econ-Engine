@@ -131,7 +131,6 @@ describe('valley configuration', () => {
 
   it('refuses spacing and checking times that are not positive', () => {
     expect(errorsWith({ startSpacingCm: 0 })).toContain('startSpacingCm must be positive')
-    expect(errorsWith({ exploreAfterHours: 0 })).toContain('exploreAfterHours must be positive')
   })
 
   it('refuses a layout that cannot be drawn, or starts that cannot be placed', () => {
@@ -171,10 +170,10 @@ describe('sight and loads', () => {
   })
 
   it('refuses long sight shorter than close sight', () => {
-    expect(errorsWith({ sightRadiusCm: 2_499 })).toContain(
+    expect(errorsWith({ sightRadiusCm: 2_499, resurveyCm: 2_000 })).toContain(
       'Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm',
     )
-    expect(errorsWith({ sightRadiusCm: 2_500 })).toEqual([])
+    expect(errorsWith({ sightRadiusCm: 2_500, resurveyCm: 2_000 })).toEqual([])
   })
 
   it('refuses sites too wide to check', () => {

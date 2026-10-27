@@ -1,5 +1,5 @@
 import { founderMetrics } from './nature'
-import { reindexPeople, shareBankMemory, shareKnowledge, shareRouteCache } from './perception'
+import { reindexPeople, shareBankMemory, shareKnowledge } from './perception'
 import { knowledgeBytes } from './routes'
 import { measureTask } from './summary'
 import { WakeQueue } from './clock'
@@ -188,7 +188,10 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       metPosition: new Map(),
       arrivalFrom: new Int32Array(config.founders).fill(-1),
       knowledge: { triangles: new Uint8Array(knowledgeBytes(layout.nav.mesh)), revision: 0 },
-      routeCache: new Map(),
+      ways: [],
+      nextWayId: 0,
+      leisureMinute: -1,
+      survey: null,
       energyTimeRemainder: 0,
       waterTimeRemainder: 0,
       lastWakeMinute: 0,
@@ -346,7 +349,6 @@ const cloneForager = (forager: Forager): Forager => {
     metPosition: new Map(forager.metPosition),
     arrivalFrom: forager.arrivalFrom.slice(),
     knowledge: shareKnowledge(forager.knowledge),
-    routeCache: shareRouteCache(forager.routeCache),
     knownBanks: shareBankMemory(forager.knownBanks),
     fishMemory: new Map(forager.fishMemory),
     deathCauses: [...forager.deathCauses],

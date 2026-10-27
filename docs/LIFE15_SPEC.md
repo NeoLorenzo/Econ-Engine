@@ -1,50 +1,71 @@
-# [LIFE14-Bodies-064]
+# [LIFE15-Habits-066]
 
-**Approved for implementation by the owner on 2026-10-26.** This specification replaces the Life 13 specification and describes the whole simulation. It is step 14 of the [roadmap](ROADMAP.md), bodies and personality, and is built under the [Life section](../SIMULATION_DESIGN_RULES.md#life-realism-and-time) of the design rules. It is implemented as one pull request.
+**Draft for the owner's approval, 2026-10-27.** This specification replaces the Life 14 specification and describes the whole simulation. It is step 15 of the [roadmap](ROADMAP.md), habitual routes, inserted before relationships, and is built under the [Life section](../SIMULATION_DESIGN_RULES.md#life-realism-and-time) of the design rules. It is implemented as one pull request.
 
-Forty strangers are dropped on 4 km square of young glacial land in Mesolithic northern Europe: drumlins, moraine fronts, kames, hummocks, kettle hollows and tunnel valleys, with lakes in the hollows and rivers running downhill to the edge. The ground is grass, dirt and stone. People discover drinking banks, drink, pick berries, gather hazelnuts, fish, gather firewood, meet, form groups, exchange wood and axes for food, and build huts around shared fires. Their knowledge comes from observation and memory. From this step each of them is a woman or a man with a body of their own and a personality of their own.
+Forty strangers are dropped on 4 km square of young glacial land in Mesolithic northern Europe: drumlins, moraine fronts, kames, hummocks, kettle hollows and tunnel valleys, with lakes in the hollows and rivers running downhill to the edge. The ground is grass, dirt and stone. People discover drinking banks, drink, pick berries, gather hazelnuts, fish, gather firewood, meet, form groups, exchange wood and axes for food, and build huts around shared fires. Their knowledge comes from observation and memory. Each of them is a woman or a man with a body of their own and a personality of their own. From this step they find their way as people do: they remember the ways they walk, take them again, and plan afresh only for somewhere new, or now and then to notice a shortcut.
 
 Time is one clock in minutes. Nobody is stepped: a person is woken when their task ends, a body threshold arrives, someone enters their chunk, or someone addresses them, and their position and body at any minute follow from their task. A year has as many days as the run's settings say, from 8 to 365. Lengths are integer centimetres, food integer kilocalories, wood integer kilograms, water deficit integer millilitres, and fractional amounts accumulate in integer remainders. `stepValley` advances the state to a target minute, is pure and deterministic, and every random draw comes from a named derived stream. The observer displays real records and interpolates movement between them.
 
-## What Life 14 makes possible
+## What Life 15 makes possible
 
-- **People differ in body.** Until now every person weighed 60 kg and carried 30 kg. Now each founder is a woman or a man with a height, a weight and a strength drawn together, as they go together in real people: taller people are heavier, heavier people stronger. A strong person carries more wood per trip; a heavy person walks better under a load but burns more food. Strength is what later decides fights (step 16).
-- **People differ in temperament.** Each founder has the five traits psychologists measure in every population studied, drawn with their real correlations. Each trait has one job in the engine, attached to a decision people already make:
-  - **Extraversion** starts interactions: how far a person will walk to approach someone they see.
-  - **Agreeableness** gives way: how much of an exchange's gain a person leaves to the other side. With disputes (step 16) it also decides who yields.
-  - **Conscientiousness** plans ahead: how much wood a person stocks and how full they eat before stopping work.
-  - **Neuroticism** sets the fear threshold: how early a person turns home before dark. With conflict (step 16) it also sets when they flee.
-  - **Openness** tries the unfamiliar: how far from home a person explores when idle, and how much they expect of a place they have never checked.
-- **The groundwork for the chief.** Relationships (15), conflict (16) and influence (17) need people who differ. Nothing in this step makes anyone a leader.
+- **People walk the ways they know.** Until now every walk was planned from nothing, as the best path over all the ground the person had ever seen, as if they studied a perfect map before every step. Real people learn a few routes between the places they use, take them again, and join a familiar route when they find themselves on it (Siegel and White 1975; Golledge 1999). Each person now remembers **ways**: the line of ground they walked from a starting point to a place, a bank or home. A walk to the same place, or back from it, takes the remembered way, or the rest of a way they are standing on.
+- **People plan coarsely, then in detail.** When no way is known, a person first picks a chain of 200 m squares of known land that leads there, then the exact path within that band, as someone thinks "over the ridge, round the lake" before choosing their footing. If the band holds no path, they plan over everything they know, as before.
+- **People notice shortcuts slowly.** A remembered way is reconsidered at most once a day, and only if the person has seen new ground since they planned it. Until then they keep to it, even if a better path has just come into view.
+- **People look again only when they have moved.** The still landscape in sight (ground, banks, thickets, stands, outcrops) is surveyed again only once the person has moved 100 m from where they last surveyed it. People, fires, flags and huts, and the stock where the person stands are noticed at every wake-up, as before.
+- **Why now.** In the canonical run, the engine is about 400 times slower per simulated hour on day 12 than on day 2: in four midday hours of day 12 people searched 1,675 routes, every one planned anew, none repeating an earlier search (update 065). Planning every walk from scratch is both unrealistic and the largest single cost of a late day. Fixing it now, before relationships add more walking, keeps later steps runnable.
+- **The groundwork for trails.** Ways are the first thing a person keeps because they used it, not because they chose it fresh. Trails worn by many feet, and showing someone the way (step 24, making and teaching), can build on them later. Nothing in this step wears a trail or shares a way.
 
-This step changes who people are. It does not change the map, the routes, the resources or what people can do.
+This step changes how people find and keep their way, and how often they look around. It does not change the map, the ground anyone may walk, walking speeds, the resources, bodies, personality or what people can do.
 
 ## Checked against
 
 | Measure | Evidence and comparison | Status |
 | --- | --- | --- |
-| Adult stature | Mesolithic Europe, from skeletons: men about 165 cm and women about 154 cm, each with a spread of about 6 cm (Formicola and Giannecchini 1999; Ruff 2018). The forty founders' means lie within 3 cm of these, and the sexes do not overlap much more than real ones. | Magnitudes; checked once on the canonical seed, and by a unit test over 10,000 draws. |
+| Route choice | People rarely take the shortest path. Most commuters keep to habitual routes longer than the shortest one (Zhu and Levinson 2015); pedestrians choose by familiarity and simple rules such as "head roughly the right way" more than by distance (Golledge 1995; Hölscher et al. 2011). | Magnitudes, measured once on the canonical seed: how much longer walks on a remembered way are than the shortest path over the walker's known ground at that minute, as a median and the largest. A median within about 10% is expected; a large excess is examined in the lab notes, not tuned away. |
+| Reuse | Habit: most trips go between a few familiar places along familiar routes (Golledge 1999). | Recorded once on the canonical seed: the share of walks by how they were found (a remembered way, a joined way, a coarse plan, a full plan), day by day. Most walks to places are expected to use a way after the first days. |
+| Coarse planning | Planning by regions before footing gives routes close to the shortest when regions are small against the trip (hierarchical path planning, Botea et al. 2004). | Recorded once: the share of new plans that needed the full search, and how much longer coarse plans are than full ones on the same walks. | Mesolithic Europe, from skeletons: men about 165 cm and women about 154 cm, each with a spread of about 6 cm (Formicola and Giannecchini 1999; Ruff 2018). The forty founders' means lie within 3 cm of these, and the sexes do not overlap much more than real ones. | Magnitudes; checked once on the canonical seed, and by a unit test over 10,000 draws. |
 | Adult body mass | Mesolithic Europe, estimated from skeletons: men about 62 kg, women about 52 kg (Ruff 2018). | As above. |
 | Strength | Grip strength, the standard field measure, among forager-horticulturalists (Tsimane, Hadza, Agta): men about 38 kg, women about 24 kg, with women's strength about 60% of men's (Gurven et al. 2006; Apicella 2014). | As above. |
 | Body correlations | Within each sex, height with weight about 0.55, height with grip about 0.35, weight with grip about 0.40. | A unit test over 10,000 draws, each within 0.05. |
 | Trait correlations | The meta-analysis of the five traits across 212 samples (van der Linden et al. 2010): openness with extraversion 0.43, conscientiousness with agreeableness 0.43, conscientiousness with neuroticism −0.43, extraversion with neuroticism −0.36, agreeableness with neuroticism −0.36, conscientiousness with extraversion 0.29, agreeableness with extraversion 0.26, openness with agreeableness 0.21, openness with conscientiousness 0.20, openness with neuroticism −0.17. | A unit test over 10,000 draws, each within 0.05. |
 | What the traits do | Extraverts seek contact more (Asendorpf and Wilpers 1998); agreeable people offer fairer splits in bargaining games (Ben-Ner et al. 2004); conscientious people plan and store; neurotic people avoid risk; open people seek novelty. | Direction only: each trait's rule has a unit fixture showing the direction. The strengths of the effects are judgement, not calibration, and are listed as questions for later. |
 | Carrying | Forager women carry loads of 15 to 25 kg for hours, men more; women's load capacity is closer to men's than their grip is (Hadza and !Kung loads; Lee 1979; Marlowe 2010). | Magnitudes. |
-| Speed | A year of forty people in about a second, as Life 13. | Not met: the canonical ninety-day year of forty took 852.90 s with an 8 GB Node heap; the default 4 GB attempt exhausted memory. Life 13 already missed the time target. Details are in update 064 of the lab notes. |
+| Speed | A year of forty people in about a second, as since Life 12. | Not expected to be met by this step alone. Life 14's canonical ninety-day year took 852.90 s with an 8 GB Node heap (update 064). Measured once and recorded: the canonical year's time and memory, and a profile of day 12, where route search should no longer be the largest cost. |
 
 ## Design decisions
 
+### Ways and planning (new)
+
 | Decision | Reason |
 | --- | --- |
-| Each founder is a woman or a man, drawn half and half. | Height, weight and strength are bimodal by sex; drawing one distribution for everyone would give a population with no real counterpart. Sex is needed again for pairing at step 18. In this step it does nothing but set which body distribution is drawn. |
-| Bodies are adults and fixed for life. | Nobody grows or ages before step 18. |
+| A way is the corridor of triangles a walk crossed, kept with its two end points, the minute it was planned and the person's knowledge revision then. The path is pulled tight afresh along the corridor at each use and timed for the walker's load. | The corridor is what a person remembers ("along the stream, through the gap"); pulling it tight is the walking. Keeping the corridor rather than a timed path keeps a way good under any load: a load changes speed, not the way. |
+| Ways are kept only for walks to a place, a bank point or the person's hearth, never to a frontier. | Habits form between places used again. Exploring is by definition going somewhere new. |
+| A way can be walked in either direction, and joined part-way: a walker standing in a triangle of a way with an end at the target walks the rest of it. | Home to thicket is also thicket to home. Joining from part-way is what makes a habit useful when a walk starts from elsewhere, for instance after an interrupted walk. |
+| Joining is only from a triangle on the way itself, not from nearby. | Joining from nearby needs a small search to reach the way and a rule for how near. The exact rule is simpler and already covers walks resumed along a way. A join radius is a question for later. |
+| When several ways could serve, the one used most recently wins, ties by lowest way number. | A deterministic, human rule: take the route you took last time. |
+| A person keeps at most `waysRemembered` (64) ways. A new way to the same two end points replaces the old one; when full, the way used longest ago is forgotten, ties by lowest way number. | Bounds memory and work per person. People forget routes they stop using. |
+| A remembered way is reconsidered when it is about to be used, if `wayRecheckMinutes` (one day) has passed since it was planned and the person's knowledge has grown since. Otherwise it is used as it is, even if a shorter path is now known. | Rules 2 and 10: local, not optimal, decisions, and learning through experience. People notice a shortcut eventually, not the instant it comes into sight. Once a day bounds re-planning per way. |
+| A way whose triangles are not all still walkable and known to the person is dropped and planned afresh. | Nothing can block a way in this step, because the ground does not change and knowledge only grows; the rule is for floods, fences and palisades later, and costs one pass over the corridor. |
+| An idle person who has nothing new to explore no longer tours the places they know. Once a day they walk out along a remembered way from home, the one used longest ago, and otherwise go home and rest. | Foragers spend much of the day resting and in company at camp (Hawkes et al. 1997; Marlowe 2010), and learn the state of patches while out foraging, not by inspecting every one daily. In Life 14 an idle person walked to every known place unchecked for a day, about 210 short walks a day each from day 13, which also made late days slow. A walk along a known way needs no planning, and refreshes the memory of the place at its far end. |
+| A new plan is coarse first: an A\* over chunks the person knows to be linked, then the fine A\* restricted to triangles whose chunks are on the chunk path or next to it. If the band holds no path, the fine A\* runs over all known triangles, as before. | People plan by regions before footing (Golledge 1999). The band keeps a fine search to a few chunks instead of the whole known valley. The fallback keeps every reachable target reachable. |
+| Two chunks are linked for a person when a known walkable triangle in one shares an edge with a known walkable triangle in the other. A triangle belongs to the chunk holding its centroid. The coarse cost is the distance between chunk centres, ties by chunk number. | It uses only what the person knows (rule 1). The edges crossing between chunks are listed once per mesh, so a link is a check of a short list. |
+| The still landscape is surveyed again only once the person stands `resurveyCm` (100 m) or more from where they last surveyed it. People, people-made places and the stock where the person stands are looked at every wake-up. | Ground, water, thickets and stands do not move; looking again over the same kilometre from the same spot learns almost nothing. 100 m is a tenth of the sight radius: what is missed at the edge of sight is learnt on the next move. |
+| The route cache by exact end points, knowledge revision and load is removed. | Ways replace it. It was almost never reused, because a start a centimetre away or one newly seen triangle made a new key. |
+| Travel estimates for choosing targets stay straight-line lower bounds. | A person judges how far a place is before walking; the way is what they then walk. |
+
+### Bodies and personality (Life 14, unchanged)
+
+| Decision | Reason |
+| --- | --- |
+| Each founder is a woman or a man, drawn half and half. | Height, weight and strength are bimodal by sex; drawing one distribution for everyone would give a population with no real counterpart. Sex is needed again for pairing at step 19. Until then it does nothing but set which body distribution is drawn. |
+| Bodies are adults and fixed for life. | Nobody grows or ages before step 19. |
 | Height, weight and grip are drawn together from one correlated normal draw per person, clamped to three standard deviations. | The roadmap asks for real correlations; three spreads cover 99.7% of real people and keep integer rates safe. |
 | Normal draws are made in integers: the sum of twelve uniform draws from 0 to 999, less 5,994, is a standard normal in thousandths. Correlations come from a Cholesky factor computed in integers with an integer square root. | `Math.log`, `Math.cos` and the like may differ between JavaScript engines; integer arithmetic replays bit for bit everywhere. The sum of twelve uniforms has the normal's mean and spread; its tails stop at six spreads, beyond the clamp. |
-| Height has no rule of its own in this step. | It is drawn because weight and strength follow it; it is shown, and it is there for step 16 (reach) and for the observer's figures. |
+| Height has no rule of its own yet. | It is drawn because weight and strength follow it; it is shown, and it is there for step 17 (reach) and for the observer's figures. |
 | Strength sets the wood load: `woodLoad · (grip + referenceGrip) / (2 · referenceGrip)`. | Carrying depends on legs and back as much as hands, so women's loads are closer to men's than their grip is: an average woman carries about 26 kg, an average man about 33 kg, the weakest about 17 kg. A log stays one log for everyone: only the speed it costs differs. |
 | Weight replaces the single `bodyKg`: it weighs the load against the body for walking speed, sets the thirst thresholds, and scales every kilocalorie rate. | A heavier body carries a load more easily, holds more water and burns more energy for the same work. Scaling by weight keeps strength from being free: a big strong person carries more but must eat more. |
 | Five traits, each stored as a normal score in thousandths of a spread, clamped to three spreads. | Personality is measured as continuous scores with a normal spread in every population; a score in spreads lets each rule say "one spread more moves this by so much". |
-| Each trait has exactly one job, attached to a decision people already make, and no trait touches another trait's decision. | Rule 13: a trait with no mechanism is cut. One job each keeps every effect traceable to one trait. Agreeableness's yielding and neuroticism's flight wait for disputes at step 16, but each already has a job now, so neither is cut. |
+| Each trait has exactly one job, attached to a decision people already make, and no trait touches another trait's decision. | Rule 13: a trait with no mechanism is cut. One job each keeps every effect traceable to one trait. Agreeableness's yielding and neuroticism's flight wait for disputes at step 17, but each already has a job now, so neither is cut. |
 | Every trait rule is a person's own threshold or share. No trait sets an outcome. | Rule 4: behaviour emerges from incentives. A trait shifts where a person draws a line; whether that pays is left to the world. |
 | An average person behaves close to Life 13, but not exactly. | Life 13's rules had no margin before dusk and treated unseen stocks as full. The average person now keeps half an hour before dusk and expects three quarters of an unseen stock. Keeping Life 13 exactly for the average would need rules that only matter at the extremes. |
 | Bodies and traits come from their own streams. | The founder, skill and craft streams draw exactly as before, so a person's start and skills on a seed are unchanged. |
@@ -128,7 +149,7 @@ Bodies and traits are drawn once, when the founders are made, and never change.
 
 ### Days per year
 
-`daysPerYear` is a run setting from 8 to 365, default 90. Day-anchored, unchanged by the setting: sleep, the hour of rest, picking, gathering, chopping, drinking and making rates, spoilage, firewood per night, hut weathering days, the 30-day practice window, the 24-hour memory of heard terms, the 24-hour recheck of sites, and every trait rule (margins in minutes, distances, shares). Year-anchored, scaled by the setting: regrowth per year, fish growth per year, tree regrowth in years, and the displayed calendar. A year-anchored duration is never shorter than one day.
+`daysPerYear` is a run setting from 8 to 365, default 90. Day-anchored, unchanged by the setting: sleep, the hour of rest, picking, gathering, chopping, drinking and making rates, spoilage, firewood per night, hut weathering days, the 30-day practice window, the 24-hour memory of heard terms, the one leisure walk a day, and every trait rule (margins in minutes, distances, shares). Year-anchored, scaled by the setting: regrowth per year, fish growth per year, tree regrowth in years, and the displayed calendar. A year-anchored duration is never shorter than one day.
 
 ### Streams
 
@@ -137,7 +158,7 @@ Every draw comes from a stream derived from the seed and a name: the terrain and
 - **body**: per founder, one draw `randomInt(2)` for sex (0 woman, 1 man), then three standard normals for height, weight and grip;
 - **traits**: per founder, five standard normals for openness, conscientiousness, extraversion, agreeableness and neuroticism, in that order.
 
-Nothing is drawn per minute. The mesh draws nothing.
+Nothing is drawn per minute. The mesh, ways and plans draw nothing.
 
 ## Bodies and personality
 
@@ -193,21 +214,48 @@ A person's five traits are stored as scores in thousandths of a spread, −3,000
 | Agreeableness | Gives way | In a wood-for-food exchange, the wood seller's share of the gain is `s = clamp(500 + 250 · (zA_buyer − zA_seller) / 1,000, 100, 900)` per mille, and the price in kcal per kg is `floor((seller.forageRate · buyer.woodRate · (1,000 − s) + buyer.forageRate · seller.woodRate · s) / (1,000 · seller.woodRate · buyer.woodRate))`. At equal agreeableness this is Life 13's midpoint. The swap still happens only if both gain at that price. The more agreeable side leaves more of the gain to the other. | as stated |
 | Conscientiousness | Plans ahead | The wood a person stocks to is `max(nightWood + 1, floor(woodStockNights · nightWood · f / 1,000))`; the energy at which they stop food work is `min(reserveMaxKcal, hungryBelowKcal + floor((satiatedAtKcal − hungryBelowKcal) · f / 1,000))`. Short of wood below one night, and hungry below `hungryBelowKcal`, are unchanged. | 1,000, 250, 500, 1,750 |
 | Neuroticism | Fear threshold | A person keeps `duskMarginMinutes · f / 1,000` minutes, at least 1, before dusk: they go home when the walk home would end later than dusk less the margin, and choose no work, check or water whose walk there and home would. Severe thirst ignores the margin, as it ignores dusk. | 1,000, 500, 0, 4,000 |
-| Openness | Tries the unfamiliar | (a) When idle (priority 9), a person explores the nearest frontier only if it lies within `exploreRangeCm · f / 1,000` of their hearth in a straight line; otherwise they recheck a place or rest. Exploring for water, food or wood they need is unchanged. (b) A known place whose stock they have never seen is expected to hold `capacity · g / 1,000`, with `g = clamp(750 + 250 · z / 1,000, 250, 1,000)`. | 1,000, 500, 250, 3,000 |
+| Openness | Tries the unfamiliar | (a) When idle (priority 9), a person explores the nearest frontier only if it lies within `exploreRangeCm · f / 1,000` of their hearth in a straight line; otherwise they take a walk or rest, below. Exploring for water, food or wood they need is unchanged. (b) A known place whose stock they have never seen is expected to hold `capacity · g / 1,000`, with `g = clamp(750 + 250 · z / 1,000, 250, 1,000)`. | 1,000, 500, 250, 3,000 |
 
 No other rule reads a trait. The trait factors and the body-derived quantities are stored with the person, and the checker recomputes them from the scores and the configuration.
 
 ## Knowledge and perception
 
-A person remembers: places, with kind, position, the stock last seen and the minute it was seen; bank points; the triangles of the mesh it has seen; people it has met, with the minute; heard exchange terms for 24 hours; its group, flag, hearth and hut. A person knows their own body and traits, and nobody else's.
+A person remembers: places, with kind, position, the stock last seen and the minute it was seen; bank points; the triangles of the mesh it has seen; the ways it has walked, below; the point of its last survey; people it has met, with the minute; heard exchange terms for 24 hours; its group, flag, hearth and hut. A person knows their own body and traits, and nobody else's.
 
-At every wake-up a person observes: every place and bank point within `sightRadiusCm` (1 km) becomes known; the place it stands at shows its stock; every triangle whose centroid lies within the sight radius becomes known; people within `talkRadiusCm` (20 m) are met. A chunk lying wholly within the sight radius marks all its triangles at once. Relief does not block sight. A stock not yet seen is expected at the openness share of capacity, above; a fish stock is learnt only by fishing. Triangle knowledge is a bit per triangle, shared with the previous state and copied only when the person learns a new triangle.
+At every wake-up a person observes in two parts:
 
-## Routes and movement
+- **The still landscape**, only if the person stands `resurveyCm` (100 m) or more from their last survey point, or has never surveyed: every resource place and bank point within `sightRadiusCm` (1 km) becomes known, and every triangle whose centroid lies within the sight radius becomes known. A chunk lying wholly within the sight radius marks all its triangles at once. The person's position becomes their survey point.
+- **What changes**, at every wake-up: hearths, flags and hut sites within the sight radius become known; the place the person stands at shows its stock; people within `talkRadiusCm` (20 m) are met, and people within sight are seen.
 
-A person may walk on ground triangles only. A route is found when a walk starts: A\* over the triangles the person knows and may walk on, costed by the distance between the midpoints of the edges crossed, ties by triangle id; if the target is unknown or unreachable, the person walks to the nearest known frontier, or rests with `no known route`. The funnel algorithm pulls the corridor tight; the path is cut at triangle edges into pieces, each with a length, a slope class from its triangle (flat below 10%, moderate to 30%, steep above), a ground class and a speed.
+Founders survey at their first wake-up. Relief does not block sight. A stock not yet seen is expected at the openness share of capacity, above; a fish stock is learnt only by fishing. Triangle knowledge is a bit per triangle, shared with the previous state and copied only when the person learns a new triangle.
 
-Speed is the person's flat loaded speed, above; moderate slopes divide it by `moderateSlowdownPerMille/1,000` uphill; steep slopes halve it uphill and divide by `steepDownSlowdownPerMille/1,000` downhill; ground multiplies time by Life 11's terrain percentages. Walking costs the person's walking rate on the flat, one and a half times that on moderate uphill and twice on steep. A walk's duration is summed in integer 1/60,000-minute units and rounded up at its end; remainders carry. Routes are cached per person by endpoints, knowledge revision and load.
+## Routes, ways and movement
+
+A person may walk on ground triangles only. A walk's route is a **corridor**, the chain of triangles it crosses, pulled tight by the funnel algorithm into a path, which is cut at triangle edges into pieces, each with a length, a slope class from its triangle (flat below 10%, moderate to 30%, steep above), a ground class and a speed.
+
+### Ways
+
+A way is a corridor the person walked to a place, a bank point or their hearth, with its two end points, its number, the minute it was planned, the person's knowledge revision then, and the minute it was last used. Way numbers count up per person from 0 and are never reused. A person holds at most `waysRemembered` ways. Ways are immutable records shared between states; a person's list is copied only when it changes.
+
+### Finding a walk's corridor
+
+When a walk to a target starts, in this order:
+
+1. **A remembered way.** If the target is a place, bank point or hearth, take the person's ways with an end at the target whose corridor holds the triangle the walker stands in, most recently used first, ties by lowest number. If one exists:
+   - if it has a triangle that is no longer walkable or known to the person, it is forgotten and the search goes on to step 2;
+   - if `wayRecheckMinutes` have passed since it was planned and the person's knowledge revision has changed since, it is planned afresh by step 2, and the new way replaces it;
+   - otherwise the walk takes the part of the corridor from the walker's triangle to the target's end, reversed if the target is the way's start. It is a **way** walk if the walker stands at the way's other end, and a **joined** walk otherwise.
+2. **A coarse plan.** If start and target lie in different chunks, an A\* over chunks finds a chain from the start's chunk to the target's, moving only between chunks linked for the person, costed by the distance between chunk centres, ties by chunk number. The band is the chain's chunks and every chunk next to one of them, side or corner. The fine A\* then runs over the person's known walkable triangles in the band. If both succeed, it is a **coarse** walk. If start and target share a chunk, the band is that chunk and its neighbours.
+3. **A full plan.** If the chunk chain or the band's search fails, the fine A\* runs over all the person's known walkable triangles, as in Life 14. It is a **full** walk.
+4. If the target is unknown or unreachable, the person walks to the nearest known frontier, or rests with `no known route`, as before.
+
+**Leisure.** A person idle at their hearth (priority 9, no frontier in range), who has not set out on a leisure walk this calendar day, takes the remembered way with an end at their hearth that was used longest ago (ties by lowest number) whose far end can be reached and left for home before dusk, less their dusk margin, by the straight-line estimate. They walk it to its far end, `out for a walk`, and the walk's start records the minute in `leisureMinute`. Idle away from their hearth, they walk home, `going home to rest`. Idle at home otherwise, they rest. A person with no such way rests.
+
+The fine A\* is Life 14's: costed by the distance between the midpoints of the edges crossed, ties by triangle id. Before a fine search, the person's known pieces of ground are compared as before; targets on another piece go straight to step 4. A coarse, full or rechecked plan to a place, bank point or hearth is remembered as a way between the walk's start and the target, replacing any way with the same two end points; when the person holds `waysRemembered` ways, the one used longest ago is forgotten first, ties by lowest number. Using a way sets its last-used minute. Walks to a frontier are never remembered.
+
+Two chunks are linked for a person when one of the mesh's chunk-crossing edges, listed once per layout, joins two triangles the person knows and may walk on. A triangle's chunk is the chunk holding its centroid.
+
+Speed is the person's flat loaded speed, above; moderate slopes divide it by `moderateSlowdownPerMille/1,000` uphill; steep slopes halve it uphill and divide by `steepDownSlowdownPerMille/1,000` downhill; ground multiplies time by Life 11's terrain percentages. Walking costs the person's walking rate on the flat, one and a half times that on moderate uphill and twice on steep. A walk's duration is summed in integer 1/60,000-minute units and rounded up at its end; remainders carry. The path, its pieces and their times are computed afresh for every walk from its corridor, the walker's position and their load.
 
 Travel estimates for choosing targets use straight-line distance at the person's flat loaded speed plus `climbMinutesPerMetre`, as a lower bound.
 
@@ -236,10 +284,10 @@ Water loss is `waterBaseMlPerDay/1,440` a minute plus `waterExtraMlPerKcal` per 
 
 1. Pay the body for the minutes since the last wake-up, at the ended task's rates for this person; credit what the task produced; record the task's events. If a fatal threshold was crossed, record the death at that minute and stop.
 2. Spoil carried lots past their life; eat oldest first up to reserve capacity.
-3. Observe. Meet people within talking distance: found or join a group, hear terms, exchange wood for food at the agreeableness price, request or promise an axe, deliver hut logs, contribute to the group's fire.
+3. Observe: survey the still landscape if the person has moved far enough, and always what changes. Meet people within talking distance: found or join a group, hear terms, exchange wood for food at the agreeableness price, request or promise an axe, deliver hut logs, contribute to the group's fire.
 4. Update needs: hunger with the person's own satiation level, thirst with the person's own thresholds, wood need with the person's own stock target.
 5. Choose the next task by the priorities below, using only memory.
-6. Start it: search its route if it is a walk, schedule its end and its first body threshold, record the task start.
+6. Start it: if it is a walk, take a remembered way or plan one, as above, and remember a new way; schedule its end and its first body threshold; record the task start with how the walk was found.
 
 ## Priorities
 
@@ -255,7 +303,7 @@ Choose the first applicable rule. "Before dusk" means before dusk less the perso
 | 6 | Not hungry and filling or carrying a wood load | Finish the person's load, or take a full load home. |
 | 7 | Neither hungry nor short of wood, without a group | Approach the nearest seen person, or else the nearest known flag, within the person's company radius; otherwise go on to priority 9. |
 | 8 | A member with neither food nor wood need | Finish an axe; otherwise cut hut logs if equipped; otherwise buy a worthwhile known axe or make one, fetching a stone and wood first. |
-| 9 | Neither food nor wood need | Explore the nearest frontier if it lies within the person's exploring range of home; otherwise recheck a reachable place after 24 hours; rest when none is available. |
+| 9 | Neither food nor wood need | Explore the nearest frontier if it lies within the person's exploring range of home. Otherwise, at home: once a day, walk out along a remembered way from home (below); else rest. Away from home: walk home to rest. |
 | 10 | Food or wood needed | Choose productive gathering or an advantageous local exchange; search if no remembered source is worth working; otherwise rest with the reason recorded. |
 
 Food choice scores one hour's expected food at a remembered place as `3,600 * rate / (estimatedWalkSeconds + 3,600)`, from the stock last seen, or the openness share of capacity if never seen. Work must leave time to return home before dusk less the margin, except drinking under severe thirst.
@@ -280,6 +328,14 @@ New parameters:
 
 | Parameter | Default | Basis |
 | --- | --- | --- |
+| `waysRemembered` | 64 | Enough for every place a person uses in a season and the ways between them; a person who uses more forgets the stalest. |
+| `wayRecheckMinutes` | 1,440 | A day: a shortcut seen today is taken from tomorrow. Day-anchored, unchanged by `daysPerYear`. |
+| `resurveyCm` | 10,000 | 100 m, a tenth of the sight radius. |
+
+Parameters added by Life 14, unchanged:
+
+| Parameter | Default | Basis |
+| --- | --- | --- |
 | `womanHeightCm`, `manHeightCm`, `heightSdCm` | 154, 165, 6 | Mesolithic European stature. |
 | `womanWeightKg`, `manWeightKg`, `weightSdKg` | 52, 62, 6 | Mesolithic European body mass. |
 | `womanGripKg`, `manGripKg`, `gripSdKg` | 24, 38, 6 | Forager-horticulturalist grip strength. |
@@ -293,9 +349,9 @@ New parameters:
 
 The base, effect, low and high of each trait rule are the values in the personality table, held in the configuration as `extraversionRule`, `agreeablenessRule`, `conscientiousnessRule`, `neuroticismRule`, `opennessRule` and `opennessExpectRule`, each `{ base, effect, low, high }` in per mille.
 
-Removed: `bodyKg`, replaced by each person's weight and `referenceBodyKg`. All other Life 13 defaults are retained.
+All other Life 14 defaults are retained.
 
-Validation rejects non-integers, non-finite values and unsafe products; settings outside their ranges; non-positive means and spreads; a mean less three spreads that is not positive; correlations outside −999…999; a correlation matrix that is not positive definite by the integer factorisation above; a rule with `low > high`, a negative `low`, or an `effect` whose product with 3,000 is unsafe; and every check that used `bodyKg` or `woodLoad` (such as a log still being movable, and work rates exceeding resting) evaluated at the extreme person: the lightest weight, the lowest load capacity, the highest scaled rates. It also keeps every Life 13 check on the mesh, places, thresholds and placement.
+Validation rejects a `waysRemembered` below 1 or above 1,000; a `wayRecheckMinutes` below 1; a `resurveyCm` below 1 or above `sightRadiusCm`. As in Life 14, it rejects non-integers, non-finite values and unsafe products; settings outside their ranges; non-positive means and spreads; a mean less three spreads that is not positive; correlations outside −999…999; a correlation matrix that is not positive definite by the integer factorisation above; a rule with `low > high`, a negative `low`, or an `effect` whose product with 3,000 is unsafe; and every check that used `bodyKg` or `woodLoad` (such as a log still being movable, and work rates exceeding resting) evaluated at the extreme person: the lightest weight, the lowest load capacity, the highest scaled rates. It also keeps every Life 13 check on the mesh, places, thresholds and placement.
 
 ## Invariants and ledger
 
@@ -304,6 +360,9 @@ The checker replays the events of each `stepValley` interval against the state i
 - **The mesh, once per layout:** as Life 13: winding, areas, neighbours, shores, shore heights, shoreline and heights within tolerance, places and banks on walkable ground.
 - **Bodies and traits:** every person's sex is 0 or 1; height, weight and grip lie within three spreads of their sex's mean; trait scores lie within −3,000…3,000; and the stored load capacity, rate table, thirst thresholds, company radius, exchange rule inputs, stock target, satiation level, dusk margin, exploring range and expected share equal those recomputed from the scores and the configuration. None changes during a run.
 - Every wake-up's body charge equals the person's own rates for the task over its minutes, with bounded remainders; energy and water at a wake-up equal the lazy functions evaluated there.
+- **Ways:** every person holds at most `waysRemembered` ways, no two with the same end points; every way's corridor is a chain of triangles each sharing an edge with the next, every one walkable and known to the person, its first and last holding its end points; numbers are below the person's next way number; last-used minutes are not in the future. Every walk recorded as a way or joined walk stays within the triangles of the way it names. The checker does not recompute the coarse band or the recheck rule; unit fixtures cover both.
+- **Leisure:** nobody sets out on two leisure walks in one calendar day, and `leisureMinute` is the start of the last one.
+- **Survey:** each observation is replayed against the rule: it is a survey exactly when the person had no survey point or stood at least `resurveyCm` from it, and the survey point changes only at a survey, to where they stood.
 - No person's trip wood exceeds their load capacity.
 - Every exchange's price equals the agreeableness price for its two parties, and both gained at it.
 - Every person's position at every recorded minute is on walkable ground, and every route segment lies in walkable triangles the person knew when the walk started. Nobody is at two places, and the chunk index agrees with positions.
@@ -312,11 +371,16 @@ The checker replays the events of each `stepValley` interval against the state i
 - Every decision reads memory only.
 - Hunger and thirst hysteresis with the person's own levels, death minute and cause, and group dissolution below two living members follow the stated order.
 
-Events are as Life 13; an exchange records its price and the seller's share. Daily summaries per person and per group as Life 13. World metrics add, once per run, the founders' body and trait means and spreads by sex.
+Events are as Life 14; a walk's start records how it was found (`plan`: `way`, `joined`, `coarse` or `full`; a walk to a frontier is coarse or full), whether a way was dropped and planned again (`rechecked`), and the way it used (`wayId`, −1 for a new plan). An observation records whether it was a survey. Daily summaries and world metrics are as Life 14.
 
 ## Observer
 
-Label the page **Life 14 · strangers**. Everything else in the settings screen, loading card, header, history panel, group card, playback and landscape is as Life 13.
+Label the page **Life 15 · strangers**. Everything else in the settings screen, loading card, header, history panel, group card, playback and landscape is as Life 14.
+
+- **Ways.** When a person is followed, their remembered ways are drawn as faint lines on the ground, from the corridors pulled tight, the most recently used strongest; the current walk is drawn as before.
+- **Person panel.** Adds a "Ways" row ("Knows 23"), and the current walk says how it was found: "on a known way", "joining a known way" or "planning a new way".
+
+Unchanged from Life 14:
 
 - **Figures.** Each person's figure is scaled to their height, and widened slightly with weight, so the founders visibly differ. Women and men differ only by this; no other marker.
 - **Person panel.** Adds a body line, for example "Woman · 157 cm · 51 kg · grip 25 kg · carries 26 kg", and five trait rows, each a small bar from −3 to +3 spreads with a word: *very low* below −1.5, *low* to −0.5, *average* to 0.5, *high* to 1.5, *very high* above. The words are the observer's, not the engine's.
@@ -324,23 +388,36 @@ Label the page **Life 14 · strangers**. Everything else in the settings screen,
 
 ## Code layout
 
-- New `src/valley/nature.ts`: integer normal draws, the integer Cholesky factor, drawing bodies and traits from their streams, the trait rule factors, and each person's derived quantities and rate table.
-- `layout.ts`: the body and traits stream salts beside the skill and craft salts; founders take their bodies and traits from `nature.ts`.
-- `types.ts`, `config.ts`: the person's body, traits and derived quantities; the new parameters, their defaults and validation; `bodyKg` removed.
-- `body.ts`: thirst thresholds per person.
-- `forager.ts`, `routes.ts`, `tasks.ts`, `wake.ts`: speed, rates, load capacity and dusk margin per person; priorities 7 and 9 and the unseen-stock expectation by trait.
-- `trade.ts`: the agreeableness price, which replaces `pairTerms`' midpoint; the person's own wood target.
-- `invariants.ts`, `replay.ts`: the checks above.
-- `src/valleyView/`: figure scale, the person panel's body and traits, the exchange line, the Life 14 label.
-- `docs/LIFE13_SPEC.md` is removed: this specification replaces it.
+- New `src/valley/ways.ts`: a person's ways, finding one for a walk, joining, rechecking, remembering and forgetting.
+- `routes.ts`: corridors from a way; the chunk-crossing edges in the nav map, the coarse chunk A\*, and the fine A\* limited to a band; `knownRoute` split into finding a corridor and timing a path along it.
+- `forager.ts`: `routeFor` uses ways, coarse and full plans in that order; the route cache and `routeKey` are removed; the idle rule takes a leisure walk or goes home to rest in place of rechecking places, and `exploreAfterHours` is removed.
+- `wake.ts`: a walk's start remembers its way and records how it was found.
+- `perception.ts`: the survey point; the still landscape surveyed only after moving `resurveyCm`; people-made places and people every wake-up.
+- `types.ts`, `config.ts`, `engine.ts`: the person's ways, next way number and survey point, shared between states; the new parameters and their validation.
+- `invariants.ts`: the checks above.
+- `src/valleyView/`: the followed person's ways, the panel wording, the Life 15 label.
+- `docs/LIFE14_SPEC.md` is removed: this specification replaces it.
 
-The terrain, hydrology and mesh (`terrain.ts`, `water.ts`, `mesh.ts`) are unchanged. The MVP9 core is unchanged.
+Bodies and traits (`nature.ts`), the terrain, hydrology and mesh (`terrain.ts`, `water.ts`, `mesh.ts`) are unchanged. The MVP9 core is unchanged.
 
 ## Tests and implementation acceptance
 
-The Life 13 fingerprint suite passes before engine edits. Every trajectory changes, because bodies change speeds, loads and rates and traits change choices: this step records new fingerprints for all its configurations. The founder, skill and craft draws must be the same as Life 13's on every fingerprint seed; a test asserts this. Fingerprints are not updated to conceal a failed rule.
+The Life 14 fingerprint suite passes before engine edits. Every trajectory changes, because reused ways and coarse plans give different paths and the survey rule changes what people know when: this step records new fingerprints for all its configurations. The founders, their bodies and traits stay the same as Life 14's on every fingerprint seed, because the code that draws them is untouched; `life13-founders.json` still checks starts and born skills. Fingerprints are not updated to conceal a failed rule.
 
-Unit fixtures:
+New unit fixtures:
+
+1. Reuse: a second walk from home to a thicket follows the first walk's corridor; a walk back from the thicket follows it reversed.
+2. Joining: a walk starting in a triangle of a way to the target follows the rest of that way and is recorded as joined; a walk starting one triangle off it is planned.
+3. Recheck: on a fixture where new ground opens a shorter path, the way is kept within a day of planning, replaced after a day, and kept after a day when nothing new was seen.
+4. Forgetting: with `waysRemembered` ways held, a new way forgets the one used longest ago; a new way between the same end points replaces the old one.
+5. Load: the same way walked loaded and unloaded has the same corridor and different times.
+6. Coarse planning: on an open fixture the corridor lies in the band of the chunk chain; on a fixture where a strip of unknown ground walls off the band, the full search finds the way round and the plan is full.
+7. Chunk links: two chunks are linked only when the person knows walkable triangles on both sides of a crossing edge.
+8. Survey: a person who has moved less than 100 m learns no new triangles; after moving 100 m they learn what came into sight.
+9. The checker rejects a way through an unknown triangle, a corridor with a gap, one way too many, and a survey recorded against the rule.
+10. Leisure: an idle person at home with nothing to explore walks out along the way from home used longest ago, once a calendar day; away from home they walk home to rest; with no time to return before dusk they rest.
+
+Life 14 fixtures, kept:
 
 1. Normals: 10,000 integer normals have mean within 0.03 spreads of 0 and spread within 0.03 of 1, and none outside the clamp.
 2. Factorisation: the integer factor of the default body and trait matrices matches the tables above within 1 per mille; a matrix that is not positive definite is rejected.
@@ -352,28 +429,39 @@ Unit fixtures:
 8. Conscientiousness: a conscientious person stocks more wood and stops eating work at a higher energy; the stock target never falls to one night.
 9. Neuroticism: a neurotic person turns home earlier on the same fixture afternoon; severe thirst ignores the margin.
 10. Openness: an idle person at −2 spreads does not explore a frontier 1 km from home, one at +1 does; an open person ranks an unseen thicket above a seen half-full one where a closed person does not.
-11. The checker rejects a weight outside three spreads, a stored load capacity that disagrees with grip, a trip load above capacity, a body charge at the reference rate instead of the person's, an exchange off the agreeableness price, and the Life 13 corruptions.
-12. Streams: the founder positions and born skills on the canonical seed equal Life 13's.
-13. The existing queue, lazy-body, places, mesh, routes, food, fire, hut, axe, trade and group tests, with their fixtures given explicit bodies and traits where they depend on them (an average person: reference weight and grip, all scores 0).
+11. The checker rejects a weight outside three spreads, a stored load capacity that disagrees with grip, a trip load above capacity, a body charge at the reference rate instead of the person's, an exchange off the agreeableness price, and the earlier corruptions.
+12. The existing queue, lazy-body, places, mesh, routes, food, fire, hut, axe, trade, group and playback tests, with route fixtures updated where a reused way or a coarse plan now gives a different path.
 
-Final validation is `npm run agent:check`. Measured once and recorded in the lab notes: the forty founders' body means by sex and the largest gap between a measured and a target correlation, against the tables above; and the year of forty. In the browser: the person panel of a woman and a man, figures of visibly different heights, an exchange line with its price, and the console clean.
+Final validation is `npm run agent:check`. Measured once and recorded in the lab notes, on the canonical seed: the walks of each kind by day; the median and largest excess of way walks over the shortest known path; the share of new plans needing the full search; the year of forty's time and memory; and a profile of day 12 against update 065's. In the browser: a followed person's ways drawn, the panel's wording during a walk, 1 month/s against the 8 frames a second of update 065, and the console clean.
 
 ## Questions for later
 
+- Should people join a way from nearby, not only from on it, and how near?
+- Is once a day the right pace for noticing a shortcut, and should it depend on openness?
+- Should ways be chosen by expected time, with slopes and ground, rather than distance?
+- Should the coarse level be landmarks (places, banks, the hearth) rather than squares of land?
+- Do shared ways wear trails that make walking faster, and do trails gather people and places along them?
+- Should a person tell or show a way to someone they trust (steps 16 and 24)?
+- Does sight need to stop at ridges once surveys are rarer?
 - How strong should each trait's effect be? The effects here are judgement; there is no field measure of how far an extravert walks to meet a stranger.
 - Does the mean body mass, by scaling energy, change survival at forty founders compared with Life 13?
 - Do strong people end up gathering most of the wood, and do agreeable people end up poorer?
 - Should height affect walking speed (longer legs), or only weight and load?
 - Should strength also speed chopping and log carrying?
 - What default year, within 60 to 120 days, makes seasons long enough to matter?
-- Should personality drift with age and experience, once people age at step 18?
+- Should personality drift with age and experience, once people age at step 19?
 
 ## Left out
 
-Children, growth, ageing and pairing (step 18); fights, injury, yielding and fear in disputes (step 16); relationships (step 15); prestige and leadership (step 17); illness; heat balance and clothing; skills correlated with body or traits; personality change; any trait used by more than one rule; wading, swimming and boats; seasons and weather; herds, planting, property and recipes beyond axes and huts.
+Trails, shared or taught ways, ways blocked by anything, and sight blocked by relief; children, growth, ageing and pairing (step 19); fights, injury, yielding and fear in disputes (step 17); relationships (step 16); prestige and leadership (step 18); illness; heat balance and clothing; skills correlated with body or traits; personality change; any trait used by more than one rule; wading, swimming and boats; seasons and weather; herds, planting, property and recipes beyond axes and huts.
 
 ## References
 
+- Siegel, A. and White, S. (1975), *The development of spatial representations of large-scale environments*, Advances in Child Development and Behavior: landmark, route and survey knowledge.
+- Golledge, R. (1995), *Path selection and route preference in human navigation: a progress report*; Golledge, R. (ed.) (1999), *Wayfinding Behavior: Cognitive Mapping and Other Spatial Processes*.
+- Hölscher, C., Tenbrink, T. and Wiener, J. (2011), *Would you follow your own route description? Cognitive strategies in urban route planning*, Cognition.
+- Zhu, S. and Levinson, D. (2015), *Do people use the shortest path? An empirical test of Wardrop's first principle*, PLoS ONE.
+- Botea, A., Müller, M. and Schaeffer, J. (2004), *Near optimal hierarchical path-finding*, Journal of Game Development.
 - Formicola, V. and Giannecchini, M. (1999), *Evolutionary trends of stature in Upper Paleolithic and Mesolithic Europe*, Journal of Human Evolution.
 - Ruff, C. (ed.) (2018), *Skeletal Variation and Adaptation in Europeans: Upper Paleolithic to the Twentieth Century*: stature and body mass estimates.
 - Gurven, M. et al. (2006), on strength and physical capacity among Tsimane forager-horticulturalists; Apicella, C. (2014), *Upper-body strength predicts hunting reputation and reproductive success in Hadza hunter-gatherers*.

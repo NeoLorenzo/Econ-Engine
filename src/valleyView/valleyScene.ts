@@ -12,6 +12,7 @@ import type {
 } from 'three'
 
 import { isDaylight } from '../valley/forager'
+import { corridorRoute } from '../valley/routes'
 import { siteCount } from '../valley/sites'
 import { livingMembers } from '../valley/social'
 import { TiledInstances } from './tiledInstances'
@@ -491,9 +492,15 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     new THREE.BufferGeometry(),
     new THREE.PointsMaterial({ color: 0x9be4f4, size: 0.55, depthWrite: false }),
   )
-  scene.add(plannedRoute, rememberedBanks)
+  // The followed person's remembered ways, brighter the more recently used.
+  const rememberedWays = new THREE.LineSegments(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false }),
+  )
+  scene.add(plannedRoute, rememberedBanks, rememberedWays)
   let routeKey = ''
   let banksKey = ''
+  let waysDrawn: { id: number; ways: ValleyState['foragers'][number]['ways'] } | null = null
   let overlaysFor = -1
   let overlaysDrawnMs = -Infinity
   const selectRing = new THREE.Mesh(
@@ -1214,6 +1221,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   function setWorld(state: ValleyState) {
     routeKey = ''
     banksKey = ''
+    waysDrawn = null
     clearWorld()
     config = state.config
     layout = state.layout
@@ -1805,6 +1813,30 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       plannedRoute.geometry = new THREE.BufferGeometry()
       plannedRoute.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
     }
+    rememberedWays.visible = !!followed
+    if (followed && overlaysDue && (waysDrawn?.id !== followedId || waysDrawn.ways !== followed.ways)) {
+      waysDrawn = { id: followedId, ways: followed.ways }
+      const vertices: number[] = [],
+        colors: number[] = []
+      const ranked = [...followed.ways].sort((a, b) => a.usedMinute - b.usedMinute || a.id - b.id)
+      ranked.forEach((way, rank) => {
+        const shade = 0.35 + (0.65 * (rank + 1)) / ranked.length
+        const path = corridorRoute(state.layout.nav, state.config, 0, way.corridor, way.a, way.b).segments
+        for (const segment of path) {
+          const pieces = Math.max(1, Math.ceil(segment.lengthCm / 10_000))
+          for (let piece = 0; piece < pieces; piece += 1)
+            for (const t of [piece / pieces, (piece + 1) / pieces]) {
+              const p = at(segment.x0 + (segment.x1 - segment.x0) * t, segment.y0 + (segment.y1 - segment.y0) * t)
+              vertices.push(p.x, groundY(p.x, p.z) + 0.1, p.z)
+              colors.push(shade, shade * 0.93, shade * 0.8)
+            }
+        }
+      })
+      rememberedWays.geometry.dispose()
+      rememberedWays.geometry = new THREE.BufferGeometry()
+      rememberedWays.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+      rememberedWays.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    }
     const bankKey = `${followedId}:${followed?.knownBanks.size}`
     if (bankKey !== banksKey && followed && overlaysDue) {
       banksKey = bankKey
@@ -2293,6 +2325,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       plannedRoute.material.dispose()
       rememberedBanks.geometry.dispose()
       rememberedBanks.material.dispose()
+      rememberedWays.geometry.dispose()
+      rememberedWays.material.dispose()
       for (const line of memberLines) {
         line.geometry.dispose()
         ;(line.material as InstanceType<Three['LineBasicMaterial']>).dispose()
