@@ -5,7 +5,6 @@ import { dayOfYear, MINUTES_PER_DAY, seasonOf, yearOf, yearsToDays } from '../va
 import { carriedByFood, carriedKcal, spoilsIn } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { ringOf, fishCapacityKcal } from '../valley/config'
-import { stepValley } from '../valley/engine'
 import { campfireBurn } from '../valley/fire'
 import { isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
@@ -26,8 +25,8 @@ export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } 
 export { foragerColor, formatHours }
 
 /**
- * The simulation advances from wake-up to wake-up; the display does not. It keeps the state of the last `stepValley`
- * and a continuous minute less than one minute after it, and draws each person from their task record at that minute.
+ * The simulation advances from wake-up to wake-up; the display does not. It keeps a state the engine sent and a
+ * continuous minute less than one minute after it, and draws each person from their task record at that minute.
  * Every wake-up at or before the drawn minute has been processed, and none after it, so the task drawn is the task under
  * way.
  */
@@ -68,36 +67,89 @@ export const DEFAULT_SPEED_INDEX = 0
 export const MAX_FRAME_SECONDS = 0.25
 
 /**
- * High speeds are best effort: the engine gets about this long a frame, so the controls and renderer can run. At map
- * speeds no people are drawn, so a slower frame rate is acceptable.
+ * The engine, in a worker, runs this far ahead of the clock, in wall seconds at the speed shown, so a state is waiting
+ * at each whole minute the clock reaches.
  */
-export const SIMULATION_FRAME_BUDGET_MS = 40
+export const LEAD_SECONDS = 0.1
+
+/** How many minutes apart the engine sends states: about one a frame at 60 frames a second, and at least one a minute. */
+export const strideOf = (speed: Pick<ValleySpeed, 'minutesPerSecond'>) =>
+  Math.max(1, Math.floor(speed.minutesPerSecond / 60))
 
 /**
- * Advances the displayed minute by the wall time elapsed at `speed`, running the engine up to the last whole minute at
- * or before it. The engine checks the budget between wake-ups, so one step a frame suffices: copying the valley for
- * each of many short steps had cost more than the wake-ups themselves at high speeds. When the engine cannot keep up
- * within `budgetMs`, it stops at the last minute it ran, and the clock advances less.
+ * Playback from states the engine sends. `states` are those received and not yet passed, oldest first; the first is
+ * the one drawn, and is at or before the clock. The engine is asked to run to `goal`, and never runs past it.
  */
-export function advanceDisplay(
-  display: Display,
-  elapsedSeconds: number,
-  speed: Pick<ValleySpeed, 'minutesPerSecond'>,
-  budgetMs = SIMULATION_FRAME_BUDGET_MS,
-  now: () => number = () => performance.now(),
-): Display {
-  const target = display.minute + Math.min(MAX_FRAME_SECONDS, Math.max(0, elapsedSeconds)) * speed.minutesPerSecond
-  const toMinute = Math.floor(target)
-  if (toMinute <= display.state.minute) return { state: display.state, minute: target }
-  const started = now()
-  const state = stepValley(display.state, toMinute, () => now() - started >= budgetMs)
-  return { state, minute: state.minute < toMinute ? state.minute : target }
+export interface Playback {
+  states: ValleyState[]
+  /** The minute the clock shows, continuously. */
+  clock: number
+  goal: number
+  /** A minute the Step button asked for and not yet shown, or null. */
+  stepTo: number | null
 }
 
-/** Runs the engine to the next whole minute and shows it. */
-export function stepDisplay(display: Display): Display {
-  const state = stepValley(display.state, Math.floor(display.minute) + 1)
-  return { ...display, state, minute: state.minute }
+export const startPlayback = (state: ValleyState): Playback => ({
+  states: [state],
+  clock: state.minute,
+  goal: state.minute,
+  stepTo: null,
+})
+
+/** Takes a state from the engine. A state at the newest minute replaces it (a copy with another person's memory). */
+export function receiveState(playback: Playback, state: ValleyState): Playback {
+  const states = playback.states.filter((s) => s.minute < state.minute)
+  return { ...playback, states: states.length ? [...states, state] : [state] }
+}
+
+/** Less than a minute: a state is drawn up to its minute plus this. */
+const WITHIN_MINUTE = 1 - 1 / 1024
+
+/**
+ * Advances the clock by the wall time elapsed at `speed` while running, and asks the engine to run `LEAD_SECONDS`
+ * ahead. When the engine has not reached the clock's whole minute, the clock waits within the newest state's minute.
+ * The state drawn is the newest at or before the clock, and the minute drawn is less than one minute after it.
+ */
+export function advancePlayback(
+  playback: Playback,
+  elapsedSeconds: number,
+  speed: Pick<ValleySpeed, 'minutesPerSecond'>,
+  running: boolean,
+): { playback: Playback; display: Display } {
+  const newest = playback.states.at(-1)!
+  let { clock, goal, stepTo } = playback
+  if (stepTo !== null && newest.minute >= stepTo) {
+    clock = Math.max(clock, stepTo)
+    stepTo = null
+  }
+  if (running) {
+    const target = clock + Math.min(MAX_FRAME_SECONDS, Math.max(0, elapsedSeconds)) * speed.minutesPerSecond
+    clock = Math.max(clock, Math.min(target, newest.minute + WITHIN_MINUTE))
+  }
+  // Paused too, so playing on finds the states ahead already sent.
+  goal = Math.max(goal, Math.floor(clock + LEAD_SECONDS * speed.minutesPerSecond))
+  const states = [...playback.states]
+  while (states.length > 1 && states[1]!.minute <= clock) states.shift()
+  const state = states[0]!
+  return {
+    playback: { states, clock, goal, stepTo },
+    display: { state, minute: Math.max(state.minute, Math.min(clock, state.minute + WITHIN_MINUTE)) },
+  }
+}
+
+/** Shows the next whole minute once the engine has run it. */
+export function stepPlayback(playback: Playback): Playback {
+  const stepTo = Math.floor(playback.clock) + 1
+  return { ...playback, stepTo, goal: Math.max(playback.goal, stepTo) }
+}
+
+/**
+ * On a change of speed the clock moves on to the newest state, so the states sent apart for the old speed are not
+ * shown at the new one; what is skipped is at most `LEAD_SECONDS` at the old speed.
+ */
+export function changeSpeed(playback: Playback): Playback {
+  const newest = playback.states.at(-1)!
+  return { ...playback, states: [newest], clock: Math.max(playback.clock, newest.minute) }
 }
 
 /** Minutes since midnight of day 0, continuously. */

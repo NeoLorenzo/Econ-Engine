@@ -8,8 +8,10 @@ import { palette } from '../ui/theme'
 import { isDaylight } from '../valley/forager'
 import type { ValleyState } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
+import type { EngineLink } from './engineLink'
 import {
-  advanceDisplay,
+  advancePlayback,
+  changeSpeed,
   aliveCount,
   clearView,
   calendarLabel,
@@ -37,13 +39,18 @@ import {
   stoneInspection,
   specializationPoints,
   thirstLevel,
-  stepDisplay,
+  receiveState,
+  startDisplay,
+  startPlayback,
   stepFollowed,
+  stepPlayback,
+  strideOf,
   taskSummary,
   TERMS_COLORS,
   VALLEY_SPEEDS,
   type ClearView,
   type Display,
+  type Playback,
 } from './valleyViewModel'
 
 /** What the HUD shows, refreshed a few times a second rather than every frame. */
@@ -119,22 +126,23 @@ const fireLabel = (fire: { lit: boolean; wood: number; nights: number }, dayligh
   `${fire.lit ? 'burning' : daylight && fire.wood > 0 ? 'banked for the night' : 'out'}, ${formatKg(fire.wood)} of wood${fire.wood ? ` (${fire.nights.toFixed(1)} nights)` : ''}`
 
 /**
- * Plays the run that `start` begins; its settings are fixed, and `onNewRun` leaves it for the settings screen.
+ * Plays the run that `engine` runs; its settings are fixed, and `onNewRun` leaves it for the settings screen.
  * `onReady` is called once the valley's first frame is drawn, or the 3D view has failed to start.
  */
 export default function ValleyApp({
-  start,
+  engine,
   onNewRun,
   onReady,
 }: {
-  start: Display
+  engine: EngineLink
   onNewRun: () => void
   onReady: () => void
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<ValleyScene | null>(null)
-  const [initialPair] = useState(start)
+  const [initialPair] = useState(() => startDisplay(engine.first))
   const pairRef = useRef<Display>(initialPair)
+  const playbackRef = useRef<Playback>(startPlayback(engine.first))
   const [running, setRunning] = useState(true)
   const [showFlow, setShowFlow] = useState(false)
   const flowRef = useRef(false)
@@ -149,6 +157,7 @@ export default function ValleyApp({
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
   const aboutRef = useRef<HTMLDialogElement | null>(null)
   const readyRef = useRef(onReady)
+  const engineRef = useRef(engine)
   useEffect(() => {
     readyRef.current = onReady
   }, [onReady])
@@ -166,12 +175,19 @@ export default function ValleyApp({
   useEffect(() => {
     runningRef.current = running
     flowRef.current = showFlow
+    if (speedRef.current !== VALLEY_SPEEDS[speedIndex]) playbackRef.current = changeSpeed(playbackRef.current)
     speedRef.current = VALLEY_SPEEDS[speedIndex]!
     selectedRef.current = selected
     highlightedRef.current = highlightedId
     followedRef.current = followedId
     followingRef.current = following
   }, [running, speedIndex, selected, highlightedId, followedId, following, showFlow])
+
+  useEffect(() => {
+    return engine.listen((state) => {
+      playbackRef.current = receiveState(playbackRef.current, state)
+    })
+  }, [engine])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -181,6 +197,7 @@ export default function ValleyApp({
     let lastFrame = performance.now()
     let lastHud = 0
     let rate = { atMs: performance.now(), minute: pairRef.current.minute, perSecond: 0 }
+    let asked = { goal: -1, stride: 0, followedId: -1 }
     const onPick = (pick: ValleyPick | null) => {
       if (pick?.kind === 'forager') {
         followedRef.current = pick.id
@@ -210,7 +227,16 @@ export default function ValleyApp({
           const elapsed = (now - lastFrame) / 1000
           lastFrame = now
           const speed = speedRef.current
-          if (runningRef.current) pairRef.current = advanceDisplay(pairRef.current, elapsed, speed)
+          const advanced = advancePlayback(playbackRef.current, elapsed, speed, runningRef.current)
+          playbackRef.current = advanced.playback
+          pairRef.current = advanced.display
+          const goal = advanced.playback.goal,
+            stride = strideOf(speed),
+            followed = followedRef.current
+          if (goal !== asked.goal || stride !== asked.stride || followed !== asked.followedId) {
+            asked = { goal, stride, followedId: followed }
+            engineRef.current.ask(goal, stride, followed)
+          }
           scene.draw(pairRef.current, {
             showFlow: flowRef.current,
             drawPeople: !speed.map,
@@ -223,7 +249,8 @@ export default function ValleyApp({
           })
           if (!drawn) {
             drawn = true
-            readyRef.current()
+            // The loading card stays until the engine's thread has built its valley too.
+            void engineRef.current.ready.then(() => readyRef.current())
           }
           if (now - lastHud >= (speed.map ? MAP_HUD_INTERVAL_MS : HUD_INTERVAL_MS)) {
             lastHud = now
@@ -279,10 +306,9 @@ export default function ValleyApp({
     sceneRef.current?.showGroup(id, clear)
   })
 
-  /** Finishes the minute in progress, then shows the next one from its start. */
+  /** Finishes the minute in progress, then shows the next one from its start once the engine has run it. */
   const stepMinute = useCallback(() => {
-    pairRef.current = stepDisplay(pairRef.current)
-    setSnapshot(snap(pairRef.current, followedRef.current))
+    playbackRef.current = stepPlayback(playbackRef.current)
   }, [])
 
   useEffect(() => {

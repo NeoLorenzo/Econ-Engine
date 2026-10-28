@@ -3,16 +3,43 @@ import { FLAT_LAND } from '../valley/config'
 import { stepValley } from '../valley/engine'
 import { createSurveyedValley } from '../valley/ruleFixtures'
 import {
-  advanceDisplay,
+  advancePlayback,
+  changeSpeed,
   foragerPose,
+  LEAD_SECONDS,
   mapSpeedMinutesPerSecond,
+  receiveState,
   routePoints,
-  startDisplay,
+  startPlayback,
+  stepPlayback,
+  strideOf,
   VALLEY_SPEEDS,
-  type Display,
+  type Playback,
+  type ValleySpeed,
 } from './valleyViewModel'
+import type { ValleyState } from '../valley/types'
 
-const start = () => startDisplay(createSurveyedValley({ ...FLAT_LAND, founders: 2 }))
+const first = () => createSurveyedValley({ ...FLAT_LAND, founders: 2 })
+
+/** The engine's thread, answering at once: it runs to the goal, sending a state every `stride` minutes. */
+function answer(playback: Playback, engine: { state: ValleyState }, stride: number) {
+  while (engine.state.minute < playback.goal) {
+    engine.state = stepValley(engine.state, Math.min(playback.goal, engine.state.minute + stride))
+    playback = receiveState(playback, engine.state)
+  }
+  return playback
+}
+
+/** Plays frames of `elapsed` seconds at `speed`, as the page does, with an engine that keeps up. */
+function* play(state: ValleyState, speed: Pick<ValleySpeed, 'minutesPerSecond'>, frames: Iterable<number>) {
+  const engine = { state }
+  let playback = startPlayback(state)
+  for (const elapsed of frames) {
+    const advanced = advancePlayback(playback, elapsed, speed, true)
+    playback = answer(advanced.playback, engine, strideOf(speed))
+    yield { display: advanced.display, playback: advanced.playback }
+  }
+}
 
 /** The distance from `point` to the nearest segment of the polyline `points`. */
 function distanceToPath(point: { x: number; y: number }, points: readonly { x: number; y: number }[]) {
@@ -30,22 +57,32 @@ function distanceToPath(point: { x: number; y: number }, points: readonly { x: n
 }
 
 describe('drawing people from task records', () => {
-  it('draws within the minute the state has reached, and never goes back', () => {
-    let display: Display = start()
-    for (const elapsed of [0.016, 0.1, 0.25, 3, 0.033, 0.2]) {
-      const before = display.minute
-      display = advanceDisplay(display, elapsed, { minutesPerSecond: 10 })
-      expect(display.minute).toBeGreaterThanOrEqual(before)
-      expect(display.state.minute).toBe(Math.floor(display.minute))
+  it('draws within the minute after the state drawn, never goes back, and asks only the lead ahead', () => {
+    for (const minutesPerSecond of [10, 60, 1_440]) {
+      let before = 0
+      for (const { display, playback } of play(
+        first(),
+        { minutesPerSecond },
+        [0.016, 0.1, 0.25, 3, 0.033, 0.2, 0.016],
+      )) {
+        expect(display.minute).toBeGreaterThanOrEqual(before)
+        expect(display.state.minute).toBeLessThanOrEqual(display.minute)
+        expect(display.minute).toBeLessThan(display.state.minute + 1)
+        expect(playback.goal).toBeLessThanOrEqual(Math.floor(playback.clock + LEAD_SECONDS * minutesPerSecond))
+        before = display.minute
+      }
+      // With an engine that keeps up and frames at 60 a second, the clock runs at the speed shown.
+      // Only the first frame, before the engine has run ahead, waits within the first minute.
+      const frames = [...play(first(), { minutesPerSecond }, Array(61).fill(1 / 60))]
+      expect(frames.at(-1)!.playback.clock - frames[0]!.playback.clock).toBeCloseTo(minutesPerSecond, 2)
     }
   })
 
   it('positions lie on the recorded route at every displayed minute', () => {
-    let display: Display = start()
     let walked = 0
-    for (let frame = 0; frame < 6_000 && walked < 40; frame += 1) {
-      // Three-tenths of a minute a frame, from midnight through the first morning's walks.
-      display = advanceDisplay(display, 0.1, { minutesPerSecond: 3 })
+    // Three-tenths of a minute a frame, from midnight through the first morning's walks.
+    for (const { display } of play(first(), { minutesPerSecond: 3 }, Array(6_000).fill(0.1))) {
+      if (walked >= 40) break
       for (const id of [0, 1]) {
         const task = display.state.foragers[id]!.task
         if (task?.kind !== 'walk' || display.minute < task.startMinute) continue
@@ -57,35 +94,30 @@ describe('drawing people from task records', () => {
     expect(walked).toBeGreaterThan(0)
   })
 
-  it('runs the engine until the frame budget is spent, and at least one wake-up minute a frame', () => {
-    const ticking = (ms: number) => {
-      let t = 0
-      return () => (t += ms)
-    }
-    const first = start()
-    const wakeUpsTo = (minute: number) => stepValley(first.state, minute).totals.wakeUps
-    // Each clock reading is 100 ms later, past the budget at once: the frame runs only the first wake-up minute after
-    // the one it starts at.
-    let display: Display = advanceDisplay(first, 0.25, { minutesPerSecond: 1_440 }, 40, ticking(100))
-    expect(display.minute).toBeGreaterThan(first.minute)
-    // Wake-ups due at the starting minute itself run in the next step.
-    expect(wakeUpsTo(display.minute - 1)).toBe(wakeUpsTo(first.minute + 1))
-    expect(display.state.minute).toBe(display.minute)
-    // Each reading is 10 ms later: the step stops between wake-ups, short of the minute wanted.
-    const before = display.minute
-    display = advanceDisplay(display, 0.25, { minutesPerSecond: 1_440 }, 40, ticking(10))
-    expect(display.minute).toBeGreaterThan(before)
-    expect(display.minute).toBeLessThan(before + 360)
-    expect(display.state.minute).toBe(display.minute)
-    // With time to spare, the frame reaches the minute wanted, and matches a step there in one go.
-    const reached = display.minute
-    display = advanceDisplay(display, 0.1, { minutesPerSecond: 1_440 }, 40, ticking(0))
-    expect(display.minute).toBeCloseTo(reached + 144)
-    expect(display.state.minute).toBe(Math.floor(display.minute))
-    const direct = stepValley(first.state, display.state.minute)
-    expect(display.state.foragers.map((p) => [p.x, p.y, p.energyKcal])).toEqual(
-      direct.foragers.map((p) => [p.x, p.y, p.energyKcal]),
-    )
+  it('waits within the newest state while the engine is behind, and steps once it has run', () => {
+    const state = first()
+    let playback = startPlayback(state)
+    // No answer: the clock stops short of the next minute.
+    for (let frame = 0; frame < 10; frame++)
+      playback = advancePlayback(playback, 0.25, { minutesPerSecond: 60 }, true).playback
+    expect(playback.clock).toBeLessThan(state.minute + 1)
+    expect(playback.goal).toBeGreaterThan(state.minute)
+    const engine = { state }
+    playback = answer(playback, engine, 1)
+    const { playback: moved, display } = advancePlayback(playback, 0.1, { minutesPerSecond: 60 }, true)
+    expect(display.state.minute).toBeGreaterThan(state.minute)
+    // Paused, Step shows the next minute only once the engine sends it.
+    let paused = stepPlayback(moved)
+    const wanted = paused.stepTo!
+    expect(paused.goal).toBeGreaterThanOrEqual(wanted)
+    paused = answer(paused, engine, 1)
+    const stepped = advancePlayback(paused, 1, { minutesPerSecond: 60 }, false)
+    expect(stepped.display.minute).toBe(wanted)
+    expect(stepped.display.state.minute).toBe(wanted)
+    // A new speed moves the clock on to the newest state, dropping those sent apart for the old one.
+    const changed = changeSpeed(receiveState(stepped.playback, stepValley(engine.state, engine.state.minute + 30)))
+    expect(changed.states).toHaveLength(1)
+    expect(changed.clock).toBe(changed.states[0]!.minute)
   })
 
   it('stops drawing people from map speeds up', () => {

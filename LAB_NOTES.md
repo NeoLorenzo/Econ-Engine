@@ -6,6 +6,30 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE15-Worker-069] - (2026-10-28)
+
+After update 068 the page still ran the engine on its own thread, so every slow stretch of the engine was a slow frame: at 1 month/s the page drew about 16–19 frames a second. The owner asked for the engine in a worker thread and approved the revised specification.
+
+**What was built.** The engine runs in a Web Worker; the page keeps the clock and asks for a goal 0.1 s ahead. Copying whole states between threads would have cost more than the engine: on day 13 the engine's state held 550 kB of routes and about 750 kB of memory tables a copy, which the screen does not read. The view copy keeps only the routes under way, each person's next wake-up, exchanges and walk records, and current memory for the followed person alone, and travels as its changes from the last copy.
+
+**Copy cost, measured in Node on the canonical forty, seed 20260813, one day at 1 month/s (two copies a day).** Day 13: engine 2,723 ms, making the changes 17 ms, copying them 71 ms (about 940 kB a copy), applying them 4 ms. Day 30: engine 240 ms, changes 11 ms, copying 6 ms (about 140 kB), applying 1 ms. Before memory was thinned to the followed person, day 13's changes and copying took 284 ms and 591 ms over 59 copies.
+
+**In off-screen Chrome, production builds, before (main) and after (this branch).**
+
+| | main | worker |
+|---|---|---|
+| 1 min/s | 58 fps, longest frame 169 ms | 60 fps, longest 17 ms |
+| 1 day/s | 47 fps, p95 50 ms, longest 167 ms | 58 fps, p95 17 ms, longest 83 ms |
+| 1 month/s, days 5 to 36 | 15–19 fps, longest 133 ms | 52–60 fps, longest 67 ms |
+| 1 month/s past day 36 | 16 fps, p95 100 ms; 3.3 days a second | 54 fps, p95 33 ms; 2.9 days a second |
+| Start to first view | 7.4 s | 12.2 s |
+
+Pause holds the clock, Step moves it one minute, and the console shows only the 404 that main shows too.
+
+**Findings.** The page is now smooth at every speed: frames no longer wait for the engine. The simulation itself is no faster. The specification expected roughly 4–5 days a second at 1 month/s, but the worker reached 2.9 against main's 3.3; an earlier reading of 4.9 came from a check script that read the clock from the wrong text and is discarded. The copies cost the worker about 5–7% past day 30, which does not account for the whole gap; the rest is unexplained and may be run-to-run spread, since each figure is one ten-second run. Reaching a month a second needs the engine about ten times faster at these days, which is a question of cheaper behaviour or a simpler model at map speeds, as the specification says.
+
+**Not settled.** Start takes about 5 s longer, because the loading card now waits for the worker to build its own valley, and the worker builds more slowly than the page. A new run from Settings started, but three seconds after Start its clock still read zero, consistent with the slower build; it was not watched until it played.
+
 ## [LIFE15-Planning-068] - (2026-10-27)
 
 Update 067 left days 11 to 17 at 1.2–4.6 s each and ordinary days at about 200–400 ms. The owner approved a revised Life 15 specification that plans coarse routes through pieces of known ground.
