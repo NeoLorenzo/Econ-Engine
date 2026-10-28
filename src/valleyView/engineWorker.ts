@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { createValley, stepValley } from '../valley/engine'
+import { advanceValley, createValley } from '../valley/engine'
 import type { ValleyConfig, ValleyState } from '../valley/types'
 import { changeOf, wireOf, type Wire } from './viewCopy'
 import type { EngineMessage, PageMessage } from './engineLink'
@@ -34,7 +34,8 @@ function run() {
   try {
     while (state.minute < goal) {
       const before = state.minute
-      state = stepValley(state, Math.min(goal, before + stride), () => performance.now() - started >= SLICE_MS)
+      // The worker owns its state and keeps only the copies it sends, so it runs the state on in place.
+      state = advanceValley(state, Math.min(goal, before + stride), () => performance.now() - started >= SLICE_MS)
       send()
       if (performance.now() - started >= SLICE_MS) break
     }

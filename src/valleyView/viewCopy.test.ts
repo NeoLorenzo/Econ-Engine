@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FLAT_LAND } from '../valley/config'
-import { cloneValley, stepValley } from '../valley/engine'
+import { advanceValley, cloneValley, stepValley } from '../valley/engine'
 import { createSurveyedValley } from '../valley/ruleFixtures'
 import { applyChange, changeOf, stateOf, wireOf, type Wire } from './viewCopy'
 
@@ -9,18 +9,22 @@ const across = (wire: Wire): Wire => ({ ...structuredClone({ ...wire, layout: nu
 
 describe('view copies', () => {
   it('rebuilds each state’s view copy on the page from the changes alone', () => {
-    let state = createSurveyedValley(FLAT_LAND)
+    // As in the worker, the state runs on in place, so a copy that shared its objects would lose changes.
+    const state = createSurveyedValley(FLAT_LAND),
+      pure = { state: cloneValley(state) }
     let sent = wireOf(state, 0)
     let page = across(sent)
     let followed = 0
     // Strides as at each speed, and a change of the person followed part-way.
     for (const stride of [1, 1, 7, 60, 1, 300, 24, 900, 1, 1_440, 61]) {
-      state = stepValley(state, state.minute + stride)
+      advanceValley(state, state.minute + stride)
+      pure.state = stepValley(pure.state, pure.state.minute + stride)
       if (stride === 300) followed = 3
       const wire = wireOf(state, followed, sent)
       page = applyChange(page, structuredClone(changeOf(wire, sent)))
       sent = wire
       expect({ ...page, layout: null }).toEqual({ ...wire, layout: null })
+      expect({ ...wire, layout: null }).toEqual({ ...wireOf(pure.state, followed, sent), layout: null })
     }
     expect(state.minute).toBeGreaterThan(2_700)
     expect(page.layout).toBe(sent.layout)
@@ -37,10 +41,12 @@ describe('view copies', () => {
     for (const p of state.foragers) {
       expect(wire.queue[p.id]).toEqual(state.queue.entriesOf(p.id)[0] ?? null)
       expect(stateOf(wire).queue.entriesOf(p.id)[0] ?? null).toEqual(wire.queue[p.id])
-      // Memory is current for the person followed, and as the last copy held it for everyone else.
-      const memory = p.id === 2 ? p : earlier.foragers[p.id]!
-      for (const key of ['knowledge', 'ways', 'knownPlaces', 'placeStock'] as const)
-        expect(wire.foragers[p.id]![key]).toBe(memory[key])
+      // Memory is a current copy for the person followed, and the last copy's for everyone else.
+      for (const key of ['knowledge', 'knownPlaces', 'placeStock', 'knownBanks'] as const)
+        if (p.id === 2) {
+          expect(wire.foragers[p.id]![key]).toEqual(p[key])
+          expect(wire.foragers[p.id]![key]).not.toBe(p[key])
+        } else expect(wire.foragers[p.id]![key]).toBe(last.foragers[p.id]![key])
     }
     const moved = (p: (typeof state.foragers)[number]) =>
       (['knowledge', 'ways', 'knownPlaces', 'placeStock'] as const).some(

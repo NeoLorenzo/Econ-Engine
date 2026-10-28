@@ -2,6 +2,18 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE15-Lighter-070] - (2026-10-28)
+
+- An exchange no longer copies group members who are dead or out of talking distance, and copies back only the views that changed.
+- Looking around scans nearby chunks directly, without candidate lists; only walkers have their position worked out from their route.
+- The chunks a route crosses are found with one reused buffer instead of temporary lists.
+- The wake-up queue cancels lazily: cancelled entries are marked and dropped at the front, or all at once when they outnumber the rest.
+- New `advanceValley` runs the engine on a state in place; the worker uses it, and `stepValley` stays pure. The view copy snapshots the followed person's memory itself.
+- The daily summary counts known places without copying them.
+- Days 50 to 59 at 1 month/s run about 27% faster. Every fingerprint stays the same.
+- New tests: advancing in place equals stepping copies, and view copies of an in-place run equal those of a pure run.
+- The Life 15 specification is revised for update 070, with the hut-building week's cost left as a question for later.
+
 ## [LIFE15-Worker-069] - (2026-10-28)
 
 - The Life engine runs in a Web Worker. The page keeps the clock and asks the worker for a goal 0.1 s ahead at the speed shown; the worker runs in slices of at most 50 ms and sends a view copy every stride minutes (the speed over 60, at least one).

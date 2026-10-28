@@ -35,6 +35,12 @@ const foodStocks = (state: Pick<ValleyState, 'foodStock' | 'layout'>) => ({
 })
 
 const zeros = (n: number) => Array.from({ length: n }, () => 0)
+/** How many places a person has seen. */
+function placesKnown(person: Forager) {
+  let count = 0
+  for (const minute of person.knownPlaces) if (minute >= 0) count += 1
+  return count
+}
 
 /** Groups standing, and living foragers without a group. */
 function groupCounts(state: Pick<ValleyState, 'foragers' | 'groups'>) {
@@ -106,9 +112,9 @@ function emptyDay(
     foundings: 0,
     joinings: 0,
     dissolutions: 0,
-    placesSeenById: foragers.map((p) => [...p.knownPlaces].filter((m) => m >= 0).length),
+    placesSeenById: foragers.map(placesKnown),
     loadedWalkSecondsById: zeros(foragers.length),
-    sitesKnownById: foragers.map((p) => [...p.knownPlaces].filter((m) => m >= 0).length),
+    sitesKnownById: foragers.map(placesKnown),
     sitesCheckedById: zeros(foragers.length),
     fireGivenById: zeros(foragers.length),
     campfireBurnedWood: 0,
@@ -332,24 +338,43 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
 
 // Traits, rates and thirst thresholds are set at birth and never change, so copies share them; sharing `rates` also
 // keeps `personConfig`'s cache warm across steps.
-const cloneForager = (forager: Forager): Forager => {
+/** A person's memory of the valley: what a view copy holds afresh only for the person followed. */
+export type Memory = Pick<
+  Forager,
+  | 'knowledge'
+  | 'ways'
+  | 'knownBanks'
+  | 'knownPlaces'
+  | 'placeCheckedMinute'
+  | 'placeStock'
+  | 'placeWood'
+  | 'placeLogs'
+  | 'fishMemory'
+  | 'metPosition'
+>
+/** A copy of a person's memory. Knowledge and banks are shared until either holder learns more; ways never change. */
+export const copyMemory = (forager: Forager): Memory => ({
+  knowledge: shareKnowledge(forager.knowledge),
+  ways: forager.ways,
+  knownBanks: shareBankMemory(forager.knownBanks),
+  knownPlaces: forager.knownPlaces.slice(),
+  placeCheckedMinute: forager.placeCheckedMinute.slice(),
+  placeStock: forager.placeStock.slice(),
+  placeWood: forager.placeWood.slice(),
+  placeLogs: forager.placeLogs.slice(),
+  fishMemory: new Map(forager.fishMemory),
+  metPosition: new Map(forager.metPosition),
+})
+const cloneForager = (forager: Forager, memory: Memory = copyMemory(forager)): Forager => {
   return {
     ...forager,
     task: forager.task
       ? { ...forager.task, rateChanges: forager.task.rateChanges?.map((change) => ({ ...change })) }
       : null,
-    knownPlaces: forager.knownPlaces.slice(),
-    placeCheckedMinute: forager.placeCheckedMinute.slice(),
     seenMinute: forager.seenMinute.slice(),
-    placeStock: forager.placeStock.slice(),
-    placeWood: forager.placeWood.slice(),
-    placeLogs: forager.placeLogs.slice(),
     metMinute: forager.metMinute.slice(),
-    metPosition: new Map(forager.metPosition),
     arrivalFrom: forager.arrivalFrom.slice(),
-    knowledge: shareKnowledge(forager.knowledge),
-    knownBanks: shareBankMemory(forager.knownBanks),
-    fishMemory: new Map(forager.fishMemory),
+    ...memory,
     deathCauses: [...forager.deathCauses],
     carried: [...forager.carried],
     practiceLog: {
@@ -402,8 +427,11 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   hutLogsById: [...day.hutLogsById],
 })
 
-/** A copy that shares nothing mutable with `state`. The layout and finished days never change, so they are shared. */
-export function cloneValley(state: ValleyState): ValleyState {
+/**
+ * A copy that shares nothing mutable with `state`. The layout and finished days never change, so they are shared.
+ * `memoryOf` gives each person's memory in the copy; by default a copy of it.
+ */
+export function cloneValley(state: ValleyState, memoryOf: (forager: Forager) => Memory = copyMemory): ValleyState {
   return {
     ...state,
     queue: state.queue.clone(),
@@ -419,7 +447,7 @@ export function cloneValley(state: ValleyState): ValleyState {
     felledMinute: state.felledMinute.slice(),
     logRegrowth: new Map([...state.logRegrowth].map(([id, minutes]) => [id, [...minutes]])),
     stoneStock: state.stoneStock.slice(),
-    foragers: state.foragers.map(cloneForager),
+    foragers: state.foragers.map((forager) => cloneForager(forager, memoryOf(forager))),
     groups: state.groups.map((group) => ({ ...group })),
     huts: [...state.huts],
     totals: { ...state.totals },
@@ -453,7 +481,7 @@ function finishDay(state: ValleyState, minute: number) {
   day.forageRates = state.foragers.map((p) => p.forageRate)
   day.woodRates = state.foragers.map((p) => p.woodRate)
   day.craftById = state.foragers.map((p) => p.craft)
-  day.sitesKnownById = state.foragers.map((p) => [...p.knownPlaces].filter((m) => m >= 0).length)
+  day.sitesKnownById = state.foragers.map(placesKnown)
   day.placesSeenById = [...day.sitesKnownById]
   state.days.push(day)
   state.today = emptyDay(dayOf(minute), state)
@@ -467,16 +495,26 @@ function finishDay(state: ValleyState, minute: number) {
 export function stepValley(previous: ValleyState, toMinute = previous.minute + 1, stop?: () => boolean): ValleyState {
   if (!Number.isSafeInteger(toMinute) || toMinute < previous.minute)
     throw new Error('Target minute must be a safe integer at or after the current minute')
-  const state = cloneValley(previous)
+  return advanceValley(cloneValley(previous), toMinute, stop)
+}
+/**
+ * Runs `state` itself on to `toMinute`, exactly as `stepValley` runs a copy of it, and returns it. Only for a caller
+ * that owns the state and never reads it again as it was, such as the engine's worker: the copy each step makes, and
+ * the copies of memory it shares, then cost nothing.
+ */
+export function advanceValley(state: ValleyState, toMinute = state.minute + 1, stop?: () => boolean): ValleyState {
+  if (!Number.isSafeInteger(toMinute) || toMinute < state.minute)
+    throw new Error('Target minute must be a safe integer at or after the current minute')
+  const start = state.minute
   state.lastInterval = []
-  if (toMinute === previous.minute) return state
+  if (toMinute === start) return state
   while (state.queue.peek() && state.queue.peek()!.minute <= toMinute) {
-    if (stop && state.queue.peek()!.minute > state.minute && state.minute > previous.minute && stop()) {
+    if (stop && state.queue.peek()!.minute > state.minute && state.minute > start && stop()) {
       toMinute = state.minute
       break
     }
     const entry = state.queue.pop()!
-    if (entry.minute < previous.minute) throw new Error('A wake-up cannot be in the past')
+    if (entry.minute < start) throw new Error('A wake-up cannot be in the past')
     state.minute = entry.minute
     if (entry.phase === 0) {
       if (entry.minute % MINUTES_PER_DAY === 0) finishDay(state, entry.minute)

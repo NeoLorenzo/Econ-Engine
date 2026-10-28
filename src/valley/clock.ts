@@ -22,10 +22,15 @@ const compare = (a: WakeEntry, b: WakeEntry) =>
   (a.routeId ?? -1) - (b.routeId ?? -1) ||
   (a.walkStartMinute ?? -1) - (b.walkStartMinute ?? -1)
 
+/**
+ * Cancelling marks entries instead of rebuilding the heap, which every wake-up did; a marked entry is dropped when it
+ * reaches the front, or when marked entries outnumber the rest. Live entries leave in the same order either way.
+ */
 export class WakeQueue {
   private heap: WakeEntry[] = []
+  private cancelled = new Set<WakeEntry>()
   get size() {
-    return this.heap.length
+    return this.heap.length - this.cancelled.size
   }
   schedule(entry: WakeEntry): void {
     if (!Number.isSafeInteger(entry.minute) || entry.minute < 0 || !Number.isSafeInteger(entry.id) || entry.id < 0)
@@ -42,10 +47,16 @@ export class WakeQueue {
     this.heap[index] = value
   }
   peek(): WakeEntry | null {
+    while (this.heap.length && this.cancelled.has(this.heap[0]!)) {
+      this.cancelled.delete(this.heap[0]!)
+      this.removeFirst()
+    }
     return this.heap[0] ?? null
   }
   pop(): WakeEntry | null {
-    if (!this.heap.length) return null
+    return this.peek() ? this.removeFirst() : null
+  }
+  private removeFirst(): WakeEntry {
     const first = this.heap[0]!
     const last = this.heap.pop()!
     if (this.heap.length) {
@@ -62,21 +73,32 @@ export class WakeQueue {
     return first
   }
   cancelPerson(id: number, kind?: WakeKind): void {
-    const kept = this.heap.filter(
-      (entry) => entry.phase !== 1 || entry.id !== id || (kind !== undefined && entry.kind !== kind),
-    )
-    this.heap = []
-    for (const entry of kept) this.schedule(entry)
+    for (const entry of this.heap)
+      if (entry.phase === 1 && entry.id === id && (kind === undefined || entry.kind === kind)) this.cancelled.add(entry)
+    if (this.cancelled.size > this.heap.length / 2) {
+      const kept = this.live()
+      this.heap = []
+      this.cancelled.clear()
+      for (const entry of kept) this.schedule(entry)
+    }
+  }
+  private live() {
+    return this.cancelled.size ? this.heap.filter((entry) => !this.cancelled.has(entry)) : this.heap
   }
   entriesOf(id: number): WakeEntry[] {
-    return this.heap
+    return this.live()
       .filter((entry) => entry.phase === 1 && entry.id === id)
       .map((entry) => ({ ...entry }))
       .sort(compare)
   }
   clone(): WakeQueue {
+    // The copy keeps the heap's layout and marks, so a copy runs on exactly as its original would.
     const queue = new WakeQueue()
-    queue.heap = this.heap.map((entry) => ({ ...entry }))
+    queue.heap = this.heap.map((entry) => {
+      const copy = { ...entry }
+      if (this.cancelled.has(entry)) queue.cancelled.add(copy)
+      return copy
+    })
     return queue
   }
 }
