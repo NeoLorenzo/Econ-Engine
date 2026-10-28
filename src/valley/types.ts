@@ -578,7 +578,7 @@ export interface Way {
   usedMinute: number
 }
 /** How a walk's corridor was found. */
-export type WalkPlan = 'way' | 'joined' | 'coarse' | 'full'
+export type WalkPlan = 'way' | 'joined' | 'straight' | 'steered'
 export interface Forager extends Hydration, PersonNature {
   task: TaskRecord | null
   knowledge: Knowledge

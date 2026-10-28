@@ -594,8 +594,8 @@ export function describeActivity(display: Display, foragerId: number) {
 const WALK_PLANS = {
   way: 'on a known way',
   joined: 'joining a known way',
-  coarse: 'planning a new way',
-  full: 'planning a new way',
+  straight: 'heading straight there',
+  steered: 'finding a way through',
 } as const
 /** How a person's current walk was found, in words, from its walk record; null for other tasks or unrecorded walks. */
 export function walkWording(state: ValleyState, foragerId: number) {

@@ -6,6 +6,16 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE15-Wayfinding-071] - (2026-10-28)
+
+After update 070, route planning was about 30% of a day: about 80 new plans a day past day 50 at about 1 ms each, each expanding some 3,400 triangles. The owner pointed out that people do not compute so much to find their way and approved a specification that plans as people do: straight at the goal when the ground ahead is known, otherwise steering round what is in the way, piece by piece (Hochmair and Frank 2000; Bailenson et al. 2000).
+
+**How lifelike the walks are, on the canonical forty, seed 20260813, against the shortest path over each walker's known ground.** Straight walks are within about 0% of it. Steered walks: day 5, 52 walks, median 0.0% longer, longest 101%; day 13, 562 walks, median 1.4%, longest 156%; day 30, 90 walks, median 2.1%, longest 289%; day 55, 84 walks, median 0.9%, longest 50%. The medians meet the specification's 15%; the long tails are walks whose chain of pieces turns away from the line, which people also do when they head the wrong way round an obstacle. Most new walks past day 20 are steered: about 78 a day against 23 straight.
+
+**Speed, in Node, 12-hour steps, single runs, against update 070's 1,791 ms, 9,083 ms and 172 ms.** Days 1–10 1,878 ms; the hut week, days 11–19, 7,340 ms; days 20–60 about 185–205 ms a day. A straight plan costs about 4 µs and a steered one about 0.5 ms, with a corridor of some 340 triangles. The first steered version took about 206 ms a day at days 50–59: the chain of pieces built maps and sets, and every in-piece search a new heap. Reusing typed arrays and one heap, and reading each chunk's piece labels once instead of per triangle, brought it to 186 ms, the same cost per wake-up as update 070; this run has about 9% more wake-ups past day 50 (about 1,860 a day against 1,705).
+
+**Findings.** The specification expected ordinary days at roughly 130–150 ms; they are not faster than before. Planning is cheaper per walk, but steered corridors are long, and cutting a route along them, and the garbage it leaves (about a fifth of the time), costs as much as before. The busy hut week is about 20% faster. Next: cheaper route cutting along long corridors, and the remaining speed-ups that change no result.
+
 ## [LIFE15-Lighter-070] - (2026-10-28)
 
 The owner asked why 1 month/s (30 simulated days a second) is out of reach and approved any speed-up that leaves the simulation unchanged. The camp wake-up cascade was kept on purpose: who wakes whom will matter for relationships.

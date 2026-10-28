@@ -33,7 +33,7 @@ export function wayPart(way: Way, first: number, target: Point): number[] {
 }
 /**
  * The corridor of a walk to `target`: a remembered way, or the rest of one the walker stands on, unless it is due a
- * recheck; otherwise a coarse plan, or a full one. Only walks to places, banks and home (`habitual`) use ways.
+ * recheck; otherwise a straight or steered plan. Only walks to places, banks and home (`habitual`) use ways.
  */
 export function findWalk(
   state: ValleyState,
@@ -68,7 +68,7 @@ export function findWalk(
     from,
     target,
   })
-  if (same(from, target)) return found(null, 'full', null, null)
+  if (same(from, target)) return found(null, 'straight', null, null)
   let drop: Way | null = null,
     rechecked = false
   const way = habitual ? wayTo(person, first, target) : null
@@ -96,7 +96,7 @@ export function rememberWalk(state: ValleyState, person: Forager, walk: WalkFoun
   let ways = person.ways
   if (walk.drop) ways = ways.filter((w) => w !== walk.drop)
   if (walk.way) ways = ways.map((w) => (w === walk.way ? { ...w, usedMinute: minute } : w))
-  else if (walk.habitual && walk.corridor && (walk.plan === 'coarse' || walk.plan === 'full')) {
+  else if (walk.habitual && walk.corridor && (walk.plan === 'straight' || walk.plan === 'steered')) {
     const { from: a, target: b } = walk
     ways = ways.filter((w) => !((same(w.a, a) && same(w.b, b)) || (same(w.a, b) && same(w.b, a))))
     ways = [
