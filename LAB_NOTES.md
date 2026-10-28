@@ -6,6 +6,18 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE15-Lighter-070] - (2026-10-28)
+
+The owner asked why 1 month/s (30 simulated days a second) is out of reach and approved any speed-up that leaves the simulation unchanged. The camp wake-up cascade was kept on purpose: who wakes whom will matter for relationships.
+
+**Where the time went, measured in Node on the canonical forty, seed 20260813, 12-hour steps on main.** Days 1–10: 100–200 ms a simulated day. Days 11–17, the hut-building week: 0.5–3.3 s. Days 20–90: 170–650 ms, typically about 250 ms. Days 50–60 averaged 228 ms: 1,008 wake-ups a day ending in "keep resting" at 37 µs each (37 ms; looking around 11, choosing a task 7.5, the exchange check 6, the body 6, meetings 3.7), and 403 walk decisions at 345 µs each (139 ms; route planning 68, arrival wake-ups 20, choosing water 18, leisure walks 14). About 274 MB was allocated a day, and garbage collection took about 46 ms.
+
+**What was built.** Six speed-ups that change no result: the exchange check skips absent members, looking around and route crossings stop building temporary lists, the queue cancels lazily, the worker advances its state in place with `advanceValley`, and the daily summary counts places without copying. Every fingerprint passed unchanged.
+
+**After.** Pure 12-hour steps take about 170–180 ms a day past day 50, with garbage collection about 29 ms. Run as the worker runs (50 ms slices, 720-minute strides, a view copy and its changes each step), days 50–59 took 200, 172 and 177 ms a day in three runs against main's 275, 240 and 236: about 27% faster, roughly 4.2 to 5.7 days a second of engine time. Not checked in the browser this time: the preview pane was hidden, so the browser figures of update 069 stand.
+
+**Findings.** Keeping still is no longer the main cost. Walk decisions are now about 60% of a day, and the hut-building week is still about ten times slower than later days. 1 month/s would need each day near 33 ms, about five times faster again, so the next work is on route planning and water choice, then the hut week.
+
 ## [LIFE15-Worker-069] - (2026-10-28)
 
 After update 068 the page still ran the engine on its own thread, so every slow stretch of the engine was a slow frame: at 1 month/s the page drew about 16–19 frames a second. The owner asked for the engine in a worker thread and approved the revised specification.

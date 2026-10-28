@@ -1,6 +1,6 @@
 import { addTestLake } from './ruleFixtures'
 import { describe, expect, it } from 'vitest'
-import { createValley, stepValley, cloneValley } from './engine'
+import { advanceValley, createValley, stepValley, cloneValley } from './engine'
 import { FLAT_LAND } from './config'
 import { WakeQueue } from './clock'
 
@@ -66,6 +66,15 @@ describe('wake-up engine', () => {
     single.lastInterval = []
     expect(batch).toEqual(single)
     expect(state).toEqual(before)
+  })
+  it('advancing a state in place equals stepping copies of it', () => {
+    const owned = createValley(FLAT_LAND)
+    let stepped = cloneValley(owned)
+    for (const minute of [1, 60, 61, 600, 1_440, 2_000, 2_880]) {
+      expect(advanceValley(owned, minute)).toBe(owned)
+      stepped = stepValley(stepped, minute)
+      expect(owned).toEqual(stepped)
+    }
   })
 })
 

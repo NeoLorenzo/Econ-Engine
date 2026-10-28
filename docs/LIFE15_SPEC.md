@@ -1,6 +1,6 @@
-# [LIFE15-Worker-069]
+# [LIFE15-Lighter-070]
 
-**Approved by the owner, 2026-10-28.** This specification replaced the Life 14 specification at update 066 and describes the whole simulation. It is step 15 of the [roadmap](ROADMAP.md), habitual routes, inserted before relationships, and is built under the [Life section](../SIMULATION_DESIGN_RULES.md#life-realism-and-time) of the design rules. Update 068 revised how a new route is planned. Update 069, below, moves the engine off the page's main thread; it changes only the observer.
+**Approved by the owner, 2026-10-28.** This specification replaced the Life 14 specification at update 066 and describes the whole simulation. It is step 15 of the [roadmap](ROADMAP.md), habitual routes, inserted before relationships, and is built under the [Life section](../SIMULATION_DESIGN_RULES.md#life-realism-and-time) of the design rules. Update 068 revised how a new route is planned. Update 069, below, moves the engine off the page's main thread; it changes only the observer. Update 070 makes wake-ups cheaper without changing any result.
 
 Forty strangers are dropped on 4 km square of young glacial land in Mesolithic northern Europe: drumlins, moraine fronts, kames, hummocks, kettle hollows and tunnel valleys, with lakes in the hollows and rivers running downhill to the edge. The ground is grass, dirt and stone. People discover drinking banks, drink, pick berries, gather hazelnuts, fish, gather firewood, meet, form groups, exchange wood and axes for food, and build huts around shared fires. Their knowledge comes from observation and memory. Each of them is a woman or a man with a body of their own and a personality of their own. From this step they find their way as people do: they remember the ways they walk, take them again, and plan afresh only for somewhere new, or now and then to notice a shortcut.
 
@@ -16,6 +16,21 @@ Time is one clock in minutes. Nobody is stepped: a person is woken when their ta
 - **The groundwork for trails.** Ways are the first thing a person keeps because they used it, not because they chose it fresh. Trails worn by many feet, and showing someone the way (step 24, making and teaching), can build on them later. Nothing in this step wears a trail or shares a way.
 
 This step changes how people find and keep their way, and how often they look around. It does not change the map, the ground anyone may walk, walking speeds, the resources, bodies, personality or what people can do.
+
+## Update 070: lighter wake-ups
+
+**The problem.** After update 069, 1 month/s reaches about 4 simulated days a second, against 30 wanted. On the canonical forty past day 50 a simulated day costs about 230 ms of engine time: a thousand wake-ups that end in "keep resting" take 37 ms, four hundred walk decisions 140 ms, and the rest is the step's own copies and about 45 ms of garbage collection over 270 MB of short-lived objects a day.
+
+**The change.** Six speed-ups. None changes a result: every fingerprint stays the same.
+
+- **The exchange check.** A wake-up offers exchanges within the person's group. Group members who are dead or beyond talking distance can take no part, so they are no longer copied into the exchange's working views, and views nobody changed are not copied back.
+- **Looking around.** The people, fires and stock checks at each wake-up scan the nearby chunks directly, without building lists of candidates first; only walkers have their position worked out from their route, as everyone else stands where they are recorded.
+- **Route chunk crossings.** The chunks a walk crosses, which decide who is woken by someone arriving, are found with one reused buffer in place of temporary lists for every route.
+- **The wake-up queue cancels lazily.** Every wake-up cancels the person's pending wake-ups, which rebuilt the whole queue. Cancelled entries are now marked and dropped when they reach the front, or all at once when they outnumber the rest. Live entries leave in exactly the same order.
+- **The worker advances its state in place.** `stepValley` stays pure: it copies the state, then runs it on. The worker owns its state and keeps only the view copies it sends, so it calls `advanceValley`, the same loop without the copy. Nothing else may call `advanceValley` on a state someone else holds. The view copy now takes its own snapshot of the followed person's memory, since the engine's is changed in place.
+- **The daily summary counts known places without copying them.**
+
+**Measured.** In Node, on the canonical forty, seed 20260813, as the worker runs at 1 month/s (12-hour strides, a view copy and its changes each step), days 50 to 59 take 175–200 ms a simulated day against 235–275 ms before, about 27% faster: roughly 5.7 days a second of engine time against 4.2. Garbage collection falls from about 46 to 29 ms a day. Walk decisions (planning routes, choosing water, leisure walks) are now about 60% of a day and are the next thing to make cheaper.
 
 ## Update 069: the engine in a worker thread
 
@@ -171,7 +186,7 @@ The run starts at minute 0, midnight of day 0 of year 0. A day is 1,440 minutes;
 
 ### Wake-ups
 
-The state holds a queue of wake-ups `(minute, phase, id)`. Phases, in order within a minute: `world` (daily regrowth, spoilage, invariants at midnight; fires at each hour), then `person`, ordered by id. `stepValley(state, toMinute)` pops and runs wake-ups until the queue's head is past `toMinute`, and is pure: it returns a new state and the events of the interval.
+The state holds a queue of wake-ups `(minute, phase, id)`. Phases, in order within a minute: `world` (daily regrowth, spoilage, invariants at midnight; fires at each hour), then `person`, ordered by id. `stepValley(state, toMinute)` pops and runs wake-ups until the queue's head is past `toMinute`, and is pure: it returns a new state and the events of the interval. `advanceValley(state, toMinute)` runs the same loop on the state itself, for a caller that owns it, as the worker does (update 070). Cancelling a person's wake-ups marks them; a marked entry is dropped when it reaches the front.
 
 A person's wake-up is scheduled by:
 
@@ -455,6 +470,8 @@ Update 068 changes `routes.ts` only for behaviour: a person's pieces, worked out
 
 Update 069 touches only `src/valleyView/`: a new `engineWorker.ts` that builds the valley, runs towards the goal in slices and posts view copies; a new `engineLink.ts`, the page's end of the worker, which starts it and turns the changes received into states; a new `viewCopy.ts` that makes a view copy, finds its changes from the last one in the worker, and applies them on the page; playback in `valleyViewModel.ts` (`advancePlayback`, `receiveState`, `stepPlayback`, `changeSpeed`) in place of stepping the engine within a frame budget, used by `ValleyApp.tsx`; and `LifePage.tsx` starting the worker before building the page's own valley, so the two builds run at once. The engine is unchanged.
 
+Update 070 changes no result: `wake.ts` skips absent group members in an exchange; `perception.ts` scans nearby chunks without temporary lists and finds route crossings with a reused buffer; `clock.ts` cancels lazily; `engine.ts` adds `advanceValley` and counts known places without copying; the worker advances its state in place, and `viewCopy.ts` snapshots the followed person's memory.
+
 ## Tests and implementation acceptance
 
 The Life 14 fingerprint suite passes before engine edits. Every trajectory changes, because reused ways and coarse plans give different paths and the survey rule changes what people know when: this step records new fingerprints for all its configurations. The founders, their bodies and traits stay the same as Life 14's on every fingerprint seed, because the code that draws them is untouched; `life13-founders.json` still checks starts and born skills. Fingerprints are not updated to conceal a failed rule.
@@ -493,6 +510,8 @@ Life 14 fixtures, kept:
 
 **Update 069.** The engine is unchanged, so every fingerprint stays the same. A few fast unit tests: applying the changes of a short run's states, one after another and copied as between threads, gives each state's view copy exactly, at strides from 1 to 1,440 minutes and across a change of the person followed; the copy keeps only the routes, wake-ups and events above, and current memory only for the person followed; a state the engine recopied unchanged sends nothing; and the playback rule never goes back, draws less than a minute after the state it draws from, asks no further ahead than the lead, runs at the speed shown when the engine keeps up, waits when it does not, and shows Step's minute once it arrives. Measured once and recorded in the lab notes, in off-screen Chrome as in update 067: frames a second at 1 min/s, 1 day/s and 1 month/s, the longest frame across days 12 to 14, and days a second at 1 month/s past day 35, before and after; and the time the copies take in the worker and on the main thread. In the browser: people walk smoothly at 1 min/s, the Step button and pause work, a new run from Settings starts cleanly, and the console is clean.
 
+**Update 070.** Every fingerprint stays the same. A few fast unit tests: advancing a state in place equals stepping copies of it, minute by minute and across days; and the view-copy tests run on a state advanced in place, checking each copy equals the one made from a pure copy of the run. Measured once and recorded in the lab notes: days 50 to 59 at 1 month/s in Node, before and after.
+
 Final validation is `npm run agent:check`. Measured once at update 066 and recorded in the lab notes, on the canonical seed: the walks of each kind by day; the median and largest excess of way walks over the shortest known path; the share of new plans needing the full search; the year of forty's time and memory; and a profile of day 12 against update 065's. In the browser: a followed person's ways drawn, the panel's wording during a walk, 1 month/s against the 8 frames a second of update 065, and the console clean.
 
 ## Questions for later
@@ -501,7 +520,8 @@ Final validation is `npm run agent:check`. Measured once at update 066 and recor
 - Is once a day the right pace for noticing a shortcut, and should it depend on openness?
 - Should ways be chosen by expected time, with slopes and ground, rather than distance?
 - Should the coarse level be landmarks (places, banks, the hearth) rather than pieces of squares of land?
-- After update 069, which reaches a month a second: people thinking less often (surveying and replanning less), or a simpler model of daily movement at map speeds? Both change what people do.
+- After update 070, which still reaches about 6 days a second at 1 month/s, which way to a month a second: cheaper route planning and water choice, which change no result, or people thinking less often (surveying and replanning less), or a simpler model of daily movement at map speeds? The last two change what people do.
+- The hut-building week (days 11 to 17 on the canonical run) takes 0.5 to 3.3 s a simulated day against about 0.25 s later, from its many cutting and log-carrying walks. What would make it affordable at a month a second?
 - Every route ever walked stays in the state, 27,000 by day 45. Should finished routes be dropped once no task or record refers to them?
 - A way is rechecked whenever a day has passed and the person has learnt anything, which after the first days is almost always. Should only new ground near the way count?
 - Do shared ways wear trails that make walking faster, and do trails gather people and places along them?

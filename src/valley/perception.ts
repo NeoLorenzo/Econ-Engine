@@ -71,7 +71,11 @@ export function peopleInChunk(state: ValleyState, chunk: number): number[] {
 /** Records each living person's chunk at `minute`; wake-ups do this often, so the chunk lists are not rebuilt. */
 export function locatePeople(state: ValleyState, minute: number): void {
   for (const person of state.foragers)
-    state.personChunk[person.id] = person.alive ? chunkOf(state.layout.nav, positionAt(state, person, minute)) : -1
+    state.personChunk[person.id] = !person.alive
+      ? -1
+      : person.task?.kind === 'walk'
+        ? chunkOf(state.layout.nav, positionAt(state, person, minute))
+        : chunkOf(state.layout.nav, person)
 }
 /** Locates people and rebuilds the chunk lists, which the state keeps between steps. */
 export function reindexPeople(state: ValleyState, minute: number): void {
@@ -127,7 +131,7 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
       stones: state.stoneStock[placeId]!,
     }
   }
-  const viewKey = `${origin.x},${origin.y}:${radius}`
+  const viewKey = surveying ? `${origin.x},${origin.y}:${radius}` : ''
   if (surveying && !viewsSeen.get(person.knowledge)?.has(viewKey))
     for (
       let cy = Math.max(0, Math.floor((origin.y - radius) / nav.chunkCm));
@@ -183,16 +187,16 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
   }
   // The index records each person's last wake-up; route entry notifications keep moving entries local.
   const talk = config.sightRadiusCm
-  const [x0, x1] = [Math.floor((origin.x - talk) / nav.chunkCm), Math.floor((origin.x + talk) / nav.chunkCm)]
-  const [y0, y1] = [Math.floor((origin.y - talk) / nav.chunkCm), Math.floor((origin.y + talk) / nav.chunkCm)]
-  const candidates: number[] = []
+  const x0 = Math.floor((origin.x - talk) / nav.chunkCm),
+    x1 = Math.floor((origin.x + talk) / nav.chunkCm),
+    y0 = Math.floor((origin.y - talk) / nav.chunkCm),
+    y1 = Math.floor((origin.y + talk) / nav.chunkCm)
   for (let id = 0; id < state.personChunk.length; id += 1) {
     const chunk = state.personChunk[id]!
     if (chunk < 0) continue
-    const [x, y] = [chunk % nav.chunkCells, Math.floor(chunk / nav.chunkCells)]
-    if (x >= x0 && x <= x1 && y >= y0 && y <= y1) candidates.push(id)
-  }
-  for (const id of candidates) {
+    const x = chunk % nav.chunkCells,
+      y = Math.floor(chunk / nav.chunkCells)
+    if (x < x0 || x > x1 || y < y0 || y > y1) continue
     const other = state.foragers[id]!
     if (id === person.id || !other.alive) continue
     const point = positionAt(state, other, minute)
@@ -214,40 +218,52 @@ export function observeAt(state: ValleyState, person: Forager, minute: number): 
       person.knownFlags.push(group.id)
   return observation
 }
+/** Where along a segment it crosses chunk lines, reused between segments: walks have many short segments. */
+let cutBuffer = new Float64Array(64)
 export function chunksOfRoute(nav: NavMap, route: Route): { chunk: number; minute: number }[] {
   const result: { chunk: number; minute: number }[] = [],
-    seen = new Set<number>()
+    seen = new Set<number>(),
+    size = nav.chunkCm
   let units = 0
-  const add = (chunk: number, at: number) => {
+  const add = (x: number, y: number, at: number) => {
+    const chunk = Math.floor(y / size) * nav.chunkCells + Math.floor(x / size)
     if (!seen.has(chunk)) {
       seen.add(chunk)
       result.push({ chunk, minute: Math.floor(at / TIME_UNITS_PER_MINUTE) })
     }
   }
-  for (const segment of route.segments) {
-    const cuts = [0, 1],
-      dx = segment.x1 - segment.x0,
-      dy = segment.y1 - segment.y0
-    for (const [a, b] of [
-      [segment.x0, segment.x1],
-      [segment.y0, segment.y1],
-    ]) {
-      if (a === b) continue
-      for (
-        let line = (Math.floor(Math.min(a!, b!) / nav.chunkCm) + 1) * nav.chunkCm;
-        line < Math.max(a!, b!);
-        line += nav.chunkCm
-      )
-        cuts.push((line - a!) / (b! - a!))
+  const crossings = (a: number, b: number, count: number) => {
+    if (a === b) return count
+    for (let line = (Math.floor(Math.min(a, b) / size) + 1) * size; line < Math.max(a, b); line += size) {
+      if (count === cutBuffer.length) {
+        const grown = new Float64Array(2 * count)
+        grown.set(cutBuffer)
+        cutBuffer = grown
+      }
+      cutBuffer[count++] = (line - a) / (b - a)
     }
-    cuts.sort((a, b) => a - b)
-    add(chunkOf(nav, { x: segment.x0, y: segment.y0 }), units)
-    for (let i = 1; i < cuts.length; i += 1) {
-      const t = (cuts[i - 1]! + cuts[i]!) / 2
-      add(chunkOf(nav, { x: segment.x0 + t * dx, y: segment.y0 + t * dy }), units + cuts[i - 1]! * segment.timeUnits)
+    return count
+  }
+  for (const segment of route.segments) {
+    const dx = segment.x1 - segment.x0,
+      dy = segment.y1 - segment.y0
+    cutBuffer[0] = 0
+    cutBuffer[1] = 1
+    const count = crossings(segment.y0, segment.y1, crossings(segment.x0, segment.x1, 2))
+    // Insertion sort: a segment crosses few chunk lines.
+    for (let i = 1; i < count; i += 1) {
+      const value = cutBuffer[i]!
+      let j = i - 1
+      for (; j >= 0 && cutBuffer[j]! > value; j -= 1) cutBuffer[j + 1] = cutBuffer[j]!
+      cutBuffer[j + 1] = value
+    }
+    add(segment.x0, segment.y0, units)
+    for (let i = 1; i < count; i += 1) {
+      const t = (cutBuffer[i - 1]! + cutBuffer[i]!) / 2
+      add(segment.x0 + t * dx, segment.y0 + t * dy, units + cutBuffer[i - 1]! * segment.timeUnits)
     }
     units += segment.timeUnits
-    add(chunkOf(nav, { x: segment.x1, y: segment.y1 }), units)
+    add(segment.x1, segment.y1, units)
   }
   return result
 }
@@ -267,8 +283,8 @@ export function scheduleArrivals(state: ValleyState, walkerId: number, route: Ro
       routeId: walker.task?.routeId ?? -1,
       walkStartMinute: startMinute,
     })
-    for (const id of peopleInChunk(state, entry.chunk)) {
-      if (id === walkerId) continue
+    for (let id = 0; id < state.personChunk.length; id += 1) {
+      if (state.personChunk[id] !== entry.chunk || id === walkerId) continue
       const person = state.foragers[id]!
       if (!person.alive || (person.task?.kind === 'sleep' && person.waterDeficitMl < fatal)) continue
       state.queue.schedule({

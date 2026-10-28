@@ -9,6 +9,7 @@ import { nearestFrontier, chunkOf, estimateMinutes } from './routes'
 import { observeAt, locatePeople, scheduleArrivals, peopleInChunk } from './perception'
 import { rememberWalk, type WalkFound } from './ways'
 import { carriedKcal, spoil, addLots, eatCarried } from './food'
+import { distanceSq } from './geometry'
 import { takeFrom } from './places'
 import { nextShortOfWood, swap } from './trade'
 import { meet, dissolveIfAlone } from './social'
@@ -262,13 +263,19 @@ function creditTask(state: ValleyState, person: Forager, minute: number, events:
   return produced
 }
 /** The waking person offers and asks for wood and axes among the people it may trade with. */
+/** A group member out of the trader's reach: dead to every exchange rule, and in no group. */
+const ABSENT = { id: -1, alive: false, groupId: null } as unknown as Forager
 function exchange(state: ValleyState, id: number, minute: number, events: ValleyEvent[]) {
-  // Acceptance reads the counterparty's body at this minute without ending its task or paying it twice. Only members
-  // of the trader's group may trade with it, so everyone else is passed as they are, never read past their group.
-  const groupId = state.foragers[id]!.groupId
+  // Acceptance reads the counterparty's body at this minute without ending its task or paying it twice. Only living
+  // members of the trader's group within talking distance may trade with it or hear its terms, so everyone else is
+  // passed as they are, or, for members out of reach, as an absent member that no rule reads past.
+  const groupId = state.foragers[id]!.groupId,
+    at = positionAt(state, state.foragers[id]!, minute)
   const views = state.foragers.map((other) => {
     if (other.groupId !== groupId) return other
     const point = positionAt(state, other, minute)
+    if (other.id !== id && (!other.alive || distanceSq(point.x, point.y, at.x, at.y) > state.config.talkRadiusCm ** 2))
+      return ABSENT
     const energy = other.task ? Math.max(0, energyAt(other.task, minute, state.routes).kcal) : other.energyKcal
     const water = other.task ? waterAt(other.task, minute, state.routes).ml : other.waterDeficitMl
     return {
@@ -301,6 +308,7 @@ function exchange(state: ValleyState, id: number, minute: number, events: Valley
     if (event.kind === 'sale') address(state, event.sellerId === id ? event.buyerId : event.sellerId, minute)
   }
   for (const view of views) {
+    if (view === ABSENT || view === state.foragers[view.id]) continue
     const owner = state.foragers[view.id]!
     owner.carried = view.carried
     owner.wood = view.wood

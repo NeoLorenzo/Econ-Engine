@@ -1,4 +1,5 @@
 import { WakeQueue, type WakeEntry } from '../valley/clock'
+import { cloneValley, type Memory } from '../valley/engine'
 import type { Route } from '../valley/routes'
 import type { Forager, ValleyEvent, ValleyState } from '../valley/types'
 
@@ -31,13 +32,37 @@ const MEMORY = [
   'placeLogs',
   'fishMemory',
   'metPosition',
-] as const satisfies readonly (keyof Forager)[]
+] as const satisfies readonly (keyof Memory)[]
 
-function viewForager(person: Forager, followedId: number, last: Forager | undefined): Forager {
-  if (person.id === followedId || !last) return person
-  const kept: Partial<Forager> = {}
-  for (const key of MEMORY) if (person[key] !== last[key]) Object.assign(kept, { [key]: last[key] })
-  return Object.keys(kept).length ? { ...person, ...kept } : person
+/**
+ * What a copy holds of a person's memory: the last copy's, or, for the person followed and in the first copy, a copy
+ * that shares nothing with the engine's state, which the worker runs on in place. Banks are only ever added, so a
+ * bank memory of the same size is the same and is kept.
+ */
+function viewMemory(person: Forager, followedId: number, last: Forager | undefined): Memory {
+  if (person.id !== followedId && last) {
+    const kept = {} as Record<(typeof MEMORY)[number], unknown>
+    for (const key of MEMORY) kept[key] = last[key]
+    return kept as Memory
+  }
+  const k = person.knowledge
+  return {
+    knowledge: {
+      triangles: k.triangles.slice(),
+      revision: k.revision,
+      fullyKnown: k.fullyKnown?.slice(),
+      banksKnown: k.banksKnown?.slice(),
+    },
+    ways: person.ways,
+    knownBanks: last && last.knownBanks.size === person.knownBanks.size ? last.knownBanks : new Map(person.knownBanks),
+    knownPlaces: person.knownPlaces.slice(),
+    placeCheckedMinute: person.placeCheckedMinute.slice(),
+    placeStock: person.placeStock.slice(),
+    placeWood: person.placeWood.slice(),
+    placeLogs: person.placeLogs.slice(),
+    fishMemory: new Map(person.fishMemory),
+    metPosition: new Map(person.metPosition),
+  }
 }
 
 const VIEW_EVENTS = new Set<ValleyEvent['kind']>(['exchange', 'walk'])
@@ -53,6 +78,7 @@ function viewDay(events: ValleyEvent[], finished: boolean) {
 
 /** The view copy of `state`, with `followedId`'s memory and everyone else's from `previous`, the copy before. */
 export function wireOf(state: ValleyState, followedId: number, previous: Wire | null = null): Wire {
+  const copy = cloneValley(state, (person) => viewMemory(person, followedId, previous?.foragers[person.id]))
   const routes: Route[] = []
   for (const person of state.foragers) {
     const id = person.task?.routeId ?? -1
@@ -60,12 +86,11 @@ export function wireOf(state: ValleyState, followedId: number, previous: Wire | 
   }
   const last = state.eventDays.length - 1
   return {
-    ...state,
+    ...copy,
     queue: state.foragers.map((person) => state.queue.entriesOf(person.id)[0] ?? null),
     routes,
     lastInterval: state.lastInterval.filter((e) => e.kind === 'exchange'),
     eventDays: state.eventDays.map((day, index) => viewDay(day, index < last)),
-    foragers: state.foragers.map((person) => viewForager(person, followedId, previous?.foragers[person.id])),
   }
 }
 
