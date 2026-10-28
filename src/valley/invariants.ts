@@ -9,6 +9,7 @@ import {
   positionAlong,
   chunkOf,
   knows,
+  lineCorridor,
   meshSettings,
   NEAR_CM,
   onWalkableGround,
@@ -172,7 +173,24 @@ export class ValleyChecker {
             errors.push(`person ${p.id}: two leisure walks in a day`)
           leisure = e.minute
         }
-        if (e.kind === 'walk' && e.plan === 'full') errors.push(`person ${p.id}: a walk needed the full search`)
+        const made = e.kind === 'walk' && e.plan !== 'way' && e.plan !== 'joined'
+        const newWay = made ? p.ways.find((w) => w.id >= before.nextWayId && w.plannedMinute === e.minute) : undefined
+        if (newWay) {
+          const c = newWay.corridor
+          if (new Set(c).size !== c.length) errors.push(`person ${p.id}: way ${newWay.id} holds a triangle twice`)
+          if (e.kind === 'walk' && e.plan === 'straight') {
+            const line = lineCorridor(
+              mesh,
+              c[0]!,
+              c[c.length - 1]!,
+              newWay.a,
+              newWay.b,
+              (t) => mesh.area[t] === GROUND_AREA,
+            )
+            if (!line || line.length !== c.length || line.some((t, i) => t !== c[i]))
+              errors.push(`person ${p.id}: straight way ${newWay.id} is not the line between its ends`)
+          }
+        }
         if (e.kind === 'walk' && (e.plan === 'way' || e.plan === 'joined')) {
           const way = known.get(e.wayId)
           if (way) {

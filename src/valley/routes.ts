@@ -394,33 +394,21 @@ export function cachedHeight(mesh: GroundMesh, x: number, y: number) {
   return value
 }
 
-const searchBuffers = new WeakMap<
-  GroundMesh,
-  {
-    costs: Float64Array
-    parents: Int32Array
-    px: Float64Array
-    py: Float64Array
-    seen: Uint32Array
-    closed: Uint32Array
-    stamp: number
-  }
->()
-const length2 = (ax: number, ay: number, bx: number, by: number) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
-/**
- * A* over known walkable triangles between their shared edges' midpoints, ties by triangle id. Returns the
- * corridor of triangles from `first` to `last`, or null. With a band, only triangles in the band's chunks are crossed.
- */
-export function corridorOf(
-  mesh: GroundMesh,
-  knowledge: Knowledge,
-  first: number,
-  last: number,
-  from: Point,
-  to: Point,
-  band?: Uint8Array,
-): number[] | null {
-  let buffers = searchBuffers.get(mesh)
+interface SearchBuffers {
+  costs: Float64Array
+  parents: Int32Array
+  px: Float64Array
+  py: Float64Array
+  seen: Uint32Array
+  closed: Uint32Array
+  heap: CellHeap
+  stamp: number
+}
+/** Reusable per-triangle search arrays: one set for the fine search, one for the chain of pieces. */
+const searchBuffers = new WeakMap<GroundMesh, SearchBuffers>(),
+  chainBuffers = new WeakMap<GroundMesh, SearchBuffers>()
+function buffersOf(cache: WeakMap<GroundMesh, SearchBuffers>, mesh: GroundMesh) {
+  let buffers = cache.get(mesh)
   if (!buffers) {
     const n = mesh.triangles
     buffers = {
@@ -430,14 +418,32 @@ export function corridorOf(
       py: new Float64Array(n),
       seen: new Uint32Array(n),
       closed: new Uint32Array(n),
+      heap: new CellHeap(),
       stamp: 0,
     }
-    searchBuffers.set(mesh, buffers)
+    cache.set(mesh, buffers)
   }
-  const { costs, parents, px, py, seen, closed } = buffers,
+  buffers.heap.clear()
+  return buffers
+}
+const length2 = (ax: number, ay: number, bx: number, by: number) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
+/**
+ * A* over known walkable triangles between their shared edges' midpoints, ties by triangle id. Returns the
+ * corridor of triangles from `first` to `last`, or null. With `within`, only triangles of that one piece are crossed.
+ */
+export function corridorOf(
+  mesh: GroundMesh,
+  knowledge: Knowledge,
+  first: number,
+  last: number,
+  from: Point,
+  to: Point,
+  within?: PieceOf,
+): number[] | null {
+  const buffers = buffersOf(searchBuffers, mesh)
+  const { costs, parents, px, py, seen, closed, heap } = buffers,
     stamp = ++buffers.stamp
   const { tv, tn, vx, vy, area } = mesh
-  const heap = new CellHeap()
   costs[first] = 0
   parents[first] = -1
   px[first] = from.x
@@ -452,7 +458,7 @@ export function corridorOf(
     for (let e = 0; e < 3; e++) {
       const next = tn[3 * t + e]!
       if (next < 0 || area[next] !== GROUND_AREA || closed[next] === stamp || !knows(knowledge, next)) continue
-      if (band && !band[mesh.chunk[next]!]) continue
+      if (within && (mesh.chunk[next] !== within.chunk || within.labels[within.slots[next]!] !== within.id)) continue
       const a = tv[3 * t + e]!,
         b = tv[3 * t + ((e + 1) % 3)]!,
         mx = (vx[a]! + vx[b]!) / 2,
@@ -651,71 +657,185 @@ export function carryPieces(nav: NavMap, before: Knowledge, after: Knowledge, ad
   for (const t of added) chunks.delete(nav.mesh.chunk[t]!)
   pieceCache.set(after, { revision: after.revision, chunks })
 }
+/** The one piece a search keeps to: its chunk's piece labels by slot, and its number. */
+export interface PieceOf {
+  chunk: number
+  labels: Int32Array
+  slots: Int32Array
+  id: number
+}
+/** A person's pieces: the labels of a chunk by slot, and the piece of a triangle. */
+function pieceLookup(nav: NavMap, knowledge: Knowledge) {
+  const mesh = nav.mesh,
+    pieces = piecesOf(knowledge),
+    slots = slotsOf(mesh),
+    labels = (c: number) => chunkPieces(mesh, knowledge, pieces, c)
+  return { labels, slots, piece: (t: number) => labels(mesh.chunk[t]!)[slots[t]!]! }
+}
 /**
  * The coarse plan: A* over the person's linked pieces, costed between their chunks' centres, ties by piece number.
- * Returns the band of the chain's chunks and every chunk touching one of them, side or corner, or null if no chain is
- * known. A chain of pieces is joined-up known ground, so the band always holds a path.
+ * Returns the chain of pieces from the first triangle's to the last's, or null if no chain is known.
  */
-export function coarseBand(nav: NavMap, knowledge: Knowledge, first: number, last: number): Uint8Array | null {
+export function pieceChain(nav: NavMap, knowledge: Knowledge, first: number, last: number): number[] | null {
   const { mesh, links } = nav,
     cells = mesh.chunkCells,
-    pieces = piecesOf(knowledge),
-    slots = slotsOf(mesh)
-  const piece = (t: number) => chunkPieces(mesh, knowledge, pieces, mesh.chunk[t]!)[slots[t]!]!
+    { labels, slots, piece } = pieceLookup(nav, knowledge)
   const from = piece(first),
     to = piece(last)
   if (from < 0 || to < 0) return null
+  if (from === to) return [from]
   const gap = (a: number, b: number) =>
     Math.sqrt(((a % cells) - (b % cells)) ** 2 + (Math.floor(a / cells) - Math.floor(b / cells)) ** 2)
-  const chain: number[] = [mesh.chunk[from]!]
-  if (from !== to) {
-    const goal = mesh.chunk[to]!,
-      costs = new Map<number, number>([[from, 0]]),
-      parents = new Map<number, number>([[from, -1]]),
-      closed = new Set<number>(),
-      heap = new CellHeap()
-    heap.push(from, gap(mesh.chunk[from]!, goal))
-    while (heap.length) {
-      const p = heap.popId()
-      if (closed.has(p)) continue
-      closed.add(p)
-      if (p === to) break
-      const c = mesh.chunk[p]!
+  // Pieces are numbered by one of their triangles, so the per-triangle arrays serve.
+  const buffers = buffersOf(chainBuffers, mesh)
+  const { costs, parents, seen, closed, heap } = buffers,
+    stamp = ++buffers.stamp
+  const goal = mesh.chunk[to]!
+  costs[from] = 0
+  parents[from] = -1
+  seen[from] = stamp
+  heap.push(from, gap(mesh.chunk[from]!, goal))
+  while (heap.length) {
+    const p = heap.popId()
+    if (closed[p] === stamp) continue
+    closed[p] = stamp
+    if (p === to) break
+    const c = mesh.chunk[p]!,
+      here = labels(c)
+    for (let k = links.start[c]!; k < links.start[c + 1]!; k++) {
+      const n = links.chunk[k]!,
+        there = labels(n),
+        cost = costs[p]! + gap(c, n)
+      for (let j = links.pairStart[k]!; j < links.pairStart[k + 1]!; j++) {
+        if (here[slots[links.pairs[2 * j]!]!] !== p) continue
+        const q = there[slots[links.pairs[2 * j + 1]!]!]!
+        if (q < 0 || closed[q] === stamp) continue
+        if (seen[q] !== stamp || cost < costs[q]! || (cost === costs[q] && p < parents[q]!)) {
+          costs[q] = cost
+          seen[q] = stamp
+          parents[q] = p
+          heap.push(q, cost + gap(n, goal))
+        }
+      }
+    }
+  }
+  if (closed[to] !== stamp) return null
+  const chain: number[] = []
+  for (let p = to; p >= 0; p = parents[p]!) chain.push(p)
+  return chain.reverse()
+}
+/**
+ * The triangles the straight line from `from` to `to` crosses, starting in `first` and ending in `last`, each one
+ * passing `open`; null if one does not, if either point lies outside its triangle, or if the line passes exactly
+ * through a vertex. Coordinates are whole or half centimetres, so the side tests are exact.
+ */
+export function lineCorridor(
+  mesh: GroundMesh,
+  first: number,
+  last: number,
+  from: Point,
+  to: Point,
+  open: (t: number) => boolean,
+): number[] | null {
+  const { tv, tn, vx, vy } = mesh
+  if (triangleDistanceSq(mesh, first, from.x, from.y) > 0) return null
+  const corridor = [first]
+  let t = first
+  while (triangleDistanceSq(mesh, t, to.x, to.y) > 0) {
+    // Leaving a counter-clockwise triangle across edge a→b, a lies right of the line and b left.
+    let next = -1
+    for (let e = 0; e < 3; e++) {
+      const a = tv[3 * t + e]!,
+        b = tv[3 * t + ((e + 1) % 3)]!
+      if (
+        crossXY(from.x, from.y, to.x, to.y, vx[a]!, vy[a]!) < 0 &&
+        crossXY(from.x, from.y, to.x, to.y, vx[b]!, vy[b]!) > 0
+      ) {
+        next = tn[3 * t + e]!
+        break
+      }
+    }
+    if (next < 0 || !open(next)) return null
+    corridor.push((t = next))
+  }
+  return t === last ? corridor : null
+}
+/** The midpoint of the edge `t` shares with its neighbour `u`. */
+function sharedMidpoint(mesh: GroundMesh, t: number, u: number): Point {
+  const { tv, tn, vx, vy } = mesh
+  let e = 0
+  while (tn[3 * t + e] !== u) e++
+  const a = tv[3 * t + e]!,
+    b = tv[3 * t + ((e + 1) % 3)]!
+  return { x: (vx[a]! + vx[b]!) / 2, y: (vy[a]! + vy[b]!) / 2 }
+}
+/**
+ * A steered corridor along a chain of pieces: in each piece, from where the walker enters it to the crossing into the
+ * next piece whose midpoint is nearest the line on to the target, straight where the line stays in the piece and
+ * otherwise by the fine A* within the piece alone. The last piece's stretch ends at the target.
+ */
+export function steeredCorridor(
+  nav: NavMap,
+  knowledge: Knowledge,
+  chain: readonly number[],
+  first: number,
+  last: number,
+  from: Point,
+  to: Point,
+): number[] {
+  const { mesh, links } = nav,
+    { labels, slots } = pieceLookup(nav, knowledge)
+  const corridor: number[] = []
+  let entry = from,
+    entryTriangle = first
+  for (let i = 0; i < chain.length; i++) {
+    const id = chain[i]!,
+      c = mesh.chunk[id]!,
+      here = labels(c)
+    let exit = to,
+      exitTriangle = last,
+      across = -1
+    if (i + 1 < chain.length) {
+      const next = chain[i + 1]!,
+        n = mesh.chunk[next]!,
+        there = labels(n)
+      let best = Infinity
       for (let k = links.start[c]!; k < links.start[c + 1]!; k++) {
-        const n = links.chunk[k]!,
-          cost = costs.get(p)! + gap(c, n)
+        if (links.chunk[k] !== n) continue
         for (let j = links.pairStart[k]!; j < links.pairStart[k + 1]!; j++) {
-          if (piece(links.pairs[2 * j]!) !== p) continue
-          const q = piece(links.pairs[2 * j + 1]!)
-          if (q < 0 || closed.has(q)) continue
-          const old = costs.get(q)
-          if (old === undefined || cost < old || (cost === old && p < parents.get(q)!)) {
-            costs.set(q, cost)
-            parents.set(q, p)
-            heap.push(q, cost + gap(n, goal))
+          const t = links.pairs[2 * j]!,
+            u = links.pairs[2 * j + 1]!
+          if (here[slots[t]!] !== id || there[slots[u]!] !== next) continue
+          const m = sharedMidpoint(mesh, t, u),
+            d = segmentDistanceSq(m.x, m.y, entry.x, entry.y, to.x, to.y)
+          if (d < best || (d === best && t < exitTriangle)) {
+            best = d
+            exit = m
+            exitTriangle = t
+            across = u
           }
         }
       }
     }
-    if (!closed.has(to)) return null
-    chain.length = 0
-    for (let p = to; p >= 0; p = parents.get(p)!) chain.push(mesh.chunk[p]!)
+    const stretch =
+      lineCorridor(
+        mesh,
+        entryTriangle,
+        exitTriangle,
+        entry,
+        exit,
+        (t) => mesh.chunk[t] === c && here[slots[t]!] === id,
+      ) ?? corridorOf(mesh, knowledge, entryTriangle, exitTriangle, entry, exit, { chunk: c, labels: here, slots, id })!
+    for (const t of stretch) corridor.push(t)
+    entry = exit
+    entryTriangle = across
   }
-  const band = new Uint8Array(cells * cells)
-  for (const c of chain) {
-    const x = c % cells,
-      y = Math.floor(c / cells)
-    for (let dy = -1; dy <= 1; dy++)
-      for (let dx = -1; dx <= 1; dx++)
-        if (x + dx >= 0 && x + dx < cells && y + dy >= 0 && y + dy < cells) band[(y + dy) * cells + x + dx] = 1
-  }
-  return band
+  return corridor
 }
-export type PlanKind = 'coarse' | 'full'
+export type PlanKind = 'straight' | 'steered'
 /**
- * A new corridor over known ground, within the band of a coarse plan over pieces. The band always holds a path; the
- * search over all known ground is only a guard, recorded as `full`, that the checker rejects. Null when the two points
- * are on separate pieces of known ground.
+ * A new corridor over known ground: the straight line if it crosses only known walkable ground, else a corridor
+ * steered along the coarse chain of pieces. Null when the two points are on separate pieces of known ground.
  */
 export function planCorridor(
   nav: NavMap,
@@ -725,14 +845,21 @@ export function planCorridor(
   from: Point,
   to: Point,
 ): { corridor: number[]; plan: PlanKind } | null {
-  // A search between separate pieces of known ground would exhaust the start's piece before failing.
+  // A plan between separate pieces of known ground could never arrive.
   const componentOf = knownComponents(nav, knowledge)
   if (componentOf(first) !== componentOf(last)) return null
-  const band = coarseBand(nav, knowledge, first, last)
-  const banded = band && corridorOf(nav.mesh, knowledge, first, last, from, to, band)
-  if (banded) return { corridor: banded, plan: 'coarse' }
-  const corridor = corridorOf(nav.mesh, knowledge, first, last, from, to)
-  return corridor && { corridor, plan: 'full' }
+  const mesh = nav.mesh
+  const straight = lineCorridor(
+    mesh,
+    first,
+    last,
+    from,
+    to,
+    (t) => mesh.area[t] === GROUND_AREA && knows(knowledge, t) === 1,
+  )
+  if (straight) return { corridor: straight, plan: 'straight' }
+  const chain = pieceChain(nav, knowledge, first, last)
+  return chain && { corridor: steeredCorridor(nav, knowledge, chain, first, last, from, to), plan: 'steered' }
 }
 /** The shortest route over everything the person knows, without a coarse plan. */
 export function knownRoute(

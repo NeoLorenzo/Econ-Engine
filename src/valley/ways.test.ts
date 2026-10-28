@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { createSurveyedValley } from './ruleFixtures'
 import { FLAT_LAND } from './config'
 import {
-  coarseBand,
   corridorRoute,
+  lineCorridor,
+  pieceChain,
   pieceOf,
   planCorridor,
+  knows,
   routeTriangle,
   trianglePoint,
   type Knowledge,
@@ -45,7 +47,7 @@ describe('remembered ways', () => {
     const { person, go } = fixture()
     place(person, home)
     const first = go(thicket)
-    expect(first.plan).toBe('coarse')
+    expect(first.plan).toBe('straight')
     expect(person.ways).toHaveLength(1)
     const again = go(thicket)
     expect(again.plan).toBe('way')
@@ -68,7 +70,7 @@ describe('remembered ways', () => {
     expect(joined.corridor).toEqual(corridor.slice(corridor.indexOf(middle)))
     const off = [0, 1, 2].map((e) => mesh.tn[3 * middle + e]!).find((t) => t >= 0 && !corridor.includes(t))!
     place(person, trianglePoint(mesh, off))
-    expect(walk(thicket).plan).toBe('coarse')
+    expect(['straight', 'steered']).toContain(walk(thicket).plan)
   })
   it('keeps a way until a day has passed and new ground was seen', () => {
     const { state, person, go, walk } = fixture()
@@ -115,33 +117,75 @@ describe('remembered ways', () => {
   })
 })
 
-describe('coarse planning', () => {
-  it('keeps a coarse plan inside the band of its chain', () => {
+describe('new plans', () => {
+  const plan = (state: ValleyState, k: Knowledge, from: Point, to: Point) => {
+    const nav = state.layout.nav
+    return planCorridor(nav, k, routeTriangle(nav, k, from), routeTriangle(nav, k, to), from, to)!
+  }
+  it('walks straight over open known ground, crossing exactly the triangles of the line', () => {
     const { state, person } = fixture()
     const nav = state.layout.nav,
       k = person.knowledge
-    const first = routeTriangle(nav, k, home),
-      last = routeTriangle(nav, k, thicket)
-    const band = coarseBand(nav, k, first, last)!
-    const plan = planCorridor(nav, k, first, last, home, thicket)!
-    expect(plan.plan).toBe('coarse')
-    for (const t of plan.corridor) expect(band[nav.mesh.chunk[t]!]).toBe(1)
+    const straight = plan(state, k, home, thicket)
+    expect(straight.plan).toBe('straight')
+    const line = lineCorridor(
+      nav.mesh,
+      routeTriangle(nav, k, home),
+      routeTriangle(nav, k, thicket),
+      home,
+      thicket,
+      () => true,
+    )
+    expect(straight.corridor).toEqual(line)
   })
-  it('goes round a wall of unknown ground in a coarse plan, inside its band', () => {
+  it('steers round a wall of unknown ground across the line, over known ground only', () => {
     const { state, person } = fixture()
-    // A wall inside the first column of chunks, open only far outside the band of the straight chain.
+    // A wall inside the first column of chunks, open only far from the line.
     forget(state, person.knowledge, (x, y) => x > 9_000 && x < 11_000 && y < 70_000)
+    const k = person.knowledge,
+      mesh = state.layout.nav.mesh
+    const steered = plan(state, k, { x: 1_000, y: 10_000 }, { x: 30_000, y: 10_000 })
+    expect(steered.plan).toBe('steered')
+    expect(steered.corridor.every((t) => knows(k, t))).toBe(true)
+    expect(steered.corridor.some((t) => mesh.cy[t]! > 70_000)).toBe(true)
+    expect(new Set(steered.corridor).size).toBe(steered.corridor.length)
+  })
+  it('counts a line through a vertex as blocked', () => {
+    const { state, person } = fixture()
+    const mesh = state.layout.nav.mesh,
+      t = routeTriangle(state.layout.nav, person.knowledge, { x: 30_000, y: 30_000 }),
+      v = mesh.tv[3 * t]!
+    const from = { x: mesh.vx[v]! - 1_500, y: mesh.vy[v]! - 700 },
+      to = { x: mesh.vx[v]! + 1_500, y: mesh.vy[v]! + 700 }
+    expect(plan(state, person.knowledge, from, to).plan).toBe('steered')
+  })
+  it('crosses into the next piece by the crossing nearest the line to the target', () => {
+    const { state, person } = fixture()
+    // Unknown ground along the border between the first two chunks, open in two gaps, one nearer the line.
+    forget(
+      state,
+      person.knowledge,
+      (x, y) => x > 18_000 && x < 22_000 && y < 20_000 && !(y < 4_000) && !(y > 12_000 && y < 16_000),
+    )
+    const mesh = state.layout.nav.mesh
+    const steered = plan(state, person.knowledge, { x: 5_000, y: 10_000 }, { x: 35_000, y: 10_000 })
+    expect(steered.plan).toBe('steered')
+    const crossing = steered.corridor.filter((t) => mesh.cx[t]! > 18_000 && mesh.cx[t]! < 22_000)
+    expect(crossing.length).toBeGreaterThan(0)
+    expect(crossing.every((t) => mesh.cy[t]! > 12_000 && mesh.cy[t]! < 16_000)).toBe(true)
+  })
+  it('goes round an obstacle inside one piece without leaving it', () => {
+    const { state, person } = fixture()
+    forget(state, person.knowledge, (x, y) => x > 8_000 && x < 12_000 && y > 8_000 && y < 12_000)
     const nav = state.layout.nav,
       k = person.knowledge
-    const from = { x: 1_000, y: 10_000 },
-      to = { x: 30_000, y: 10_000 }
-    const first = routeTriangle(nav, k, from),
-      last = routeTriangle(nav, k, to)
-    const band = coarseBand(nav, k, first, last)!
-    const plan = planCorridor(nav, k, first, last, from, to)!
-    expect(plan.plan).toBe('coarse')
-    for (const t of plan.corridor) expect(band[nav.mesh.chunk[t]!]).toBe(1)
-    expect(plan.corridor.some((t) => nav.mesh.cy[t]! > 70_000)).toBe(true)
+    const from = { x: 2_000, y: 10_000 },
+      to = { x: 18_000, y: 10_000 }
+    const first = routeTriangle(nav, k, from)
+    expect(pieceChain(nav, k, first, routeTriangle(nav, k, to))).toEqual([pieceOf(nav, k, first)])
+    const steered = plan(state, k, from, to)
+    expect(steered.plan).toBe('steered')
+    expect(steered.corridor.every((t) => pieceOf(nav, k, t) === pieceOf(nav, k, first))).toBe(true)
   })
   it('splits a chunk into pieces where its known ground is not joined', () => {
     const { state, person } = fixture()
@@ -155,7 +199,7 @@ describe('coarse planning', () => {
     expect(pieceOf(nav, k, left)).not.toBe(pieceOf(nav, k, right))
     expect(pieceOf(nav, k, left)).toBe(pieceOf(nav, k, below))
   })
-  it('plans between two pieces of one chunk through the next chunk', () => {
+  it('steers between two pieces of one chunk through the next chunk', () => {
     const { state, person } = fixture()
     forget(state, person.knowledge, (x, y) => x > 9_000 && x < 11_000 && y < 21_000)
     const nav = state.layout.nav,
@@ -165,16 +209,16 @@ describe('coarse planning', () => {
     const first = routeTriangle(nav, k, from),
       last = routeTriangle(nav, k, to)
     expect(nav.mesh.chunk[first]).toBe(nav.mesh.chunk[last])
-    const plan = planCorridor(nav, k, first, last, from, to)!
-    expect(plan.plan).toBe('coarse')
-    expect(plan.corridor.some((t) => nav.mesh.chunk[t] !== nav.mesh.chunk[first])).toBe(true)
+    const steered = plan(state, k, from, to)
+    expect(steered.plan).toBe('steered')
+    expect(steered.corridor.some((t) => nav.mesh.chunk[t] !== nav.mesh.chunk[first])).toBe(true)
   })
   it('links chunks only across ground known on both sides', () => {
     const { state, person } = fixture()
     forget(state, person.knowledge, (x) => x > 14_000 && x < 26_000)
     const nav = state.layout.nav,
       k = person.knowledge
-    expect(coarseBand(nav, k, routeTriangle(nav, k, home), routeTriangle(nav, k, thicket))).toBeNull()
+    expect(pieceChain(nav, k, routeTriangle(nav, k, home), routeTriangle(nav, k, thicket))).toBeNull()
   })
 })
 
@@ -232,11 +276,18 @@ describe('the checker on ways', () => {
     })
     expect(survey.some((e) => e.includes('survey taken against the rule'))).toBe(true)
   })
-  it('rejects a walk that needed the full search', () => {
+  it('rejects a straight way off its line, and a way holding a triangle twice', () => {
     const errors = run((s) => {
-      const e = s.lastInterval.find((r) => r.kind === 'walk')!
-      if (e.kind === 'walk') e.plan = 'full'
+      const e = s.lastInterval.find((r) => r.kind === 'walk' && r.plan === 'straight' && r.wayId < 0)!
+      if (e.kind !== 'walk') return
+      const p = s.foragers[e.foragerId]!,
+        w = p.ways.find((way) => way.plannedMinute === e.minute)!
+      const c = w.corridor
+      p.ways = p.ways.map((way) =>
+        way === w ? { ...w, corridor: Int32Array.from([c[0]!, c[1]!, c[0]!, ...c.subarray(1)]) } : way,
+      )
     })
-    expect(errors.some((e) => e.includes('needed the full search'))).toBe(true)
+    expect(errors.some((e) => e.includes('holds a triangle twice'))).toBe(true)
+    expect(errors.some((e) => e.includes('is not the line between its ends'))).toBe(true)
   })
 })

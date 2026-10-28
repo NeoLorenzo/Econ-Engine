@@ -2,6 +2,16 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE15-Wayfinding-071] - (2026-10-28)
+
+- A new route is planned as people find their way: the straight line when every triangle it crosses is known walkable ground, otherwise steered along the chain of pieces, heading in each piece for the crossing nearest the line on to the target, straight where it can and by a search confined to that piece where it cannot.
+- The band of chunks, the search over all known ground and `full` walks are removed. Walk plans are now `way`, `joined`, `straight` and `steered`; the panel says "heading straight there" or "finding a way through".
+- The checker requires a way remembered from a straight walk to be exactly the triangles its line crosses, and rejects a new way holding a triangle twice.
+- The chain of pieces and the fine search reuse typed arrays and one heap instead of maps, sets and a heap per search.
+- Trajectories change: new fingerprints are recorded for 21 of the 22 runs; one flat-land run is unchanged.
+- New unit fixtures for straight and steered plans, a line through a vertex, the crossing nearest the line, an obstacle inside one piece, and the checker rejecting a straight way off its line.
+- The Life 15 specification is revised for update 071.
+
 ## [LIFE15-Lighter-070] - (2026-10-28)
 
 - An exchange no longer copies group members who are dead or out of talking distance, and copies back only the views that changed.
