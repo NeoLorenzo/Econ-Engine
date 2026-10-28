@@ -3,7 +3,7 @@ import { createValley } from '../valley/engine'
 import { RunSettingsScreen } from './RunSettingsScreen'
 import { configOfSettings, defaultRunSettings, runSettingsError, type RunSettings } from './runSettings'
 import ValleyApp from './ValleyApp'
-import { startDisplay, type Display } from './valleyViewModel'
+import { startEngine, type EngineLink } from './engineLink'
 
 /** Runs `work` after the browser has painted, so a loading screen shown just before it is on screen meanwhile. */
 const afterPaint = (work: () => void) => requestAnimationFrame(() => setTimeout(work, 0))
@@ -11,7 +11,7 @@ const afterPaint = (work: () => void) => requestAnimationFrame(() => setTimeout(
 /** The Life page: the settings screen until Start, then the run those settings began. */
 export default function LifePage() {
   const [settings, setSettings] = useState<RunSettings>(defaultRunSettings)
-  const [start, setStart] = useState<Display | null>(null)
+  const [start, setStart] = useState<EngineLink | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -26,7 +26,10 @@ export default function LifePage() {
         const problem = runSettingsError(next)
         setError(problem)
         if (!problem) {
-          setStart(startDisplay(createValley(configOfSettings(next))))
+          // The engine's thread builds its own valley meanwhile.
+          const config = configOfSettings(next)
+          const connect = startEngine(config)
+          setStart(connect(createValley(config)))
           started = true
         }
       } finally {
@@ -39,7 +42,14 @@ export default function LifePage() {
   return (
     <>
       {start ? (
-        <ValleyApp start={start} onNewRun={() => setStart(null)} onReady={ready} />
+        <ValleyApp
+          engine={start}
+          onNewRun={() => {
+            start.stop()
+            setStart(null)
+          }}
+          onReady={ready}
+        />
       ) : (
         <RunSettingsScreen initial={settings} error={error} onStart={begin} />
       )}

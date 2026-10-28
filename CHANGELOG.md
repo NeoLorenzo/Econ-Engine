@@ -2,6 +2,16 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE15-Worker-069] - (2026-10-28)
+
+- The Life engine runs in a Web Worker. The page keeps the clock and asks the worker for a goal 0.1 s ahead at the speed shown; the worker runs in slices of at most 50 ms and sends a view copy every stride minutes (the speed over 60, at least one).
+- A view copy keeps only what the page reads: the routes of walks under way, each person's next wake-up in place of the wake-up queue, exchanges and walk records among the events, and current memory only for the followed person. It travels as its changes from the last copy sent.
+- The page draws the newest copy at or before the clock; when the worker is behind, the clock waits instead of the page. Step shows the next minute once it arrives, and a change of speed jumps to the newest copy.
+- The loading card stays until the worker has built its valley.
+- New `viewCopy.ts`, `engineWorker.ts` and `engineLink.ts`; the playback functions in `valleyViewModel.ts` replace the per-frame engine step. New unit tests for the view copies, and rewritten playback tests.
+- The engine is unchanged, so every fingerprint stays the same.
+- The Life 15 specification is revised for update 069.
+
 ## [LIFE15-Planning-068] - (2026-10-27)
 
 - A new route's coarse plan runs over a person's pieces, the joined-up patches of known ground within each 200 m chunk, in place of whole chunks. Two pieces are linked where the person knows ground on both sides of a chunk border. A chain of pieces always holds a path, so the band search no longer fails and the search over everything a person knows is no longer needed.
