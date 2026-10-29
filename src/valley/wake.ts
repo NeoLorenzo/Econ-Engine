@@ -13,6 +13,7 @@ import { distanceSq } from './geometry'
 import { takeFrom } from './places'
 import { nextShortOfWood, swap } from './trade'
 import { meet, dissolveIfAlone } from './social'
+import { ask, countTogether } from './ties'
 import { layLog, leaveHutIfMoved, hutWhole } from './huts'
 import { feedFire } from './fire'
 import { warmthOf, tendFire } from './work'
@@ -433,12 +434,17 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
     other.y = point.y
     if (other.lastWakeMinute !== minute) address(state, otherId, minute)
   }
+  events.push(...countTogether(state, person, task, observation.people, minute))
   // Exchange needs another living member of the trader's group; without one, neither wood nor axes change hands.
   if (
     person.groupId !== null &&
     state.foragers.some((other) => other.id !== id && other.alive && other.groupId === person.groupId)
   )
     exchange(state, id, minute, events)
+  // Everyone asked was met above, and so is already woken this minute.
+  const asked = ask(state, person, observation.people, minute)
+  events.push(...asked.events)
+  if (ended?.kind === 'task-end') ended.ateKcal = (ended.ateKcal ?? 0) + asked.ateKcal
   if (atHearth(person)) {
     const logs = person.log
     if (layLog(state, person, minute))
@@ -457,7 +463,7 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
   if (!ended) {
     const first = started.find((event) => event.kind === 'task-start')
     if (first?.kind === 'task-start') {
-      first.ateKcal = eaten.takenKcal
+      first.ateKcal = eaten.takenKcal + asked.ateKcal
       first.spoiledKcal = spoiled.spoiledKcal
     }
   }

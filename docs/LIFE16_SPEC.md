@@ -1,109 +1,28 @@
-# [LIFE15-Wayfinding-071]
+# [LIFE16-Relationships-072]
 
-**Updates up to 071 approved by the owner, 2026-10-28.** This specification replaced the Life 14 specification at update 066 and describes the whole simulation. It is step 15 of the [roadmap](ROADMAP.md), habitual routes, inserted before relationships, and is built under the [Life section](../SIMULATION_DESIGN_RULES.md#life-realism-and-time) of the design rules. Update 068 revised how a new route is planned. Update 069, below, moves the engine off the page's main thread; it changes only the observer. Update 070 makes wake-ups cheaper without changing any result. Update 071, below, replaces the detailed route search with the simple rules people use to find their way.
+**Approved by the owner, 2026-10-29; revised for update 072.** This specification replaces the Life 15 specification and describes the whole simulation. It is step 16 of the [roadmap](ROADMAP.md), relationships, and is built under the [Life section](../SIMULATION_DESIGN_RULES.md#life-realism-and-time) of the design rules. Life 15's update history (planning by pieces, the engine in a worker, lighter wake-ups and simple wayfinding) is recorded in the changelog and the lab notes, entries 066 to 071.
 
-Forty strangers are dropped on 4 km square of young glacial land in Mesolithic northern Europe: drumlins, moraine fronts, kames, hummocks, kettle hollows and tunnel valleys, with lakes in the hollows and rivers running downhill to the edge. The ground is grass, dirt and stone. People discover drinking banks, drink, pick berries, gather hazelnuts, fish, gather firewood, meet, form groups, exchange wood and axes for food, and build huts around shared fires. Their knowledge comes from observation and memory. Each of them is a woman or a man with a body of their own and a personality of their own. From this step they find their way as people do: they remember the ways they walk, take them again, and plan afresh only for somewhere new, or now and then to notice a shortcut.
+Forty strangers are dropped on 4 km square of young glacial land in Mesolithic northern Europe: drumlins, moraine fronts, kames, hummocks, kettle hollows and tunnel valleys, with lakes in the hollows and rivers running downhill to the edge. The ground is grass, dirt and stone. People discover drinking banks, drink, pick berries, gather hazelnuts, fish, gather firewood, meet, form groups, exchange wood and axes for food, and build huts around shared fires. Their knowledge comes from observation and memory. Each of them is a woman or a man with a body of their own and a personality of their own. They find their way as people do: they remember the ways they walk, take them again, and plan afresh only for somewhere new. From this step each person also remembers the others they know: how much time they have spent together, what has been given between them, and what they hold against them. Someone hungry or short of wood asks the people they know for some, and those who know them well enough give.
 
 Time is one clock in minutes. Nobody is stepped: a person is woken when their task ends, a body threshold arrives, someone enters their chunk, or someone addresses them, and their position and body at any minute follow from their task. A year has as many days as the run's settings say, from 8 to 365. Lengths are integer centimetres, food integer kilocalories, wood integer kilograms, water deficit integer millilitres, and fractional amounts accumulate in integer remainders. `stepValley` advances the state to a target minute, is pure and deterministic, and every random draw comes from a named derived stream. The observer displays real records and interpolates movement between them.
 
-## What Life 15 makes possible
+## What Life 16 makes possible
 
-- **People walk the ways they know.** Until now every walk was planned from nothing, as the best path over all the ground the person had ever seen, as if they studied a perfect map before every step. Real people learn a few routes between the places they use, take them again, and join a familiar route when they find themselves on it (Siegel and White 1975; Golledge 1999). Each person now remembers **ways**: the line of ground they walked from a starting point to a place, a bank or home. A walk to the same place, or back from it, takes the remembered way, or the rest of a way they are standing on.
-- **People head straight for where they are going.** When no way is known and the straight line there crosses only ground the person knows they can walk, they walk it (update 071).
-- **Otherwise they plan coarsely and steer.** A person picks a chain of pieces of known land, each within a 200 m square, that leads there, as someone thinks "over the ridge, round the lake", then heads for each crossing into the next piece in turn, going round what is in the way only within the piece they are crossing. Because each piece is ground the person knows to be joined up, the chain always holds a path (updates 068 and 071).
-- **People notice shortcuts slowly.** A remembered way is reconsidered at most once a day, and only if the person has seen new ground since they planned it. Until then they keep to it, even if a better path has just come into view.
-- **People look again only when they have moved.** The still landscape in sight (ground, banks, thickets, stands, outcrops) is surveyed again only once the person has moved 100 m from where they last surveyed it. People, fires, flags and huts, and the stock where the person stands are noticed at every wake-up, as before.
-- **Why now.** In the canonical run, the engine is about 400 times slower per simulated hour on day 12 than on day 2: in four midday hours of day 12 people searched 1,675 routes, every one planned anew, none repeating an earlier search (update 065). Planning every walk from scratch is both unrealistic and the largest single cost of a late day. Fixing it now, before relationships add more walking, keeps later steps runnable.
-- **The groundwork for trails.** Ways are the first thing a person keeps because they used it, not because they chose it fresh. Trails worn by many feet, and showing someone the way (step 24, making and teaching), can build on them later. Nothing in this step wears a trail or shares a way.
+- **People know each other.** Until now a person remembered only the minute they last met someone and where. Each person now holds a **tie** to each person they have spent time with: **familiarity**, the minutes the two have spent close together; **credit**, the balance of what has been given between them, counted in minutes of the person's own work; and **grievance**, what they hold against the other. Ties are held in each person's own memory, at most `tiesRemembered` (150) of them, and fade slowly when nothing renews them.
+- **Time together builds familiarity.** Two people who stay within talking distance (20 m) of each other, neither of them walking, become familiar by the minutes they spent there: a night beside neighbouring hearths, an afternoon picking the same thicket, an hour resting by the same fire. Passing on a walk counts for nothing. Co-residence and time spent together are what predict ties among foragers (Apicella et al. 2012; Hill et al. 2011).
+- **People ask, and are given.** A person who is hungry with no food in hand, or short of a night's firewood with none to spare, asks the people within talking distance whom they know, the closest tie first, for some of what they visibly carry. This is demand sharing, the common way food moves among foragers (Peterson 1993). The person asked gives if their goodwill towards the asker, their familiarity scaled by their agreeableness, covers what the asker already owes them less anything they owe the asker, plus their grievance. They give what they can spare, up to what the asker lacks.
+- **Gifts are remembered, and so are refusals.** A gift is credit in the giver's memory and a debt in the receiver's, each counted as the minutes the gift would take that person to gather themselves. A person who owes someone is more willing to give to them; a person who is owed a lot by someone is less willing. A refusal adds to the asker's grievance against the one who refused. Nothing in the engine says "reciprocate": it follows from each person's own ledger.
+- **Why now.** Conflict (step 17) needs grievances and someone to hold them against; influence (step 18) needs each person's view of the others' generosity. Before either, people need to know one another. Sharing is the first thing ties decide, because food is what people already need daily, and gifts are what ties among foragers are built on (Gurven 2004).
 
-This step changes how people find and keep their way, and how often they look around. It does not change the map, the ground anyone may walk, walking speeds, the resources, bodies, personality or what people can do.
-
-## Update 071: simple wayfinding
-
-**The problem.** After update 070 a simulated day past day 50 takes about 195 ms, against about 33 ms for a month a second. Finding routes is the largest part, about 30%. Of about 400 walks a day, about 80 are planned afresh, at about 1 ms each: to find a path about 150 triangles long, the fine A\* expands about 3,400 triangles, more than twenty times the path. It is also not how people find their way. The fine A\* finds the shortest path over every triangle in a band of known ground, as if the walker compared thousands of footings before setting off.
-
-**How people find their way.** People do not compute shortest paths. They head roughly towards the goal, choosing at each choice point the direction that points most nearly at it (the least-angle strategy, Hochmair and Frank 2000); they prefer routes whose first stretch is long and straight (Bailenson et al. 2000); they keep and reuse familiar routes (Golledge 1999); and they go round an obstacle when they reach it rather than planning the detour from afar. The routes they take are commonly longer than the shortest ones (Zhu and Levinson 2015).
-
-**The change.** A walk that has no remembered way to take is found by the first of two rules that applies:
-
-1. **Straight there.** If the straight line from the walker to the target crosses only triangles that are walkable and known to the person, the walk follows it. Checking costs one step per triangle crossed: tens, not thousands.
-2. **Steered through pieces.** Otherwise the coarse A\* over the person's pieces of known ground picks the chain as now (update 068). The walker then crosses the chain piece by piece. From where they enter a piece, they head for the crossing into the next piece that is nearest the line to the target, straight if that line stays within the piece, and otherwise by the fine A\* limited to that one piece, never more than one 200 m square. The walk's corridor is these stretches joined, pulled tight as every corridor is.
-
-The band, the fine A\* over a band and the full search over all known ground are removed. A piece is joined-up known ground, so the search within a piece always succeeds, and a chain of pieces always yields a walk: no guard is needed.
-
-Remembered ways, joining a way part-way, rechecking a way once a day and forgetting are unchanged; a recheck plans afresh by the two rules above. Ways are now remembered from straight and steered walks.
-
-**Expected, and measured.** The work of a new plan was expected to fall from about 3,400 triangles expanded to the triangles crossed by straight lines plus small searches within the few pieces where a line is blocked, and a day past day 50 from about 195 ms to roughly 130–150 ms. Measured, it did not. A straight plan costs about 4 µs, but only about one new plan in four is straight past day 20. A steered plan costs about 0.5 ms, and its corridor of some 340 triangles makes the route cut along it no cheaper than before. Over 60 days in 12-hour steps (single runs, against update 070): the hut week, days 11–19, takes 7.3 s instead of 9.1 s; days 1–10 take about the same; days 20–60 take about 185–205 ms a day instead of 172. Per wake-up the cost is the same as before; the run differs from 070's and has about 9% more wake-ups past day 50. So this update makes walks lifelike and the busy first weeks faster, but not ordinary days. The speed-ups that change no result (the inner loops, ground heights at places, the water search for people who know many banks, fewer short-lived objects) remain for separate updates; a month a second needs more still.
-
-**Who notices.** Paths are less perfect: a steered walk can be a little longer than the shortest path over known ground, going through the crossing nearest the goal rather than the best one, and round the near side of a lake. A median excess within about 15% is expected and examined in the lab notes, not tuned away. Every run's trajectory changes, including on the flat land, where straight lines replace searched paths. The person panel's wording for a new walk changes. Nothing else about people changes.
-
-## Update 070: lighter wake-ups
-
-**The problem.** After update 069, 1 month/s reaches about 4 simulated days a second, against 30 wanted. On the canonical forty past day 50 a simulated day costs about 230 ms of engine time: a thousand wake-ups that end in "keep resting" take 37 ms, four hundred walk decisions 140 ms, and the rest is the step's own copies and about 45 ms of garbage collection over 270 MB of short-lived objects a day.
-
-**The change.** Six speed-ups. None changes a result: every fingerprint stays the same.
-
-- **The exchange check.** A wake-up offers exchanges within the person's group. Group members who are dead or beyond talking distance can take no part, so they are no longer copied into the exchange's working views, and views nobody changed are not copied back.
-- **Looking around.** The people, fires and stock checks at each wake-up scan the nearby chunks directly, without building lists of candidates first; only walkers have their position worked out from their route, as everyone else stands where they are recorded.
-- **Route chunk crossings.** The chunks a walk crosses, which decide who is woken by someone arriving, are found with one reused buffer in place of temporary lists for every route.
-- **The wake-up queue cancels lazily.** Every wake-up cancels the person's pending wake-ups, which rebuilt the whole queue. Cancelled entries are now marked and dropped when they reach the front, or all at once when they outnumber the rest. Live entries leave in exactly the same order.
-- **The worker advances its state in place.** `stepValley` stays pure: it copies the state, then runs it on. The worker owns its state and keeps only the view copies it sends, so it calls `advanceValley`, the same loop without the copy. Nothing else may call `advanceValley` on a state someone else holds. The view copy now takes its own snapshot of the followed person's memory, since the engine's is changed in place.
-- **The daily summary counts known places without copying them.**
-
-**Measured.** In Node, on the canonical forty, seed 20260813, as the worker runs at 1 month/s (12-hour strides, a view copy and its changes each step), days 50 to 59 take 175–200 ms a simulated day against 235–275 ms before, about 27% faster: roughly 5.7 days a second of engine time against 4.2. Garbage collection falls from about 46 to 29 ms a day. Walk decisions (planning routes, choosing water, leisure walks) are now about 60% of a day and are the next thing to make cheaper.
-
-## Update 069: the engine in a worker thread
-
-**The problem.** The engine runs on the page's main thread, between frames, for up to 40 ms a frame. Drawing, the panels and the controls share that thread, so at high speeds the page manages about 16 frames a second, and a slow day (days 12 to 14 take 1.9–2.5 s) holds every frame it spans to the budget. At 1 month/s the page reaches 3.2 days a second, and the engine already takes about 70% of each second.
-
-**The change.** The engine runs in a worker thread with a state of its own. The main thread keeps the clock, draws, and handles the controls; it never runs `stepValley`.
-
-- **Building.** Both threads build the valley from the run's settings with `createValley`, which is pure, so they start from the same state. The layout (about 190 MB, mostly terrain) is never sent between them: copying it takes about 3 s.
-- **Running.** Each frame the main thread advances its clock as before and tells the worker a whole minute to run to, the *goal*: the clock plus 0.1 s at the speed shown, so a state is already waiting at each minute the clock reaches. The worker runs towards the goal in slices of at most 50 ms, sends a view copy every *stride* minutes (the speed over 60, at least 1: about one copy a frame) and at the end of each slice, and reads new messages between slices, so a new goal or followed person takes effect within one slice. It never runs past the goal.
-- **Drawing.** The main thread keeps the copies it has received and not yet passed. It draws the newest at or before the clock, at a minute less than one minute after it, so the rule is unchanged: every wake-up at or before the drawn minute has been processed, and none after it. When the worker is behind, the clock waits within the newest state's minute. People are drawn from the task records of the state drawn, as before.
-- **Step, Pause and speed.** Step asks for the next whole minute and shows it once the worker has sent it. Paused, the worker still keeps its 0.1 s lead. On a change of speed the clock moves on to the newest copy received, so copies sent a stride apart for a fast speed are not shown at a slow one; what is skipped is at most 0.1 s at the old speed.
-- **The view copy.** Copying the whole state takes 1.5–10 s past the first days, almost all of it in what the screen never reads: every route ever walked (27,000 by day 45, of which the screen needs the few under way), the engine's event records, and every person's memory: what they know of the ground, their ways, and their memory of places, banks, fish and people (together about 600 kB a copy on day 13), which the screen reads only for the person followed. The worker sends a copy that has:
-  - only the routes of walks under way;
-  - each person's next wake-up in place of the wake-up queue;
-  - only exchanges and walk records among the recent events;
-  - current memory only for the followed person; everyone else's memory is kept as the last copy held it, so it is not sent again, and what the main thread holds of it is stale and never read;
-  - everything else as in the engine's state.
-
-  Only what has changed since the last copy is sent. A part that is the same object as in the last copy is skipped at once; the engine shares knowledge, ways, bank memory, routes, huts and finished days between states until they change. A part the engine recopied, as it does each person's small tables every step, is compared by content and skipped if equal. The main thread applies the changes to its previous copy, and unchanged parts keep their identity there.
-- **New run, Settings.** A new run ends the worker and starts another.
-
-**Expected.** Frames no longer wait for the engine: at every speed the page draws as fast as the renderer allows, and a slow day stops the clock, not the page; camera, panels and controls stay responsive. The engine gets a whole core, less the cost of the copies, so 1 month/s was expected to rise from 3.2 to roughly 4–5 days a second. Measured, the page draws 52–60 frames a second at 1 month/s where it drew 15–19, but the engine still runs about 3 days a second (2.9 against 3.3 before, single runs). This update does not reach a month a second; that needs cheaper behaviour or a simpler model at map speeds, which are the owner's decisions for a later update.
-
-**Who notices.** Only the observer changes. The engine, every trajectory and every fingerprint stay the same, and a run stepped in the worker is identical to the same run stepped in a test.
-
-## Update 068: planning by pieces of known ground
-
-**The problem.** The owner's goal is a month a second, which needs the engine to run a simulated day in about 30 ms. After update 067 an ordinary day (20 to 45) takes about 190–410 ms, and days 11 to 17, when people are building huts and still exploring, take 1.2–4.6 s. Counted on the canonical run:
-
-| Day | Time | New plans | Band searches that failed | Triangles searched in bands | Triangles searched in full searches |
-| --- | --- | --- | --- | --- | --- |
-| 5 | 124 ms | 56 | 0 | 14,567 | 0 |
-| 12 | 2.0 s | 733 | 86 | 0.77 million | 1.48 million |
-| 13 | 4.6 s | 980 | 328 | 2.46 million | 11.26 million |
-| 16 | 1.7 s | 307 | 128 | 0.75 million | 5.16 million |
-| 30 | 347 ms | 110 | 18 | 0.14 million | 0.43 million |
-
-On every day from 12, most of the route-search work is the full search, run after a band search finds no path. On day 13, 268 of the 328 failures were walks to a frontier, exploring. The band fails because the coarse plan links two 200 m squares whenever the person knows ground on both sides of any edge between them, without asking whether that ground is joined up inside the square. Near the edge of what a person knows, and around lakes and streams, a square often holds two or more separate patches of known ground: the chain passes through the square on paper, but no path does. The person then searches everything they know, about 34,000 triangles on average on day 13.
-
-**The change.** The coarse plan moves from squares to **pieces**: the patches of joined-up known ground within each square. Two pieces are linked when known ground in one shares an edge with known ground in the other. A chain of linked pieces is a path on known ground by construction, so the fine search in the band around it always succeeds, and the full search is no longer needed. People still plan "over the ridge, round the lake" first; they now plan only through land they know they can cross, which is closer to how people reason about routes they know (Golledge 1999) and to hierarchical path planning over connected regions (Botea et al. 2004).
-
-**What was expected, and what was measured.** The full searches, 11.3 million triangles on day 13 and 0.43 million on day 30, go; the walks they served are planned in a band instead. The slow days were expected to fall to roughly 1–1.5 s; measured, days 11 to 17 take 0.4–2.5 s (day 13: 4.6 → 2.5 s), and ordinary days gained about a quarter (day 30: 347 → 249 ms). Day 12 barely changed, because its cost was hut-building walks and the band searches themselves, not failures. This update does not by itself reach 30 ms a day.
-
-**Who notices.** Walks that used to be planned over everything known are now planned in a band, and may be slightly longer than the shortest known path, as coarse plans already are. Every run's trajectory changes except on the open flat land, where no chunk is ever split; nothing else about people changes.
-
-### Speed work
-
-After the behaviour change and its new fingerprints, each further speed-up must leave every fingerprint unchanged and be kept only if it measurably helps. They are chosen from the profiles at days 13 and 30, not in advance. None of them changes what people do. Measured: after the change, days 12–13 spend 32% of the time in route search, 25% in observation, 10% in garbage collection and 9% choosing tasks. Skipping chunks beyond sight in a survey and reusing the A\* heap left the fingerprints unchanged but did not measurably help, so neither was kept. The remaining cost is the work people do, not waste in doing it.
+This step adds ties, asking and giving. It does not change the map, how people find their way, the resources, bodies, personality, groups or the priced exchange of wood for food. Exchange stays within a group; asking and giving reach anyone a person knows.
 
 ## Checked against
 
 | Measure | Evidence and comparison | Status |
 | --- | --- | --- |
+| Circles of ties | People's ties come in layers of about 5, 15, 50 and 150, each about three times the last, set by how often they meet: the closest few at least weekly, about 15 at least monthly (Zhou et al. 2005; Hill and Dunbar 2003; Sutcliffe et al. 2012). Among the Hadza, ties follow who shares a camp (Apicella et al. 2012). | Magnitudes, measured once on the canonical seed over days 30 to 89: for each person, how many others they spent time with on at least one day in seven, and on at least one day in thirty, as a median and range. With forty people only the 5 and 15 layers can show; layers of about that size, with a ratio near three, are expected. A flat result (everyone in a group equally close) is examined in the lab notes, not tuned away. |
+| Reciprocity | Among foragers, what one household gives another correlates with what it receives back, moderately: dyadic correlations of roughly 0.2 to 0.6 across studies (Gurven 2004; Allen-Arave et al. 2008). Most food moves by being asked for (Peterson 1993). | Magnitudes, measured once on the canonical seed over days 30 to 89: the correlation, across pairs, between the food given one way and the other; the share of gifts that went to someone in the giver's group; and refusals against gifts. A positive, moderate correlation is expected. |
+| Fading | Ties not kept up weaken over months: emotional closeness to friends falls measurably over a year and a half with less contact (Roberts and Dunbar 2011). | A unit test: a tie with no time together halves in 180 days within 1%. |
 | Route choice | People rarely take the shortest path. Most commuters keep to habitual routes longer than the shortest one (Zhu and Levinson 2015); pedestrians choose by familiarity and simple rules such as "head roughly the right way" more than by distance (Golledge 1995; Hölscher et al. 2011). | Magnitudes, measured once on the canonical seed: how much longer walks on a remembered way are than the shortest path over the walker's known ground at that minute, as a median and the largest. A median within about 10% is expected; a large excess is examined in the lab notes, not tuned away. |
 | Reuse | Habit: most trips go between a few familiar places along familiar routes (Golledge 1999). | Recorded once on the canonical seed: the share of walks by how they were found (a remembered way, a joined way, a coarse plan, a full plan), day by day. Most walks to places are expected to use a way after the first days. |
 | New routes | People head towards the goal by the direction that points most nearly at it (Hochmair and Frank 2000), prefer a long straight first stretch (Bailenson et al. 2000), and take routes longer than the shortest (Zhu and Levinson 2015). Planning by regions before footing gives routes close to the shortest when regions are small against the trip (Botea et al. 2004). | Recorded once on the canonical seed from update 071: the share of new walks straight and steered, and how much longer each kind is than the shortest path over the walker's known ground at that minute, as a median and the largest. A median excess within about 15% is expected. |
@@ -114,11 +33,28 @@ After the behaviour change and its new fingerprints, each further speed-up must 
 | Trait correlations | The meta-analysis of the five traits across 212 samples (van der Linden et al. 2010): openness with extraversion 0.43, conscientiousness with agreeableness 0.43, conscientiousness with neuroticism −0.43, extraversion with neuroticism −0.36, agreeableness with neuroticism −0.36, conscientiousness with extraversion 0.29, agreeableness with extraversion 0.26, openness with agreeableness 0.21, openness with conscientiousness 0.20, openness with neuroticism −0.17. | A unit test over 10,000 draws, each within 0.05. |
 | What the traits do | Extraverts seek contact more (Asendorpf and Wilpers 1998); agreeable people offer fairer splits in bargaining games (Ben-Ner et al. 2004); conscientious people plan and store; neurotic people avoid risk; open people seek novelty. | Direction only: each trait's rule has a unit fixture showing the direction. The strengths of the effects are judgement, not calibration, and are listed as questions for later. |
 | Carrying | Forager women carry loads of 15 to 25 kg for hours, men more; women's load capacity is closer to men's than their grip is (Hadza and !Kung loads; Lee 1979; Marlowe 2010). | Magnitudes. |
-| Speed | A year of forty people in about a second, as since Life 12; in the browser, a month a second, which needs about 30 ms a simulated day. | Not met by this step. After update 068, in whole-day steps, days 11 to 17 take 0.4–2.5 s and days 20 to 45 about 180–420 ms; in off-screen Chrome at 1 month/s, 3.2 days a second. Measured once and recorded: each of the canonical first 45 days' time, the canonical year's time and memory, and profiles of days 13 and 30 against update 067's. |
+| Speed | A year of forty people in about a second, as since Life 12; in the browser, a month a second, which needs about 30 ms a simulated day. | Not met. After update 071 a day past day 50 takes about 185–205 ms in the worker. Ties must not make it noticeably slower: measured once and recorded, days 50 to 59 in 12-hour steps against update 071's, and the year's memory. More than about 10% slower is examined before this step is merged. |
 
 ## Design decisions
 
-### Ways and planning (new)
+### Ties, asking and giving (new)
+
+| Decision | Reason |
+| --- | --- |
+| A tie is held in each person's own memory, keyed by the other's id: familiarity, credit and grievance, all in minutes, with the minute their time together was last counted and the calendar day the person last asked the other. | The roadmap asks for relationships held in memory per pair. Each person keeps their own view (rule 1): what I think you owe me is my count, not yours. One unit for all three lets one rule compare them. |
+| Familiarity is the minutes two people spent within talking distance, neither walking. It is counted when either wakes, from the later of their two task starts and the last minute counted in either person's tie, so no minute is counted twice, and added to both people's ties equally. | Nobody is stepped minute by minute, but a person who is not walking stands still for the whole of their task, so two people standing within 20 m when one wakes have stood there together since the later of their task starts. The count is exact for people standing still and needs nothing new tracked. Walking side by side does not count until groups travel together (step 18). |
+| Credit is the minutes of the person's own work a gift stands for: kcal at their own berry-picking rate, wood at their own gathering rate. Giving adds to the giver's credit with the receiver; receiving takes from the receiver's credit with the giver. Positive credit means "they owe me". | Foragers keep account of sharing in effort, not in a currency (Gurven 2004). Each person can value a gift only by what it would cost them, which they know. The two views of one gift can differ, as they do in life. |
+| Grievance grows by `refusalGrievanceMinutes` (60) each time a person is refused by someone who had something to spare. It is the only harm in this step. | Stinginess is the grievance foragers voice most (Peterson 1993; Woodburn 1998). Fights, injury and theft come at step 17 and will add to grievance then. A fixed amount per refusal is judgement, listed for later. |
+| Ties fade at midnight: each of the three loses the same share a day, `tieFadePerMillion` (3,844), so that it halves in 180 days without renewal. A tie whose three values are all zero is forgotten. | Ties not kept up weaken over months (Roberts and Dunbar 2011). Day-anchored: forgetting is a matter of real time, not of the year's length. Fading credit and grievance too means old debts and old slights are let go. |
+| A person holds at most `tiesRemembered` (150) ties. A new tie when full forgets the one with the least familiarity, ties by lowest id. | Dunbar's number: about 150 people a person keeps up with (Hill and Dunbar 2003). With forty founders it never binds; it bounds memory once generations arrive. |
+| A person asks when hungry and carrying no food after eating, or short of one night's firewood and holding none spare. They ask, one after another, the living people within talking distance whom they know (familiarity above zero) and can see carrying food, or holding wood, closest tie first: highest familiarity less grievance, ties by id. They ask each person at most once a calendar day, and stop asking for a thing once given some of it. | Demand sharing: among foragers food is mostly given when asked for, not offered (Peterson 1993). What someone carries within 20 m is visible, so the asker acts on what they could know. Asking strangers is left out: among foragers sharing follows ties. Once a day keeps a refusal from being repeated every wake-up. |
+| The person asked gives when `familiarity · trustPerMille · agreeablenessGive / 1,000,000 ≥ credit + grievance`, all from their own tie with the asker; otherwise they refuse. | Goodwill from time together must cover what the asker already owes and any grievance. A debt the giver owes the asker (negative credit) makes giving easier: reciprocity follows from the ledger, not from a rule saying "repay". `trustPerMille` (100) makes ten minutes together vouch for one minute of work: one night beside each other covers a gift of about 70 minutes' picking. Judgement, listed for later. |
+| Agreeableness scales goodwill: `agreeablenessGive = clamp(1,000 + 500 · z / 1,000, 0, 2,000)`. | The roadmap gives agreeableness two parts of one job: yielding in disputes and sharing more. Agreeable people give more to others in sharing games (Ben-Ner et al. 2004). This is the trait's second rule, alongside the exchange price; both are about giving way to another. |
+| A gift of food is what the giver carries beyond what they would eat to reach their own satiation, up to what the asker lacks to reach theirs, oldest lots first. A gift of wood is the giver's wood above their own stock target, up to what the asker wants. | People give what they can spare, not what they need tonight. Giving up to the asker's own satiation is the asker's own measure of need. |
+| Exchange is unchanged and comes first: a person who can buy what they need asks nobody. A swap builds no credit. | A swap is paid for at the time; both sides gain and nothing is owed. Keeping exchange as it was isolates what ties add. |
+| Ties, asking and giving draw nothing at random. | Who asks whom and who gives follow from memory and fixed orders; nothing is uncertain enough to need a draw. |
+
+### Ways and planning (Life 15, unchanged)
 
 | Decision | Reason |
 | --- | --- |
@@ -227,7 +163,8 @@ A person's record holds the task, its start minute, its route (for a walk) and t
 
 | System | Cadence |
 | --- | --- |
-| Resource and fish regrowth, spoilage of carried lots, hut weathering, practice update | Daily at midnight, `world` phase |
+| Resource and fish regrowth, spoilage of carried lots, hut weathering, practice update, ties fading | Daily at midnight, `world` phase |
+| Time together, asking and giving | At the person's wake-ups |
 | Group and personal fires | Hourly at night, `world` phase |
 | Bodies | Lazily, at the person's wake-ups |
 | Conservation checks | At every event that moves food, wood, logs, stones, axes or water |
@@ -246,7 +183,7 @@ Every draw comes from a stream derived from the seed and a name: the terrain and
 - **body**: per founder, one draw `randomInt(2)` for sex (0 woman, 1 man), then three standard normals for height, weight and grip;
 - **traits**: per founder, five standard normals for openness, conscientiousness, extraversion, agreeableness and neuroticism, in that order.
 
-Nothing is drawn per minute. The mesh, ways and plans draw nothing.
+Nothing is drawn per minute. The mesh, ways, plans, ties, asking and giving draw nothing; no stream is added by this step.
 
 ## Bodies and personality
 
@@ -304,11 +241,11 @@ A person's five traits are stored as scores in thousandths of a spread, −3,000
 | Neuroticism | Fear threshold | A person keeps `duskMarginMinutes · f / 1,000` minutes, at least 1, before dusk: they go home when the walk home would end later than dusk less the margin, and choose no work, check or water whose walk there and home would. Severe thirst ignores the margin, as it ignores dusk. | 1,000, 500, 0, 4,000 |
 | Openness | Tries the unfamiliar | (a) When idle (priority 9), a person explores the nearest frontier only if it lies within `exploreRangeCm · f / 1,000` of their hearth in a straight line; otherwise they take a walk or rest, below. Exploring for water, food or wood they need is unchanged. (b) A known place whose stock they have never seen is expected to hold `capacity · g / 1,000`, with `g = clamp(750 + 250 · z / 1,000, 250, 1,000)`. | 1,000, 500, 250, 3,000 |
 
-No other rule reads a trait. The trait factors and the body-derived quantities are stored with the person, and the checker recomputes them from the scores and the configuration.
+From Life 16, agreeableness's job, giving way, has a second rule: it scales the goodwill with which a person gives when asked, `agreeablenessGive`, under Ties. No other rule reads a trait. The trait factors and the body-derived quantities are stored with the person, and the checker recomputes them from the scores and the configuration.
 
 ## Knowledge and perception
 
-A person remembers: places, with kind, position, the stock last seen and the minute it was seen; bank points; the triangles of the mesh it has seen; the ways it has walked, below; the point of its last survey; people it has met, with the minute; heard exchange terms for 24 hours; its group, flag, hearth and hut. A person knows their own body and traits, and nobody else's.
+A person remembers: places, with kind, position, the stock last seen and the minute it was seen; bank points; the triangles of the mesh it has seen; the ways it has walked, below; the point of its last survey; people it has met, with the minute; its ties, below; heard exchange terms for 24 hours; its group, flag, hearth and hut. A person knows their own body and traits, and nobody else's.
 
 At every wake-up a person observes in two parts:
 
@@ -316,6 +253,29 @@ At every wake-up a person observes in two parts:
 - **What changes**, at every wake-up: hearths, flags and hut sites within the sight radius become known; the place the person stands at shows its stock; people within `talkRadiusCm` (20 m) are met, and people within sight are seen.
 
 Founders survey at their first wake-up. Relief does not block sight. A stock not yet seen is expected at the openness share of capacity, above; a fish stock is learnt only by fishing. Triangle knowledge is a bit per triangle, shared with the previous state and copied only when the person learns a new triangle.
+
+## Ties
+
+A person's ties are a map from another person's id to a tie: `familiarity`, `credit` and `grievance`, integers in minutes (familiarity and grievance never negative; credit of either sign), `countedMinute`, the last minute counted for the pair's time together, and `askedDay`, the calendar day the person last asked the other, or −1. Each of the three values carries an integer remainder for fading. A person holds at most `tiesRemembered` ties and never one to themselves. The map is shared with the previous state and copied only when it changes.
+
+**Time together.** At step 3 of a wake-up, after meeting, the waker `a`, if their ended task was not a walk, takes each living person `b` within talking distance whose current task is not a walk, in id order. The minutes together are `m − max(a.taskStart, b.taskStart, countedMinute)`, where `a.taskStart` is the start of the task just ended, `b.taskStart` the start of `b`'s current task, and `countedMinute` the later of the values in `a`'s tie with `b` and `b`'s tie with `a` (minus infinity where there is none). If positive, the minutes are added to familiarity in both `a`'s tie with `b` and `b`'s tie with `a`, created if absent, and `countedMinute` is set to `m` in both. A founder's first wake-up counts nothing.
+
+**Asking.** At step 3, after exchange, a person who is hungry and carries no food, or for whom wood matters and who holds less than one night's firewood, asks. For food they ask the living people within talking distance who carry food; for wood, those holding any wood. Of these, only people with whom the asker has a tie of familiarity above zero and whose `askedDay` is not today are asked, in order of `familiarity − grievance` in the asker's tie, highest first, ties by id. Asking sets `askedDay`; everyone asked was met at this wake-up and so is already woken in the same minute. A person in need of both asks for food first. They stop asking for a thing once given some of it, and a person given food eats it at once, the meal counted with their task's eating.
+
+**Giving.** The person asked, `g`, with their own tie to the asker `r` (all three values zero if `g` holds none), gives if
+
+`familiarity · trustPerMille · agreeablenessGive ≥ (credit + grievance) · 1,000,000`, compared exactly in integers,
+
+and has something to spare, which is checked first:
+
+- **Food:** `spare = carriedKcal(g) − max(0, g.satiationKcal − g.energy)`; the gift is `min(spare, r.satiationKcal − r.energy − carriedKcal(r))` kcal, taken from `g`'s oldest lots and added to `r`'s lots with their minutes kept.
+- **Wood:** `spare = g.wood − g.woodStockTarget`; the gift is `min(spare, r.woodStockTarget − r.wood)` kg.
+
+Energy is evaluated at minute `m` by the lazy body functions. A gift of at least 1 kcal or 1 kg is a **gift**: `g`'s credit with `r` rises by the gift's value at `g`'s own rate, and `r`'s credit with `g` falls by its value at `r`'s own rate, both rounded down: `kcal · 60 / forageRate` or `kg · 60 / woodRate` minutes. If `g` would not give, or has nothing to spare, it is a **refusal**: `r`'s grievance against `g` rises by `refusalGrievanceMinutes`. A refusal for lack of anything to spare is recorded as such and adds no grievance: the asker could not know, but can see the reason when told.
+
+**Fading.** At midnight, `world` phase, each value `v` of every tie loses `(|v| · tieFadePerMillion + remainder) / 1,000,000` rounded toward zero, the rest carried in the value's remainder, where `tieFadePerMillion` (3,844) is set so that a value halves in 180 days, as `1,000,000 · (1 − 2^(−1/180))` rounded. A tie whose three values are zero is forgotten. A new tie when `tiesRemembered` are held forgets the one with the least familiarity first, ties by lowest id.
+
+**Who knows what.** A person knows their own ties and nobody else's, can see what people within talking distance carry, and knows their own rates and satiation. Whether to give is decided by the giver from their own tie, body and traits.
 
 ## Routes, ways and movement
 
@@ -356,7 +316,7 @@ Travel estimates for choosing targets use straight-line distance at the person's
 
 Each person is one object: sex, height, weight, grip, the five trait scores and their derived quantities; position, task record, energy and water with their remainders, carried food lots, carried wood, carried log, stones, axe, hut, group, born skills, practice and alive. Its memories are typed arrays, bitsets and maps inside it, never read by the checker as truth.
 
-Founders are `founders` people, 40 by default, placed from their own streams within the central `startAreaCm` (800 m) on walkable grass or dirt of the main land, with Life 11's spacing when `scattered`, or at the nearest valid camp when together. Born foraging and wood skill range from 75% to 125%; born craft is 100%. Everyone starts with 66,000 kcal, no water deficit, nothing carried and no relationships.
+Founders are `founders` people, 40 by default, placed from their own streams within the central `startAreaCm` (800 m) on walkable grass or dirt of the main land, with Life 11's spacing when `scattered`, or at the nearest valid camp when together. Born foraging and wood skill range from 75% to 125%; born craft is 100%. Everyone starts with 66,000 kcal, no water deficit, nothing carried and no ties: they are strangers.
 
 ## Tasks
 
@@ -377,7 +337,7 @@ Water loss is `waterBaseMlPerDay/1,440` a minute plus `waterExtraMlPerKcal` per 
 
 1. Pay the body for the minutes since the last wake-up, at the ended task's rates for this person; credit what the task produced; record the task's events. If a fatal threshold was crossed, record the death at that minute and stop.
 2. Spoil carried lots past their life; eat oldest first up to reserve capacity.
-3. Observe: survey the still landscape if the person has moved far enough, and always what changes. Meet people within talking distance: found or join a group, hear terms, exchange wood for food at the agreeableness price, request or promise an axe, deliver hut logs, contribute to the group's fire.
+3. Observe: survey the still landscape if the person has moved far enough, and always what changes. Meet people within talking distance: count time together, found or join a group, hear terms, exchange wood for food at the agreeableness price, ask for food or wood still needed, request or promise an axe, deliver hut logs, contribute to the group's fire.
 4. Update needs: hunger with the person's own satiation level, thirst with the person's own thresholds, wood need with the person's own stock target.
 5. Choose the next task by the priorities below, using only memory.
 6. Start it: if it is a walk, take a remembered way or plan one, as above, and remember a new way; schedule its end and its first body threshold; record the task start with how the walk was found.
@@ -403,7 +363,7 @@ Food choice scores one hour's expected food at a remembered place as `3,600 * ra
 
 ## Food, wood, shelter and exchange
 
-As Life 13, with each person's own quantities: food in timestamped lots by kind, berries spoiling after 48 hours, nuts after 4,380 and fish after 24; energy starting at 66,000 kcal, capped at 70,000, hungry below 64,000 and satisfied at the person's own level; wood need below one night's firewood, cleared at the person's own stock; loads up to the person's capacity and logs of 35 kg; groups founded by two ungrouped people within 20 m, joined by a lone person, with a flag, a common fire burning 1 kg an hour at night, and a 23-log hut per member weathering a log every 60 days; axes from one stone and 1 kg of wood, quality drawn from half to all of craft, cutting a log in 30 minutes at quality 100 and lasting 200 logs; practice over the last 30 days; wood-for-food swaps at the agreeableness price; axes asked at the maker's extra energy and bought when buying gains food energy. There is no money, no ownership of water, no forced sharing and no planned specialisation.
+As Life 13, with each person's own quantities: food in timestamped lots by kind, berries spoiling after 48 hours, nuts after 4,380 and fish after 24; energy starting at 66,000 kcal, capped at 70,000, hungry below 64,000 and satisfied at the person's own level; wood need below one night's firewood, cleared at the person's own stock; loads up to the person's capacity and logs of 35 kg; groups founded by two ungrouped people within 20 m, joined by a lone person, with a flag, a common fire burning 1 kg an hour at night, and a 23-log hut per member weathering a log every 60 days; axes from one stone and 1 kg of wood, quality drawn from half to all of craft, cutting a log in 30 minutes at quality 100 and lasting 200 logs; practice over the last 30 days; wood-for-food swaps at the agreeableness price; axes asked at the maker's extra energy and bought when buying gains food energy. From this step, food and wood are also given when asked for, by the rules under Ties. There is no money, no ownership of water, no forced or unasked sharing and no planned specialisation.
 
 ## Defaults and configuration validation
 
@@ -418,6 +378,16 @@ Run settings are unchanged:
 | `scattered` | true | |
 
 New parameters:
+
+| Parameter | Default | Basis |
+| --- | --- | --- |
+| `tiesRemembered` | 150 | Dunbar's number (Hill and Dunbar 2003). Never binds with forty founders. |
+| `trustPerMille` | 100 | Ten minutes together vouch for one minute of work. Judgement. |
+| `refusalGrievanceMinutes` | 60 | A refusal weighs about as much as an hour's work given. Judgement. |
+| `tieFadePerMillion` | 3,844 | A value halves in 180 days without renewal (Roberts and Dunbar 2011, magnitude). Day-anchored, unchanged by `daysPerYear`. |
+| `agreeablenessGiveRule` | base 1,000, effect 500, low 0, high 2,000 | One spread more agreeable gives on half again as little familiarity; three spreads less, never. |
+
+Parameters added by Life 15, unchanged:
 
 | Parameter | Default | Basis |
 | --- | --- | --- |
@@ -444,7 +414,7 @@ The base, effect, low and high of each trait rule are the values in the personal
 
 All other Life 14 defaults are retained.
 
-Validation rejects a `waysRemembered` below 1 or above 1,000; a `wayRecheckMinutes` below 1; a `resurveyCm` below 1 or above `sightRadiusCm`. As in Life 14, it rejects non-integers, non-finite values and unsafe products; settings outside their ranges; non-positive means and spreads; a mean less three spreads that is not positive; correlations outside −999…999; a correlation matrix that is not positive definite by the integer factorisation above; a rule with `low > high`, a negative `low`, or an `effect` whose product with 3,000 is unsafe; and every check that used `bodyKg` or `woodLoad` (such as a log still being movable, and work rates exceeding resting) evaluated at the extreme person: the lightest weight, the lowest load capacity, the highest scaled rates. It also keeps every Life 13 check on the mesh, places, thresholds and placement.
+Validation rejects a `tiesRemembered` below 1 or above 10,000; a negative `trustPerMille` or `refusalGrievanceMinutes`; a `tieFadePerMillion` below 0 or above 1,000,000; and an `agreeablenessGiveRule` that fails the rule checks below. As in Life 15, it rejects a `waysRemembered` below 1 or above 1,000; a `wayRecheckMinutes` below 1; a `resurveyCm` below 1 or above `sightRadiusCm`. As in Life 14, it rejects non-integers, non-finite values and unsafe products; settings outside their ranges; non-positive means and spreads; a mean less three spreads that is not positive; correlations outside −999…999; a correlation matrix that is not positive definite by the integer factorisation above; a rule with `low > high`, a negative `low`, or an `effect` whose product with 3,000 is unsafe; and every check that used `bodyKg` or `woodLoad` (such as a log still being movable, and work rates exceeding resting) evaluated at the extreme person: the lightest weight, the lowest load capacity, the highest scaled rates. It also keeps every Life 13 check on the mesh, places, thresholds and placement.
 
 ## Invariants and ledger
 
@@ -455,6 +425,8 @@ The checker replays the events of each `stepValley` interval against the state i
 - Every wake-up's body charge equals the person's own rates for the task over its minutes, with bounded remainders; energy and water at a wake-up equal the lazy functions evaluated there.
 - **Ways:** every person holds at most `waysRemembered` ways, no two with the same end points; every way's corridor is a chain of triangles each sharing an edge with the next, every one walkable and known to the person, its first and last holding its end points; numbers are below the person's next way number; last-used minutes are not in the future. Every walk recorded as a way or joined walk stays within the triangles of the way it names. No walk is recorded as `full` (update 068). The checker does not recompute the pieces, the coarse band or the recheck rule; unit fixtures cover them.
 - **Leisure:** nobody sets out on two leisure walks in one calendar day, and `leisureMinute` is the start of the last one.
+- **Ties:** every person holds at most `tiesRemembered` ties, none to themselves or to an id that never existed; familiarity and grievance are not negative; `countedMinute` is not in the future, and `askedDay` is not after today. Where two people each hold a tie to the other with the same familiarity remainder, both have the same familiarity, unless one of them forgot the tie and made it anew. At midnight every value replays from the day before: fading, plus the time together, gifts and refusals recorded that day.
+- **Gifts:** the giver's goodwill covered their credit and grievance, and both credits changed by the gift's value at each person's own rate; food and wood conserve across it in the stock and body ledgers. Nobody asks the same person twice in a calendar day. Every refusal for want of goodwill adds exactly `refusalGrievanceMinutes`, and one for want of anything to spare adds none. The checker does not recompute a gift's amount from bodies and loads; unit fixtures cover the amounts.
 - **Survey:** each observation is replayed against the rule: it is a survey exactly when the person had no survey point or stood at least `resurveyCm` from it, and the survey point changes only at a survey, to where they stood.
 - No person's trip wood exceeds their load capacity.
 - Every exchange's price equals the agreeableness price for its two parties, and both gained at it.
@@ -464,124 +436,85 @@ The checker replays the events of each `stepValley` interval against the state i
 - Every decision reads memory only.
 - Hunger and thirst hysteresis with the person's own levels, death minute and cause, and group dissolution below two living members follow the stated order.
 
-Events are as Life 14; a walk's start records how it was found (`plan`: `way`, `joined`, `straight` or `steered`; a walk to a frontier is straight or steered; from update 068 to 070 `coarse`, or `full` only from the guard), whether a way was dropped and planned again (`rechecked`), and the way it used (`wayId`, −1 for a new plan). An observation records whether it was a survey. Daily summaries and world metrics are as Life 14.
+Events are as Life 14; a walk's start records how it was found (`plan`: `way`, `joined`, `straight` or `steered`; a walk to a frontier is straight or steered; from update 068 to 070 `coarse`, or `full` only from the guard), whether a way was dropped and planned again (`rechecked`), and the way it used (`wayId`, −1 for a new plan). An observation records whether it was a survey. New events: `together` (minute, the two ids, minutes added), `gift` (minute, giver, receiver, kind, amount, each side's credit change) and `refusal` (minute, asked, asker, kind, whether for want of goodwill or of anything to spare, grievance added). The daily summary adds, per person, the number of ties held and of people they spent time with that day, the food and wood given and received, and refusals made and met. World metrics are as Life 14.
 
 ## Observer
 
-Label the page **Life 15 · strangers**. Everything else in the settings screen, loading card, header, history panel, group card, playback and landscape is as Life 14, except that from update 069 the engine runs in a worker thread and the page draws from view copies of its states, as described there.
+Label the page **Life 16 · strangers**. The engine runs in a worker thread and the page draws from view copies of its states (Life 15, update 069): the view copy keeps current memory, now including ties, only for the person followed, and keeps gift and refusal events alongside exchanges and walk records. Everything else in the settings screen, loading card, header, history panel, group card, playback and landscape is as Life 15.
 
-- **Ways.** When a person is followed, their remembered ways are drawn as faint lines on the ground, from the corridors pulled tight, the most recently used strongest; the current walk is drawn as before.
-- **Person panel.** Adds a "Ways" row ("Knows 23"), and the current walk says how it was found: "on a known way", "joining a known way", "heading straight there" or "finding a way through" (from update 071; before, "planning a new way").
+- **Ties, when a person is followed.** A thin line is drawn on the ground from the followed person to each of their five closest living ties, closest by familiarity; a tie they hold a grievance in is drawn in a warmer colour.
+- **Person panel.** Adds a "Ties" row ("Knows 12 · close 4"), where close counts the ties with at least `closeTieMinutes` (1,440, a day together; an observer setting, not an engine one), and a list of the five closest: name, time together, and the balance in words, "owes 2 h", "is owed 1 h" or "even", with "a grievance of 1 h" when there is one. Familiarity, credit and grievance are shown as the followed person holds them.
+- **History.** The last five gifts and refusals the followed person gave, received, made or met: "Forager 3 gave Forager 1 900 kcal" or "2 kg of wood"; "Forager 5 refused Forager 1 food, unwilling", or "having none to spare" when that was the reason.
 
-Unchanged from Life 14:
-
-- **Figures.** Each person's figure is scaled to their height, and widened slightly with weight, so the founders visibly differ. Women and men differ only by this; no other marker.
-- **Person panel.** Adds a body line, for example "Woman · 157 cm · 51 kg · grip 25 kg · carries 26 kg", and five trait rows, each a small bar from −3 to +3 spreads with a word: *very low* below −1.5, *low* to −0.5, *average* to 0.5, *high* to 1.5, *very high* above. The words are the observer's, not the engine's.
-- **Exchange history.** An exchange line shows the price and which side took the larger share.
+Unchanged from Life 15: the followed person's ways drawn as faint lines, the "Ways" row and the wording for how the current walk was found. Unchanged from Life 14: figures scaled to height and weight, the body line and five trait rows, and the exchange line with the price and the larger share.
 
 ## Code layout
 
-- New `src/valley/ways.ts`: a person's ways, finding one for a walk, joining, rechecking, remembering and forgetting.
-- `routes.ts`: corridors from a way; the chunk-crossing edges in the nav map, the coarse A\* over pieces, the straight-line corridor, and the fine A\* limited to one piece (update 071); `knownRoute` split into finding a corridor and timing a path along it.
-- `forager.ts`: `routeFor` uses ways, straight and steered plans in that order; the route cache and `routeKey` are removed; the idle rule takes a leisure walk or goes home to rest in place of rechecking places, and `exploreAfterHours` is removed.
-- `wake.ts`: a walk's start remembers its way and records how it was found.
-- `perception.ts`: the survey point; the still landscape surveyed only after moving `resurveyCm`; people-made places and people every wake-up.
-- `types.ts`, `config.ts`, `engine.ts`: the person's ways, next way number and survey point, shared between states; the new parameters and their validation.
+- New `src/valley/ties.ts`: a person's ties; counting time together; choosing whom to ask; the giving rule and the gift's amount and value; refusals; fading; forgetting.
+- `wake.ts`: step 3 counts time together after meeting and asks after exchange, waking the person asked as an exchange offer does.
+- `world.ts`: ties fading at midnight. `engine.ts`: the daily summary's ties and companions per person (ties held, and people counted together that day), food and wood given and received, and refusals made and met.
+- `types.ts`, `config.ts`: the person's ties, shared between states; the `together`, `gift` and `refusal` events; the new parameters and their validation; `agreeablenessGive` stored with the person.
 - `invariants.ts`: the checks above.
-- `src/valleyView/`: the followed person's ways, the panel wording, the Life 15 label.
-- `docs/LIFE14_SPEC.md` is removed: this specification replaces it.
+- `src/valleyView/`: ties carried in the followed person's view copy, gift and refusal events kept in it, the tie lines, the panel rows, the history lines, the Life 16 label.
+- `docs/LIFE15_SPEC.md` is removed: this specification replaces it.
 
-Bodies and traits (`nature.ts`), the terrain, hydrology and mesh (`terrain.ts`, `water.ts`, `mesh.ts`) are unchanged. The MVP9 core is unchanged.
-
-Update 068 changes `routes.ts` only for behaviour: a person's pieces, worked out per chunk from knowledge and cached by knowledge like the known pieces of ground; the coarse A\* over pieces in place of chunks; the full search kept as the guard. `invariants.ts` rejects a `full` walk. The speed work that follows may touch any engine file, but none of it changes a result. The observer is unchanged.
-
-Update 069 touches only `src/valleyView/`: a new `engineWorker.ts` that builds the valley, runs towards the goal in slices and posts view copies; a new `engineLink.ts`, the page's end of the worker, which starts it and turns the changes received into states; a new `viewCopy.ts` that makes a view copy, finds its changes from the last one in the worker, and applies them on the page; playback in `valleyViewModel.ts` (`advancePlayback`, `receiveState`, `stepPlayback`, `changeSpeed`) in place of stepping the engine within a frame budget, used by `ValleyApp.tsx`; and `LifePage.tsx` starting the worker before building the page's own valley, so the two builds run at once. The engine is unchanged.
-
-Update 071 changes `routes.ts`: a straight-line corridor through the mesh; the chain of pieces kept as a list of pieces; the crossings between pieces; the fine A\* limited to one piece in place of a band; the band and the full search removed. `ways.ts` and `types.ts` name the plans `straight` and `steered` in place of `coarse` and `full`; `invariants.ts` drops the `full` check and adds the checks below; the panel wording in `valleyViewModel.ts`. `knownRoute`, the shortest path over all known ground, stays for tests and measurement only.
-
-Update 070 changes no result: `wake.ts` skips absent group members in an exchange; `perception.ts` scans nearby chunks without temporary lists and finds route crossings with a reused buffer; `clock.ts` cancels lazily; `engine.ts` adds `advanceValley` and counts known places without copying; the worker advances its state in place, and `viewCopy.ts` snapshots the followed person's memory.
+Terrain, hydrology and mesh, routes and ways, perception, bodies and traits (`terrain.ts`, `water.ts`, `mesh.ts`, `routes.ts`, `ways.ts`, `perception.ts`, `nature.ts`) and exchange (`trade.ts`) are unchanged. The MVP9 core is unchanged.
 
 ## Tests and implementation acceptance
 
-The Life 14 fingerprint suite passes before engine edits. Every trajectory changes, because reused ways and coarse plans give different paths and the survey rule changes what people know when: this step records new fingerprints for all its configurations. The founders, their bodies and traits stay the same as Life 14's on every fingerprint seed, because the code that draws them is untouched; `life13-founders.json` still checks starts and born skills. Fingerprints are not updated to conceal a failed rule.
+The Life 15 fingerprint suite passes before the engine is changed. Every trajectory changes once gifts move food and wood: this step records new fingerprints for all its configurations. The founders, their bodies and traits stay the same as Life 15's on every fingerprint seed; `life13-founders.json` still checks starts and born skills. Fingerprints are not updated to conceal a failed rule.
 
 New unit fixtures:
 
-1. Reuse: a second walk from home to a thicket follows the first walk's corridor; a walk back from the thicket follows it reversed.
-2. Joining: a walk starting in a triangle of a way to the target follows the rest of that way and is recorded as joined; a walk starting one triangle off it is planned.
-3. Recheck: on a fixture where new ground opens a shorter path, the way is kept within a day of planning, replaced after a day, and kept after a day when nothing new was seen.
-4. Forgetting: with `waysRemembered` ways held, a new way forgets the one used longest ago; a new way between the same end points replaces the old one.
-5. Load: the same way walked loaded and unloaded has the same corridor and different times.
-6. Replaced at update 071 by its fixtures 1 and 2, below.
-7. Pieces and links: a chunk whose known ground is split by unknown or unwalkable ground holds two pieces; two pieces are linked only when the person knows walkable triangles on both sides of a crossing edge; a chain never passes from one piece of a chunk to another inside it.
-8. Replaced at update 071 by its fixture 6, below.
-9. Replaced at update 071 by its fixture 7, below.
-10. Survey: a person who has moved less than 100 m learns no new triangles; after moving 100 m they learn what came into sight.
-11. The checker rejects a way through an unknown triangle, a corridor with a gap, one way too many, and a survey recorded against the rule.
-12. Leisure: an idle person at home with nothing to explore walks out along the way from home used longest ago, once a calendar day; away from home they walk home to rest; with no time to return before dusk they rest.
+1. Time together: two people resting within 20 m for an hour gain 60 minutes each when one wakes; when the other wakes later in the same spot, only the minutes since are added; a walker passing within 20 m adds nothing; two people 25 m apart add nothing.
+2. Fading: a tie with no time together halves in 180 days within 1%; a tie fading to zero is forgotten.
+3. Gift: a hungry person carrying no food asks a familiar person carrying spare berries and is given up to their own satiation, oldest lots first; both credits change by the gift at each person's own rate.
+4. Whom to ask: a stranger within 20 m is not asked; of two familiar people the one with more familiarity less grievance is asked first; nobody is asked twice in a calendar day.
+5. Refusal: a familiar person whose goodwill does not cover the asker's debt refuses, and the asker's grievance grows by 60; a person with nothing to spare refuses without adding grievance.
+6. Reciprocity: a person who owes the asker gives on familiarity that would not move them otherwise.
+7. Agreeableness: on the same tie, a person at +1 spread gives where one at −1 refuses.
+8. Exchange first: a person who can buy the wood they need in their group buys it and asks nobody.
+9. Forgetting: with `tiesRemembered` ties held, a new tie forgets the least familiar.
+10. The checker rejects a tie to oneself, one tie too many, unequal familiarity in a pair, a gift larger than the rule allows, a gift given without enough goodwill, a refusal adding the wrong grievance, and a second ask in one day.
 
-Life 14 fixtures, kept:
+The Life 15 and Life 14 fixtures are kept, with fixtures updated only where a gift now changes what a person does.
 
-1. Normals: 10,000 integer normals have mean within 0.03 spreads of 0 and spread within 0.03 of 1, and none outside the clamp.
-2. Factorisation: the integer factor of the default body and trait matrices matches the tables above within 1 per mille; a matrix that is not positive definite is rejected.
-3. Bodies: 10,000 drawn bodies per sex have means within 1 unit of their configured means, spreads within 0.5, and the three correlations within 0.05.
-4. Traits: 10,000 drawn trait sets have the ten correlations within 0.05.
-5. Body rules: a heavier person walks a fixture load faster, burns more kcal in an hour of picking, and has higher thirst thresholds; a stronger person's wood load is larger and their gathering ends later.
-6. Extraversion: an introvert at −2 spreads does not walk to a person seen 300 m away; an extravert at +1 does; both meet someone within talking distance.
-7. Agreeableness: at equal scores the price is Life 13's midpoint; a more agreeable seller gets a lower price; no swap happens when the price leaves either side without gain.
-8. Conscientiousness: a conscientious person stocks more wood and stops eating work at a higher energy; the stock target never falls to one night.
-9. Neuroticism: a neurotic person turns home earlier on the same fixture afternoon; severe thirst ignores the margin.
-10. Openness: an idle person at −2 spreads does not explore a frontier 1 km from home, one at +1 does; an open person ranks an unseen thicket above a seen half-full one where a closed person does not.
-11. The checker rejects a weight outside three spreads, a stored load capacity that disagrees with grip, a trip load above capacity, a body charge at the reference rate instead of the person's, an exchange off the agreeableness price, and the earlier corruptions.
-12. The existing queue, lazy-body, places, mesh, routes, food, fire, hut, axe, trade, group and playback tests, with route fixtures updated where a reused way or a coarse plan now gives a different path.
+Measured once and recorded in the lab notes, on the canonical seed: the circles of ties and the reciprocity measures in "Checked against", over days 30 to 89; gifts and refusals by day; and days 50 to 59 in 12-hour steps as the worker runs, against update 071's, with the year's memory. In the browser: a gift line in the history, a followed person's ties drawn and listed, and the console clean.
 
-**Update 068.** `fingerprints.test.ts` passes before the engine is changed. Planning by pieces changes every trajectory but the flat land's, so new fingerprints are recorded once for it; the founders, bodies and traits stay the same. Every speed-up after that leaves those new fingerprints unchanged, whole and in 15-minute slices. Measured once and recorded in the lab notes, on the canonical seed: the walks of each kind on days 5, 12, 13, 16 and 30, with no full walk; the median and largest excess of coarse plans over the shortest known path; each of the first 45 days' time in whole-day steps; profiles of days 13 and 30; and, in off-screen Chrome as in update 067, frames and days a second at 1 month/s past day 35. In the browser: a walk planned around a lake, and the console clean.
-
-**Update 069.** The engine is unchanged, so every fingerprint stays the same. A few fast unit tests: applying the changes of a short run's states, one after another and copied as between threads, gives each state's view copy exactly, at strides from 1 to 1,440 minutes and across a change of the person followed; the copy keeps only the routes, wake-ups and events above, and current memory only for the person followed; a state the engine recopied unchanged sends nothing; and the playback rule never goes back, draws less than a minute after the state it draws from, asks no further ahead than the lead, runs at the speed shown when the engine keeps up, waits when it does not, and shows Step's minute once it arrives. Measured once and recorded in the lab notes, in off-screen Chrome as in update 067: frames a second at 1 min/s, 1 day/s and 1 month/s, the longest frame across days 12 to 14, and days a second at 1 month/s past day 35, before and after; and the time the copies take in the worker and on the main thread. In the browser: people walk smoothly at 1 min/s, the Step button and pause work, a new run from Settings starts cleanly, and the console is clean.
-
-**Update 070.** Every fingerprint stays the same. A few fast unit tests: advancing a state in place equals stepping copies of it, minute by minute and across days; and the view-copy tests run on a state advanced in place, checking each copy equals the one made from a pure copy of the run. Measured once and recorded in the lab notes: days 50 to 59 at 1 month/s in Node, before and after.
-
-**Update 071.** `fingerprints.test.ts` passes before the engine is changed. Every trajectory changes, so new fingerprints are recorded once for all 22; the founders, bodies and traits stay the same. Fixtures 6, 8 and 9 above are replaced, and route fixtures elsewhere updated where a straight or steered walk now takes a different path. New unit fixtures:
-
-1. Straight: on open known ground a walk's corridor is exactly the triangles its line crosses, and the walk is recorded as straight.
-2. Blocked line: with a strip of unknown ground across the straight line, the walk is steered round it, and no triangle of its corridor is unknown.
-3. A line through a vertex counts as blocked, and the walk is steered.
-4. Crossings: between two pieces with two crossing edges, the walker takes the one whose midpoint is nearer the line to the target.
-5. Within a piece: where a lake inside one chunk blocks the line between entry and exit, the stretch goes round it within that piece, and the corridor never leaves the chain's pieces.
-6. Same chunk, two pieces: a walk between two pieces of one chunk, joined only through a neighbouring chunk, is steered and goes round.
-7. The checker rejects a way remembered from a straight walk that is not the triangles its line crosses, and a new way holding a triangle twice.
-
-Measured once and recorded in the lab notes, on the canonical seed: the walks of each kind on days 5, 13, 30 and 55; the median and largest excess of straight and steered walks over the shortest known path; each of the first 60 days' time in 12-hour steps as the worker runs, against update 070's; and a profile of days 50 to 60. In the browser: a walk steered round a lake, the panel's wording, and the console clean.
-
-Final validation is `npm run agent:check`. Measured once at update 066 and recorded in the lab notes, on the canonical seed: the walks of each kind by day; the median and largest excess of way walks over the shortest known path; the share of new plans needing the full search; the year of forty's time and memory; and a profile of day 12 against update 065's. In the browser: a followed person's ways drawn, the panel's wording during a walk, 1 month/s against the 8 frames a second of update 065, and the console clean.
+Final validation is `npm run agent:check`.
 
 ## Questions for later
 
-- Should people join a way from nearby, not only from on it, and how near?
-- Is once a day the right pace for noticing a shortcut, and should it depend on openness?
-- Should ways be chosen by expected time, with slopes and ground, rather than distance?
-- Should the coarse level be landmarks (places, banks, the hearth) rather than pieces of squares of land?
-- Joining a remembered way from nearby, rather than only from a triangle on it, and chaining ways through the places they share ("back to camp, then out along the other way"): how near, and does it make walks more lifelike than a steered plan? (Update 071 leaves both out.)
-- After update 070, which still reaches about 6 days a second at 1 month/s, which way to a month a second: cheaper route planning and water choice, which change no result, or people thinking less often (surveying and replanning less), or a simpler model of daily movement at map speeds? The last two change what people do.
-- The hut-building week (days 11 to 17 on the canonical run) takes 0.5 to 3.3 s a simulated day against about 0.25 s later, from its many cutting and log-carrying walks. What would make it affordable at a month a second?
-- Every route ever walked stays in the state, 27,000 by day 45. Should finished routes be dropped once no task or record refers to them?
-- A way is rechecked whenever a day has passed and the person has learnt anything, which after the first days is almost always. Should only new ground near the way count?
-- Do shared ways wear trails that make walking faster, and do trails gather people and places along them?
-- Should a person tell or show a way to someone they trust (steps 16 and 24)?
-- Does sight need to stop at ridges once surveys are rarer?
-- How strong should each trait's effect be? The effects here are judgement; there is no field measure of how far an extravert walks to meet a stranger.
-- Does the mean body mass, by scaling energy, change survival at forty founders compared with Life 13?
-- Do strong people end up gathering most of the wood, and do agreeable people end up poorer?
-- Should height affect walking speed (longer legs), or only weight and load?
-- Should strength also speed chopping and log carrying?
-- What default year, within 60 to 120 days, makes seasons long enough to matter?
-- Should personality drift with age and experience, once people age at step 19?
+- Is ten minutes together for one minute of work (`trustPerMille`) the right exchange rate between time and help, and is 60 minutes the right weight of a refusal? Both are judgement.
+- Should walking together count as time together once groups travel as one (step 18)?
+- Should people offer unasked, for example to someone they see hungry and close, or share a large catch with everyone at the fire (step 21)?
+- Should people ask strangers, at a lower chance of being given?
+- Should extraversion, the trait that starts interactions, govern asking? Here everyone in need asks.
+- Should ties decide whom an ungrouped person approaches or which group they join, and whom a person trades with?
+- Should contributions to the group's fire count as help to those who sat by it?
+- Do the circles of ties show layers, or does everyone in a group become equally close? If equal, is it because hearths are close enough for every member to be within talking distance at night?
+- Do the agreeable end up giving most and the disagreeable receiving most, and does that change who survives?
+- Should grievance fade more slowly than familiarity?
+- Should a person tell or show a way to someone they trust (step 24)?
+
+The Life 15 questions about wayfinding and speed stand: joining a way from nearby, the pace of noticing shortcuts, ways by expected time, landmarks as the coarse level, dropping finished routes, the hut-building week's cost, trails, and sight blocked by ridges; and the Life 14 questions about the strength of each trait's effect, body mass and survival, strength and chopping, height and speed, the default year, and personality changing with age.
 
 ## Left out
 
-Trails, shared or taught ways, ways blocked by anything, and sight blocked by relief; children, growth, ageing and pairing (step 19); fights, injury, yielding and fear in disputes (step 17); relationships (step 16); prestige and leadership (step 18); illness; heat balance and clothing; skills correlated with body or traits; personality change; any trait used by more than one rule; wading, swimming and boats; seasons and weather; herds, planting, property and recipes beyond axes and huts.
+Kinship and pairing (step 19); fights, injury, theft, yielding and fear in disputes (step 17), so grievance comes only from refusals; prestige, dominance, following and leadership (step 18); offering unasked and sharing a catch; asking strangers; ties deciding group membership, approach or exchange partners; gossip, or knowing anyone's ties but one's own; trails, shared or taught ways, ways blocked by anything, and sight blocked by relief; children, growth and ageing; illness; heat balance and clothing; skills correlated with body or traits; personality change; wading, swimming and boats; seasons and weather; herds, planting, property and recipes beyond axes and huts.
 
 ## References
+
+- Peterson, N. (1993), *Demand sharing: reciprocity and the pressure for generosity among foragers*, American Anthropologist.
+- Gurven, M. (2004), *To give and to give not: the behavioral ecology of human food transfers*, Behavioral and Brain Sciences: who shares with whom, and dyadic reciprocity.
+- Allen-Arave, W., Gurven, M. and Hill, K. (2008), *Reciprocal altruism, rather than kin selection, maintains nepotistic food transfers on an Ache reservation*, Evolution and Human Behavior.
+- Woodburn, J. (1998), *"Sharing is not a form of exchange": an analysis of property-sharing in immediate-return hunter-gatherer societies*, in Hann (ed.), Property Relations.
+- Apicella, C., Marlowe, F., Fowler, J. and Christakis, N. (2012), *Social networks and cooperation in hunter-gatherers*, Nature.
+- Hill, K. et al. (2011), *Co-residence patterns in hunter-gatherer societies show unique human social structure*, Science.
+- Hill, R. and Dunbar, R. (2003), *Social network size in humans*, Human Nature.
+- Zhou, W.-X., Sornette, D., Hill, R. and Dunbar, R. (2005), *Discrete hierarchical organization of social group sizes*, Proceedings of the Royal Society B.
+- Sutcliffe, A., Dunbar, R., Binder, J. and Arrow, H. (2012), *Relationships and the social brain: integrating psychological and evolutionary perspectives*, British Journal of Psychology.
+- Roberts, S. and Dunbar, R. (2011), *The costs of family and friends: an 18-month longitudinal study of relationship maintenance and decay*, Evolution and Human Behavior.
 
 - Siegel, A. and White, S. (1975), *The development of spatial representations of large-scale environments*, Advances in Child Development and Behavior: landmark, route and survey knowledge.
 - Golledge, R. (1995), *Path selection and route preference in human navigation: a progress report*; Golledge, R. (ed.) (1999), *Wayfinding Behavior: Cognitive Mapping and Other Spatial Processes*.

@@ -46,6 +46,7 @@ import {
   stepPlayback,
   strideOf,
   taskSummary,
+  tieSummary,
   TERMS_COLORS,
   VALLEY_SPEEDS,
   type ClearView,
@@ -329,6 +330,7 @@ export default function ValleyApp({
   const { config } = state
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
+  const ties = tieSummary(state, followed)
   const plant =
     selected && (selected.kind === 'bush' || selected.kind === 'hazel' || selected.kind === 'tree')
       ? plantInspection(state, selected.kind, selected.id, followed)
@@ -357,7 +359,7 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 15</span>
+        <span className="life-title">Life 16</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
             {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
@@ -585,6 +587,43 @@ export default function ValleyApp({
               )}
           </ul>
         </details>
+        <details className="life-details">
+          <summary>Closest ties</summary>
+          <ul>
+            {ties.closest.map((tie) => (
+              <li key={tie.otherId}>
+                {foragerName(tie.otherId)}
+                {!tie.alive && ' (dead)'} · {formatMinutes(tie.familiarity)} together · {tie.balance}
+                {tie.grievance > 0 && ` · a grievance of ${formatMinutes(tie.grievance)}`}
+              </li>
+            ))}
+          </ul>
+        </details>
+        <details className="life-details">
+          <summary>Recent gifts and refusals</summary>
+          <ul>
+            {state.eventDays
+              .flat()
+              .filter(
+                (event) =>
+                  (event.kind === 'gift' && (event.giverId === followed || event.receiverId === followed)) ||
+                  (event.kind === 'refusal' && (event.foragerId === followed || event.askerId === followed)),
+              )
+              .slice(-5)
+              .map((event, index) => (
+                <li key={index}>
+                  {event.kind === 'gift'
+                    ? `${foragerName(event.giverId)} gave ${foragerName(event.receiverId)} ${
+                        event.good === 'food' ? formatKcal(event.amount) : `${formatKg(event.amount)} of wood`
+                      }`
+                    : event.kind === 'refusal' &&
+                      `${foragerName(event.foragerId)} refused ${foragerName(event.askerId)} ${event.good}, ${
+                        event.reason === 'spare' ? 'having none to spare' : 'unwilling'
+                      }`}
+                </li>
+              ))}
+          </ul>
+        </details>
         <SkillRings skills={skillLevels(state, followed)} />
         {standing.length > 0 && (
           <div className="valley-groups" role="group" aria-label="Groups">
@@ -638,6 +677,10 @@ export default function ValleyApp({
             </dd>
             <dt>Ways</dt>
             <dd className="num">Knows {forager.ways.length}</dd>
+            <dt>Ties</dt>
+            <dd className="num">
+              Knows {ties.known} · close {ties.close}
+            </dd>
             <dt>Carries</dt>
             <dd className="num">
               {summary.carriedKcal ? carriedPhrase(summary.carriedByFood) : 'no food'}

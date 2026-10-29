@@ -7,8 +7,8 @@ import type { ValleyConfig } from './types'
 // Both file selection and seed selection use the same test-profile value supplied by Vite.
 declare const PR_TEST_PROFILE: boolean
 
-// Life 15 runs exactly as recorded: the daily summaries and totals of 30 days on three seeds, for the canonical land,
-// each configuration the experiments use and the flat land, match fingerprints recorded from Life 15's code. A change
+// Life 16 runs exactly as recorded: the daily summaries and totals of 30 days on three seeds, for the canonical land,
+// each configuration the experiments use and the flat land, match fingerprints recorded from Life 16's code. A change
 // that alters any trajectory, even a refactor or a speed-up meant to change nothing, fails here. Those configurations
 // were recorded with the first pull request's eight founders and keep them; the forty-founder default has one run.
 
@@ -39,140 +39,140 @@ const RECORDED = [
   {
     config: 'canonical',
     seed: 20260813,
-    days: 'bba6f543:66620',
-    totals: '31853532:464',
+    days: 'e7faeec1:75501',
+    totals: 'e7c8640b:464',
   },
   {
     config: 'canonical',
     seed: 1,
-    days: '3a6b437d:66325',
-    totals: 'f0375bbb:464',
+    days: '91f1eac0:75227',
+    totals: '2d125f06:464',
   },
   {
     config: 'canonical',
     seed: 2,
-    days: 'aa551dc9:66250',
-    totals: '82a6f566:463',
+    days: 'da01f7e5:75150',
+    totals: '6ec74796:462',
   },
   {
     config: 'together',
     seed: 20260813,
-    days: 'fc4d9bf5:66366',
-    totals: 'f0d7ab37:463',
+    days: '8fe14cb9:75164',
+    totals: '454c3ceb:463',
   },
   {
     config: 'together',
     seed: 1,
-    days: '709ab523:66147',
+    days: '1a6a68d1:74997',
     totals: '14d50b3e:462',
   },
   {
     config: 'together',
     seed: 2,
-    days: '221a3823:66176',
-    totals: '172354e2:464',
+    days: '2aa13837:75029',
+    totals: '73739d4c:464',
   },
   {
     config: 'noPractice',
     seed: 20260813,
-    days: 'adcf6810:66613',
-    totals: '34c472d6:464',
+    days: '5c0ccdbe:75476',
+    totals: 'ad2ad555:464',
   },
   {
     config: 'noPractice',
     seed: 1,
-    days: '585d816d:66340',
-    totals: 'c457c508:464',
+    days: '52e5a03c:75296',
+    totals: 'fc863177:470',
   },
   {
     config: 'noPractice',
     seed: 2,
-    days: 'c0ef770a:66227',
-    totals: '70b8acde:463',
+    days: '942d1437:75102',
+    totals: '772cf603:463',
   },
   {
     config: 'talent',
     seed: 20260813,
-    days: '9111c80d:66677',
-    totals: '3fafbe32:464',
+    days: 'd06baf83:75472',
+    totals: 'b034905c:464',
   },
   {
     config: 'talent',
     seed: 1,
-    days: 'e0d4cca7:66374',
-    totals: 'ae28e8ed:464',
+    days: 'e75c9b4a:75317',
+    totals: '623f35e2:464',
   },
   {
     config: 'talent',
     seed: 2,
-    days: 'f80778ff:66328',
-    totals: '1f4f7c0e:463',
+    days: 'dd8e1463:75128',
+    totals: 'c2dbb2c4:462',
   },
   {
     config: 'twelve',
     seed: 20260813,
-    days: '45288634:78586',
-    totals: '3d678e0:468',
+    days: 'de4d46a1:89345',
+    totals: '1aedf364:468',
   },
   {
     config: 'twelve',
     seed: 1,
-    days: 'f1ceeb30:78472',
-    totals: '7880e101:472',
+    days: '84f854d4:89248',
+    totals: '336dac:472',
   },
   {
     config: 'twelve',
     seed: 2,
-    days: '91e3f305:78366',
-    totals: '42626bb:469',
+    days: '62ea2f66:89106',
+    totals: 'e9d47b42:469',
   },
   {
     config: 'alike',
     seed: 20260813,
-    days: 'ad43b4bc:66607',
-    totals: '8f48c5c:464',
+    days: '3fb09a5a:75474',
+    totals: '5ad45a7c:464',
   },
   {
     config: 'alike',
     seed: 1,
-    days: '4139543d:66429',
-    totals: 'ef7ad196:464',
+    days: 'abd59964:75274',
+    totals: '6207dab2:464',
   },
   {
     config: 'alike',
     seed: 2,
-    days: '8f6e59c0:66356',
-    totals: '375644b8:463',
+    days: 'ea04ab1f:75251',
+    totals: '5597355c:463',
   },
   {
     config: 'flat',
     seed: 20260813,
-    days: '8795e744:59414',
+    days: '9b38cfe6:68264',
     totals: '7b9b0885:437',
   },
   {
     config: 'flat',
     seed: 1,
-    days: '9f68ec56:59465',
+    days: 'cd2a8086:68315',
     totals: 'd41aa245:437',
   },
   {
     config: 'flat',
     seed: 2,
-    days: '9c1e249f:59554',
+    days: 'aafff1c7:68404',
     totals: '42c6e2eb:437',
   },
   {
     config: 'forty',
     seed: 20260813,
-    days: 'f78f390:162722',
-    totals: 'fa9c4b90:477',
+    days: 'b217cec4:187454',
+    totals: '5c88d196:476',
   },
 ] as const
 
 /** Checks the recorded runs of the given configurations. */
 export function checkFingerprints(configs: readonly string[]) {
-  describe('Life 15 runs exactly as recorded', () => {
+  describe('Life 16 runs exactly as recorded', () => {
     for (const recorded of RECORDED.filter(
       (row) =>
         configs.includes(row.config) && (!PR_TEST_PROFILE || (row.config === 'canonical' && row.seed === 20260813)),

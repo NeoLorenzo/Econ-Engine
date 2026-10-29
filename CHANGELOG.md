@@ -2,6 +2,18 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE16-Relationships-072] - (2026-10-29)
+
+- Life 16, relationships. Each person holds ties to the people they know, at most 150: familiarity from minutes spent standing within talking distance, credit from work given less received, and grievance from refusals. All three fade to half in 180 days; a tie that fades to nothing, or the least familiar when full, is forgotten.
+- After an exchange, a person who is hungry with no food, or short of a night's firewood, asks the people met whom they know, closest tie first and each at most once a day. The one asked gives what they can spare, up to what the asker lacks, when their goodwill (familiarity, trust and agreeableness) covers what the asker already owes and the grievance held; otherwise they refuse, and an unwilling refusal adds an hour of grievance. A food gift is eaten at once.
+- New events `together`, `gift` and `refusal`; the daily summary counts ties, companions, food and wood given and received, and refusals made and met per person.
+- New settings `tiesRemembered`, `trustPerMille`, `refusalGrievanceMinutes`, `tieFadePerMillion` and the agreeableness giving rule, with validation.
+- The checker replays time together, gifts, refusals and the midnight fade, and rejects too many ties, a tie to oneself, unequal time together, a gift without enough goodwill, a wrong grievance and a second ask in a day.
+- The observer is labelled Life 16. The person panel has a "Ties" row, the five closest ties with time together and who owes whom, and recent gifts and refusals; lines on the ground join the followed person to their five closest living ties, warmer where they hold a grievance.
+- Trajectories change: new fingerprints are recorded for all 22 runs.
+- New unit fixtures for time together, fading and forgetting, gift amounts and credits, whom to ask, refusals, reciprocity, agreeableness, asking after an exchange, and the checker on ties.
+- `docs/LIFE16_SPEC.md` replaces the Life 15 specification.
+
 ## [LIFE15-Wayfinding-071] - (2026-10-28)
 
 - A new route is planned as people find their way: the straight line when every triangle it crosses is known walkable ground, otherwise steered along the chain of pieces, heading in each piece for the crossing nearest the line on to the target, straight where it can and by a search confined to that piece where it cannot.

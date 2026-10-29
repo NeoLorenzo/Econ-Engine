@@ -27,6 +27,7 @@ import { hearthAround, livingMembers } from './social'
 import { sleepCostOf, warmthOf } from './work'
 import { feedAmount } from './fire'
 import { replayInterval, annualShares } from './replay'
+import { replayTies, tieViolations } from './ties'
 import type { Point, ValleyState, TaskEvent } from './types'
 const sum = (values: Iterable<number>) => {
   let total = 0
@@ -119,6 +120,7 @@ export class ValleyChecker {
       this.order,
       this.regrowth,
       this.ways,
+      this.ties,
     ]) {
       try {
         found.push(...check.call(this, state))
@@ -132,6 +134,10 @@ export class ValleyChecker {
   assert(state: ValleyState) {
     const errors = this.check(state)
     if (errors.length) throw new Error(`Valley invariants violated: ${errors.slice(0, 8).join('; ')}`)
+  }
+  /** Ties keep their standing rules and replay from the interval's records. */
+  private ties(state: ValleyState) {
+    return [...tieViolations(state), ...replayTies(this.previous, state)]
   }
   /** Every way is a known walkable corridor between its ends; walks on ways keep to them; surveys follow the rule. */
   private ways(state: ValleyState) {

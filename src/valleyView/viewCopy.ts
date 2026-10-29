@@ -32,6 +32,7 @@ const MEMORY = [
   'placeLogs',
   'fishMemory',
   'metPosition',
+  'ties',
 ] as const satisfies readonly (keyof Memory)[]
 
 /**
@@ -62,10 +63,11 @@ function viewMemory(person: Forager, followedId: number, last: Forager | undefin
     placeLogs: person.placeLogs.slice(),
     fishMemory: new Map(person.fishMemory),
     metPosition: new Map(person.metPosition),
+    ties: new Map(person.ties),
   }
 }
 
-const VIEW_EVENTS = new Set<ValleyEvent['kind']>(['exchange', 'walk'])
+const VIEW_EVENTS = new Set<ValleyEvent['kind']>(['exchange', 'walk', 'gift', 'refusal'])
 /** Finished days never change, so each is filtered once. */
 const filteredDays = new WeakMap<ValleyEvent[], ValleyEvent[]>()
 const viewEvents = (events: ValleyEvent[]) => events.filter((e) => VIEW_EVENTS.has(e.kind))

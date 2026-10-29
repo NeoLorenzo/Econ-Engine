@@ -98,8 +98,17 @@ export interface NatureConfig {
   wayRecheckMinutes: number
   /** The still landscape is surveyed again once a person stands this far from their last survey. */
   resurveyCm: number
+  /** The most ties a person holds; past it, the least familiar is forgotten. */
+  tiesRemembered: number
+  /** Minutes of work a minute together vouches for, per mille. */
+  trustPerMille: number
+  /** The grievance, in minutes, a refusal by someone with something to spare adds. */
+  refusalGrievanceMinutes: number
+  /** The share of every tie value lost each midnight, per million. */
+  tieFadePerMillion: number
   extraversionRule: TraitRule
   agreeablenessRule: TraitRule
+  agreeablenessGiveRule: TraitRule
   conscientiousnessRule: TraitRule
   neuroticismRule: TraitRule
   opennessRule: TraitRule
@@ -123,6 +132,8 @@ export interface PersonNature {
   thirstThresholds: { thirsty: number; urgent: number; fatal: number }
   companyRadiusCm: number
   sellerShareInput: number
+  /** The agreeableness factor on goodwill when asked to give, per mille. */
+  giveGoodwillPerMille: number
   woodStockTarget: number
   satiationKcal: number
   duskMarginMinutes: number
@@ -577,6 +588,22 @@ export interface Way {
   revision: number
   usedMinute: number
 }
+/**
+ * What a person holds of another: minutes together, the balance of gifts in minutes of its own work (positive: the
+ * other owes it), and grievance in minutes. Each value carries a remainder for fading, in millionths.
+ */
+export interface Tie {
+  familiarity: number
+  credit: number
+  grievance: number
+  familiarityRemainder: number
+  creditRemainder: number
+  grievanceRemainder: number
+  /** The last minute counted of the pair's time together. */
+  countedMinute: number
+  /** The calendar day it last asked the other, or -1. */
+  askedDay: number
+}
 /** How a walk's corridor was found. */
 export type WalkPlan = 'way' | 'joined' | 'straight' | 'steered'
 export interface Forager extends Hydration, PersonNature {
@@ -590,6 +617,8 @@ export interface Forager extends Hydration, PersonNature {
   placeLogs: Int32Array
   metMinute: Int32Array
   metPosition: Map<number, Point>
+  /** Its ties, by the other person's id. Tie records are never changed in place: a change makes a new record. */
+  ties: Map<number, Tie>
   arrivalFrom: Int32Array
   /** Ways walked to places, banks and home, never changed in place: a change makes a new list. */
   ways: readonly Way[]
@@ -935,6 +964,38 @@ export type WakeEvent =
   | { kind: 'regrowth'; minute: number; placeId: number; kcal: number; wood: number; logs: number }
   | { kind: 'fish-regrowth'; minute: number; bodyId: number; kcal: number; remainder: number }
   | { kind: 'rate-change'; minute: number; foragerId: number; energyPerHour: number }
+/** Two people's time together counted, as added to both their ties. */
+export interface TogetherEvent {
+  kind: 'together'
+  minute: number
+  foragerId: number
+  otherId: number
+  minutes: number
+}
+/** What can be asked for and given. */
+export type GiftGood = 'food' | 'wood'
+/** A gift on being asked: kcal of food or kg of wood, and each side's change of credit with the other. */
+export interface GiftEvent {
+  kind: 'gift'
+  minute: number
+  giverId: number
+  receiverId: number
+  good: GiftGood
+  amount: number
+  giverCredit: number
+  receiverCredit: number
+}
+/** A refusal: for want of goodwill, which adds grievance, or with nothing to spare, which adds none. */
+export interface RefusalEvent {
+  kind: 'refusal'
+  minute: number
+  foragerId: number
+  askerId: number
+  good: GiftGood
+  reason: 'goodwill' | 'spare'
+  grievance: number
+}
+export type TieEvent = TogetherEvent | GiftEvent | RefusalEvent
 export type ValleyEvent =
   | WakeEvent
   | (Omit<FoundEvent, 'kind'> & { kind: 'group-founded' })
@@ -955,6 +1016,7 @@ export type ValleyEvent =
   | FeedEvent
   | AxeEvent
   | HutEvent
+  | TieEvent
 
 /** Seconds spent on each kind of time, summed over the band. */
 export interface ActionSeconds {
@@ -1033,6 +1095,16 @@ export interface DaySummary {
   sitesCheckedById: number[]
   /** Every forager's wood put into fires during the day; wood burned in groups' fires; night hours fires were lit and out. */
   fireGivenById: number[]
+  /** Every person's ties held, and people they spent time with, at the end of the day. */
+  tiesById: number[]
+  companionsById: number[]
+  /** Every person's food (kcal) and wood (kg) given and received on being asked, and refusals made and met. */
+  giftKcalGivenById: number[]
+  giftKcalReceivedById: number[]
+  giftWoodGivenById: number[]
+  giftWoodReceivedById: number[]
+  refusalsMadeById: number[]
+  refusalsMetById: number[]
   campfireBurnedWood: number
   fireLitHours: number
   fireDarkHours: number

@@ -622,6 +622,30 @@ export function taskSummary(state: ValleyState, foragerId: number) {
     : null
 }
 
+/** A tie counts as close from a day's waking time together; an observer setting, not a rule of the simulation. */
+export const CLOSE_TIE_MINUTES = 1_440
+
+/** How many people a forager knows, how many closely, and their closest ties with what each owes. */
+export function tieSummary(state: ValleyState, id: number, count = 5) {
+  const ties = [...state.foragers[id]!.ties].map(([otherId, tie]) => ({ otherId, ...tie }))
+  ties.sort((a, b) => b.familiarity - a.familiarity || a.otherId - b.otherId)
+  return {
+    known: ties.length,
+    close: ties.filter((tie) => tie.familiarity >= CLOSE_TIE_MINUTES).length,
+    closest: ties.slice(0, count).map((tie) => ({
+      ...tie,
+      alive: state.foragers[tie.otherId]?.alive ?? false,
+      // Credit is the minutes of work this forager has given beyond what they received.
+      balance:
+        tie.credit === 0
+          ? 'even'
+          : tie.credit > 0
+            ? `is owed ${formatMinutes(tie.credit)}`
+            : `owes ${formatMinutes(-tie.credit)}`,
+    })),
+  }
+}
+
 /** Minutes as a short phrase: "40 min", "3 h 5 min", "2 d 4 h". */
 export function formatMinutes(minutes: number) {
   if (minutes < 60) return `${minutes} min`

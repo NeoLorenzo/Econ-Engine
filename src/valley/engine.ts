@@ -1,3 +1,4 @@
+import { companionsOn } from './ties'
 import { founderMetrics } from './nature'
 import { reindexPeople, shareBankMemory, shareKnowledge } from './perception'
 import { knowledgeBytes } from './routes'
@@ -117,6 +118,14 @@ function emptyDay(
     sitesKnownById: foragers.map(placesKnown),
     sitesCheckedById: zeros(foragers.length),
     fireGivenById: zeros(foragers.length),
+    tiesById: zeros(foragers.length),
+    companionsById: zeros(foragers.length),
+    giftKcalGivenById: zeros(foragers.length),
+    giftKcalReceivedById: zeros(foragers.length),
+    giftWoodGivenById: zeros(foragers.length),
+    giftWoodReceivedById: zeros(foragers.length),
+    refusalsMadeById: zeros(foragers.length),
+    refusalsMetById: zeros(foragers.length),
     campfireBurnedWood: 0,
     fireLitHours: 0,
     fireDarkHours: 0,
@@ -192,6 +201,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       placeLogs: new Int32Array(layout.places.count).fill(-1),
       metMinute: new Int32Array(config.founders).fill(-1),
       metPosition: new Map(),
+      ties: new Map(),
       arrivalFrom: new Int32Array(config.founders).fill(-1),
       knowledge: { triangles: new Uint8Array(knowledgeBytes(layout.nav.mesh)), revision: 0 },
       ways: [],
@@ -351,6 +361,7 @@ export type Memory = Pick<
   | 'placeLogs'
   | 'fishMemory'
   | 'metPosition'
+  | 'ties'
 >
 /** A copy of a person's memory. Knowledge and banks are shared until either holder learns more; ways never change. */
 export const copyMemory = (forager: Forager): Memory => ({
@@ -364,6 +375,7 @@ export const copyMemory = (forager: Forager): Memory => ({
   placeLogs: forager.placeLogs.slice(),
   fishMemory: new Map(forager.fishMemory),
   metPosition: new Map(forager.metPosition),
+  ties: new Map(forager.ties),
 })
 const cloneForager = (forager: Forager, memory: Memory = copyMemory(forager)): Forager => {
   return {
@@ -417,6 +429,14 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   sitesKnownById: [...day.sitesKnownById],
   sitesCheckedById: [...day.sitesCheckedById],
   fireGivenById: [...day.fireGivenById],
+  tiesById: [...day.tiesById],
+  companionsById: [...day.companionsById],
+  giftKcalGivenById: [...day.giftKcalGivenById],
+  giftKcalReceivedById: [...day.giftKcalReceivedById],
+  giftWoodGivenById: [...day.giftWoodGivenById],
+  giftWoodReceivedById: [...day.giftWoodReceivedById],
+  refusalsMadeById: [...day.refusalsMadeById],
+  refusalsMetById: [...day.refusalsMetById],
   cutSecondsById: [...day.cutSecondsById],
   makeSecondsById: [...day.makeSecondsById],
   logsCutById: [...day.logsCutById],
@@ -483,6 +503,8 @@ function finishDay(state: ValleyState, minute: number) {
   day.craftById = state.foragers.map((p) => p.craft)
   day.sitesKnownById = state.foragers.map(placesKnown)
   day.placesSeenById = [...day.sitesKnownById]
+  day.tiesById = state.foragers.map((p) => p.ties.size)
+  day.companionsById = state.foragers.map((p) => companionsOn(p, minute))
   state.days.push(day)
   state.today = emptyDay(dayOf(minute), state)
   state.eventDays.push([])

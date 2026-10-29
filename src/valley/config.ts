@@ -36,8 +36,13 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   waysRemembered: 64,
   wayRecheckMinutes: 1_440,
   resurveyCm: 10_000,
+  tiesRemembered: 150,
+  trustPerMille: 100,
+  refusalGrievanceMinutes: 60,
+  tieFadePerMillion: 3_844,
   extraversionRule: { base: 1000, effect: 500, low: 0, high: 2000 },
   agreeablenessRule: { base: 500, effect: 250, low: 100, high: 900 },
+  agreeablenessGiveRule: { base: 1000, effect: 500, low: 0, high: 2000 },
   conscientiousnessRule: { base: 1000, effect: 250, low: 500, high: 1750 },
   neuroticismRule: { base: 1000, effect: 500, low: 0, high: 4000 },
   opennessRule: { base: 1000, effect: 500, low: 250, high: 3000 },
@@ -376,6 +381,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'waysRemembered',
     'wayRecheckMinutes',
     'resurveyCm',
+    'tiesRemembered',
     'referenceBodyKg',
     'berryKcalPerKg',
     'campfireWoodPerHour',
@@ -604,6 +610,15 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     errors.push('Long sight must reach at least as far as close sight: sightRadiusCm ≥ perceptionRadiusCm')
   if (config.waysRemembered > 1_000) errors.push('waysRemembered must be at most 1,000')
   if (config.resurveyCm > config.sightRadiusCm) errors.push('resurveyCm must be at most sightRadiusCm')
+  if (config.tiesRemembered > 10_000) errors.push('tiesRemembered must be at most 10,000')
+  for (const key of ['trustPerMille', 'refusalGrievanceMinutes'] as const)
+    if (!Number.isSafeInteger(config[key]) || config[key] < 0) errors.push(`${key} must be a non-negative integer`)
+  if (
+    !Number.isSafeInteger(config.tieFadePerMillion) ||
+    config.tieFadePerMillion < 0 ||
+    config.tieFadePerMillion > 1_000_000
+  )
+    errors.push('tieFadePerMillion must be an integer from 0 to 1,000,000')
   // A site is checked from within perceptionRadiusCm − its radius of its centre, which must leave room to stand.
   if (
     config.perceptionRadiusCm <=

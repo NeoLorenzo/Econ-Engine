@@ -1,3 +1,4 @@
+import { fadeTies } from './ties'
 import { personConfig } from './nature'
 import { burnFires } from './fire'
 import { isDaylight, atHearth } from './forager'
@@ -14,6 +15,7 @@ export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
   const events: ValleyEvent[] = [{ kind: 'world', minute }]
   if (minute % MINUTES_PER_DAY === 0) {
     for (const person of state.foragers) if (person.alive) events.push(practiceDay(state.config, person, minute))
+    fadeTies(state)
     events.push(...weatherHuts(state, minute))
     const beforeFood = state.foodStock.slice(),
       beforeWood = state.woodStock.slice(),
