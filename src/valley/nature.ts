@@ -97,6 +97,7 @@ export function deriveNature(
       Math.floor((c.companyRadiusCm * traitFactor(c.extraversionRule, traits.extraversion)) / 1000),
     ),
     sellerShareInput: traits.agreeableness,
+    giveGoodwillPerMille: traitFactor(c.agreeablenessGiveRule, traits.agreeableness),
     woodStockTarget: Math.max(night + 1, Math.floor((c.woodStockNights * night * f) / 1000)),
     satiationKcal: Math.min(
       c.reserveMaxKcal,
@@ -191,6 +192,7 @@ export function natureConfigErrors(c: ValleyConfig) {
   for (const key of [
     'extraversionRule',
     'agreeablenessRule',
+    'agreeablenessGiveRule',
     'conscientiousnessRule',
     'neuroticismRule',
     'opennessRule',

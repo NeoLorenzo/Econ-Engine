@@ -6,6 +6,28 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE16-PeopleCharts-073] - (2026-10-29)
+
+The owner found the line charts of little use and asked for a macro view of everyone's skills, to see who specialises in wood or axes, and for a graph of all relationships. The line charts move to their own view.
+
+**Skill map.** Three skills fit a triangle: each person is the weighted average of the corners, a radial layout of the kind called RadViz. Weighted by skill as a share of the most anyone could reach, everyone fell near the middle, since born skills differ by tens of percent and every share is similar. Each skill is therefore scaled from the least to the most skilled among the living, so a corner pulls whoever leads in that skill. The middle then holds people in the same place in every skill, good or poor alike, so the dot's size shows overall skill. Practice raises the skills used, so specialising shows as dots moving towards a corner over the run.
+
+**Relationship graph.** People sit round a circle ordered by group, so a group's ties form a dense bundle and the ties between groups cross the middle. On day 8 of the canonical run, 123 pairs knew each other, 61 closely and none with a grievance; groups showed as bundles of thick lines. The graph needs everyone's ties, which the view copy had kept only for the followed person; ties are small (about 23 a person after a year), and a person's ties are resent only when one changed.
+
+## [LIFE16-Relationships-072] - (2026-10-29)
+
+The owner approved the Life 16 specification, step 16 of the roadmap: ties held in each person's memory, built from time together, with credit from gifts and grievance from refusals, and demand sharing asked of the people one knows best (Peterson 1993; Gurven 2004).
+
+**What implementation changed in the specification.** Time together counts from the later `countedMinute` of the two ties, so neither person's wake-up counts a minute twice. The goodwill comparison is exact in integers. Having nothing to spare is checked before goodwill, so such a refusal adds no grievance whatever the tie. An asker stops asking for a good once given some, and a food gift is eaten at once, counted with the task's eating so the body ledger balances; the first checker run caught that meal missing. The checker replays ties, credits, grievance and once-a-day asks but does not recompute a gift's amount from bodies and loads: unit fixtures cover the amounts. Pair symmetry is checked only where the two familiarity remainders are equal, since fading rounds each tie separately.
+
+**Measured once, canonical forty, seed 20260813, in Node.** All forty alive at day 365.
+- *Circles.* Over days 30–89, a person spent time with 3.2–4.5 others a week (weekly means) and 4.7 others in days 60–89, from 1 to 9. Ties held reached 23 on average at day 365. This is about the innermost layer of five (Zhou et al. 2005; Sutcliffe et al. 2012); the wider layers of 15 and 50 do not form in a valley of forty mostly scattered strangers in a year.
+- *Gifts and refusals.* In 90 days there were 24 gifts and 929 refusals. Day 1 had 5 gifts and 104 refusals, and later days 0–2 gifts and 2–25 refusals. 15 of the 24 gifts went between members of one group. Every refusal was for want of anything to spare; none was for want of goodwill.
+- *Reciprocity.* Gifts flowed between only 15 pairs, and only one gave both ways. The correlation of work given each way, −0.15, means nothing at that size; the real figure, about 0.2–0.5 (Gurven 2004), cannot yet be tested.
+- *Speed and memory.* Days 51–60 took 181 ms a day against update 071's 185–205 ms, so ties cost nothing visible. The heap after garbage collection grows by about 12 MB a simulated day, to 5.3 GB at day 360; a year needs `--max-old-space-size` above the default and runs out of memory under Vitest. This is not new: the same probe on update 071's code grows faster, 2.3 GB at day 90 against 1.7 GB.
+
+**Findings.** The rules work and the checker holds them over a year, but sharing is rare because people seldom carry food beyond what they would eat themselves: they eat as they forage, and a hungry person with no food mostly meets others with nothing spare. The giving rule's goodwill has not yet been tested by the run. Whether to share from a larger margin, such as a day's food, or to carry food home, is a question for the owner and a later step: the roadmap shares a catch by influence in step 18 and meat from group hunts in step 21. The steady growth of memory over a year is the main open cost, and a question for a later speed and memory step.
+
 ## [LIFE15-Wayfinding-071] - (2026-10-28)
 
 After update 070, route planning was about 30% of a day: about 80 new plans a day past day 50 at about 1 ms each, each expanding some 3,400 triangles. The owner pointed out that people do not compute so much to find their way and approved a specification that plans as people do: straight at the goal when the ground ahead is known, otherwise steering round what is in the way, piece by piece (Hochmair and Frank 2000; Bailenson et al. 2000).

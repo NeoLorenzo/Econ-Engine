@@ -1,7 +1,8 @@
 import { TRAITS } from '../valley/nature'
 import { LandMap } from './LandMap'
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { SpecializationChart } from './SpecializationChart'
+import { SkillMap } from './SkillMap'
+import { TieGraph } from './TieGraph'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
@@ -37,7 +38,7 @@ import {
   plantInspection,
   skillLevels,
   stoneInspection,
-  specializationPoints,
+  skillMapPoints,
   thirstLevel,
   receiveState,
   startDisplay,
@@ -46,6 +47,8 @@ import {
   stepPlayback,
   strideOf,
   taskSummary,
+  tieGraph,
+  tieSummary,
   TERMS_COLORS,
   VALLEY_SPEEDS,
   type ClearView,
@@ -154,6 +157,7 @@ export default function ValleyApp({
   const [mapView, setMapView] = useState<ReturnType<ValleyScene['view']> | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0))
   const [sceneError, setSceneError] = useState(false)
+  const [historyView, setHistoryView] = useState<HistoryView>('skills')
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
   const aboutRef = useRef<HTMLDialogElement | null>(null)
   const readyRef = useRef(onReady)
@@ -329,6 +333,7 @@ export default function ValleyApp({
   const { config } = state
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
+  const ties = tieSummary(state, followed)
   const plant =
     selected && (selected.kind === 'bush' || selected.kind === 'hazel' || selected.kind === 'tree')
       ? plantInspection(state, selected.kind, selected.id, followed)
@@ -357,7 +362,7 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 15</span>
+        <span className="life-title">Life 16</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
             {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
@@ -585,6 +590,43 @@ export default function ValleyApp({
               )}
           </ul>
         </details>
+        <details className="life-details">
+          <summary>Closest ties</summary>
+          <ul>
+            {ties.closest.map((tie) => (
+              <li key={tie.otherId}>
+                {foragerName(tie.otherId)}
+                {!tie.alive && ' (dead)'} · {formatMinutes(tie.familiarity)} together · {tie.balance}
+                {tie.grievance > 0 && ` · a grievance of ${formatMinutes(tie.grievance)}`}
+              </li>
+            ))}
+          </ul>
+        </details>
+        <details className="life-details">
+          <summary>Recent gifts and refusals</summary>
+          <ul>
+            {state.eventDays
+              .flat()
+              .filter(
+                (event) =>
+                  (event.kind === 'gift' && (event.giverId === followed || event.receiverId === followed)) ||
+                  (event.kind === 'refusal' && (event.foragerId === followed || event.askerId === followed)),
+              )
+              .slice(-5)
+              .map((event, index) => (
+                <li key={index}>
+                  {event.kind === 'gift'
+                    ? `${foragerName(event.giverId)} gave ${foragerName(event.receiverId)} ${
+                        event.good === 'food' ? formatKcal(event.amount) : `${formatKg(event.amount)} of wood`
+                      }`
+                    : event.kind === 'refusal' &&
+                      `${foragerName(event.foragerId)} refused ${foragerName(event.askerId)} ${event.good}, ${
+                        event.reason === 'spare' ? 'having none to spare' : 'unwilling'
+                      }`}
+                </li>
+              ))}
+          </ul>
+        </details>
         <SkillRings skills={skillLevels(state, followed)} />
         {standing.length > 0 && (
           <div className="valley-groups" role="group" aria-label="Groups">
@@ -638,6 +680,10 @@ export default function ValleyApp({
             </dd>
             <dt>Ways</dt>
             <dd className="num">Knows {forager.ways.length}</dd>
+            <dt>Ties</dt>
+            <dd className="num">
+              Knows {ties.known} · close {ties.close}
+            </dd>
             <dt>Carries</dt>
             <dd className="num">
               {summary.carriedKcal ? carriedPhrase(summary.carriedByFood) : 'no food'}
@@ -1042,8 +1088,25 @@ export default function ValleyApp({
               i
             </button>
           </summary>
-          <SpecializationChart points={specializationPoints(state)} config={config} followed={followed} woodUnit="kg" />
-          <HistoryCharts state={state} followed={followed} name={name} />
+          <div className="life-tabs" role="tablist" aria-label="History views">
+            {HISTORY_VIEWS.map((view) => (
+              <button
+                key={view.key}
+                type="button"
+                role="tab"
+                aria-selected={historyView === view.key}
+                className={historyView === view.key ? 'is-selected' : undefined}
+                onClick={() => setHistoryView(view.key)}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+          {historyView === 'time' ? (
+            <HistoryCharts state={state} followed={followed} name={name} />
+          ) : (
+            <PeopleChart state={state} followed={followed} view={historyView} onFollow={follow} />
+          )}
         </details>
       </section>
 
@@ -1089,6 +1152,40 @@ export default function ValleyApp({
   )
 }
 
+const HISTORY_VIEWS = [
+  { key: 'skills', label: 'Skills' },
+  { key: 'ties', label: 'Relationships' },
+  { key: 'time', label: 'Over time' },
+] as const
+type HistoryView = (typeof HISTORY_VIEWS)[number]['key']
+
+/** The skill map or the relationship graph, drawn again each simulated hour rather than at every refresh. */
+const PeopleChart = memo(
+  function PeopleChart({
+    state,
+    followed,
+    view,
+    onFollow,
+  }: {
+    state: ValleyState
+    followed: number
+    view: 'skills' | 'ties'
+    onFollow: (id: number) => void
+  }) {
+    return view === 'skills' ? (
+      <SkillMap points={skillMapPoints(state)} followed={followed} onFollow={onFollow} />
+    ) : (
+      <TieGraph graph={tieGraph(state)} followed={followed} onFollow={onFollow} />
+    )
+  },
+  (before, after) =>
+    before.followed === after.followed &&
+    before.view === after.view &&
+    before.onFollow === after.onFollow &&
+    before.state.layout === after.state.layout &&
+    Math.floor(before.state.minute / 60) === Math.floor(after.state.minute / 60),
+)
+
 /**
  * The run's history charts. They show finished days only, so they are drawn again only when a day ends, the followed
  * forager changes or a new run starts, not at every refresh of the panels.
@@ -1096,7 +1193,7 @@ export default function ValleyApp({
 const HistoryCharts = memo(
   function HistoryCharts({ state, followed, name }: { state: ValleyState; followed: number; name: string }) {
     const days = daySeries(state, followed)
-    if (days.length <= 1) return null
+    if (days.length <= 1) return <p className="life-note">The charts over time begin after the first day.</p>
     return (
       <>
         <TimeChart

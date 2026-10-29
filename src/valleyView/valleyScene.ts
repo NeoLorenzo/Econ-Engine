@@ -87,6 +87,8 @@ const PLANT_DRAW_M = 500
 const DETAIL_DRAW_M = 300
 /** The followed forager's route, rings and known ground are redrawn at most this often, in milliseconds. */
 const OVERLAY_INTERVAL_MS = 250
+/** Lines are drawn from the followed forager to this many of their closest living ties. */
+const TIE_LINES = 5
 /** The canonical 4 km land is drawn at its full 5 m terrain lattice, so its 15-60 m relief is not averaged away. */
 const LEAF = 0x2f7a3c
 const BERRY = 0xc8243f
@@ -559,8 +561,11 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
   // Lines on the ground from a selected group's flag to each member away from home, in the group's colour.
   const memberLines: InstanceType<Three['Line']>[] = []
-  function memberLineAt(index: number) {
-    while (memberLines.length <= index) {
+  // Lines from the followed forager to their closest living ties, warmer for a tie that holds a grievance.
+  const tieLines: InstanceType<Three['Line']>[] = []
+  const memberLineAt = (index: number) => lineAt(memberLines, index)
+  function lineAt(lines: InstanceType<Three['Line']>[], index: number) {
+    while (lines.length <= index) {
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(0), 3))
       const line = new THREE.Line(
@@ -569,9 +574,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       )
       line.renderOrder = 3
       scene.add(line)
-      memberLines.push(line)
+      lines.push(line)
     }
-    return memberLines[index]!
+    return lines[index]!
   }
 
   /** Drape a circular line over the visible terrain instead of holding it flat at its centre's height. */
@@ -1976,6 +1981,21 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         line.visible = true
       }
     }
+    for (const line of tieLines) line.visible = false
+    if (followed?.alive) {
+      const closest = [...followed.ties]
+        .filter(([id]) => state.foragers[id]?.alive)
+        .sort(([a, x], [b, y]) => y.familiarity - x.familiarity || a - b)
+        .slice(0, TIE_LINES)
+      const from = poses[followedId]!
+      for (const [index, [id, tie]] of closest.entries()) {
+        const line = lineAt(tieLines, index)
+        const to = poses[id]!
+        drapeLine(line, at(from.x, from.y), at(to.x, to.y))
+        ;(line.material as InstanceType<Three['LineBasicMaterial']>).color.set(tie.grievance > 0 ? 0xff9a5c : 0xbfe3ff)
+        line.visible = true
+      }
+    }
     camera.updateMatrixWorld()
     const width = canvas.clientWidth
     const height = canvas.clientHeight
@@ -2330,7 +2350,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       rememberedBanks.material.dispose()
       rememberedWays.geometry.dispose()
       rememberedWays.material.dispose()
-      for (const line of memberLines) {
+      for (const line of [...memberLines, ...tieLines]) {
         line.geometry.dispose()
         ;(line.material as InstanceType<Three['LineBasicMaterial']>).dispose()
       }
