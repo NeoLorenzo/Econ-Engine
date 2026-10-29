@@ -6,8 +6,9 @@ import type { Forager, ValleyEvent, ValleyState } from '../valley/types'
 /**
  * The engine runs in a worker, and the page draws from view copies of its states. A view copy holds what the page
  * reads: the state as the engine left it, less what the page never reads and would cost seconds to copy between
- * threads. Only the routes of tasks under way, each person's next wake-up in place of the wake-up queue, exchanges
- * and walk records among the events, and the followed person's memory are kept up to date.
+ * threads. Only the routes of tasks under way, each person's next wake-up in place of the wake-up queue, exchanges,
+ * walk records, gifts and refusals among the events, everyone's ties and the followed person's memory are kept up to
+ * date.
  *
  * Between threads a copy travels as its changes from the last copy sent, which both sides keep. The worker sends
  * a `Change`; the page applies it to its own last copy. Parts the engine left alone, or recopied unchanged, are not
@@ -32,7 +33,6 @@ const MEMORY = [
   'placeLogs',
   'fishMemory',
   'metPosition',
-  'ties',
 ] as const satisfies readonly (keyof Memory)[]
 
 /**
@@ -41,8 +41,11 @@ const MEMORY = [
  * bank memory of the same size is the same and is kept.
  */
 function viewMemory(person: Forager, followedId: number, last: Forager | undefined): Memory {
+  // Everyone's ties are kept current for the relationship graph. A tie is replaced, never changed, so a map holding
+  // the same ties is the same, and is kept.
+  const ties = last && sameMap(last.ties, person.ties) ? last.ties : new Map(person.ties)
   if (person.id !== followedId && last) {
-    const kept = {} as Record<(typeof MEMORY)[number], unknown>
+    const kept = { ties } as Record<(typeof MEMORY)[number] | 'ties', unknown>
     for (const key of MEMORY) kept[key] = last[key]
     return kept as Memory
   }
@@ -63,7 +66,7 @@ function viewMemory(person: Forager, followedId: number, last: Forager | undefin
     placeLogs: person.placeLogs.slice(),
     fishMemory: new Map(person.fishMemory),
     metPosition: new Map(person.metPosition),
-    ties: new Map(person.ties),
+    ties,
   }
 }
 

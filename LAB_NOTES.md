@@ -6,6 +6,14 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE16-PeopleCharts-073] - (2026-10-29)
+
+The owner found the line charts of little use and asked for a macro view of everyone's skills, to see who specialises in wood or axes, and for a graph of all relationships. The line charts move to their own view.
+
+**Skill map.** Three skills fit a triangle: each person is the weighted average of the corners, a radial layout of the kind called RadViz. Weighted by skill as a share of the most anyone could reach, everyone fell near the middle, since born skills differ by tens of percent and every share is similar. Each skill is therefore scaled from the least to the most skilled among the living, so a corner pulls whoever leads in that skill. The middle then holds people in the same place in every skill, good or poor alike, so the dot's size shows overall skill. Practice raises the skills used, so specialising shows as dots moving towards a corner over the run.
+
+**Relationship graph.** People sit round a circle ordered by group, so a group's ties form a dense bundle and the ties between groups cross the middle. On day 8 of the canonical run, 123 pairs knew each other, 61 closely and none with a grievance; groups showed as bundles of thick lines. The graph needs everyone's ties, which the view copy had kept only for the followed person; ties are small (about 23 a person after a year), and a person's ties are resent only when one changed.
+
 ## [LIFE16-Relationships-072] - (2026-10-29)
 
 The owner approved the Life 16 specification, step 16 of the roadmap: ties held in each person's memory, built from time together, with credit from gifts and grievance from refusals, and demand sharing asked of the people one knows best (Peterson 1993; Gurven 2004).

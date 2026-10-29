@@ -2,6 +2,14 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE16-PeopleCharts-073] - (2026-10-29)
+
+- The history panel has three views: Skills, Relationships and Over time. The charts over time move to their own view.
+- Skills: a skill map places each forager inside a triangle with picking, wood and axes at the corners, pulled towards the skills where they stand highest among the living, coloured by group and sized by overall skill. It replaces the chart of work spent gathering by what wood costs.
+- Relationships: a graph sets everyone alive round a circle by group, with a line for each pair who know each other, thicker for more time together and amber to red for grievance, with counts of pairs, close pairs and pairs with a grievance, and a switch for close ties only.
+- Clicking a dot in either view follows that forager.
+- The view copy keeps everyone's ties current, not only the followed person's. The engine is unchanged, and so are the fingerprints.
+
 ## [LIFE16-Relationships-072] - (2026-10-29)
 
 - Life 16, relationships. Each person holds ties to the people they know, at most 150: familiarity from minutes spent standing within talking distance, credit from work given less received, and grievance from refusals. All three fade to half in 180 days; a tie that fades to nothing, or the least familiar when full, is forgotten.

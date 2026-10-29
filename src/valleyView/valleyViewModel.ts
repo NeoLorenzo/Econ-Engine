@@ -19,6 +19,7 @@ import { GROUND_NAMES, cellOf, heightAt } from '../valley/terrain'
 import { knownTerms, nightHours, nightWood, woodMatters } from '../valley/trade'
 import { PLACE_KINDS } from '../valley/types'
 import type { Group, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } from '../valley/types'
+import { palette } from '../ui/theme'
 import { decorPoints, foragerColor, foragerName, formatHours } from './display'
 
 export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from './display'
@@ -1088,22 +1089,57 @@ export function ownTermsByDay(state: ValleyState, foragerId: number) {
   })
 }
 
-/** Each forager's own terms and share of working time spent gathering, for the specialization chart. */
-export const specializationPoints = (state: ValleyState) =>
-  state.foragers.flatMap((forager) => {
-    const worked = forager.secondsWorked.forage + forager.secondsWorked.gather
-    return worked
-      ? [
-          {
-            id: forager.id,
-            ownTerms: forager.forageRate / forager.woodRate,
-            woodShare: forager.secondsWorked.gather / worked,
-            alive: forager.alive,
-            color: foragerColor(state.config, forager),
-          },
-        ]
-      : []
-  })
+/** Each forager's three skills, each as a share of the most anyone could reach, and their group's colour. */
+export const skillMapPoints = (state: ValleyState) =>
+  state.foragers.map((forager) => ({
+    id: forager.id,
+    alive: forager.alive,
+    color: forager.groupId === null ? palette.text3 : groupColor(forager.groupId),
+    skills: skillLevels(state, forager.id).map((skill) => ({
+      ...skill,
+      share: Math.min(1, skill.percent / Math.max(1, skill.max)),
+    })),
+  }))
+
+/**
+ * Everyone alive and the ties between them, for the relationship graph. People are ordered by group, so a group sits
+ * together round the circle. A pair is one link: its time together, the grievance either holds against the other, and
+ * the work each has given the other beyond what came back.
+ */
+export function tieGraph(state: ValleyState) {
+  const people = state.foragers
+    .filter((forager) => forager.alive)
+    .sort((a, b) => (a.groupId ?? Infinity) - (b.groupId ?? Infinity) || a.id - b.id)
+    .map((forager) => ({
+      id: forager.id,
+      groupId: forager.groupId,
+      color: forager.groupId === null ? palette.text3 : groupColor(forager.groupId),
+    }))
+  const links: { a: number; b: number; familiarity: number; grievance: number; credit: number }[] = []
+  for (const { id } of people) {
+    const ties = state.foragers[id]!.ties
+    for (const [other, tie] of ties) {
+      const back = state.foragers[other]
+      if (!back?.alive) continue
+      const reverse = back.ties.get(id)
+      // Each pair once: from the lower id, or from the only one still holding the tie.
+      if (reverse && other < id) continue
+      links.push({
+        a: id,
+        b: other,
+        familiarity: Math.max(tie.familiarity, reverse?.familiarity ?? 0),
+        grievance: tie.grievance + (reverse?.grievance ?? 0),
+        credit: Math.abs(tie.credit - (reverse?.credit ?? 0)) / 2,
+      })
+    }
+  }
+  return {
+    people,
+    links,
+    close: links.filter((link) => link.familiarity >= CLOSE_TIE_MINUTES).length,
+    aggrieved: links.filter((link) => link.grievance > 0).length,
+  }
+}
 
 /** The day-by-day series the charts plot. */
 export const daySeries = (state: ValleyState, foragerId: number) =>

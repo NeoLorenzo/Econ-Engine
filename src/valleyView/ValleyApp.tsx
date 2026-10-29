@@ -1,7 +1,8 @@
 import { TRAITS } from '../valley/nature'
 import { LandMap } from './LandMap'
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { SpecializationChart } from './SpecializationChart'
+import { SkillMap } from './SkillMap'
+import { TieGraph } from './TieGraph'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
@@ -37,7 +38,7 @@ import {
   plantInspection,
   skillLevels,
   stoneInspection,
-  specializationPoints,
+  skillMapPoints,
   thirstLevel,
   receiveState,
   startDisplay,
@@ -46,6 +47,7 @@ import {
   stepPlayback,
   strideOf,
   taskSummary,
+  tieGraph,
   tieSummary,
   TERMS_COLORS,
   VALLEY_SPEEDS,
@@ -155,6 +157,7 @@ export default function ValleyApp({
   const [mapView, setMapView] = useState<ReturnType<ValleyScene['view']> | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(() => snap(initialPair, 0))
   const [sceneError, setSceneError] = useState(false)
+  const [historyView, setHistoryView] = useState<HistoryView>('skills')
   const [historyOpen, setHistoryOpen] = useState(() => window.matchMedia?.('(min-width: 721px)').matches ?? true)
   const aboutRef = useRef<HTMLDialogElement | null>(null)
   const readyRef = useRef(onReady)
@@ -1085,8 +1088,25 @@ export default function ValleyApp({
               i
             </button>
           </summary>
-          <SpecializationChart points={specializationPoints(state)} config={config} followed={followed} woodUnit="kg" />
-          <HistoryCharts state={state} followed={followed} name={name} />
+          <div className="life-tabs" role="tablist" aria-label="History views">
+            {HISTORY_VIEWS.map((view) => (
+              <button
+                key={view.key}
+                type="button"
+                role="tab"
+                aria-selected={historyView === view.key}
+                className={historyView === view.key ? 'is-selected' : undefined}
+                onClick={() => setHistoryView(view.key)}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+          {historyView === 'time' ? (
+            <HistoryCharts state={state} followed={followed} name={name} />
+          ) : (
+            <PeopleChart state={state} followed={followed} view={historyView} onFollow={follow} />
+          )}
         </details>
       </section>
 
@@ -1132,6 +1152,40 @@ export default function ValleyApp({
   )
 }
 
+const HISTORY_VIEWS = [
+  { key: 'skills', label: 'Skills' },
+  { key: 'ties', label: 'Relationships' },
+  { key: 'time', label: 'Over time' },
+] as const
+type HistoryView = (typeof HISTORY_VIEWS)[number]['key']
+
+/** The skill map or the relationship graph, drawn again each simulated hour rather than at every refresh. */
+const PeopleChart = memo(
+  function PeopleChart({
+    state,
+    followed,
+    view,
+    onFollow,
+  }: {
+    state: ValleyState
+    followed: number
+    view: 'skills' | 'ties'
+    onFollow: (id: number) => void
+  }) {
+    return view === 'skills' ? (
+      <SkillMap points={skillMapPoints(state)} followed={followed} onFollow={onFollow} />
+    ) : (
+      <TieGraph graph={tieGraph(state)} followed={followed} onFollow={onFollow} />
+    )
+  },
+  (before, after) =>
+    before.followed === after.followed &&
+    before.view === after.view &&
+    before.onFollow === after.onFollow &&
+    before.state.layout === after.state.layout &&
+    Math.floor(before.state.minute / 60) === Math.floor(after.state.minute / 60),
+)
+
 /**
  * The run's history charts. They show finished days only, so they are drawn again only when a day ends, the followed
  * forager changes or a new run starts, not at every refresh of the panels.
@@ -1139,7 +1193,7 @@ export default function ValleyApp({
 const HistoryCharts = memo(
   function HistoryCharts({ state, followed, name }: { state: ValleyState; followed: number; name: string }) {
     const days = daySeries(state, followed)
-    if (days.length <= 1) return null
+    if (days.length <= 1) return <p className="life-note">The charts over time begin after the first day.</p>
     return (
       <>
         <TimeChart
