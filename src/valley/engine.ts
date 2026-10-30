@@ -144,6 +144,8 @@ function emptyDay(
     axesMadeById: zeros(foragers.length),
     axesSoldById: zeros(foragers.length),
     axesBoughtById: zeros(foragers.length),
+    forageSkillById: foragers.map((forager) => forager.forageSkill),
+    woodSkillById: foragers.map((forager) => forager.woodSkill),
     craftById: foragers.map((forager) => forager.craftSkill),
     ideasById: foragers.map((forager) => forager.ideas),
     knownById: foragers.map((forager) => forager.known),
@@ -434,6 +436,8 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   axesMadeById: [...day.axesMadeById],
   axesSoldById: [...day.axesSoldById],
   axesBoughtById: [...day.axesBoughtById],
+  forageSkillById: [...day.forageSkillById],
+  woodSkillById: [...day.woodSkillById],
   craftById: [...day.craftById],
   ideasById: [...day.ideasById],
   knownById: [...day.knownById],
@@ -497,6 +501,8 @@ function finishDay(state: ValleyState, minute: number) {
   day.hutLogsById = hutLogsById(state)
   day.forageRates = state.foragers.map((p) => p.forageRate)
   day.woodRates = state.foragers.map((p) => p.woodRate)
+  day.forageSkillById = state.foragers.map((p) => p.forageSkill)
+  day.woodSkillById = state.foragers.map((p) => p.woodSkill)
   day.craftById = state.foragers.map((p) => p.craftSkill)
   day.ideasById = state.foragers.map((p) => p.ideas)
   day.knownById = state.foragers.map((p) => p.known)

@@ -1243,6 +1243,9 @@ export interface DaySummary {
   axesMadeById: number[]
   axesSoldById: number[]
   axesBoughtById: number[]
+  /** Each person's foraging, wood and craft skill at the day's end, in percent. */
+  forageSkillById: number[]
+  woodSkillById: number[]
   craftById: number[]
   /**
    * The techniques each person has the idea of and knows, as bits in technique order, and the minutes they practised;

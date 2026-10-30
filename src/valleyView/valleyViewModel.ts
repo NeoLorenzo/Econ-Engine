@@ -432,8 +432,19 @@ export function techniquesOf(state: ValleyState, id: number) {
       ? [{ name: techniqueName(config, t), percent: forager.proficiency[t]!, level: levelOf(forager.proficiency[t]!) }]
       : [],
   )
-  const worked = config.axeTechniques.map(() => 0),
-    attempts = config.axeTechniques.map(() => 0)
+  const { worked, attempts } = attemptsOf(state, id)
+  const trying = config.axeTechniques.flatMap((_, t) =>
+    hasIdea(forager, t) && !knowsTechnique(forager, t)
+      ? [{ name: techniqueName(config, t), worked: worked[t]!, attempts: attempts[t]! }]
+      : [],
+  )
+  return { known, trying, practice: { minutes: forager.practicedToday, budget: practiceBudget(config, forager) } }
+}
+
+/** A person's attempts at each technique in the kept events, and how many worked (made or taken apart whole). */
+function attemptsOf(state: ValleyState, id: number) {
+  const worked = state.config.axeTechniques.map(() => 0),
+    attempts = state.config.axeTechniques.map(() => 0)
   for (const day of state.eventDays)
     for (const e of day) {
       if (e.kind === 'made' && e.foragerId === id) {
@@ -446,12 +457,41 @@ export function techniquesOf(state: ValleyState, id: number) {
       }
       if (e.kind === 'broke' && e.foragerId === id) attempts[e.technique]! += 1
     }
-  const trying = config.axeTechniques.flatMap((_, t) =>
-    hasIdea(forager, t) && !knowsTechnique(forager, t)
-      ? [{ name: techniqueName(config, t), worked: worked[t]!, attempts: attempts[t]! }]
-      : [],
-  )
-  return { known, trying, practice: { minutes: forager.practicedToday, budget: practiceBudget(config, forager) } }
+  return { worked, attempts }
+}
+
+/** How many finished days back the skill card's earlier mark looks. */
+export const SKILL_LOOKBACK_DAYS = 30
+
+/**
+ * A person's skill card. Each skill today with its level and talent word, and where it stood `SKILL_LOOKBACK_DAYS`
+ * finished days ago, or at the first finished day if fewer (null before any). Each technique as known, being tried,
+ * thought of but untried, or unknown, with proficiency and the attempts that worked. Their craft skill at the end of
+ * each of the last season's finished days.
+ */
+export function skillCard(state: ValleyState, id: number) {
+  const { config, days } = state
+  const forager = state.foragers[id]!
+  const back = days.length ? days[Math.max(0, days.length - SKILL_LOOKBACK_DAYS)]! : null
+  const earlier = back ? [back.forageSkillById[id]!, back.woodSkillById[id]!, back.craftById[id]!] : null
+  const skills = skillLevels(state, id).map((skill, index) => ({ ...skill, before: earlier?.[index] ?? null }))
+  const { worked, attempts } = attemptsOf(state, id)
+  const techniques = config.axeTechniques.map((_, t) => ({
+    name: techniqueName(config, t),
+    status: knowsTechnique(forager, t)
+      ? ('known' as const)
+      : !hasIdea(forager, t)
+        ? ('unknown' as const)
+        : attempts[t]! > 0
+          ? ('trying' as const)
+          : ('idea' as const),
+    percent: hasIdea(forager, t) ? forager.proficiency[t]! : null,
+    worked: worked[t]!,
+    attempts: attempts[t]!,
+  }))
+  const season = Math.max(2, Math.floor(config.daysPerYear / 4))
+  const craft = days.slice(-season).map((day) => day.craftById[id]!)
+  return { skills, techniques, craft, floor: config.skillFloorPercent, max: config.skillCeilingPercent }
 }
 
 /** A forager's thirst on a scale from none to the water loss that kills, with the thirsty and urgent marks on it. */
@@ -1132,18 +1172,42 @@ export function ownTermsByDay(state: ValleyState, foragerId: number) {
 }
 
 /** Each forager's three skills, each as a share of the most anyone could reach, and their group's colour. */
-export const skillMapPoints = (state: ValleyState) =>
-  state.foragers.map((forager) => ({
-    id: forager.id,
-    alive: forager.alive,
-    color: forager.groupId === null ? palette.text3 : groupColor(forager.groupId),
-    skills: skillLevels(state, forager.id).map((skill) => ({
-      ...skill,
-      share: Math.min(1, skill.percent / Math.max(1, skill.max)),
-    })),
-    /** Whether they know a technique beyond the flaked axe. */
-    ring: forager.known > 1,
+/**
+ * The band's skills: one row per skill, each living person placed by their percent on the shared scale from the floor
+ * to the ceiling, coloured by group, with whether they know a technique beyond the flaked axe.
+ */
+export function skillStrip(state: ValleyState) {
+  const living = state.foragers.filter((forager) => forager.alive)
+  const rows = ['Foraging', 'Wood', 'Craft'].map((label, index) => ({
+    label,
+    people: living.map((forager) => {
+      const skill = skillLevels(state, forager.id)[index]!
+      return {
+        id: forager.id,
+        percent: skill.percent,
+        level: skill.level,
+        color: forager.groupId === null ? palette.text3 : groupColor(forager.groupId),
+        better: forager.known > 1,
+      }
+    }),
   }))
+  return { rows, floor: state.config.skillFloorPercent, max: state.config.skillCeilingPercent }
+}
+
+/** How many of those alive at each finished day's end knew each technique, keyed by technique name. */
+export function techniqueSpread(state: ValleyState) {
+  const names = state.config.axeTechniques.map((technique) => technique.name)
+  return state.days.map((day) => {
+    const end = (day.day + 1) * MINUTES_PER_DAY
+    const row: Record<string, number> & { day: number } = { day: day.day }
+    names.forEach((name, t) => {
+      row[name] = day.knownById.filter(
+        (known, id) => ((known >> t) & 1) === 1 && (state.foragers[id]!.deathMinute ?? Infinity) >= end,
+      ).length
+    })
+    return row
+  })
+}
 
 /**
  * Everyone alive and the ties between them, for the relationship graph. People are ordered by group, so a group sits

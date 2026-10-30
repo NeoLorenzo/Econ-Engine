@@ -1,7 +1,8 @@
 import { TRAITS } from '../valley/nature'
 import { LandMap } from './LandMap'
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { SkillMap } from './SkillMap'
+import { SkillCard } from './SkillCard'
+import { SkillStrip } from './SkillStrip'
 import { TieGraph } from './TieGraph'
 import { TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
@@ -36,10 +37,11 @@ import {
   lakeInspection,
   ownTermsByDay,
   plantInspection,
-  skillLevels,
+  skillCard,
   techniqueName,
   stoneInspection,
-  skillMapPoints,
+  skillStrip,
+  techniqueSpread,
   thirstLevel,
   receiveState,
   startDisplay,
@@ -78,39 +80,6 @@ const formatKg = (kg: number) => `${kg.toLocaleString('en-US')} kg`
 
 /** `value` as a CSS share of `max`, kept within the bar. */
 const share = (value: number, max: number) => `${Math.min(100, Math.max(0, (value / max) * 100))}%`
-
-const RING_RADIUS = 18
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS
-
-/** A person's skills as rings: each fills towards the ceiling no one reaches, with today's percent inside and its level. */
-function SkillRings({ skills }: { skills: ReturnType<typeof skillLevels> }) {
-  return (
-    <div className="life-skills" role="group" aria-label="Skills">
-      {skills.map((skill) => (
-        <figure key={skill.key} className={`life-skill is-${skill.key}`}>
-          <svg viewBox="0 0 44 44" role="img" aria-label={`${skill.label} ${skill.percent}%, ${skill.level}`}>
-            <circle className="life-skill-track" cx="22" cy="22" r={RING_RADIUS} />
-            <circle
-              className="life-skill-fill"
-              cx="22"
-              cy="22"
-              r={RING_RADIUS}
-              strokeDasharray={`${(Math.min(1, skill.percent / skill.max) * RING_LENGTH).toFixed(1)} ${RING_LENGTH.toFixed(1)}`}
-              transform="rotate(-90 22 22)"
-            />
-            <text x="22" y="26" textAnchor="middle" className="num">
-              {skill.percent}
-            </text>
-          </svg>
-          <figcaption>
-            {skill.label} · {skill.level}
-            {skill.learns && <span className="life-skill-learns">{skill.learns} to learn</span>}
-          </figcaption>
-        </figure>
-      ))}
-    </div>
-  )
-}
 
 /** The part of the valley's view the cards over it leave clear, measured from the page. */
 function measureClear(mount: HTMLElement | null): ClearView | null {
@@ -664,7 +633,7 @@ export default function ValleyApp({
               ))}
           </ul>
         </details>
-        <SkillRings skills={skillLevels(state, followed)} />
+        <SkillCard card={skillCard(state, followed)} />
         {standing.length > 0 && (
           <div className="valley-groups" role="group" aria-label="Groups">
             {standing.map((made) => (
@@ -1223,7 +1192,23 @@ const PeopleChart = memo(
     onFollow: (id: number) => void
   }) {
     return view === 'skills' ? (
-      <SkillMap points={skillMapPoints(state)} followed={followed} onFollow={onFollow} />
+      <>
+        <SkillStrip strip={skillStrip(state)} followed={followed} onFollow={onFollow} />
+        {state.days.length > 1 && (
+          <TimeChart
+            data={techniqueSpread(state)}
+            height={90}
+            format={(value) => String(Math.round(value))}
+            domain={[0, 'auto']}
+            series={state.config.axeTechniques.map((technique, t) => ({
+              key: technique.name,
+              name: `People who know the ${technique.name} axe`,
+              color: [palette.accent, palette.positive, palette.firmA][t] ?? palette.text3,
+              dashed: t === 2,
+            }))}
+          />
+        )}
+      </>
     ) : (
       <TieGraph graph={tieGraph(state)} followed={followed} onFollow={onFollow} />
     )
