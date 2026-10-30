@@ -87,7 +87,7 @@ describe('ported place and exploration rules', () => {
       target: { x: 50000, y: 20000 },
     })
   })
-  it('takes one walk a day along the way from home used longest ago, then goes home to rest', () => {
+  it('takes a walk once a week along the way from home used longest ago, then goes home to rest', () => {
     const { s, p, far } = idleAtHome()
     expect(chooseTask(s, p, 600)).toMatchObject({ kind: 'walk', reason: 'out for a walk', target: far[0] })
     p.leisureMinute = 600
@@ -97,7 +97,8 @@ describe('ported place and exploration rules', () => {
     expect(chooseTask(s, p, 700)).toMatchObject({ kind: 'walk', reason: 'going home to rest', target: p.hearth })
     p.x = p.hearth.x
     p.y = p.hearth.y
-    expect(chooseTask(s, p, 600 + 1_440).reason).toBe('out for a walk')
+    expect(chooseTask(s, p, 600 + 6 * 1_440).kind).toBe('rest')
+    expect(chooseTask(s, p, 600 + 7 * 1_440).reason).toBe('out for a walk')
   })
   it('walks out only when there is time to return before dusk', () => {
     const { s, p } = idleAtHome()

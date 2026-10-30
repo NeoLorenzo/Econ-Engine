@@ -249,7 +249,7 @@ export function replayTies(before: ValleyState, after: ValleyState) {
         if (alive[id]) fadeMap(map, config.tieFadePerMillion)
       })
     if (event.kind === 'death') alive[event.foragerId] = false
-    if (event.kind === 'practice') rates[event.foragerId] = { forageRate: event.forageRate, woodRate: event.woodRate }
+    if (event.kind === 'skills') rates[event.foragerId] = { forageRate: event.forageRate, woodRate: event.woodRate }
     if (event.kind === 'together') {
       const mine = tie(event.foragerId, event.otherId),
         theirs = tie(event.otherId, event.foragerId)

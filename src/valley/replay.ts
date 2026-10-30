@@ -1,10 +1,13 @@
 import { pairTerms, sellerShare, bothGain } from './trade'
 import { personConfig } from './nature'
 import { positionAlong } from './routes'
-import { axeLife } from './axes'
+import { attemptOf, axeLife } from './axes'
+import { hasIdea, inventChance, proficiencyOf, thinkable } from './skills'
 import { energyAt, waterAt } from './body'
 import { dailyShare, dayOfYear, MINUTES_PER_DAY } from './calendar'
 import { fishGrowth } from './fish'
+import { deriveInventSeed } from './layout'
+import { randomInt } from '../sim/rng'
 import { regrowPlaces } from './places'
 import type { ValleyState, TaskEvent, Axe } from './types'
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
@@ -66,7 +69,18 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     ),
   )
   const crafting = before.foragers.map((p) => p.making !== null),
-    craft = before.foragers.map((p) => p.craft)
+    proficiency = before.foragers.map((p) => [...p.proficiency]),
+    experience = before.foragers.map((p) => p.experience),
+    known = before.foragers.map((p) => p.known),
+    ideas = before.foragers.map((p) => p.ideas),
+    // Ideas thought of at each person's wake-up, which still drew their place in the invent stream.
+    thought = new Map<string, number>(),
+    sold = new Map<string, Axe>()
+  let broken = 0,
+    dismantled = 0
+  // An attempt replays from its stream and its proficiency then: a made axe must have worked, a broken one end there.
+  const attempted = (id: number, technique: number, percent: number, minute: number) =>
+    attemptOf(after.config, after.foragers[id]!, technique, percent, minute)
   let begun = 0,
     madeCount = 0,
     wornCount = 0
@@ -327,8 +341,66 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       })
     if (event.kind === 'fish-regrowth')
       actualGrowth.set(`${event.minute}:fish:${event.bodyId}`, { kcal: event.kcal, remainder: event.remainder })
-    if (event.kind === 'practice') {
-      craft[event.foragerId] = event.craft
+    if (event.kind === 'learnt') {
+      const t = event.technique
+      if (((known[event.foragerId]! >> t) & 1) === 1) fail('A technique learnt twice')
+      known[event.foragerId] = known[event.foragerId]! | (1 << t)
+    }
+    if (event.kind === 'broke') {
+      const attempt = attempted(event.foragerId, event.technique, event.proficiency, event.beganMinute)
+      if (
+        ((ideas[event.foragerId]! >> event.technique) & 1) === 0 ||
+        attempt.draw !== event.draw ||
+        attempt.breakAt !== event.worked
+      )
+        fail('A broken attempt differs from its draw')
+      crafting[event.foragerId] = false
+      broken++
+    }
+    if (event.kind === 'dismantled') {
+      const attempt = attempted(event.foragerId, event.technique, event.proficiency, event.beganMinute)
+      if (
+        ((ideas[event.foragerId]! >> event.technique) & 1) === 0 ||
+        attempt.draw !== event.draw ||
+        attempt.breakAt !== -1
+      )
+        fail('A dismantled axe differs from its draw')
+      crafting[event.foragerId] = false
+      dismantled++
+    }
+    if (event.kind === 'idea') {
+      const id = event.foragerId,
+        t = event.technique,
+        person = { ideas: ideas[id]!, known: known[id]! }
+      if (hasIdea(person, t)) fail('An idea gained twice')
+      if (event.how === 'from an axe') {
+        const axe = sold.get(`${event.minute}:${id}`)
+        if (!axe || axe.technique !== t || axe.makerId !== event.fromId) fail('An idea from an axe not bought')
+      } else {
+        const key = `${event.minute}:${id}`,
+          earlier = thought.get(key) ?? 0
+        let stream = deriveInventSeed(after.config.seed, event.minute, id),
+          draw = -1
+        for (let s = 0; s <= t; s += 1) {
+          if (!thinkable(after.config, person, s) && ((earlier >> s) & 1) === 0) continue
+          const next = randomInt(stream, 1_000_000)
+          stream = next.state
+          draw = next.value
+        }
+        if (
+          event.chance !== inventChance(after.config, after.foragers[id]!, event.seconds) ||
+          draw !== event.draw ||
+          draw >= event.chance
+        )
+          fail('An idea thought of differs from its draw')
+        thought.set(key, earlier | (1 << t))
+      }
+      ideas[id] = ideas[id]! | (1 << t)
+      proficiency[id]![t] = proficiencyOf(after.config, experience[id]!, t)
+    }
+    if (event.kind === 'skills') {
+      proficiency[event.foragerId] = [...event.proficiency]
+      experience[event.foragerId] = event.experience
       rates[event.foragerId] = {
         berries: event.forageRate,
         nuts: event.nutRate,
@@ -339,10 +411,12 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     if (event.kind === 'made') {
       if (
         tools.has(event.axe.id) ||
-        event.craft !== craft[event.foragerId] ||
-        event.axe.quality < Math.max(1, Math.floor(event.craft / 2)) ||
-        event.axe.quality > event.craft ||
-        event.axe.logsLeft !== axeLife(after.config, event.axe.quality)
+        ((ideas[event.foragerId]! >> event.axe.technique) & 1) === 0 ||
+        attempted(event.foragerId, event.axe.technique, event.beganProficiency, event.beganMinute).breakAt !== -1 ||
+        event.proficiency !== proficiency[event.foragerId]![event.axe.technique] ||
+        event.axe.quality < Math.max(1, Math.floor(event.proficiency / 2)) ||
+        event.axe.quality > Math.max(1, event.proficiency) ||
+        event.axe.logsLeft !== axeLife(after.config, event.axe.technique, event.axe.quality)
       )
         fail('Made axe has impossible quality or identity')
       tools.set(event.axe.id, { axe: { ...event.axe }, owner: event.foragerId })
@@ -354,6 +428,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       if (!tool || tool.owner !== event.sellerId || !same(tool.axe, event.axe))
         fail('Axe sale does not match the seller inventory')
       if (tool) tool.owner = event.buyerId
+      sold.set(`${event.minute}:${event.buyerId}`, event.axe)
     }
     if (event.kind === 'worn') {
       const tool = tools.get(event.axeId)
@@ -458,8 +533,8 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
   )
     fail('Tool inventory differs from its making, cutting and sale records')
   if (
-    after.totals.stonesWorked - before.totals.stonesWorked !== begun ||
-    after.totals.axeWood - before.totals.axeWood !== begun * after.config.axeWood ||
+    after.totals.stonesWorked - before.totals.stonesWorked !== begun - dismantled ||
+    after.totals.axeWood - before.totals.axeWood !== (begun - broken - dismantled) * after.config.axeWood ||
     after.totals.axesMade - before.totals.axesMade !== madeCount ||
     after.totals.axesWornOut - before.totals.axesWornOut !== wornCount
   )

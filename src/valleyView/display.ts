@@ -59,12 +59,7 @@ export const formatKcal = (kcal: number) => `${Math.round(kcal).toLocaleString('
 /** What the colour scale of own terms needs to know of a configuration. */
 export type TermsConfig = Pick<
   ValleyConfig,
-  | 'berryKcalPerHour'
-  | 'woodPerHour'
-  | 'practiceMinPercent'
-  | 'practiceMaxPercent'
-  | 'skillMinPercent'
-  | 'skillMaxPercent'
+  'berryKcalPerHour' | 'woodPerHour' | 'skillFloorPercent' | 'skillCeilingPercent'
 >
 
 /** A forager's rates, all the colour scale reads of it. */
@@ -73,11 +68,10 @@ export interface Rates {
   woodRate: number
 }
 
-/** The lowest, usual and highest own terms its born skills and practice allow, in kcal a kilogram of wood. */
+/** The lowest, usual and highest own terms skills allow, in kcal a kilogram of wood. */
 export function ownTermsRange(config: TermsConfig) {
   const base = config.berryKcalPerHour / config.woodPerHour
-  const ratio =
-    (config.skillMaxPercent / config.skillMinPercent) * (config.practiceMaxPercent / config.practiceMinPercent)
+  const ratio = config.skillCeilingPercent / config.skillFloorPercent
   return { low: base / ratio, base, high: base * ratio }
 }
 

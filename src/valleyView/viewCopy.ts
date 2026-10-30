@@ -7,7 +7,7 @@ import type { Forager, ValleyEvent, ValleyState } from '../valley/types'
  * The engine runs in a worker, and the page draws from view copies of its states. A view copy holds what the page
  * reads: the state as the engine left it, less what the page never reads and would cost seconds to copy between
  * threads. Only the routes of tasks under way, each person's next wake-up in place of the wake-up queue, exchanges,
- * walk records, gifts and refusals among the events, everyone's ties and the followed person's memory are kept up to
+ * walk records, gifts, refusals, axes made and broken, ideas and techniques learnt among the events, everyone's ties and the followed person's memory are kept up to
  * date.
  *
  * Between threads a copy travels as its changes from the last copy sent, which both sides keep. The worker sends
@@ -70,7 +70,17 @@ function viewMemory(person: Forager, followedId: number, last: Forager | undefin
   }
 }
 
-const VIEW_EVENTS = new Set<ValleyEvent['kind']>(['exchange', 'walk', 'gift', 'refusal'])
+const VIEW_EVENTS = new Set<ValleyEvent['kind']>([
+  'exchange',
+  'walk',
+  'gift',
+  'refusal',
+  'made',
+  'learnt',
+  'idea',
+  'broke',
+  'dismantled',
+])
 /** Finished days never change, so each is filtered once. */
 const filteredDays = new WeakMap<ValleyEvent[], ValleyEvent[]>()
 const viewEvents = (events: ValleyEvent[]) => events.filter((e) => VIEW_EVENTS.has(e.kind))

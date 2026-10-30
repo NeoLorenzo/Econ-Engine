@@ -22,13 +22,14 @@ import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body
 import { loadKg, loadOf, speedForLoad, nextHungry, isDaylight } from './forager'
 import { carriedKcal } from './food'
 import { MINUTES_PER_DAY } from './calendar'
-import { axeLife } from './axes'
+import { attemptOf, axeLife } from './axes'
+import { experienceDay, skillViolations } from './skills'
 import { hearthAround, livingMembers } from './social'
 import { sleepCostOf, warmthOf } from './work'
 import { feedAmount } from './fire'
 import { replayInterval, annualShares } from './replay'
 import { replayTies, tieViolations } from './ties'
-import type { Point, ValleyState, TaskEvent } from './types'
+import type { Forager, Point, ValleyState, TaskEvent } from './types'
 const sum = (values: Iterable<number>) => {
   let total = 0
   for (const value of values) total += value
@@ -175,8 +176,12 @@ export class ValleyChecker {
       for (const e of state.lastInterval) {
         if (!('foragerId' in e) || e.foragerId !== p.id) continue
         if (e.kind === 'task-start' && e.task.reason === 'out for a walk' && e.task.startMinute === e.minute) {
-          if (leisure >= 0 && Math.floor(leisure / MINUTES_PER_DAY) === Math.floor(e.minute / MINUTES_PER_DAY))
-            errors.push(`person ${p.id}: two leisure walks in a day`)
+          if (
+            leisure >= 0 &&
+            Math.floor(e.minute / MINUTES_PER_DAY) - Math.floor(leisure / MINUTES_PER_DAY) <
+              state.config.leisureWalkDays
+          )
+            errors.push(`person ${p.id}: leisure walks too close together`)
           leisure = e.minute
         }
         const made = e.kind === 'walk' && e.plan !== 'way' && e.plan !== 'joined'
@@ -366,15 +371,16 @@ export class ValleyChecker {
       if (
         ids.has(axe.id) ||
         axe.quality < 1 ||
-        axe.quality > Math.floor((state.config.craftSkillMaxPercent * state.config.practiceMaxPercent) / 100) ||
+        axe.quality > state.config.skillCeilingPercent ||
         axe.logsLeft < 1 ||
-        axe.logsLeft > axeLife(state.config, axe.quality)
+        axe.logsLeft > axeLife(state.config, axe.technique, axe.quality)
       )
         errors.push('Impossible or duplicated axe')
       ids.add(axe.id)
     }
     for (const p of state.foragers) {
-      errors.push(...natureViolations(state.config, p))
+      errors.push(...natureViolations(state.config, p), ...skillViolations(state.config, p))
+      errors.push(...this.skillChanges(state, p))
       for (const key of ['sex', 'heightCm', 'weightKg', 'gripKg', 'traits'] as const)
         if (!same(p[key], this.previous.foragers[p.id]![key])) errors.push(`Person nature changed: ${key}`)
       if (
@@ -388,6 +394,58 @@ export class ValleyChecker {
         !Number.isSafeInteger(loadKg(state.config, loadOf(p)))
       )
         errors.push(`person ${p.id}: invalid carried load`)
+    }
+    return errors
+  }
+  /** Experience changes only at midnight by the skills rule, and a technique becomes known only with its record. */
+  private skillChanges(state: ValleyState, p: Forager) {
+    const errors: string[] = []
+    const before = this.previous.foragers[p.id]!
+    const skills = state.lastInterval.filter((e) => e.kind === 'skills' && e.foragerId === p.id)
+    const learnt = state.lastInterval.filter((e) => e.kind === 'learnt' && e.foragerId === p.id)
+    if (!same(p.talents, before.talents)) errors.push(`person ${p.id}: talents changed`)
+    // An interval may span several midnights: replay each day's update in order from the experience before it.
+    let expected = {
+      experience: before.experience,
+      fadeRemainder: before.fadeRemainder,
+      gainRemainder: before.gainRemainder,
+    }
+    for (const event of skills) {
+      if (event.kind !== 'skills') continue
+      if (!same(event.experienceBefore, expected.experience))
+        errors.push(`person ${p.id}: experience changed from another value`)
+      expected = experienceDay(state.config, expected, event.worked, p.learn)
+    }
+    if (
+      !same(expected.experience, p.experience) ||
+      !same(expected.fadeRemainder, p.fadeRemainder) ||
+      !same(expected.gainRemainder, p.gainRemainder)
+    )
+      errors.push(`person ${p.id}: experience differs from the skills rule`)
+    const added = p.known & ~before.known
+    const recorded = learnt.reduce((bits, e) => (e.kind === 'learnt' ? bits | (1 << e.technique) : bits), 0)
+    if (
+      (before.known & ~p.known) !== 0 ||
+      added !== recorded ||
+      learnt.length !== recorded.toString(2).replace(/0/g, '').length
+    )
+      errors.push(`person ${p.id}: techniques known differ from their records`)
+    const ideas = state.lastInterval.reduce(
+      (bits, e) => (e.kind === 'idea' && e.foragerId === p.id ? bits | (1 << e.technique) : bits),
+      0,
+    )
+    if ((before.ideas & ~p.ideas) !== 0 || (p.ideas & ~before.ideas) !== (ideas & ~before.ideas))
+      errors.push(`person ${p.id}: ideas differ from their records`)
+    const making = p.making
+    if (making) {
+      const attempt = attemptOf(state.config, p, making.technique, making.proficiency, making.beganMinute)
+      if (
+        attempt.needed !== making.needed ||
+        attempt.draw !== making.draw ||
+        attempt.breakAt !== making.breakAt ||
+        making.beganMinute > state.minute
+      )
+        errors.push(`person ${p.id}: an axe in progress differs from its attempt draw`)
     }
     return errors
   }
@@ -559,6 +617,8 @@ export class ValleyChecker {
       }
       if (e.kind === 'task-end') active[e.foragerId] = null
       if (e.kind === 'task-start') active[e.foragerId] = e.task
+      // Only the hungry ask for food, and what they are given may leave them short of satiation, still hungry.
+      if (e.kind === 'gift' && e.good === 'food') hungry[e.receiverId] = true
       if (e.kind === 'fire' && 'foragerId' in e) personalFire[e.foragerId] = e.lit
       if (e.minute < last || e.minute < before.minute || e.minute > state.minute)
         errors.push('Events are out of interval order')

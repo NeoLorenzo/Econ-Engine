@@ -8,13 +8,13 @@ import { firstThresholdMinute } from './body'
 import { MINUTES_PER_DAY } from './calendar'
 import { regrowPlaces } from './places'
 import { fishGrowth } from './fish'
-import { practiceDay } from './practice'
+import { skillDay } from './skills'
 import { weatherHuts } from './huts'
 import type { ValleyState, ValleyEvent } from './types'
 export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
   const events: ValleyEvent[] = [{ kind: 'world', minute }]
   if (minute % MINUTES_PER_DAY === 0) {
-    for (const person of state.foragers) if (person.alive) events.push(practiceDay(state.config, person, minute))
+    for (const person of state.foragers) if (person.alive) events.push(skillDay(state.config, person, minute))
     fadeTies(state)
     events.push(...weatherHuts(state, minute))
     const beforeFood = state.foodStock.slice(),

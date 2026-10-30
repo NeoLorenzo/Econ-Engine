@@ -9,6 +9,8 @@ import { cachedHeight } from './routes'
 import { carriedByFood, foodKg } from './food'
 import { MINUTES_PER_DAY, minuteOfDay } from './calendar'
 import { findWalk, type WalkFound } from './ways'
+import { distance } from './geometry'
+import { practiceBudget } from './skills'
 import type { ActionReason, Forager, Good, Point, TaskKind, ValleyConfig, ValleyState } from './types'
 export { MINUTES_PER_DAY, minuteOfDay } from './calendar'
 export const isDaylight = (config: ValleyConfig, minute: number) =>
@@ -73,6 +75,8 @@ export interface TaskChoice {
   placeId: number
   target: Point | null
   reason: ActionReason
+  /** For making an axe: whether it is a stint of practice. */
+  practice?: boolean
 }
 export const restChoice = (reason: ActionReason = 'satiated'): TaskChoice => ({
   kind: 'rest',
@@ -351,7 +355,7 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
         if (choice && person.heardAsk) {
           choice.desiredCarriedKcal = salePrice(
             person.heardAsk.price,
-            worthTo(state.config, person, person.heardAsk.quality),
+            worthTo(state.config, person, person.heardAsk.logs),
           )
           choice.reason = 'picking food to buy an axe'
         }
@@ -372,6 +376,8 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
         state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
     )
       return { kind: 'walk', placeId: -1, target: frontier, reason: 'exploring' }
+    const practice = practiceChoice(state, person, minute)
+    if (practice) return practice
     if (!atHearth(person)) return { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home to rest' }
     const walk = leisureWalk(state, person, minute)
     if (walk) return walk
@@ -392,12 +398,49 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
   }
   return restChoice()
 }
-/** Once a day, a walk out along the remembered way from home used longest ago whose far end leaves time to return before dusk. */
+/**
+ * Practice in free time while today's budget lasts: continue a practice axe, or begin one with a stone and wood in hand,
+ * fetching a stone first from the nearest remembered outcrop within exploring range that leaves time to return home
+ * before dusk. Null when the budget is spent or nothing can be practised, so the walk or rest decides.
+ */
+function practiceChoice(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
+  const { config, layout } = state
+  if (person.practicedToday >= practiceBudget(config, person)) return null
+  const home = (reason: ActionReason, practice: boolean): TaskChoice =>
+    atHearth(person)
+      ? { kind: 'make', placeId: -1, target: null, reason, practice }
+      : { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home to practise' }
+  if (person.making) return person.making.practice ? home('practising', true) : null
+  if (person.wood < config.axeWood) return null
+  if (person.stone >= 1) return home('practising', true)
+  const speed = Math.max(1, walkSpeed(config, person) * 60)
+  let best = -1,
+    bestCm = Infinity
+  for (let id = 0; id < layout.places.count; id += 1) {
+    if (person.knownPlaces[id]! < 0 || layout.places.kind[id] !== 3 || person.placeStock[id] === 0) continue
+    const x = layout.places.x[id]!,
+      y = layout.places.y[id]!,
+      cm = distance(person.x, person.y, x, y),
+      back = distance(x, y, person.hearth.x, person.hearth.y)
+    if (back > person.exploringRangeCm) continue
+    if ((cm + back) / speed + 1 > config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)) continue
+    if (cm < bestCm) {
+      best = id
+      bestCm = cm
+    }
+  }
+  return best < 0 ? null : workAt(state, person, best, 'gather', 'fetching a stone to practise', 60, 1)
+}
+/**
+ * At most once in `leisureWalkDays` days, a walk out along the remembered way from home used longest ago whose far end
+ * leaves time to return before dusk.
+ */
 const pointEqual = (a: Point, b: Point) => a.x === b.x && a.y === b.y
 function leisureWalk(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
   if (
     person.leisureMinute >= 0 &&
-    Math.floor(person.leisureMinute / MINUTES_PER_DAY) === Math.floor(minute / MINUTES_PER_DAY)
+    Math.floor(minute / MINUTES_PER_DAY) - Math.floor(person.leisureMinute / MINUTES_PER_DAY) <
+      state.config.leisureWalkDays
   )
     return null
   const left = state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute),
