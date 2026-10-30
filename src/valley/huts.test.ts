@@ -1,7 +1,6 @@
 import { personConfig } from './nature'
-import { bandAt, giveHut, testAxe } from './ruleTestFixtures'
-import { planHut, makeSeconds, expectedQuality, axeLife, logCut } from './axes'
-import { drawSkills } from './layout'
+import { bandAt, giveHut, onlyTechnique, testAxe } from './ruleTestFixtures'
+import { planHut, makeSeconds, expectedLogs, axeLife, logCut } from './axes'
 import { chooseTask } from './forager'
 import { hearthAround } from './social'
 import { sleepCostOf } from './work'
@@ -10,17 +9,20 @@ import { describe, expect, it } from 'vitest'
 import { createValley, stepValley } from './engine'
 import { FLAT_LAND } from './config'
 import { WakeQueue } from './clock'
-import { beginAxe, workAxe, cutAt, askOf, worthTo, exchangeAxes } from './axes'
+import { beginAxe, workAxe, cutAt, askOf, askFor, bestTechnique, worthTo, exchangeAxes } from './axes'
 import { layLog, weatherHuts, leaveHutIfMoved } from './huts'
 
 describe('axes and huts at task boundaries', () => {
   it('keeps pausable axe work and draws quality from the maker stream', () => {
     const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       person = state.foragers[0]!
-    person.craft = 100
+    onlyTechnique(person, 100, 0)
     person.stone = 1
     person.wood = 1
-    beginAxe(state, person)
+    beginAxe(state, person, 0)
+    // An attempt that works, whatever the stream drew.
+    person.making = { ...person.making!, breakAt: -1 }
+    expect(person.making.technique).toBe(0)
     expect(person.stone).toBe(0)
     expect(person.wood).toBe(0)
     expect(workAxe(state, person, 1_800, 600).made).toBeNull()
@@ -28,12 +30,13 @@ describe('axes and huts at task boundaries', () => {
     const made = workAxe(state, person, person.making!.needed - 1_800, 700).made!
     expect(made.axe.quality).toBeGreaterThanOrEqual(50)
     expect(made.axe.quality).toBeLessThanOrEqual(100)
+    expect(person.craftToday).toEqual([3_600, 0, 0])
   })
   it('takes one log, one axe use and a tree crown at the appropriate boundary', () => {
     const state = createValley(FLAT_LAND),
       person = state.foragers[0]!,
       stand = 64
-    person.axe = { id: 0, makerId: 0, madeMinute: 0, quality: 100, logsLeft: 2 }
+    person.axe = testAxe(100, 2)
     const cut = cutAt(state, person, stand, 1_800, 600).cut!
     expect(cut).not.toBeNull()
     expect(state.logStock[stand]).toBe(35)
@@ -46,7 +49,7 @@ describe('axes and huts at task boundaries', () => {
     expect(state.woodStock[stand]).toBe(310)
     expect(person.axe).toBeNull()
     person.log = 0
-    person.axe = { id: 1, makerId: 0, madeMinute: 630, quality: 100, logsLeft: 2 }
+    person.axe = { ...testAxe(100, 2), id: 1, madeMinute: 630 }
     cutAt(state, person, stand, 1_800, 660)
     person.log = 0
     cutAt(state, person, stand, 1_800, 690)
@@ -84,8 +87,8 @@ describe('axes and huts at task boundaries', () => {
   it('sells an axe at the midpoint of ask and worth, conserving food', () => {
     const state = createValley({ ...FLAT_LAND, scattered: false, founders: 2 }),
       [seller, buyer] = state.foragers
-    seller!.craft = 150
-    buyer!.craft = 50
+    onlyTechnique(seller!, 150)
+    onlyTechnique(buyer!, 60, 1)
     seller!.hutId = 0
     state.huts.push({
       id: 0,
@@ -96,7 +99,7 @@ describe('axes and huts at task boundaries', () => {
       begunMinute: 0,
       abandonedMinute: null,
     })
-    seller!.spareAxe = { id: 0, makerId: 0, madeMinute: 0, quality: 100, logsLeft: 200 }
+    seller!.spareAxe = testAxe()
     seller!.energyKcal = 60_000
     buyer!.carried = [{ food: 'nuts', kcal: 10_000, harvestTick: 0 }]
     const events = exchangeAxes(state, buyer!, 0),
@@ -104,9 +107,15 @@ describe('axes and huts at task boundaries', () => {
     expect(sale).toBeDefined()
     if (sale.kind === 'sale')
       expect(sale.price).toBe(
-        Math.floor((askOf(personConfig(state.config, seller!), 150) + worthTo(state.config, buyer!, 100)) / 2),
+        Math.floor((askOf(personConfig(state.config, seller!), 2, 150) + worthTo(state.config, buyer!, 200)) / 2),
       )
     expect([...seller!.carried, ...buyer!.carried].reduce((sum, lot) => sum + lot.kcal, 0)).toBe(10_000)
+    // Buying a ground axe gives the idea of it, from its maker.
+    expect(events).toContainEqual(
+      expect.objectContaining({ kind: 'idea', foragerId: buyer!.id, technique: 2, how: 'from an axe', fromId: 0 }),
+    )
+    expect(buyer!.ideas).toBe(7)
+    expect(buyer!.known).toBe(3)
   })
 })
 
@@ -119,27 +128,37 @@ describe('ported Life 11 axe and shelter rules', () => {
         expect(s.layout.places.radiusCm[id]).toBe(s.config.outcropRadiusCm)
       }
   })
-  it('draws craft independently of the other born skills', () => {
-    const s = bandAt(600, { craftSkillMinPercent: 50, craftSkillMaxPercent: 150 })
-    expect(drawSkills(s.config)).toEqual(drawSkills({ ...s.config, craftSkillMinPercent: 100 }))
-    expect(new Set(s.foragers.map((p) => p.craftSkill)).size).toBeGreaterThan(1)
-  })
-  it('starts craft at half mastery and gives every stand thirty-six logs', () => {
+  it('gives every founder the flaked axe and every stand thirty-six logs', () => {
     const s = bandAt()
-    expect(s.foragers.every((p) => p.craft === 50)).toBe(true)
+    expect(s.foragers.every((p) => (p.known & 1) === 1 && p.proficiency[0]! > 0)).toBe(true)
     expect(s.logStock[64]).toBe(36)
-    expect(bandAt(600, { craftPractice: false }).foragers.every((p) => p.craft === 100)).toBe(true)
   })
-  it('takes fifty hours at craft one hundred and prices its extra energy', () => {
+  it('takes each technique its hours at proficiency one hundred and prices its extra energy', () => {
     const c = bandAt().config
-    expect(makeSeconds(c, 100)).toBe(180000)
-    expect(makeSeconds(c, 50)).toBe(360000)
-    expect(askOf(c, 50)).toBe(6000)
-    expect(askOf(c, 100)).toBe(3000)
-    expect(expectedQuality(50)).toBe(37)
-    expect(axeLife(c, 45)).toBe(90)
-    expect(axeLife(c, 1)).toBe(2)
-    expect(axeLife({ ...c, axeLogs: 40 }, 1)).toBe(1)
+    expect(makeSeconds(c, 2, 100)).toBe(180000)
+    expect(makeSeconds(c, 2, 50)).toBe(360000)
+    expect(makeSeconds(c, 0, 100)).toBe(3600)
+    expect(askOf(c, 2, 50)).toBe(6000)
+    expect(askOf(c, 2, 100)).toBe(3000)
+    expect(askOf(c, 1, 100)).toBe(120)
+    expect(expectedLogs(c, 2, 50)).toBe(74)
+    expect(axeLife(c, 2, 45)).toBe(90)
+    expect(axeLife(c, 2, 1)).toBe(2)
+    expect(axeLife(c, 0, 1)).toBe(1)
+    expect(axeLife(c, 1, 100)).toBe(30)
+  })
+  it('chooses the technique with least work per log, counting a stone it must fetch', () => {
+    const s = bandAt(),
+      p = s.foragers[0]!
+    p.known = 7
+    p.ideas = 7
+    p.proficiency = [100, 100, 100]
+    // Per log at proficiency 100: flaked 3,600 s for 7 logs, tranchet 7,200 for 22, ground 180,000 for 150.
+    expect(bestTechnique(s.config, p)).toBe(1)
+    // A walk of two hours for every stone makes the longest-lived axe pay.
+    expect(bestTechnique(s.config, p, 7_200 * 100)).toBe(2)
+    p.known = 1
+    expect(bestTechnique(s.config, p, 7_200 * 100)).toBe(0)
   })
   it('fetches a stone first when a member needs an axe for its hut', () => {
     const s = bandAt(),
@@ -151,11 +170,12 @@ describe('ported Life 11 axe and shelter rules', () => {
     const s = bandAt(),
       p = s.foragers[0]!
     p.stone = 1
-    beginAxe(s, p)
+    beginAxe(s, p, 600)
     expect(p.stone).toBe(0)
     expect(p.wood).toBe(23)
     expect(s.totals).toMatchObject({ stonesWorked: 1, axeWood: 1 })
-    expect(p.making).toMatchObject({ worked: 0, needed: 360000, forSale: false })
+    expect(p.making).toMatchObject({ technique: p.making!.technique, forSale: false })
+    expect(p.making!.needed).toBe(makeSeconds(s.config, p.making!.technique, p.proficiency[p.making!.technique]!))
   })
   it('cuts at the speed set by axe quality', () => {
     const s = bandAt(),
@@ -296,20 +316,22 @@ describe('ported Life 11 axe and shelter rules', () => {
     expect(s.woodStock[0]).toBeGreaterThanOrEqual(0)
     expect(s.woodStock[65]).toBe(310)
   })
-  it('values an axe at own making cost scaled by its expected quality', () => {
+  it('values an axe at own making cost per log times the logs it will cut', () => {
     const s = bandAt(),
       p = s.foragers[0]!
-    p.craft = 100
-    expect(worthTo(s.config, p, expectedQuality(100))).toBe(askOf(s.config, 100))
+    onlyTechnique(p, 100)
+    const t = bestTechnique(s.config, p)
+    expect(worthTo(s.config, p, expectedLogs(s.config, t, 100))).toBe(askFor(s.config, p, t))
+    expect(worthTo(s.config, p, 2 * expectedLogs(s.config, t, 100))).toBe(2 * askFor(s.config, p, t))
   })
   it('draws a promise from the cheapest mutually worthwhile maker', () => {
     const s = bandAt(600, { founders: 3 }),
       [buyer, a, b] = s.foragers
     giveHut(s, a!)
     giveHut(s, b!)
-    buyer!.craft = 50
-    a!.craft = 100
-    b!.craft = 150
+    onlyTechnique(buyer!, 50)
+    onlyTechnique(a!, 100)
+    onlyTechnique(b!, 150)
     const promises = exchangeAxes(s, buyer!, 600).filter((e) => e.kind === 'promise')
     expect(promises).toHaveLength(1)
     expect(promises[0]).toMatchObject({ promiserId: 2, askerId: 0 })
@@ -320,8 +342,8 @@ describe('ported Life 11 axe and shelter rules', () => {
       [a, b] = s.foragers
     giveHut(s, a!)
     a!.spareAxe = testAxe()
-    a!.craft = 150
-    b!.craft = 50
+    onlyTechnique(a!, 150)
+    onlyTechnique(b!, 50)
     expect(exchangeAxes(s, b!, 600).some((e) => e.kind === 'sale')).toBe(false)
     expect(a!.spareAxe).not.toBeNull()
   })
@@ -332,8 +354,8 @@ describe('ported Life 11 axe and shelter rules', () => {
         [a, b] = s.foragers
       giveHut(s, a!)
       a!.spareAxe = testAxe()
-      a!.craft = 150
-      b!.craft = 50
+      onlyTechnique(a!, 150)
+      onlyTechnique(b!, 50)
       expect(exchangeAxes(s, b!, 600)).toEqual([])
     },
   )

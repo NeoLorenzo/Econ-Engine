@@ -3,6 +3,7 @@ import { isqrt } from './geometry'
 import { waterThresholds } from './body'
 import { terrainOf } from './terrain'
 import { fishCapacity } from './fish'
+import { skillConfigErrors } from './skills'
 import type { Point, ValleyConfig } from './types'
 
 /**
@@ -10,9 +11,9 @@ import type { Point, ValleyConfig } from './types'
  * fall of up to 30 m with broken moraine fronts, drumlins, kames, clustered hummocks, kettle hollows and tunnel
  * valleys, lakes in hollows and connected downhill river reaches. Its grassland surface is grass, dirt or stone.
  * Resources are places with one stock each: 800 berry thickets, 800 hazel thickets, 300 stands of 36 logs and 100
- * outcrops of 60 stones. Forty founders born with foraging skills from 75% to 125% start scattered over the middle
+ * outcrops of 60 stones. Forty founders with fifteen years of foraging behind them start scattered over the middle
  * 800 m. Slopes fall into three classes that slow walking and raise its cost; the ground sets its terrain factor.
- * Every member wants a hut of 23 logs, cut from felled trees with a ground stone axe it makes or buys. A year has
+ * Every member wants a hut of 23 logs, cut from felled trees with a flaked, tranchet or ground axe it makes or buys. A year has
  * `daysPerYear` days. Measurements and explicit estimates are sourced in docs/CALIBRATION.md.
  */
 export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
@@ -34,6 +35,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   duskMarginMinutes: 30,
   exploreRangeCm: 150_000,
   waysRemembered: 64,
+  leisureWalkDays: 7,
   wayRecheckMinutes: 1_440,
   resurveyCm: 10_000,
   tiesRemembered: 150,
@@ -47,6 +49,8 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   neuroticismRule: { base: 1000, effect: 500, low: 0, high: 4000 },
   opennessRule: { base: 1000, effect: 500, low: 250, high: 3000 },
   opennessExpectRule: { base: 750, effect: 250, low: 250, high: 1000 },
+  opennessInventRule: { base: 1000, effect: 1000, low: 0, high: 3000 },
+  conscientiousnessPracticeRule: { base: 1000, effect: 750, low: 0, high: 3000 },
   daysPerYear: 90,
   meshMaxEdgeCm: 4_000,
   meshHeightToleranceCm: 100,
@@ -184,14 +188,28 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   coldSleepKcalPerHour: 90,
   woodStockNights: 2,
   woodLoad: 30,
-  skillMinPercent: 75,
-  skillMaxPercent: 125,
+  skillFloorPercent: 50,
+  skillCeilingPercent: 150,
+  forageHalfHours: 16_000,
+  woodHalfHours: 5_000,
+  craftHalfHours: 300,
+  transferPerMille: 300,
+  experienceHalfYears: 10,
+  talentRule: { base: 1000, effect: 250, low: 250, high: 1750 },
+  founderForageHours: 16_425,
+  founderWoodHours: 5_475,
+  founderCraftHours: 150,
+  founderTranchetPerMille: 250,
+  founderGroundPerMille: 100,
+  axeTechniques: [
+    { name: 'flaked', needs: -1, hours: 1, logs: 10 },
+    { name: 'tranchet', needs: 0, hours: 2, logs: 30 },
+    { name: 'ground', needs: 0, hours: 50, logs: 200 },
+  ],
+  attemptHalfPercent: 15,
+  inventPerMillionPerHour: 556,
+  practiceMinutesPerDay: 60,
   termsMemoryHours: 24,
-  practiceDays: 30,
-  practiceHalfHours: 60,
-  practiceMinPercent: 50,
-  practiceMaxPercent: 150,
-  startPracticeHoursPerDay: 2,
   scattered: true,
   startSpacingCm: 5_000,
   sightRadiusCm: 100_000,
@@ -205,13 +223,8 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   logChopMinutes: 30,
   hutLogs: 23,
   hutLogDays: 60,
-  axeHours: 50,
-  axeLogs: 200,
   axeWood: 1,
-  craftSkillMinPercent: 100,
-  craftSkillMaxPercent: 100,
   axeTrade: true,
-  craftPractice: true,
 }
 
 /**
@@ -240,7 +253,7 @@ export const FLAT_LAND: Partial<ValleyConfig> = {
   reliefWavelengthCm: 80_000,
 }
 
-const BOOLEAN_KEYS = new Set(['scattered', 'axeTrade', 'craftPractice'])
+const BOOLEAN_KEYS = new Set(['scattered', 'axeTrade'])
 
 /** The most fish the lake holds, in kilocalories: its area times its fish a hectare. */
 export const fishCapacityKcal = (config: ValleyConfig) =>
@@ -303,7 +316,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
       : ['daysPerYear must be an integer from 8 to 365']
   const errors: string[] = [...calendarErrors]
   for (const [key, value] of Object.entries(config)) {
-    if (key.endsWith('Rule') || key === 'traitCorrelationsPerMille') continue
+    if (key.endsWith('Rule') || key === 'traitCorrelationsPerMille' || key === 'axeTechniques') continue
     if (BOOLEAN_KEYS.has(key)) {
       if (typeof value !== 'boolean') errors.push(`${key} must be true or false`)
     } else if (!Number.isInteger(value)) errors.push(`${key} must be an integer`)
@@ -374,11 +387,15 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'founders',
     'fireWoodPerHour',
     'woodStockNights',
-    'practiceDays',
-    'practiceHalfHours',
+    'forageHalfHours',
+    'woodHalfHours',
+    'craftHalfHours',
+    'experienceHalfYears',
+    'attemptHalfPercent',
     'startSpacingCm',
     'sightRadiusCm',
     'waysRemembered',
+    'leisureWalkDays',
     'wayRecheckMinutes',
     'resurveyCm',
     'tiesRemembered',
@@ -391,8 +408,6 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'logChopMinutes',
     'hutLogs',
     'hutLogDays',
-    'axeHours',
-    'axeLogs',
     'pickKcalPerHour',
     'gatherKcalPerHour',
     'chopKcalPerHour',
@@ -573,24 +588,16 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
         config.loadSlowdownPerMille * config.logKg)) /
     (1_000 * (Math.min(config.womanWeightKg, config.manWeightKg) - 3 * config.weightSdKg))
   if (Math.floor(logSpeed) < 1) errors.push('A forager must be able to carry a log at 1 cm a second')
-  if (config.startPracticeHoursPerDay < 0 || config.startPracticeHoursPerDay > 24)
-    errors.push('startPracticeHoursPerDay must be between 0 and 24')
-  const practiceRangeOk = config.practiceMinPercent >= 1 && config.practiceMinPercent <= config.practiceMaxPercent
-  if (!practiceRangeOk) errors.push('Practice must satisfy 1 ≤ practiceMinPercent ≤ practiceMaxPercent')
-  const skillRangeOk = config.skillMinPercent >= 1 && config.skillMinPercent <= config.skillMaxPercent
-  if (!skillRangeOk) errors.push('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
-  if (config.craftSkillMinPercent < 1 || config.craftSkillMinPercent > config.craftSkillMaxPercent)
-    errors.push('Craft must satisfy 1 ≤ craftSkillMinPercent ≤ craftSkillMaxPercent')
-  if (practiceRangeOk && skillRangeOk) {
-    const low = config.practiceMinPercent
-    const high = config.practiceMaxPercent
-    const lowest = (base: number) => Math.floor((base * config.skillMinPercent * low) / 10_000)
-    const highest = (base: number) => Math.floor((base * config.skillMaxPercent * high) / 10_000)
+  errors.push(...skillConfigErrors(config))
+  const skillRangeOk = config.skillFloorPercent >= 1 && config.skillFloorPercent <= config.skillCeilingPercent
+  if (skillRangeOk) {
+    const lowest = (base: number) => Math.floor((base * config.skillFloorPercent) / 100)
+    const highest = (base: number) => Math.floor((base * config.skillCeilingPercent) / 100)
     if (lowest(config.woodPerHour) < 1) errors.push('The lowest gathering rate must be at least 1')
     // A full source must be worth working even to the slowest forager, who would otherwise never eat that food.
     for (const key of ['berryKcalPerHour', 'nutKcalPerHour', 'fishKcalPerHour'] as const)
       if (lowest(config[key]) <= config.pickKcalPerHour)
-        errors.push(`${key} at the lowest skill and practice must be more than pickKcalPerHour`)
+        errors.push(`${key} at the skill floor must be more than pickKcalPerHour`)
     // A minute's work at the fastest rate must fit in a full place, or no full place could ever be worked.
     if (Math.ceil(highest(config.woodPerHour) / 60) > config.standWoodKg)
       errors.push('A stand must hold a minute of gathering at the fastest rate')

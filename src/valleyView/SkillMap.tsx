@@ -74,31 +74,38 @@ export function SkillMap({
           const spot = place(person.skills.map((skill, index) => standing(index, skill.percent)))
           const level = person.skills.reduce((sum, skill) => sum + skill.share, 0) / Math.max(1, person.skills.length)
           const isFollowed = person.id === followed
+          const r = 2.5 + 6 * level
           return (
-            <circle
-              key={person.id}
-              className="dot"
-              cx={spot.x}
-              cy={spot.y}
-              r={2.5 + 6 * level}
-              fill={person.alive ? person.color : 'none'}
-              fillOpacity={0.85}
-              stroke={isFollowed ? 'var(--accent)' : person.color}
-              strokeWidth={isFollowed ? 2.5 : 1}
-              onClick={() => onFollow(person.id)}
-            >
-              <title>
-                {foragerName(person.id)}
-                {!person.alive && ' (dead)'}:{' '}
-                {person.skills.map((skill) => `${skill.label.toLowerCase()} ${skill.percent}%`).join(', ')}
-              </title>
-            </circle>
+            <g key={person.id}>
+              {person.ring && (
+                <circle className="ring" cx={spot.x} cy={spot.y} r={r + 3} fill="none" stroke={person.color} />
+              )}
+              <circle
+                className="dot"
+                cx={spot.x}
+                cy={spot.y}
+                r={r}
+                fill={person.alive ? person.color : 'none'}
+                fillOpacity={0.85}
+                stroke={isFollowed ? 'var(--accent)' : person.color}
+                strokeWidth={isFollowed ? 2.5 : 1}
+                onClick={() => onFollow(person.id)}
+              >
+                <title>
+                  {foragerName(person.id)}
+                  {!person.alive && ' (dead)'}:{' '}
+                  {person.skills.map((skill) => `${skill.label.toLowerCase()} ${skill.level}`).join(', ')}
+                  {person.ring && ', knows a better axe'}
+                </title>
+              </circle>
+            </g>
           )
         })}
       </svg>
       <figcaption>
         Each forager pulled towards the skills they are best at compared with everyone else, coloured by group (grey:
-        none, hollow: dead). Larger dots are more skilled overall. Click one to follow them.
+        none, hollow: dead). Larger dots are more skilled overall; a ring marks someone who knows the tranchet or ground
+        axe. Click one to follow them.
       </figcaption>
     </figure>
   )

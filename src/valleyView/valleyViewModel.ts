@@ -1,5 +1,4 @@
-import { personConfig } from '../valley/nature'
-import { askOf, expectedQuality, usableAsk } from '../valley/axes'
+import { offerOf, usableAsk } from '../valley/axes'
 import { energyAt } from '../valley/body'
 import { dayOfYear, MINUTES_PER_DAY, seasonOf, yearOf, yearsToDays } from '../valley/calendar'
 import { carriedByFood, carriedKcal, spoilsIn } from '../valley/food'
@@ -8,7 +7,7 @@ import { ringOf, fishCapacityKcal } from '../valley/config'
 import { campfireBurn } from '../valley/fire'
 import { isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
-import { practicePercents } from '../valley/practice'
+import { hasIdea, knows as knowsTechnique, practiceBudget } from '../valley/skills'
 import { capacityOf } from '../valley/places'
 import { knows, positionAlong } from '../valley/routes'
 import { triangleAt } from '../valley/mesh'
@@ -388,30 +387,71 @@ export const rocksShown = (state: ValleyState, spot: number) =>
       Math.max(1, state.config.outcropStones),
   )
 
+/** Skill levels by name, the observer's own lines: the least percentage at which each begins. */
+export const SKILL_LEVELS = [
+  { name: 'master', from: 135 },
+  { name: 'expert', from: 120 },
+  { name: 'skilled', from: 100 },
+  { name: 'competent', from: 75 },
+  { name: 'novice', from: -Infinity },
+] as const
+
+/** The name of the level a skill or proficiency percentage falls in. */
+export const levelOf = (percent: number) => SKILL_LEVELS.find((level) => percent >= level.from)!.name
+
+/** "quick" or "slow" for a talent at least one spread above or below average, otherwise null. */
+const talentWord = (z: number) => (z >= 1_000 ? 'quick' : z <= -1_000 ? 'slow' : null)
+
 /**
- * A forager's three skills today, born skill times practice, in percent, each with the most any forager could reach
- * (the top of its born range times the top of practice), so the HUD can draw them on one scale.
+ * A person's three skills today in percent, foraging, wood and general craft, each with its level, the ceiling no one
+ * reaches so the HUD can draw them on one scale, and whether they learn it quickly or slowly.
  */
 export function skillLevels(state: ValleyState, id: number) {
   const { config } = state
   const forager = state.foragers[id]!
-  const percent = practicePercents(config, forager.practiceLog)
-  const top = (bornMax: number, practice: boolean) => (bornMax * (practice ? config.practiceMaxPercent : 100)) / 100
+  const max = config.skillCeilingPercent
   return [
-    {
-      key: 'picking',
-      label: 'Picking',
-      percent: Math.round((forager.foragingSkill * percent.forage) / 100),
-      max: top(config.skillMaxPercent, true),
-    },
-    {
-      key: 'wood',
-      label: 'Wood',
-      percent: Math.round((forager.woodSkill * percent.gather) / 100),
-      max: top(config.skillMaxPercent, true),
-    },
-    { key: 'axes', label: 'Axes', percent: forager.craft, max: top(config.craftSkillMaxPercent, config.craftPractice) },
-  ]
+    { key: 'picking', label: 'Foraging', percent: forager.forageSkill, talent: forager.talents.forage },
+    { key: 'wood', label: 'Wood', percent: forager.woodSkill, talent: forager.talents.wood },
+    { key: 'axes', label: 'Craft', percent: forager.craftSkill, talent: forager.talents.craft },
+  ].map(({ talent, ...skill }) => ({ ...skill, max, level: levelOf(skill.percent), learns: talentWord(talent) }))
+}
+
+/** A technique's name. */
+export const techniqueName = (config: ValleyConfig, technique: number) => config.axeTechniques[technique]!.name
+
+/**
+ * The techniques a person knows, each with its proficiency and level; those they have the idea of and are trying, with
+ * the attempts finished and how many worked, from the kept events; and today's practice against their budget.
+ */
+export function techniquesOf(state: ValleyState, id: number) {
+  const { config } = state
+  const forager = state.foragers[id]!
+  const known = config.axeTechniques.flatMap((_, t) =>
+    knowsTechnique(forager, t)
+      ? [{ name: techniqueName(config, t), percent: forager.proficiency[t]!, level: levelOf(forager.proficiency[t]!) }]
+      : [],
+  )
+  const worked = config.axeTechniques.map(() => 0),
+    attempts = config.axeTechniques.map(() => 0)
+  for (const day of state.eventDays)
+    for (const e of day) {
+      if (e.kind === 'made' && e.foragerId === id) {
+        worked[e.axe.technique]! += 1
+        attempts[e.axe.technique]! += 1
+      }
+      if (e.kind === 'dismantled' && e.foragerId === id) {
+        worked[e.technique]! += 1
+        attempts[e.technique]! += 1
+      }
+      if (e.kind === 'broke' && e.foragerId === id) attempts[e.technique]! += 1
+    }
+  const trying = config.axeTechniques.flatMap((_, t) =>
+    hasIdea(forager, t) && !knowsTechnique(forager, t)
+      ? [{ name: techniqueName(config, t), worked: worked[t]!, attempts: attempts[t]! }]
+      : [],
+  )
+  return { known, trying, practice: { minutes: forager.practicedToday, budget: practiceBudget(config, forager) } }
 }
 
 /** A forager's thirst on a scale from none to the water loss that kills, with the thirsty and urgent marks on it. */
@@ -524,9 +564,13 @@ export function siteName(config: ValleyConfig, site: number) {
   return `${kind === 'hazel' ? 'hazel thicket' : kind} ${index + 1}`
 }
 
-/** An axe in a phrase: its quality, the logs it has left, and who made it. */
-export const axePhrase = (axe: { quality: number; logsLeft: number; makerId: number }, holderId: number) =>
-  `quality ${axe.quality}, ${axe.logsLeft} log${axe.logsLeft === 1 ? '' : 's'} left, made by ${axe.makerId === holderId ? 'itself' : foragerName(axe.makerId)}`
+/** An axe in a phrase: its technique, quality, the logs it has left, and who made it. */
+export const axePhrase = (
+  config: ValleyConfig,
+  axe: { technique: number; quality: number; logsLeft: number; makerId: number },
+  holderId: number,
+) =>
+  `${techniqueName(config, axe.technique)} axe, quality ${axe.quality}, ${axe.logsLeft} log${axe.logsLeft === 1 ? '' : 's'} left, made by ${axe.makerId === holderId ? 'themself' : foragerName(axe.makerId)}`
 
 /** Groups are named by letter in order of founding: A to Z, then A2 to Z2, and so on. */
 export const groupName = (id: number) =>
@@ -573,6 +617,9 @@ const REASONS: Partial<Record<string, string>> = {
   'waiting to buy an axe': 'Waiting at home with food to buy an axe',
   'fetching a stone': 'Walking to an outcrop for a stone to make an axe',
   'picking up a stone': 'Picking up a stone',
+  practising: 'Practising making an axe',
+  'going home to practise': 'Walking home to practise making an axe',
+  'fetching a stone to practise': 'Walking to an outcrop for a stone to practise with',
 }
 
 /** What a person is doing, in a few words, from their task. */
@@ -584,7 +631,10 @@ export function describeActivity(display: Display, foragerId: number) {
   if (!task) return 'Waiting to start'
   const place =
     task.placeId >= 0 && task.placeId < state.layout.places.count ? siteName(state.config, task.placeId) : null
-  const what = REASONS[task.reason] ?? task.reason
+  const what =
+    task.reason === 'practising' && task.technique !== undefined
+      ? `Practising the ${techniqueName(state.config, task.technique)} axe`
+      : (REASONS[task.reason] ?? task.reason)
   if (task.kind === 'sleep') {
     if (task.wholeHut) return task.groupId != null ? 'Sleeping in its hut by its group’s fire' : 'Sleeping in its hut'
     return person.warm ? 'Sleeping warm by a fire' : 'Sleeping cold, with no fire'
@@ -847,7 +897,7 @@ export interface AxeRow {
   bought: number
   kcalReceived: number
   kcalPaid: number
-  craft: number
+  craftSkill: number
   /** The quality of the axe it holds, or null. */
   axeQuality: number | null
   hutLogs: number
@@ -865,7 +915,7 @@ export function groupAxes(state: ValleyState, groupId: number): AxeRow[] {
       member: forager.alive && forager.groupId === groupId,
       alive: forager.alive,
       ...forager.axeTotals,
-      craft: forager.craft,
+      craftSkill: forager.craftSkill,
       axeQuality: forager.axe?.quality ?? null,
       hutLogs: hut?.logs ?? 0,
     }
@@ -995,7 +1045,6 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
   const forager = state.foragers[foragerId]!
   const { config } = state
   const terms = knownTerms(config, forager, state.minute)
-  const percent = practicePercents(config, forager.practiceLog)
   const yesterday = state.days.at(-1)
   const kg = loadKg(config, loadOf(forager))
   const hut = hutOf(state, forager)
@@ -1008,11 +1057,9 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     woodRate: forager.woodRate,
     forageRateChange: yesterday ? forager.forageRate - yesterday.forageRates[foragerId]! : 0,
     woodRateChange: yesterday ? forager.woodRate - yesterday.woodRates[foragerId]! : 0,
-    foragePercent: percent.forage,
-    woodPercent: percent.gather,
-    /** Hours behind each practice percentage, over the last `practiceDays` days. */
-    forageHours: Math.round(sum(forager.practiceLog.forage) / 3_600),
-    gatherHours: Math.round(sum(forager.practiceLog.gather) / 3_600),
+    /** Hours of experience behind foraging and wood, after fading. */
+    forageHours: Math.round(forager.experience[0]! / 3_600),
+    gatherHours: Math.round(forager.experience[1]! / 3_600),
     ownTerms: forager.forageRate / forager.woodRate,
     wood: forager.wood,
     woodTarget: forager.woodStockTarget,
@@ -1022,8 +1069,6 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     carriedByFood: carriedByFood(forager.carried),
     /** Minutes until the first of its food spoils; null if it carries none or what it carries keeps. */
     spoilsInMinutes: spoilsIn(config, forager.carried, state.minute),
-    /** Its born foraging skill, in percent. */
-    foragingSkill: forager.foragingSkill,
     heardTerms: terms,
     heardMinutesAgo: terms === null ? null : Math.max(0, state.minute - forager.heardTerms!.minute),
     ...forager.swapTotals,
@@ -1053,15 +1098,12 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     /** The wood it has put into fires, and its group's fire, if it sleeps by one. */
     fireGiven: forager.fireGiven,
     groupFire: forager.groupId === null ? null : campfireOf(state, forager.groupId),
-    /** Its craft, practice at making axes and the hours behind it, and what an axe costs it and is worth to it. */
-    craft: forager.craft,
+    /** Its general craft, the techniques it knows and is learning, and what it would ask to make an axe now. */
     craftSkill: forager.craftSkill,
-    makePercent: percent.make,
-    makeHours: Math.round(sum(forager.practiceLog.make) / 3_600),
-    ask: askOf(personConfig(config, forager), forager.craft),
-    expectedQuality: expectedQuality(forager.craft),
-    axe: forager.axe ? axePhrase(forager.axe, foragerId) : null,
-    spareAxe: forager.spareAxe ? axePhrase(forager.spareAxe, foragerId) : null,
+    techniques: techniquesOf(state, foragerId),
+    ask: offerOf(config, forager).ask,
+    axe: forager.axe ? axePhrase(config, forager.axe, foragerId) : null,
+    spareAxe: forager.spareAxe ? axePhrase(config, forager.spareAxe, foragerId) : null,
     /** How far along an axe in the making is, 0–1, and whether it is for sale. */
     making: forager.making
       ? { done: forager.making.worked / forager.making.needed, forSale: forager.making.forSale }
@@ -1099,6 +1141,8 @@ export const skillMapPoints = (state: ValleyState) =>
       ...skill,
       share: Math.min(1, skill.percent / Math.max(1, skill.max)),
     })),
+    /** Whether they know a technique beyond the flaked axe. */
+    ring: forager.known > 1,
   }))
 
 /**
@@ -1160,6 +1204,10 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
     groups: day.groupsStanding,
     loners: day.loners,
     axesMade: day.axesMade,
+    flakedMade: day.axesMadeByTechnique[0] ?? 0,
+    tranchetMade: day.axesMadeByTechnique[1] ?? 0,
+    groundMade: day.axesMadeByTechnique[2] ?? 0,
+    attemptsBroken: day.breaksByTechnique.reduce((total, n) => total + n, 0),
     axesSold: day.axesSold,
     axesWornOut: day.axesWornOut,
     hutsWhole: day.hutsWhole,

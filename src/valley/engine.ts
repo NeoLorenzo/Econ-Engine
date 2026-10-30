@@ -8,8 +8,8 @@ import { MINUTES_PER_DAY, dayOf } from './calendar'
 import { resolveValleyConfig } from './config'
 import { fishCapacity } from './fish'
 import { newHydration } from './body'
-import { drawNatures, drawCraftSkills, drawSkills, generateLayout, LayoutError } from './layout'
-import { craftOf, noTaskSeconds, ratesOf, startingLog } from './practice'
+import { drawNatures, drawTalents, generateLayout, LayoutError } from './layout'
+import { founderSkills, noTaskSeconds } from './skills'
 import { startingGroups } from './social'
 import { woodMatters } from './trade'
 import { hutWhole } from './huts'
@@ -144,7 +144,13 @@ function emptyDay(
     axesMadeById: zeros(foragers.length),
     axesSoldById: zeros(foragers.length),
     axesBoughtById: zeros(foragers.length),
-    craftById: foragers.map((forager) => forager.craft),
+    craftById: foragers.map((forager) => forager.craftSkill),
+    ideasById: foragers.map((forager) => forager.ideas),
+    knownById: foragers.map((forager) => forager.known),
+    practicedById: zeros(foragers.length),
+    attemptsByTechnique: state.config.axeTechniques.map(() => 0),
+    breaksByTechnique: state.config.axeTechniques.map(() => 0),
+    axesMadeByTechnique: state.config.axeTechniques.map(() => 0),
     hutLogsById: hutLogsById(state),
   }
 }
@@ -184,11 +190,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   })
   const fishKcal = fish.reduce((total, body) => total + body.stock, 0)
   const natures = drawNatures(config)
-  const skills = drawSkills(config)
-  const craftSkills = drawCraftSkills(config)
+  const talents = drawTalents(config)
   const foragers: Forager[] = layout.hearths.map((hearth, id) => {
-    const practiceLog = startingLog(config)
-    const born = skills[id]!
     return {
       ...newHydration(config),
       ...natures[id]!,
@@ -231,10 +234,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       groupId: null,
       joinedMinute: null,
       knownFlags: [],
-      ...born,
-      ...ratesOf(config, born.foragingSkill, born.woodSkill, practiceLog),
-      craftSkill: craftSkills[id]!,
-      craft: craftOf(config, craftSkills[id]!, practiceLog),
+      ...founderSkills(config, talents[id]!.talents, talents[id]!.known),
       log: 0,
       stone: 0,
       hutId: null,
@@ -255,9 +255,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
         logsCut: 0,
       },
       hutSleepMinutes: 0,
-      practiceLog,
       secondsToday: noTaskSeconds(),
-      loggedSeconds: noTaskSeconds(),
       secondsWorked: noTaskSeconds(),
       heardTerms: null,
       trip: null,
@@ -333,7 +331,6 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     },
     lastSwaps: [],
     lastQuotes: [],
-    lastPractice: [],
     lastDeaths: [],
     lastGroupEvents: [],
     lastFires: [],
@@ -389,14 +386,8 @@ const cloneForager = (forager: Forager, memory: Memory = copyMemory(forager)): F
     ...memory,
     deathCauses: [...forager.deathCauses],
     carried: [...forager.carried],
-    practiceLog: {
-      forage: [...forager.practiceLog.forage],
-      gather: [...forager.practiceLog.gather],
-      make: [...forager.practiceLog.make],
-    },
     axeTotals: { ...forager.axeTotals },
     secondsToday: { ...forager.secondsToday },
-    loggedSeconds: { ...forager.loggedSeconds },
     secondsWorked: { ...forager.secondsWorked },
     swapTotals: { ...forager.swapTotals },
     knownFlags: [...forager.knownFlags],
@@ -444,6 +435,12 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   axesSoldById: [...day.axesSoldById],
   axesBoughtById: [...day.axesBoughtById],
   craftById: [...day.craftById],
+  ideasById: [...day.ideasById],
+  knownById: [...day.knownById],
+  practicedById: [...day.practicedById],
+  attemptsByTechnique: [...day.attemptsByTechnique],
+  breaksByTechnique: [...day.breaksByTechnique],
+  axesMadeByTechnique: [...day.axesMadeByTechnique],
   hutLogsById: [...day.hutLogsById],
 })
 
@@ -500,7 +497,10 @@ function finishDay(state: ValleyState, minute: number) {
   day.hutLogsById = hutLogsById(state)
   day.forageRates = state.foragers.map((p) => p.forageRate)
   day.woodRates = state.foragers.map((p) => p.woodRate)
-  day.craftById = state.foragers.map((p) => p.craft)
+  day.craftById = state.foragers.map((p) => p.craftSkill)
+  day.ideasById = state.foragers.map((p) => p.ideas)
+  day.knownById = state.foragers.map((p) => p.known)
+  day.practicedById = state.foragers.map((p) => p.practicedToday)
   day.sitesKnownById = state.foragers.map(placesKnown)
   day.placesSeenById = [...day.sitesKnownById]
   day.tiesById = state.foragers.map((p) => p.ties.size)

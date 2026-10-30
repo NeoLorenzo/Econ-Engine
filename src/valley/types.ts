@@ -68,6 +68,12 @@ export interface FoodLot {
   harvestTick: number
 }
 
+/** One value for each of foraging, wood and craft. */
+export interface Talents {
+  forage: number
+  wood: number
+  craft: number
+}
 export interface TraitRule {
   base: number
   effect: number
@@ -94,6 +100,8 @@ export interface NatureConfig {
   exploreRangeCm: number
   /** The most ways a person remembers; past it, the way used longest ago is forgotten. */
   waysRemembered: number
+  /** A person takes a leisure walk at most once in this many days. */
+  leisureWalkDays: number
   /** A way is reconsidered when used this long after it was planned, if new ground has been seen since. */
   wayRecheckMinutes: number
   /** The still landscape is surveyed again once a person stands this far from their last survey. */
@@ -113,6 +121,8 @@ export interface NatureConfig {
   neuroticismRule: TraitRule
   opennessRule: TraitRule
   opennessExpectRule: TraitRule
+  opennessInventRule: TraitRule
+  conscientiousnessPracticeRule: TraitRule
 }
 export interface Personality {
   openness: number
@@ -139,6 +149,9 @@ export interface PersonNature {
   duskMarginMinutes: number
   exploringRangeCm: number
   expectedStockPerMille: number
+  /** Openness on the chance of an idea, and conscientiousness on the minutes practised, per mille. */
+  opennessInvent: number
+  conscientiousnessPractice: number
 }
 export type EnergyRateKey =
   | 'walkKcalPerHour'
@@ -323,17 +336,34 @@ export interface ValleyConfig extends HydrationConfig, NatureConfig {
   woodStockNights: number
   /** A forager that has gathered wood since it left its hearth keeps gathering until it has gathered this much. */
   woodLoad: number
-  /** Born skills are drawn independently from this range, in percent. */
-  skillMinPercent: number
-  skillMaxPercent: number
+  /** Skill runs from the floor with no experience towards the ceiling, half way at each skill's half-experience. */
+  skillFloorPercent: number
+  skillCeilingPercent: number
+  forageHalfHours: number
+  woodHalfHours: number
+  craftHalfHours: number
+  /** The share of experience in other techniques that counts towards a technique, per mille. */
+  transferPerMille: number
+  /** Experience unused halves in this many years. */
+  experienceHalfYears: number
+  /** Talent scales the experience each second of work gives, per mille. */
+  talentRule: TraitRule
+  /** Founders' experience, in hours at average talent, and the share of founders knowing each better technique. */
+  founderForageHours: number
+  founderWoodHours: number
+  founderCraftHours: number
+  founderTranchetPerMille: number
+  founderGroundPerMille: number
+  /** The ways of making an axe, in order: flaked, tranchet, ground. */
+  axeTechniques: AxeTechnique[]
+  /** Half of attempts at an axe work this many points above the skill floor. */
+  attemptHalfPercent: number
+  /** The chance per hour of axe work, year-anchored, at average openness, of the idea of a technique not yet thought of. */
+  inventPerMillionPerHour: number
+  /** The minutes an average person practises a day when nothing is needed. */
+  practiceMinutesPerDay: number
   /** How long a forager remembers the terms it last heard. */
   termsMemoryHours: number
-  /** Skill grows with practice over this many days and fades without it. */
-  practiceDays: number
-  practiceHalfHours: number
-  practiceMinPercent: number
-  practiceMaxPercent: number
-  startPracticeHoursPerDay: number
   /** Foragers start at scattered points, each its own hearth, rather than as one group around the camp. */
   scattered: boolean
   /** Scattered starts lie at least this far apart. */
@@ -359,17 +389,18 @@ export interface ValleyConfig extends HydrationConfig, NatureConfig {
   /** A hut is whole with this many logs, and loses one every `hutLogDays` days. */
   hutLogs: number
   hutLogDays: number
-  /** Making an axe takes `axeHours` at craft 100% and uses `axeWood` kg; an axe of quality 100 lasts `axeLogs` logs. */
-  axeHours: number
-  axeLogs: number
+  /** Making an axe uses one stone and `axeWood` kg. */
   axeWood: number
-  /** Born craft skills are drawn from this range, in percent. */
-  craftSkillMinPercent: number
-  craftSkillMaxPercent: number
   /** Members may ask for, promise and sell axes. */
   axeTrade: boolean
-  /** Craft grows with practice; off, practice at making axes is fixed at 100%. */
-  craftPractice: boolean
+}
+
+/** A way of making an axe: the technique it needs (-1 for none), its hours at proficiency 100, its logs at quality 100. */
+export interface AxeTechnique {
+  name: string
+  needs: number
+  hours: number
+  logs: number
 }
 
 export interface Point {
@@ -483,34 +514,36 @@ export interface TaskSeconds {
   make: number
 }
 
-/** Seconds at each task on each of a forager's last `practiceDays` days, oldest first. */
-export interface PracticeLog {
-  forage: number[]
-  gather: number[]
-  make: number[]
-}
-
-/** An axe: its quality, the logs it has left to cut, who made it and when. */
+/** An axe: its technique, its quality, the logs it has left to cut, who made it and when. */
 export interface Axe {
   id: number
+  technique: number
   quality: number
   logsLeft: number
   makerId: number
   madeMinute: number
 }
 
-/** An axe being made: the seconds worked and needed, and whether it is for sale. Its stone and wood are in it. */
+/** An axe being made: its technique, the seconds worked and needed, and whether it is for sale. Its stone and wood are in it. */
 export interface AxeMaking {
+  technique: number
   worked: number
   needed: number
   forSale: boolean
+  /** The minute it was begun, the proficiency then, and its attempt draw: the second it breaks at, or -1 if it works. */
+  beganMinute: number
+  proficiency: number
+  draw: number
+  breakAt: number
+  /** Begun as practice, in free time, rather than as an axe needed. */
+  practice: boolean
 }
 
-/** The best asking price for an axe a forager has heard: from whom, for what quality, whether it is made, and when. */
+/** The best asking price for an axe a forager has heard: from whom, for how many logs, whether it is made, and when. */
 export interface HeardAsk {
   sellerId: number
   price: number
-  quality: number
+  logs: number
   ready: boolean
   minute: number
 }
@@ -576,6 +609,9 @@ export interface TaskRecord {
   groupId?: number | null
   wholeHut?: boolean
   rateChanges?: { minute: number; energyPerHour: number }[]
+  /** For making an axe, its technique, and whether this stint is practice. */
+  technique?: number
+  practice?: boolean
 }
 
 /** A corridor of triangles a person walked between two points, from `a` to `b`; immutable. */
@@ -650,12 +686,26 @@ export interface Forager extends Hydration, PersonNature {
   shortOfWood: boolean
   /** Wood gathered since it last stood at its hearth. */
   tripWood: number
-  /** Born skills, in percent. */
-  foragingSkill: number
+  /** Talent scores in thousandths of a spread, and the experience a second of work gives at each, per mille. */
+  talents: Talents
+  learn: Talents
+  /**
+   * Experience in seconds, with its fading and gaining remainders: foraging, wood, then each technique in order. Never
+   * changed in place: a change makes new arrays.
+   */
+  experience: readonly number[]
+  fadeRemainder: readonly number[]
+  gainRemainder: readonly number[]
+  /** The techniques it has the idea of and may try, and those it has made one of that worked, as bits in order. */
+  ideas: number
+  known: number
+  /** Minutes practised this calendar day. */
+  practicedToday: number
+  /** Skills for the day, in percent: foraging, wood, general craft, and proficiency in each technique (0 unknown). */
+  forageSkill: number
   woodSkill: number
   craftSkill: number
-  /** Its craft for the day, in percent: born craft skill times practice. */
-  craft: number
+  proficiency: readonly number[]
   /** Whether it carries a log, and the stones it holds. */
   log: number
   stone: number
@@ -676,10 +726,9 @@ export interface Forager extends Hydration, PersonNature {
   nutRate: number
   fishRate: number
   woodRate: number
-  practiceLog: PracticeLog
   secondsToday: TaskSeconds
-  /** Every second entered in its log since minute 0. */
-  loggedSeconds: TaskSeconds
+  /** Seconds spent making today by each technique. */
+  craftToday: readonly number[]
   /** Every second it has spent picking and gathering. */
   secondsWorked: TaskSeconds
   heardTerms: HeardTerms | null
@@ -745,6 +794,9 @@ export type ActionReason =
   | 'waiting to buy an axe'
   | 'fetching a stone'
   | 'picking up a stone'
+  | 'practising'
+  | 'going home to practise'
+  | 'fetching a stone to practise'
 
 /** A log cut from a tree. */
 export interface CutEvent {
@@ -766,8 +818,14 @@ export interface MadeEvent {
   minute: number
   foragerId: number
   axe: Axe
-  craft: number
+  /** The maker's proficiency in the axe's technique when it was finished. */
+  proficiency: number
   forSale: boolean
+  /** Its attempt: the minute it was begun, the proficiency then, the draw, and whether it was practice. */
+  beganMinute: number
+  beganProficiency: number
+  draw: number
+  practice: boolean
 }
 
 /** An axe worn out and thrown away. */
@@ -786,7 +844,8 @@ export interface PromiseEvent {
   promiserId: number
   askerId: number
   ask: number
-  quality: number
+  /** The logs the promised axe is expected to cut. */
+  logs: number
 }
 
 /** An axe sold for food. */
@@ -856,23 +915,73 @@ export interface QuoteEvent {
   kcalPerWood: number
 }
 
-/** A forager's practice at midnight: yesterday's seconds entered in its log, and its rates for the new day. */
-export interface PracticeEvent {
-  kind: 'practice'
+/** A person's experience at midnight: faded, then grown by the day's work; and their skills for the new day. */
+export interface SkillsEvent {
+  kind: 'skills'
   minute: number
   foragerId: number
-  added: TaskSeconds
-  foragePercent: number
-  woodPercent: number
-  forageRateBefore: number
-  woodRateBefore: number
+  /** Seconds worked that day: foraging, wood, then each technique. */
+  worked: number[]
+  experienceBefore: number[]
+  experience: number[]
+  forageSkill: number
+  woodSkill: number
+  craftSkill: number
+  proficiency: number[]
   forageRate: number
   nutRate: number
   fishRate: number
   woodRate: number
-  makePercent: number
-  craftBefore: number
-  craft: number
+}
+
+/** A technique learnt: the first attempt by it that worked. */
+export interface LearntEvent {
+  kind: 'learnt'
+  minute: number
+  foragerId: number
+  technique: number
+}
+
+/** The idea of a technique gained: thought of after a stint of axe work, or from an axe bought. */
+export interface IdeaEvent {
+  kind: 'idea'
+  minute: number
+  foragerId: number
+  technique: number
+  how: 'invented' | 'from an axe'
+  /** The axe's maker, or -1 for an idea thought of. */
+  fromId: number
+  /** For an idea thought of: the seconds of the stint of axe work, the chance per million, and the draw. */
+  seconds: number
+  chance: number
+  draw: number
+}
+
+/** An attempt at an axe that broke: its stone is lost and its wood returned. */
+export interface BrokeEvent {
+  kind: 'broke'
+  minute: number
+  foragerId: number
+  technique: number
+  /** Seconds worked on it in all. */
+  worked: number
+  practice: boolean
+  /** Its attempt: the minute it was begun, the proficiency then, and the draw. */
+  beganMinute: number
+  proficiency: number
+  draw: number
+}
+
+/** A practice axe that worked, taken apart because its maker already holds an axe and a spare: stone and wood return. */
+export interface DismantledEvent {
+  kind: 'dismantled'
+  minute: number
+  foragerId: number
+  technique: number
+  /** Its attempt: the minute it was begun, the proficiency then, and the draw. */
+  beganMinute: number
+  proficiency: number
+  draw: number
 }
 
 /** Two foragers without a group met and founded one, the forager whose turn it was first. */
@@ -1010,7 +1119,11 @@ export type ValleyEvent =
   | DeathEvent
   | SwapEvent
   | QuoteEvent
-  | PracticeEvent
+  | SkillsEvent
+  | LearntEvent
+  | IdeaEvent
+  | BrokeEvent
+  | DismantledEvent
   | GroupEvent
   | FireEvent
   | FeedEvent
@@ -1122,7 +1235,7 @@ export interface DaySummary {
   hutsWhole: number
   /**
    * Every forager's seconds cutting and making, logs cut, axes made, sold and bought during the day; its craft for the
-   * day; and the logs in its hut at the end of it.
+   * day (general craft); and the logs in its hut at the end of it.
    */
   cutSecondsById: number[]
   makeSecondsById: number[]
@@ -1131,6 +1244,16 @@ export interface DaySummary {
   axesSoldById: number[]
   axesBoughtById: number[]
   craftById: number[]
+  /**
+   * The techniques each person has the idea of and knows, as bits in technique order, and the minutes they practised;
+   * attempts begun, broken and axes made today by each technique.
+   */
+  ideasById: number[]
+  knownById: number[]
+  practicedById: number[]
+  attemptsByTechnique: number[]
+  breaksByTechnique: number[]
+  axesMadeByTechnique: number[]
   hutLogsById: number[]
 }
 
@@ -1200,7 +1323,6 @@ export interface ValleyState {
   totals: ValleyTotals
   lastSwaps: SwapEvent[]
   lastQuotes: QuoteEvent[]
-  lastPractice: PracticeEvent[]
   /** The deaths of the last minute run. */
   lastDeaths: DeathEvent[]
   /** The foundings, joinings and dissolutions of the last minute run. */

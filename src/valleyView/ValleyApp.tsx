@@ -37,6 +37,7 @@ import {
   ownTermsByDay,
   plantInspection,
   skillLevels,
+  techniqueName,
   stoneInspection,
   skillMapPoints,
   thirstLevel,
@@ -81,13 +82,13 @@ const share = (value: number, max: number) => `${Math.min(100, Math.max(0, (valu
 const RING_RADIUS = 18
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS
 
-/** A forager's skills as rings: each fills towards the most any forager could reach, with today's percent inside. */
+/** A person's skills as rings: each fills towards the ceiling no one reaches, with today's percent inside and its level. */
 function SkillRings({ skills }: { skills: ReturnType<typeof skillLevels> }) {
   return (
     <div className="life-skills" role="group" aria-label="Skills">
       {skills.map((skill) => (
         <figure key={skill.key} className={`life-skill is-${skill.key}`}>
-          <svg viewBox="0 0 44 44" role="img" aria-label={`${skill.label} ${skill.percent}%`}>
+          <svg viewBox="0 0 44 44" role="img" aria-label={`${skill.label} ${skill.percent}%, ${skill.level}`}>
             <circle className="life-skill-track" cx="22" cy="22" r={RING_RADIUS} />
             <circle
               className="life-skill-fill"
@@ -101,7 +102,10 @@ function SkillRings({ skills }: { skills: ReturnType<typeof skillLevels> }) {
               {skill.percent}
             </text>
           </svg>
-          <figcaption>{skill.label}</figcaption>
+          <figcaption>
+            {skill.label} · {skill.level}
+            {skill.learns && <span className="life-skill-learns">{skill.learns} to learn</span>}
+          </figcaption>
         </figure>
       ))}
     </div>
@@ -362,7 +366,7 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 16</span>
+        <span className="life-title">Life 17</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
             {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
@@ -603,6 +607,39 @@ export default function ValleyApp({
           </ul>
         </details>
         <details className="life-details">
+          <summary>Recent axes and techniques</summary>
+          <ul>
+            {state.eventDays
+              .flat()
+              .filter(
+                (event) =>
+                  (event.kind === 'made' ||
+                    event.kind === 'learnt' ||
+                    event.kind === 'broke' ||
+                    event.kind === 'dismantled' ||
+                    event.kind === 'idea') &&
+                  (event.foragerId === followed || (event.kind === 'idea' && event.fromId === followed)),
+              )
+              .slice(-6)
+              .map((event, index) => (
+                <li key={index}>
+                  {event.kind === 'made'
+                    ? `${foragerName(event.foragerId)} made a ${techniqueName(config, event.axe.technique)} axe of quality ${event.axe.quality}${event.forSale ? ' to sell' : ''}`
+                    : event.kind === 'learnt'
+                      ? `${foragerName(event.foragerId)} made their first ${techniqueName(config, event.technique)} axe`
+                      : event.kind === 'broke'
+                        ? `${foragerName(event.foragerId)}’s ${techniqueName(config, event.technique)} axe broke after ${formatMinutes(Math.ceil(event.worked / 60))}`
+                        : event.kind === 'dismantled'
+                          ? `${foragerName(event.foragerId)} made a practice ${techniqueName(config, event.technique)} axe and took it apart`
+                          : event.kind === 'idea' &&
+                            (event.how === 'invented'
+                              ? `${foragerName(event.foragerId)} thought of the ${techniqueName(config, event.technique)} axe`
+                              : `${foragerName(event.foragerId)} got the idea of the ${techniqueName(config, event.technique)} axe from ${foragerName(event.fromId)}’s axe`)}
+                </li>
+              ))}
+          </ul>
+        </details>
+        <details className="life-details">
           <summary>Recent gifts and refusals</summary>
           <ul>
             {state.eventDays
@@ -704,6 +741,19 @@ export default function ValleyApp({
             <dd className="num">
               {summary.axe ?? 'none'}
               {summary.making && `, making one (${Math.round(summary.making.done * 100)}%)`}
+            </dd>
+            <dt>Techniques</dt>
+            <dd className="num">
+              {summary.techniques.known.map((known) => `${known.name} (${known.level})`).join(', ')}
+              {summary.techniques.trying.map((trying) =>
+                trying.attempts > 0
+                  ? `; trying ${trying.name}, ${trying.worked} of ${trying.attempts} attempts worked`
+                  : `; has the idea of the ${trying.name} axe`,
+              )}
+            </dd>
+            <dt>Practice</dt>
+            <dd className="num">
+              {summary.techniques.practice.minutes} of {summary.techniques.practice.budget} minutes today
             </dd>
             {summary.groupFire ? (
               <>
@@ -1037,7 +1087,7 @@ export default function ValleyApp({
                         </span>
                       </td>
                       <td className="num">
-                        {row.craft}%
+                        craft {row.craftSkill}%
                         <span className="valley-contribution-sub">
                           {row.hutLogs} of {config.hutLogs} logs
                         </span>
@@ -1238,6 +1288,24 @@ const HistoryCharts = memo(
             { key: 'axesSold', name: 'Axes sold each day', color: palette.positive },
             { key: 'hutsWhole', name: 'Huts whole', color: palette.firmA, dashed: true },
           ]}
+        />
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'flakedMade', name: 'Flaked axes made each day', color: palette.accent },
+            { key: 'tranchetMade', name: 'Tranchet axes made each day', color: palette.positive },
+            { key: 'groundMade', name: 'Ground axes made each day', color: palette.firmA, dashed: true },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[{ key: 'attemptsBroken', name: 'Attempts broken each day', color: palette.negative }]}
         />
         <TimeChart
           data={days}

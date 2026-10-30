@@ -6,15 +6,16 @@ import { mixSeed, normalizeSeed, randomInt } from '../sim/rng'
 import { ringOffset } from './config'
 import { distanceSq } from './geometry'
 import { DIRT, GRASS, STONE, cellOf, terrainOf, type Terrain } from './terrain'
-import type { PlantIndex, Plants, Point, ValleyConfig, ValleyLayout } from './types'
+import type { PlantIndex, Plants, Point, Talents, ValleyConfig, ValleyLayout } from './types'
 
 const LAYOUT_STREAM_SALT = 0x5641_4c4c
-const SKILL_STREAM_SALT = 0x534b_494c
 const START_STREAM_SALT = 0x5354_5254
-const CRAFT_STREAM_SALT = 0x4352_4146
 const BODY_STREAM_SALT = 0x424f_4459
 const TRAITS_STREAM_SALT = 0x5452_4149
 const AXE_STREAM_SALT = 0x4158_4553
+const TALENT_STREAM_SALT = 0x5441_4c45
+const INVENT_STREAM_SALT = 0x494e_5645
+const ATTEMPT_STREAM_SALT = 0x4154_544d
 
 /** A site or plant that has not found a place after this many draws makes the layout impossible. */
 export const PLACEMENT_DRAWS = 10_000
@@ -25,42 +26,33 @@ export const deriveLayoutSeed = (seed: number) =>
 export const deriveStartSeed = (seed: number, foragerId = 0) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ START_STREAM_SALT ^ mixSeed(foragerId + 1)) >>> 0))
 
-export const deriveSkillSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ SKILL_STREAM_SALT) >>> 0))
+export const deriveTalentSeed = (seed: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ TALENT_STREAM_SALT) >>> 0))
 
-export const deriveCraftSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ CRAFT_STREAM_SALT) >>> 0))
+/** The stream for thinking of techniques, for one forager and minute. */
+export const deriveInventSeed = (seed: number, minute: number, foragerId: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ INVENT_STREAM_SALT ^ mixSeed(minute * 1_024 + foragerId)) >>> 0))
+
+/** The attempt stream for one forager and minute, which draws whether an axe begun then will work, or when it breaks. */
+export const deriveAttemptSeed = (seed: number, minute: number, foragerId: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ ATTEMPT_STREAM_SALT ^ mixSeed(minute * 1_024 + foragerId)) >>> 0))
 
 /** The axe stream for one forager and minute, which draws the quality of an axe it finishes then. */
 export const deriveAxeSeed = (seed: number, minute: number, foragerId: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ AXE_STREAM_SALT ^ mixSeed(minute * 1_024 + foragerId)) >>> 0))
 
-/** Every forager's born skills, by ID: its foraging skill, then its wood skill, from the skill stream. */
-export function drawSkills(config: ValleyConfig): { foragingSkill: number; woodSkill: number }[] {
-  const span = config.skillMaxPercent - config.skillMinPercent + 1
-  let state = deriveSkillSeed(config.seed)
-  const skills = []
-  for (let id = 0; id < config.founders; id += 1) {
-    const forage = randomInt(state, span)
-    const wood = randomInt(forage.state, span)
-    state = wood.state
-    skills.push({
-      foragingSkill: config.skillMinPercent + forage.value,
-      woodSkill: config.skillMinPercent + wood.value,
-    })
-  }
-  return skills
-}
-
-/** Every forager's born craft skill, by ID, from a stream of its own so the other skills are drawn as before. */
-export function drawCraftSkills(config: ValleyConfig): number[] {
-  const span = config.craftSkillMaxPercent - config.craftSkillMinPercent + 1
-  let state = deriveCraftSeed(config.seed)
-  const skills = []
-  for (let id = 0; id < config.founders; id += 1) {
-    const draw = randomInt(state, span)
-    state = draw.state
-    skills.push(config.craftSkillMinPercent + draw.value)
-  }
-  return skills
+/**
+ * Every founder's talents, by ID, from the talent stream: three normal scores for foraging, wood and craft, then two
+ * draws per mille for knowing the tranchet and the ground axe.
+ */
+export function drawTalents(config: ValleyConfig) {
+  const draws = new NatureDraws(deriveTalentSeed(config.seed))
+  return Array.from({ length: config.founders }, () => {
+    const talents: Talents = { forage: draws.normal(), wood: draws.normal(), craft: draws.normal() }
+    const tranchet = draws.int(1_000) < config.founderTranchetPerMille
+    const ground = draws.int(1_000) < config.founderGroundPerMille
+    return { talents, known: 1 | (tranchet ? 2 : 0) | (ground ? 4 : 0) }
+  })
 }
 
 export class LayoutError extends Error {}

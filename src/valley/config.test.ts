@@ -81,24 +81,46 @@ describe('valley configuration', () => {
     expect(errorsWith({ hutSleepKcalPerHour: 65 })).toContain(sleepOrder)
   })
 
-  it('refuses skill and practice ranges out of order, and rates that round to nothing', () => {
-    expect(errorsWith({ skillMinPercent: 130 })).toContain('Skills must satisfy 1 ≤ skillMinPercent ≤ skillMaxPercent')
-    expect(errorsWith({ practiceMinPercent: 0 })).toContain(
-      'Practice must satisfy 1 ≤ practiceMinPercent ≤ practiceMaxPercent',
+  it('refuses skill ranges out of order, and rates that round to nothing', () => {
+    expect(errorsWith({ skillFloorPercent: 160 })).toContain(
+      'Skills must satisfy 1 ≤ skillFloorPercent ≤ skillCeilingPercent',
     )
-    expect(errorsWith({ woodPerHour: 1, practiceMinPercent: 10 })).toContain(
+    expect(errorsWith({ skillFloorPercent: 0 })).toContain(
+      'Skills must satisfy 1 ≤ skillFloorPercent ≤ skillCeilingPercent',
+    )
+    expect(errorsWith({ woodPerHour: 1, skillFloorPercent: 10 })).toContain(
       'The lowest gathering rate must be at least 1',
     )
   })
 
-  it('refuses a food that would not be worth working even full, to the slowest forager', () => {
-    // At 75% skill and 50% practice, 600 kcal of fish an hour is 225, just more than the 200 an hour costs.
-    expect(errorsWith({})).toEqual([])
-    expect(errorsWith({ fishKcalPerHour: 530 })).toContain(
-      'fishKcalPerHour at the lowest skill and practice must be more than pickKcalPerHour',
+  it('refuses techniques out of order, impossible learning settings and invalid talent', () => {
+    const [flaked, tranchet, ground] = VALLEY_DEFAULT_CONFIG.axeTechniques
+    const techniques = 'axeTechniques must be flaked, tranchet and ground in order, each needing an earlier one or none'
+    expect(errorsWith({ axeTechniques: [flaked!, ground!, tranchet!] })).toContain(techniques)
+    expect(errorsWith({ axeTechniques: [flaked!, { ...tranchet!, needs: 2 }, ground!] })).toContain(techniques)
+    expect(errorsWith({ axeTechniques: [flaked!, tranchet!, { ...ground!, hours: 0 }] })).toContain(techniques)
+    expect(errorsWith({ transferPerMille: 1_001 })).toContain('transferPerMille must be from 0 to 1,000')
+    expect(errorsWith({ attemptHalfPercent: 0 })).toContain('attemptHalfPercent must be positive')
+    expect(errorsWith({ inventPerMillionPerHour: -1 })).toContain(
+      'inventPerMillionPerHour must be non-negative and keep a day of work exact',
     )
-    expect(errorsWith({ nutKcalPerHour: 500 })).toContain(
-      'nutKcalPerHour at the lowest skill and practice must be more than pickKcalPerHour',
+    expect(errorsWith({ practiceMinutesPerDay: 1_441 })).toContain('practiceMinutesPerDay must be from 0 to 1,440')
+    expect(errorsWith({ conscientiousnessPracticeRule: { base: 1_000, effect: 750, low: 10, high: 0 } })).toContain(
+      'Invalid conscientiousnessPracticeRule',
+    )
+    expect(errorsWith({ talentRule: { base: 1_000, effect: 250, low: 0, high: 1_750 } })).toContain(
+      'Invalid talentRule',
+    )
+  })
+
+  it('refuses a food that would not be worth working even full, to the slowest forager', () => {
+    // At the 50% skill floor, 600 kcal of fish an hour is 300, more than the 200 an hour picking costs; 400 is not.
+    expect(errorsWith({})).toEqual([])
+    expect(errorsWith({ fishKcalPerHour: 400 })).toContain(
+      'fishKcalPerHour at the skill floor must be more than pickKcalPerHour',
+    )
+    expect(errorsWith({ nutKcalPerHour: 400 })).toContain(
+      'nutKcalPerHour at the skill floor must be more than pickKcalPerHour',
     )
   })
 
@@ -194,7 +216,7 @@ describe('the shared fire', () => {
 describe('huts and axes', () => {
   it('refuses switches that are not booleans', () => {
     expect(errorsWith({ axeTrade: 1 as unknown as boolean })).toContain('axeTrade must be true or false')
-    expect(errorsWith({ craftPractice: 'no' as unknown as boolean })).toContain('craftPractice must be true or false')
+    expect(errorsWith({ scattered: 'no' as unknown as boolean })).toContain('scattered must be true or false')
   })
 
   it('refuses sizes and times that are not positive, and counts that are negative', () => {
@@ -203,8 +225,8 @@ describe('huts and axes', () => {
       'logChopMinutes',
       'hutLogs',
       'hutLogDays',
-      'axeHours',
-      'axeLogs',
+      'forageHalfHours',
+      'craftHalfHours',
       'logsPerTree',
       'treeRegrowthYears',
       'hutRingCm',
@@ -219,13 +241,7 @@ describe('huts and axes', () => {
     )
   })
 
-  it('refuses craft out of order, and working that costs no more than resting', () => {
-    expect(errorsWith({ craftSkillMinPercent: 0 })).toContain(
-      'Craft must satisfy 1 ≤ craftSkillMinPercent ≤ craftSkillMaxPercent',
-    )
-    expect(errorsWith({ craftSkillMinPercent: 120, craftSkillMaxPercent: 110 })).toContain(
-      'Craft must satisfy 1 ≤ craftSkillMinPercent ≤ craftSkillMaxPercent',
-    )
+  it('refuses working that costs no more than resting', () => {
     for (const key of ['pickKcalPerHour', 'gatherKcalPerHour', 'chopKcalPerHour', 'makeKcalPerHour'] as const)
       expect(errorsWith({ [key]: 90 })).toContain(`${key} must be more than restKcalPerHour`)
   })
