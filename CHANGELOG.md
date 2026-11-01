@@ -2,6 +2,11 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE16-Routes-075] - (2026-10-30)
+
+- Fixes a memory leak on long runs: the state kept every route ever walked, about 45,000 route segments a day, so the heap grew about 12 MB a day and a year's run ran out of memory, in Node and in the page's worker alike. Each step now frees the routes below the lowest one still being walked; route ids keep counting.
+- Trajectories are unchanged, and so are the fingerprints.
+
 ## [LIFE16-PeopleCharts-073] - (2026-10-29)
 
 - The history panel has three views: Skills, Relationships and Over time. The charts over time move to their own view.

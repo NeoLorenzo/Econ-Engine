@@ -520,6 +520,17 @@ export function stepValley(previous: ValleyState, toMinute = previous.minute + 1
   return advanceValley(cloneValley(previous), toMinute, stop)
 }
 /**
+ * Frees the routes no walk can read again. A route is read only while its walk lasts, and by the step's checks and
+ * replay for walks under way when the step began, so every route below the lowest one still walked is dropped. Ids
+ * keep counting, so nothing else changes; without this a year's routes outgrow the heap.
+ */
+export function releaseRoutes(state: ValleyState) {
+  let lowest = state.routes.length
+  for (const person of state.foragers) if (person.task?.kind === 'walk') lowest = Math.min(lowest, person.task.routeId)
+  // Routes below an earlier lowest were freed then, and the lowest only rises, so this stops at the last one freed.
+  for (let id = lowest - 1; id >= 0 && state.routes[id] !== undefined; id -= 1) delete state.routes[id]
+}
+/**
  * Runs `state` itself on to `toMinute`, exactly as `stepValley` runs a copy of it, and returns it. Only for a caller
  * that owns the state and never reads it again as it was, such as the engine's worker: the copy each step makes, and
  * the copies of memory it shares, then cost nothing.
@@ -529,6 +540,7 @@ export function advanceValley(state: ValleyState, toMinute = state.minute + 1, s
     throw new Error('Target minute must be a safe integer at or after the current minute')
   const start = state.minute
   state.lastInterval = []
+  releaseRoutes(state)
   if (toMinute === start) return state
   while (state.queue.peek() && state.queue.peek()!.minute <= toMinute) {
     if (stop && state.queue.peek()!.minute > state.minute && state.minute > start && stop()) {

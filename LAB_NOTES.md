@@ -6,6 +6,16 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE16-Routes-075] - (2026-10-30)
+
+While measuring Life 17, a one-year run ran out of memory, and `main` grew at the same rate: running the canonical configuration day by day with `advanceValley` and collecting garbage every 25 days, the heap grew about 12 MB a day, to 2.4 GB by day 150. Node's default heap and the page's worker both fail before a year.
+
+**Cause.** The module-level caches suspected first grow only slowly. Counted directly, the views remembered per person, nearest-frontier answers, place vicinities and ground lookups gained some tens of entries a day each. The earlier check that the state does not grow had compared JSON sizes of a few fields, and `state.routes` was not among them. A census of the state's arrays and maps between days 20 and 40 found it: 15,618 routes with 1.83 million segments at day 20 and 23,423 with 2.73 million at day 40. Every route ever planned stayed in the state, since a route's id is its index in that array.
+
+**Fix.** A route is read only while its walk lasts. Within a step, the checker and replay also read routes of walks under way when the step began, and of walks started and ended in it. Each step therefore begins by deleting every route below the lowest one still walked; the lowest only rises, so the loop stops at the first slot already freed and costs nothing on most steps. Ids keep counting, so wake-up order, which breaks ties by route id, is unchanged, and so are all fingerprints. A day run in one step and the same day run minute by minute now free routes at different moments, so the test comparing them frees both before comparing.
+
+**Result.** The same run after the fix: 421 MB at day 25, 453 MB at day 150, 508 MB at day 350. The slow remaining growth, about 0.3 MB a day, is the caches above and people's growing memories of banks and ways; it was not pursued.
+
 ## [LIFE16-PeopleCharts-073] - (2026-10-29)
 
 The owner found the line charts of little use and asked for a macro view of everyone's skills, to see who specialises in wood or axes, and for a graph of all relationships. The line charts move to their own view.
