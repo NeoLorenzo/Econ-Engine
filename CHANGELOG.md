@@ -2,6 +2,11 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE16-Routes-075] - (2026-10-30)
+
+- Fixes a memory leak on long runs: the state kept every route ever walked, about 45,000 route segments a day, so the heap grew about 12 MB a day and a year's run ran out of memory, in Node and in the page's worker alike. Each step now frees the routes below the lowest one still being walked; route ids keep counting.
+- Trajectories are unchanged, and so are the fingerprints.
+
 ## [LIFE17-Skills-074] - (2026-10-29)
 
 - Life 17, skills and techniques. Each person holds experience, in seconds, for foraging, wood and each axe technique. At midnight unused experience fades by a fixed share a day, to half in ten years, and the day's work adds to it, anchored to the year so short calendars learn as fast per year. Skill follows the power law of practice: from a floor of 50% towards a ceiling of 150% that is never reached, half way after 16,000 hours of foraging, 5,000 of wood or 300 of craft.

@@ -6,6 +6,16 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE16-Routes-075] - (2026-10-30)
+
+While measuring Life 17, a one-year run ran out of memory, and `main` grew at the same rate: running the canonical configuration day by day with `advanceValley` and collecting garbage every 25 days, the heap grew about 12 MB a day, to 2.4 GB by day 150. Node's default heap and the page's worker both fail before a year.
+
+**Cause.** The module-level caches suspected first grow only slowly. Counted directly, the views remembered per person, nearest-frontier answers, place vicinities and ground lookups gained some tens of entries a day each. The earlier check that the state does not grow had compared JSON sizes of a few fields, and `state.routes` was not among them. A census of the state's arrays and maps between days 20 and 40 found it: 15,618 routes with 1.83 million segments at day 20 and 23,423 with 2.73 million at day 40. Every route ever planned stayed in the state, since a route's id is its index in that array.
+
+**Fix.** A route is read only while its walk lasts. Within a step, the checker and replay also read routes of walks under way when the step began, and of walks started and ended in it. Each step therefore begins by deleting every route below the lowest one still walked; the lowest only rises, so the loop stops at the first slot already freed and costs nothing on most steps. Ids keep counting, so wake-up order, which breaks ties by route id, is unchanged, and so are all fingerprints. A day run in one step and the same day run minute by minute now free routes at different moments, so the test comparing them frees both before comparing.
+
+**Result.** The same run after the fix: 421 MB at day 25, 453 MB at day 150, 508 MB at day 350. The slow remaining growth, about 0.3 MB a day, is the caches above and people's growing memories of banks and ways; it was not pursued.
+
 ## [LIFE17-Skills-074] - (2026-10-29)
 
 The owner added step 17 to the roadmap ahead of conflict and approved its specification: skill built from experience over a working life by the power law of practice, talents as how fast one learns, and three axe techniques priced by the logs an axe will cut. A first build learnt techniques by watching or by trial after a competent axe; in a year nobody learnt one. The owner then replaced learning: every attempt can fail and still teaches, people think of techniques themselves (more often the open) or see one in an axe they buy, watching is dropped, and people practise in free time (longer the conscientious). The revised specification was approved and built.

@@ -1,6 +1,6 @@
 import { addTestLake } from './ruleFixtures'
 import { describe, expect, it } from 'vitest'
-import { advanceValley, createValley, stepValley, cloneValley } from './engine'
+import { advanceValley, createValley, stepValley, cloneValley, releaseRoutes } from './engine'
 import { FLAT_LAND } from './config'
 import { WakeQueue } from './clock'
 
@@ -27,6 +27,9 @@ describe('wake-up engine', () => {
     for (let minute = 1; minute <= 1_440; minute += 1) single = stepValley(single, minute)
     batch.lastInterval = []
     single.lastInterval = []
+    // Single steps free finished routes sooner; both hold the same ones once freed up to the same lowest walk.
+    releaseRoutes(batch)
+    releaseRoutes(single)
     expect(batch).toEqual(single)
     expect(state).toEqual(before)
   })
@@ -64,6 +67,9 @@ describe('wake-up engine', () => {
     for (let minute = 1; minute <= 1_440; minute += 1) single = stepValley(single, minute)
     batch.lastInterval = []
     single.lastInterval = []
+    // Single steps free finished routes sooner; both hold the same ones once freed up to the same lowest walk.
+    releaseRoutes(batch)
+    releaseRoutes(single)
     expect(batch).toEqual(single)
     expect(state).toEqual(before)
   })
@@ -75,6 +81,15 @@ describe('wake-up engine', () => {
       stepped = stepValley(stepped, minute)
       expect(owned).toEqual(stepped)
     }
+  })
+  it('frees the routes below the lowest still walked and keeps counting ids', () => {
+    // Routes are freed as a step begins, so the step with no minutes frees those of the walks ended before it.
+    const state = advanceValley(advanceValley(createValley(FLAT_LAND), 2_880), 2_880)
+    const walked = state.foragers.flatMap((p) => (p.task?.kind === 'walk' ? [p.task.routeId] : []))
+    const lowest = Math.min(state.routes.length, ...walked)
+    expect(lowest).toBeGreaterThan(0)
+    for (let id = 0; id < state.routes.length; id += 1) expect(id in state.routes).toBe(id >= lowest)
+    for (const id of walked) expect(state.routes[id]).toBeDefined()
   })
 })
 
