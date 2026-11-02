@@ -185,8 +185,13 @@
   font-weight: 700;
 }
 .life-skill figcaption {
+  display: grid;
+  justify-items: center;
   color: var(--text-3);
   font-size: var(--fs-xs);
+}
+.life-skill-learns {
+  font-style: italic;
 }
 .life-details summary {
   cursor: pointer;
@@ -501,6 +506,11 @@
 }
 .life-scatter .dot {
   cursor: pointer;
+}
+.life-skill-map .ring {
+  stroke-width: 1.2;
+  opacity: 0.8;
+  pointer-events: none;
 }
 .life-skill-map svg,
 .life-tie-graph svg {

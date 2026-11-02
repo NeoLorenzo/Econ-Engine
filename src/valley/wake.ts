@@ -18,6 +18,7 @@ import { layLog, leaveHutIfMoved, hutWhole } from './huts'
 import { feedFire } from './fire'
 import { warmthOf, tendFire } from './work'
 import { beginAxe, workAxe, cutAt, logCut, exchangeAxes } from './axes'
+import { inventAfter, practiceBudget } from './skills'
 import type { Forager, ValleyEvent, ValleyState } from './types'
 import type { TaskChoice } from './forager'
 
@@ -111,14 +112,17 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   }
   const beforeEvents: ValleyEvent[] = []
   if (choice.kind === 'make') {
-    if (!person.making) beginAxe(state, person)
+    if (!person.making) beginAxe(state, person, minute, choice.practice === true)
+    const making = person.making!
+    const left = (making.breakAt >= 0 ? making.breakAt : making.needed) - making.worked
     end =
       minute +
       Math.max(
         1,
         Math.min(
-          Math.ceil((person.making!.needed - person.making!.worked) / 60),
+          Math.ceil(left / 60),
           state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute),
+          choice.practice ? practiceBudget(state.config, person) - person.practicedToday : Infinity,
         ),
       )
   }
@@ -160,6 +164,10 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   person.task.groupId = person.groupId
   person.task.wholeHut = hutWhole(state, person)
   person.task.productionPerHour = choice.productionPerHour ?? 0
+  if (choice.kind === 'make') {
+    person.task.technique = person.making!.technique
+    person.task.practice = choice.practice === true
+  }
   state.queue.schedule({ minute: person.task.endMinute, phase: 1, id: person.id, kind: 'end' })
   const threshold = firstThresholdMinute(personConfig(state.config, person), person.task, state.routes)
   if (threshold && threshold.minute < person.task.endMinute)
@@ -228,7 +236,18 @@ function creditTask(state: ValleyState, person: Forager, minute: number, events:
   }
   if (task.kind === 'make' && person.making) {
     const result = workAxe(state, person, elapsed * 60, minute)
-    if (result.made) events.push(result.made)
+    if (task.practice) person.practicedToday += elapsed
+    if (result.made) {
+      events.push(result.made)
+      state.today.axesMade += 1
+      if (result.made.forSale) state.today.axesMadeForSale += 1
+      state.today.axesMadeById[person.id]! += 1
+      state.today.axesMadeByTechnique[result.made.axe.technique]! += 1
+    }
+    if (result.broke) events.push(result.broke)
+    if (result.dismantled) events.push(result.dismantled)
+    if (result.learnt) events.push(result.learnt)
+    events.push(...inventAfter(state.config, person, result.worked, minute))
   }
   if (task.kind === 'cut') {
     const result = cutAt(state, person, task.placeId, elapsed * 60, minute)
@@ -306,7 +325,12 @@ function exchange(state: ValleyState, id: number, minute: number, events: Valley
       events.push({ kind: 'axe-request', minute, foragerId: event.askerId, otherId: event.promiserId })
       address(state, event.promiserId, minute)
     }
-    if (event.kind === 'sale') address(state, event.sellerId === id ? event.buyerId : event.sellerId, minute)
+    if (event.kind === 'sale') {
+      state.today.axesSold += 1
+      state.today.axesSoldById[event.sellerId]! += 1
+      state.today.axesBoughtById[event.buyerId]! += 1
+      address(state, event.sellerId === id ? event.buyerId : event.sellerId, minute)
+    }
   }
   for (const view of views) {
     if (view === ABSENT || view === state.foragers[view.id]) continue
@@ -317,6 +341,8 @@ function exchange(state: ValleyState, id: number, minute: number, events: Valley
     owner.heardTerms = view.heardTerms
     owner.axe = view.axe
     owner.spareAxe = view.spareAxe
+    owner.ideas = view.ideas
+    owner.proficiency = view.proficiency
     owner.heardAsk = view.heardAsk
     owner.promised = view.promised
     owner.axeTotals = view.axeTotals

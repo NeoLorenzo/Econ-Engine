@@ -16,7 +16,7 @@ import {
   TRAITS,
 } from './nature'
 import { VALLEY_DEFAULT_CONFIG as c, FLAT_LAND } from './config'
-import { drawNatures, drawSkills, drawCraftSkills, drawStarts } from './layout'
+import { drawNatures, drawStarts, drawTalents } from './layout'
 import { bandAt } from './ruleTestFixtures'
 import { chooseTask, foodGoal, mustGoHome, walkSpeed } from './forager'
 import { bothGain, pairTerms, sellerShare, swap } from './trade'
@@ -24,7 +24,8 @@ import { meet } from './social'
 import { startTask } from './tasks'
 import { ValleyChecker } from './invariants'
 import { cloneValley, stepValley } from './engine'
-import type { Forager, Personality, PersonNature } from './types'
+import { applySkills, skillsOf } from './skills'
+import type { Forager, Personality, PersonNature, ValleyConfig } from './types'
 const neutral: Personality = { openness: 0, conscientiousness: 0, extraversion: 0, agreeableness: 0, neuroticism: 0 }
 const stats = (values: number[]) => {
   const mean = values.reduce((a, b) => a + b, 0) / values.length
@@ -34,6 +35,11 @@ const correlation = (a: number[], b: number[]) => {
   const x = stats(a),
     y = stats(b)
   return a.reduce((n, v, i) => n + (v - x.mean) * (b[i]! - y.mean), 0) / (a.length * x.sd * y.sd)
+}
+/** Sets a person's foraging and wood experience, and the skills and rates that follow. */
+function withExperience(config: ValleyConfig, p: Forager, forage: number, wood: number) {
+  p.experience = p.experience.map((seconds, slot) => (slot === 0 ? forage : slot === 1 ? wood : seconds))
+  applySkills(p, skillsOf(config, p.experience, p.known))
 }
 const setNature = (p: Forager, traits: Partial<Personality> = {}, weightKg = 60, gripKg = 31) =>
   Object.assign(p, deriveNature(c, { sex: 1, heightCm: 165, weightKg, gripKg, traits: { ...neutral, ...traits } }))
@@ -298,10 +304,9 @@ describe('Life 14 bodies and personality', () => {
       seller = base.foragers[0]!,
       buyer = base.foragers[1]!
     setNature(seller, {}, 70, 40)
-    seller.forageRate = 600
-    seller.woodRate = 20
-    buyer.forageRate = 1800
-    buyer.woodRate = 10
+    // The seller is a novice forager and a master at wood, the buyer the reverse.
+    withExperience(base.config, seller, 0, 1e9)
+    withExperience(base.config, buyer, 1e9, 0)
     seller.wood = 60
     buyer.wood = 0
     base.totals.initialWood += 12
@@ -323,17 +328,15 @@ describe('Life 14 bodies and personality', () => {
     )
     expect(new ValleyChecker(base).check(badRate)).not.toEqual([])
   })
-  it('keeps bodies and traits on separate repeatable streams without changing founder or skill draws', () => {
+  it('keeps bodies, traits and talents on separate repeatable streams without changing founder places', () => {
     expect(drawNatures(c)).toEqual(drawNatures(c))
     expect(drawNatures({ ...c, founders: 8 })).toEqual(drawNatures(c).slice(0, 8))
     // These are frozen Life 13 streams: adding body draws must not consume any of them.
-    expect(drawSkills({ ...c, founders: 3 })).toEqual(drawSkills(c).slice(0, 3))
-    expect(drawCraftSkills({ ...c, founders: 3 })).toEqual([100, 100, 100])
+    expect(drawTalents({ ...c, founders: 3 })).toEqual(drawTalents(c).slice(0, 3))
     for (const row of founders) {
       const config = { ...c, seed: row.seed }
       expect(drawStarts(config)).toEqual(row.starts)
-      expect(drawSkills(config)).toEqual(row.skills)
-      expect(drawCraftSkills(config)).toEqual(row.craft)
+      expect(drawTalents(config)).toEqual(row.talents)
     }
     expect(TRAITS).toHaveLength(5)
     expect(FLAT_LAND.founders).toBe(8)

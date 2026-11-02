@@ -29,4 +29,18 @@ export function giveHut(s: ValleyState, p: Forager, logs = s.config.hutLogs) {
   s.logStock[64]! -= logs
   s.totals.logsCut += logs
 }
-export const testAxe = (quality = 100, logsLeft = 200) => ({ id: 0, makerId: 0, madeMinute: 0, quality, logsLeft })
+export const testAxe = (quality = 100, logsLeft = 200, technique = 2) => ({
+  id: 0,
+  technique,
+  makerId: 0,
+  madeMinute: 0,
+  quality,
+  logsLeft,
+})
+
+/** Gives a person one known technique, ground by default, at a proficiency, for rules that read it directly. */
+export function onlyTechnique(person: Forager, proficiency: number, technique = 2) {
+  person.known = 1 | (1 << technique)
+  person.ideas = person.known
+  person.proficiency = [1, 0, 0].map((value, t) => (t === technique ? proficiency : value))
+}

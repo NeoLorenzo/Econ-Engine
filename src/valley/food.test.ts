@@ -71,7 +71,6 @@ describe('ported food and load choices', () => {
     p.y = s.layout.places.y[0]!
     p.energyKcal = 59000
     p.hungry = true
-    p.foragingSkill = 100
     p.forageRate = 1200
     s.foodStock.fill(0)
     s.foodStock[0] = 1560

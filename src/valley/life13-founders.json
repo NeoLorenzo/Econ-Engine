@@ -163,171 +163,327 @@
         "y": 171988
       }
     ],
-    "skills": [
+    "talents": [
       {
-        "foragingSkill": 75,
-        "woodSkill": 95
+        "talents": {
+          "forage": -824,
+          "wood": -29,
+          "craft": 240
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 122,
-        "woodSkill": 111
+        "talents": {
+          "forage": 437,
+          "wood": 752,
+          "craft": -762
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 84,
-        "woodSkill": 103
+        "talents": {
+          "forage": 621,
+          "wood": -147,
+          "craft": 1113
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 81,
-        "woodSkill": 119
+        "talents": {
+          "forage": -337,
+          "wood": 792,
+          "craft": -1069
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 75,
-        "woodSkill": 89
+        "talents": {
+          "forage": -327,
+          "wood": -38,
+          "craft": 141
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 104,
-        "woodSkill": 102
+        "talents": {
+          "forage": 482,
+          "wood": -567,
+          "craft": 870
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 84,
-        "woodSkill": 104
+        "talents": {
+          "forage": 1553,
+          "wood": 123,
+          "craft": 1098
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 104,
-        "woodSkill": 82
+        "talents": {
+          "forage": -133,
+          "wood": -33,
+          "craft": -854
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 121,
-        "woodSkill": 100
+        "talents": {
+          "forage": -1162,
+          "wood": -919,
+          "craft": -1028
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 123,
-        "woodSkill": 120
+        "talents": {
+          "forage": 1475,
+          "wood": -1407,
+          "craft": 752
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 97,
-        "woodSkill": 108
+        "talents": {
+          "forage": 678,
+          "wood": 1236,
+          "craft": -1825
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 89,
-        "woodSkill": 105
+        "talents": {
+          "forage": 53,
+          "wood": 253,
+          "craft": -1481
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 124,
-        "woodSkill": 104
+        "talents": {
+          "forage": 252,
+          "wood": 505,
+          "craft": -959
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 108,
-        "woodSkill": 121
+        "talents": {
+          "forage": -177,
+          "wood": 1653,
+          "craft": -1525
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 92,
-        "woodSkill": 98
+        "talents": {
+          "forage": -157,
+          "wood": -1393,
+          "craft": -816
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 97,
-        "woodSkill": 76
+        "talents": {
+          "forage": 832,
+          "wood": 1639,
+          "craft": 413
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 92,
-        "woodSkill": 91
+        "talents": {
+          "forage": -565,
+          "wood": -414,
+          "craft": 713
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 75,
-        "woodSkill": 111
+        "talents": {
+          "forage": -2072,
+          "wood": -917,
+          "craft": -292
+        },
+        "known": 7
       },
       {
-        "foragingSkill": 83,
-        "woodSkill": 75
+        "talents": {
+          "forage": -471,
+          "wood": 63,
+          "craft": 465
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 94,
-        "woodSkill": 76
+        "talents": {
+          "forage": 1157,
+          "wood": 510,
+          "craft": -24
+        },
+        "known": 5
       },
       {
-        "foragingSkill": 113,
-        "woodSkill": 121
+        "talents": {
+          "forage": 1495,
+          "wood": 918,
+          "craft": -18
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 88,
-        "woodSkill": 112
+        "talents": {
+          "forage": 708,
+          "wood": -863,
+          "craft": 810
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 83,
-        "woodSkill": 125
+        "talents": {
+          "forage": 1073,
+          "wood": 4,
+          "craft": -885
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 120,
-        "woodSkill": 120
+        "talents": {
+          "forage": -593,
+          "wood": -68,
+          "craft": -411
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 102,
-        "woodSkill": 119
+        "talents": {
+          "forage": -847,
+          "wood": 2033,
+          "craft": 1
+        },
+        "known": 7
       },
       {
-        "foragingSkill": 79,
-        "woodSkill": 123
+        "talents": {
+          "forage": 1267,
+          "wood": -875,
+          "craft": -1638
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 92,
-        "woodSkill": 107
+        "talents": {
+          "forage": 405,
+          "wood": -594,
+          "craft": 1036
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 120,
-        "woodSkill": 82
+        "talents": {
+          "forage": 563,
+          "wood": 215,
+          "craft": -1602
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 99,
-        "woodSkill": 104
+        "talents": {
+          "forage": -481,
+          "wood": 1362,
+          "craft": -734
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 75,
-        "woodSkill": 94
+        "talents": {
+          "forage": -434,
+          "wood": 751,
+          "craft": -351
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 85,
-        "woodSkill": 90
+        "talents": {
+          "forage": -1411,
+          "wood": -734,
+          "craft": -1929
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 120,
-        "woodSkill": 77
+        "talents": {
+          "forage": -938,
+          "wood": -935,
+          "craft": 1013
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 82,
-        "woodSkill": 102
+        "talents": {
+          "forage": -1931,
+          "wood": 253,
+          "craft": -1259
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 118,
-        "woodSkill": 113
+        "talents": {
+          "forage": -50,
+          "wood": -1772,
+          "craft": -316
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 123,
-        "woodSkill": 118
+        "talents": {
+          "forage": 806,
+          "wood": -1859,
+          "craft": 665
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 125,
-        "woodSkill": 103
+        "talents": {
+          "forage": 1352,
+          "wood": -361,
+          "craft": 258
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 101,
-        "woodSkill": 110
+        "talents": {
+          "forage": -429,
+          "wood": 488,
+          "craft": 756
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 82,
-        "woodSkill": 84
+        "talents": {
+          "forage": 1055,
+          "wood": -1361,
+          "craft": 738
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 122,
-        "woodSkill": 81
+        "talents": {
+          "forage": 2003,
+          "wood": -388,
+          "craft": 1471
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 93,
-        "woodSkill": 117
+        "talents": {
+          "forage": -212,
+          "wood": 1093,
+          "craft": -1054
+        },
+        "known": 5
       }
-    ],
-    "craft": [
-      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
-      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100
     ]
   },
   {
@@ -494,171 +650,327 @@
         "y": 213433
       }
     ],
-    "skills": [
+    "talents": [
       {
-        "foragingSkill": 78,
-        "woodSkill": 104
+        "talents": {
+          "forage": 59,
+          "wood": -277,
+          "craft": 1948
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 94,
-        "woodSkill": 86
+        "talents": {
+          "forage": -808,
+          "wood": -89,
+          "craft": -807
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 78,
-        "woodSkill": 77
+        "talents": {
+          "forage": 1693,
+          "wood": 628,
+          "craft": -19
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 121,
-        "woodSkill": 82
+        "talents": {
+          "forage": 24,
+          "wood": 2663,
+          "craft": 2
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 85,
-        "woodSkill": 82
+        "talents": {
+          "forage": 1475,
+          "wood": 782,
+          "craft": -571
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 91,
-        "woodSkill": 100
+        "talents": {
+          "forage": -523,
+          "wood": -222,
+          "craft": 752
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 116,
-        "woodSkill": 78
+        "talents": {
+          "forage": 712,
+          "wood": 1425,
+          "craft": 158
+        },
+        "known": 5
       },
       {
-        "foragingSkill": 121,
-        "woodSkill": 95
+        "talents": {
+          "forage": 351,
+          "wood": 308,
+          "craft": 232
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 87,
-        "woodSkill": 118
+        "talents": {
+          "forage": -379,
+          "wood": -383,
+          "craft": -118
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 93,
-        "woodSkill": 85
+        "talents": {
+          "forage": 1098,
+          "wood": -1111,
+          "craft": 1977
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 110,
-        "woodSkill": 109
+        "talents": {
+          "forage": -893,
+          "wood": -744,
+          "craft": 825
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 117,
-        "woodSkill": 117
+        "talents": {
+          "forage": 300,
+          "wood": -297,
+          "craft": 1682
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 123,
-        "woodSkill": 84
+        "talents": {
+          "forage": -1918,
+          "wood": -1354,
+          "craft": 1240
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 100,
-        "woodSkill": 85
+        "talents": {
+          "forage": 678,
+          "wood": -851,
+          "craft": -1390
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 101,
-        "woodSkill": 86
+        "talents": {
+          "forage": 1653,
+          "wood": -82,
+          "craft": -2212
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 100,
-        "woodSkill": 125
+        "talents": {
+          "forage": 1326,
+          "wood": -1641,
+          "craft": -186
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 122,
-        "woodSkill": 78
+        "talents": {
+          "forage": -421,
+          "wood": 1353,
+          "craft": -1490
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 120,
-        "woodSkill": 111
+        "talents": {
+          "forage": -814,
+          "wood": 2254,
+          "craft": 1031
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 90,
-        "woodSkill": 89
+        "talents": {
+          "forage": 17,
+          "wood": -369,
+          "craft": -401
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 120,
-        "woodSkill": 104
+        "talents": {
+          "forage": 1525,
+          "wood": -1121,
+          "craft": -417
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 84,
-        "woodSkill": 111
+        "talents": {
+          "forage": -412,
+          "wood": -170,
+          "craft": 446
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 98,
-        "woodSkill": 103
+        "talents": {
+          "forage": -551,
+          "wood": -1655,
+          "craft": -1280
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 84,
-        "woodSkill": 86
+        "talents": {
+          "forage": -1799,
+          "wood": 2440,
+          "craft": 270
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 97,
-        "woodSkill": 99
+        "talents": {
+          "forage": -715,
+          "wood": 92,
+          "craft": -1437
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 125,
-        "woodSkill": 85
+        "talents": {
+          "forage": 1447,
+          "wood": -1043,
+          "craft": -280
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 111,
-        "woodSkill": 85
+        "talents": {
+          "forage": 773,
+          "wood": 691,
+          "craft": -540
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 125,
-        "woodSkill": 99
+        "talents": {
+          "forage": -599,
+          "wood": 1535,
+          "craft": 1013
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 92,
-        "woodSkill": 125
+        "talents": {
+          "forage": 719,
+          "wood": 2091,
+          "craft": -1415
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 89,
-        "woodSkill": 78
+        "talents": {
+          "forage": -1295,
+          "wood": -1179,
+          "craft": -1429
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 115,
-        "woodSkill": 90
+        "talents": {
+          "forage": 198,
+          "wood": 952,
+          "craft": -192
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 84,
-        "woodSkill": 110
+        "talents": {
+          "forage": -858,
+          "wood": 1784,
+          "craft": -650
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 97,
-        "woodSkill": 95
+        "talents": {
+          "forage": -507,
+          "wood": 698,
+          "craft": 545
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 105,
-        "woodSkill": 81
+        "talents": {
+          "forage": 1456,
+          "wood": -1118,
+          "craft": -167
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 105,
-        "woodSkill": 115
+        "talents": {
+          "forage": -1570,
+          "wood": -586,
+          "craft": -1337
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 76,
-        "woodSkill": 89
+        "talents": {
+          "forage": -532,
+          "wood": -1733,
+          "craft": -81
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 78,
-        "woodSkill": 100
+        "talents": {
+          "forage": -97,
+          "wood": -309,
+          "craft": -1837
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 113,
-        "woodSkill": 109
+        "talents": {
+          "forage": 1417,
+          "wood": 458,
+          "craft": -45
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 83,
-        "woodSkill": 102
+        "talents": {
+          "forage": -60,
+          "wood": -178,
+          "craft": 1118
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 98,
-        "woodSkill": 75
+        "talents": {
+          "forage": 948,
+          "wood": 311,
+          "craft": 479
+        },
+        "known": 5
       },
       {
-        "foragingSkill": 95,
-        "woodSkill": 95
+        "talents": {
+          "forage": 873,
+          "wood": -902,
+          "craft": 362
+        },
+        "known": 3
       }
-    ],
-    "craft": [
-      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
-      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100
     ]
   },
   {
@@ -825,171 +1137,327 @@
         "y": 193035
       }
     ],
-    "skills": [
+    "talents": [
       {
-        "foragingSkill": 106,
-        "woodSkill": 100
+        "talents": {
+          "forage": 377,
+          "wood": 1016,
+          "craft": -798
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 125,
-        "woodSkill": 109
+        "talents": {
+          "forage": -854,
+          "wood": 1259,
+          "craft": 202
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 94,
-        "woodSkill": 91
+        "talents": {
+          "forage": 331,
+          "wood": -392,
+          "craft": -846
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 92,
-        "woodSkill": 77
+        "talents": {
+          "forage": -649,
+          "wood": -835,
+          "craft": 1225
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 92,
-        "woodSkill": 108
+        "talents": {
+          "forage": -1463,
+          "wood": 183,
+          "craft": -2065
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 89,
-        "woodSkill": 106
+        "talents": {
+          "forage": 328,
+          "wood": 892,
+          "craft": 219
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 120,
-        "woodSkill": 112
+        "talents": {
+          "forage": -178,
+          "wood": -1558,
+          "craft": -600
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 122,
-        "woodSkill": 112
+        "talents": {
+          "forage": -488,
+          "wood": -1388,
+          "craft": 758
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 88,
-        "woodSkill": 96
+        "talents": {
+          "forage": -312,
+          "wood": -1689,
+          "craft": -237
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 76,
-        "woodSkill": 104
+        "talents": {
+          "forage": -826,
+          "wood": 1183,
+          "craft": 1489
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 113,
-        "woodSkill": 80
+        "talents": {
+          "forage": -460,
+          "wood": -293,
+          "craft": 1540
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 98,
-        "woodSkill": 124
+        "talents": {
+          "forage": 1555,
+          "wood": -202,
+          "craft": 314
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 81,
-        "woodSkill": 107
+        "talents": {
+          "forage": -2279,
+          "wood": 1380,
+          "craft": 546
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 94,
-        "woodSkill": 108
+        "talents": {
+          "forage": -1093,
+          "wood": 477,
+          "craft": 1212
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 75,
-        "woodSkill": 96
+        "talents": {
+          "forage": 248,
+          "wood": 2041,
+          "craft": 163
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 75,
-        "woodSkill": 96
+        "talents": {
+          "forage": -221,
+          "wood": 252,
+          "craft": 956
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 95,
-        "woodSkill": 102
+        "talents": {
+          "forage": -1767,
+          "wood": 1680,
+          "craft": -114
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 105,
-        "woodSkill": 102
+        "talents": {
+          "forage": -367,
+          "wood": 504,
+          "craft": -127
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 80,
-        "woodSkill": 94
+        "talents": {
+          "forage": 1142,
+          "wood": -1029,
+          "craft": 796
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 81,
-        "woodSkill": 118
+        "talents": {
+          "forage": 443,
+          "wood": -2252,
+          "craft": 1278
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 92,
-        "woodSkill": 94
+        "talents": {
+          "forage": 98,
+          "wood": 1870,
+          "craft": 202
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 110,
-        "woodSkill": 117
+        "talents": {
+          "forage": 1098,
+          "wood": -848,
+          "craft": 66
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 117,
-        "woodSkill": 121
+        "talents": {
+          "forage": 250,
+          "wood": -1933,
+          "craft": -1269
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 91,
-        "woodSkill": 77
+        "talents": {
+          "forage": -70,
+          "wood": 375,
+          "craft": 1622
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 82,
-        "woodSkill": 110
+        "talents": {
+          "forage": -558,
+          "wood": -609,
+          "craft": -396
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 96,
-        "woodSkill": 124
+        "talents": {
+          "forage": 285,
+          "wood": 506,
+          "craft": -999
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 76,
-        "woodSkill": 95
+        "talents": {
+          "forage": -889,
+          "wood": 472,
+          "craft": 1994
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 119,
-        "woodSkill": 86
+        "talents": {
+          "forage": -866,
+          "wood": -772,
+          "craft": -654
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 91,
-        "woodSkill": 116
+        "talents": {
+          "forage": -868,
+          "wood": -1034,
+          "craft": 28
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 77,
-        "woodSkill": 106
+        "talents": {
+          "forage": 344,
+          "wood": -2428,
+          "craft": 1153
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 102,
-        "woodSkill": 91
+        "talents": {
+          "forage": -1280,
+          "wood": -1329,
+          "craft": 1605
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 124,
-        "woodSkill": 119
+        "talents": {
+          "forage": 798,
+          "wood": -1337,
+          "craft": -1390
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 75,
-        "woodSkill": 120
+        "talents": {
+          "forage": 2280,
+          "wood": 268,
+          "craft": -1174
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 122,
-        "woodSkill": 85
+        "talents": {
+          "forage": -23,
+          "wood": 78,
+          "craft": -92
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 117,
-        "woodSkill": 88
+        "talents": {
+          "forage": -1631,
+          "wood": 119,
+          "craft": 2047
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 111,
-        "woodSkill": 75
+        "talents": {
+          "forage": 60,
+          "wood": -204,
+          "craft": 817
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 125,
-        "woodSkill": 119
+        "talents": {
+          "forage": -2432,
+          "wood": -203,
+          "craft": -1498
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 112,
-        "woodSkill": 88
+        "talents": {
+          "forage": -871,
+          "wood": 63,
+          "craft": -127
+        },
+        "known": 1
       },
       {
-        "foragingSkill": 122,
-        "woodSkill": 118
+        "talents": {
+          "forage": 690,
+          "wood": -1883,
+          "craft": 836
+        },
+        "known": 3
       },
       {
-        "foragingSkill": 90,
-        "woodSkill": 97
+        "talents": {
+          "forage": 1663,
+          "wood": -201,
+          "craft": 1897
+        },
+        "known": 1
       }
-    ],
-    "craft": [
-      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100,
-      100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100
     ]
   }
 ]

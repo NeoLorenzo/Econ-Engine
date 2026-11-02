@@ -9,8 +9,9 @@ describe('analytic Life 12 magnitudes', () => {
     expect(t.logsOnOffer).toBe(12 * 36)
   })
   it('prices making by its extra energy', () => {
-    expect(t.axeAsk(100)).toBe(3000)
-    expect(t.axeAsk(50)).toBe(6000)
+    expect(t.axeAsk(0, 100)).toBe(60)
+    expect(t.axeAsk(2, 100)).toBe(3000)
+    expect(t.axeAsk(2, 50)).toBe(6000)
   })
   it('saves firewood with a shared fire', () => {
     expect(t.campfireNightWood).toBe(12)

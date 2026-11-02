@@ -130,7 +130,7 @@ export function valleyTheory(config: ValleyConfig) {
     campfireGatherHoursPerDay: (people: number, rate: number) => (night * config.campfireWoodPerHour) / people / rate,
     nightWood: nightWood(config),
     woodTarget: woodTarget(config),
-    axeAsk: (craft: number) => askOf(config, craft),
+    axeAsk: (technique: number, proficiency: number) => askOf(config, technique, proficiency),
     logsOnOffer: config.standCount * config.standLogs,
     logsRegrownPerDay: (config.standCount * config.standLogs) / (config.treeRegrowthYears * config.daysPerYear),
     woodOnOffer: config.standCount * config.standWoodKg + config.thicketCount * config.berryThicketWoodKg,

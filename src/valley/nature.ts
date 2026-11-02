@@ -109,6 +109,8 @@ export function deriveNature(
     ),
     exploringRangeCm: Math.floor((c.exploreRangeCm * traitFactor(c.opennessRule, traits.openness)) / 1000),
     expectedStockPerMille: traitFactor(c.opennessExpectRule, traits.openness),
+    opennessInvent: traitFactor(c.opennessInventRule, traits.openness),
+    conscientiousnessPractice: traitFactor(c.conscientiousnessPracticeRule, traits.conscientiousness),
   }
 }
 export function drawNature(
@@ -197,6 +199,8 @@ export function natureConfigErrors(c: ValleyConfig) {
     'neuroticismRule',
     'opennessRule',
     'opennessExpectRule',
+    'opennessInventRule',
+    'conscientiousnessPracticeRule',
   ] as const) {
     const rule = c[key]
     if (
@@ -245,11 +249,11 @@ export function natureConfigErrors(c: ValleyConfig) {
   ] as const)
     if (rule && !Number.isSafeInteger(Math.floor((range * rule.high) / 1000) ** 2))
       errors.push('Unsafe personal distance')
-  const maxForage = (c.berryKcalPerHour * c.skillMaxPercent * c.practiceMaxPercent) / 10000
-  const maxWood = (c.woodPerHour * c.skillMaxPercent * c.practiceMaxPercent) / 10000
+  const maxForage = (c.berryKcalPerHour * c.skillCeilingPercent) / 100
+  const maxWood = (c.woodPerHour * c.skillCeilingPercent) / 100
   if (
-    !Number.isSafeInteger(c.berryKcalPerHour * c.skillMaxPercent * c.practiceMaxPercent) ||
-    !Number.isSafeInteger(c.woodPerHour * c.skillMaxPercent * c.practiceMaxPercent) ||
+    !Number.isSafeInteger(c.berryKcalPerHour * c.skillCeilingPercent) ||
+    !Number.isSafeInteger(c.woodPerHour * c.skillCeilingPercent) ||
     !Number.isSafeInteger(2 * Math.ceil(maxForage) * Math.ceil(maxWood) * 1000) ||
     !Number.isSafeInteger(Math.ceil(maxWood) ** 2 * 1000)
   )
