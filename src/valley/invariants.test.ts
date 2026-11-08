@@ -3,6 +3,7 @@ import { ValleyChecker } from './invariants'
 import { createValley, stepValley, cloneValley } from './engine'
 import { bandAt, giveHut, testAxe } from './ruleTestFixtures'
 import { addTestLake } from './ruleFixtures'
+import { thicketCapacity } from './places'
 import type { ValleyState } from './types'
 const damaged = (base: ValleyState, damage: (s: ValleyState) => void, to = base.minute + 60) => {
   const checker = new ValleyChecker(base),
@@ -72,7 +73,7 @@ describe('interval checker', () => {
     ).not.toEqual([])
   })
   it('catches stock above capacity', () => {
-    expect(damaged(bandAt(), (s) => (s.foodStock[0] = s.config.berryThicketCapacityKcal + 1))).not.toEqual([])
+    expect(damaged(bandAt(), (s) => (s.foodStock[0] = thicketCapacity(s.config, 0) + 1))).not.toEqual([])
   })
   it.each(['food', 'wood', 'logs', 'stones', 'axe'] as const)('catches %s made or lost without a record', (kind) => {
     expect(

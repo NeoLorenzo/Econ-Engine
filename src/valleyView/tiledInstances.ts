@@ -1,4 +1,4 @@
-import type { BufferGeometry, Group, InstancedMesh, Material, Matrix4 } from 'three'
+import type { BufferGeometry, Color, Group, InstancedMesh, Material, Matrix4 } from 'three'
 
 type Three = typeof import('three')
 
@@ -77,6 +77,13 @@ export class TiledInstances {
     this.dirty.add(tile)
   }
 
+  /** Sets an instance's colour; call before the first draw, so each tile's shader is built with instance colours. */
+  setColorAt(index: number, color: Color) {
+    const mesh = this.tiles[this.tileOf[index]!]!
+    mesh.setColorAt(this.localOf[index]!, color)
+    mesh.instanceColor!.needsUpdate = true
+  }
+
   /** Whether a plant's tile is drawn. */
   shows(plant: number) {
     return this.tiles[this.tileOfPlant[plant]!]!.visible
@@ -123,6 +130,10 @@ export class TiledInstances {
 
   set receiveShadow(value: boolean) {
     for (const tile of this.tiles) tile.receiveShadow = value
+  }
+
+  set customDepthMaterial(value: Material) {
+    for (const tile of this.tiles) tile.customDepthMaterial = value
   }
 
   computeBoundingSphere() {

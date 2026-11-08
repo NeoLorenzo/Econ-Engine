@@ -1,6 +1,6 @@
 import { offerOf, usableAsk } from '../valley/axes'
 import { energyAt } from '../valley/body'
-import { dayOfYear, MINUTES_PER_DAY, seasonOf, yearOf, yearsToDays } from '../valley/calendar'
+import { dayOfYear, inWindow, MINUTES_PER_DAY, seasonOf, windowDays, yearOf, yearsToDays } from '../valley/calendar'
 import { carriedByFood, carriedKcal, spoilsIn } from '../valley/food'
 import { mixSeed, randomDraw } from '../sim/rng'
 import { ringOf, fishCapacityKcal } from '../valley/config'
@@ -8,7 +8,8 @@ import { campfireBurn } from '../valley/fire'
 import { isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
 import { hasIdea, knows as knowsTechnique, practiceBudget } from '../valley/skills'
-import { capacityOf } from '../valley/places'
+import { capacityOf, thicketCapacity } from '../valley/places'
+import { storeDays, storeKcal, storeTarget } from '../valley/stores'
 import { knows, positionAlong } from '../valley/routes'
 import { triangleAt } from '../valley/mesh'
 import { siteKindOf } from '../valley/sites'
@@ -17,11 +18,11 @@ import { positionAt } from '../valley/tasks'
 import { GROUND_NAMES, cellOf, heightAt } from '../valley/terrain'
 import { knownTerms, nightHours, nightWood, woodMatters } from '../valley/trade'
 import { PLACE_KINDS } from '../valley/types'
-import type { Group, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } from '../valley/types'
+import type { CropClass, Group, Harvest, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } from '../valley/types'
 import { palette } from '../ui/theme'
 import { decorPoints, foragerColor, foragerName, formatHours } from './display'
 
-export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from './display'
+export { clockLabel, foragerName, formatKcal, TERMS_COLORS } from './display'
 export { foragerColor, formatHours }
 
 /**
@@ -155,11 +156,31 @@ export function changeSpeed(playback: Playback): Playback {
 /** Minutes since midnight of day 0, continuously. */
 export const displayMinutes = (display: Display) => display.minute
 
-/** "Day 12 of year 1 · summer", counting days and years from 1. */
-export function calendarLabel(config: ValleyConfig, minute: number) {
+/** The part of the forager's year a minute falls in, from the calendar's windows; the engine never names them. */
+export const foodSeasonOf = (config: ValleyConfig, minute: number) =>
+  inWindow(config, config.berrySeason, minute)
+    ? 'berry season'
+    : inWindow(config, config.nutSeason, minute)
+      ? 'nut season'
+      : 'the lean months'
+
+/** "a poor hazel year", "a good berry year". */
+export const cropPhrase = (kind: 'berry' | 'hazel', crop: CropClass) => `a ${crop} ${kind} year`
+
+/**
+ * "Day 12 of year 1 · summer · berry season", counting days and years from 1. From the year's first nut day, the
+ * year's hazel crop is named too: "· a poor hazel year".
+ */
+export function calendarLabel(config: ValleyConfig, minute: number, harvest: Harvest | null = null) {
   const whole = Math.floor(minute)
   const season = ['spring', 'summer', 'autumn', 'winter'][seasonOf(config, whole)]
-  return `Day ${dayOfYear(config, whole) + 1} of year ${yearOf(config, whole) + 1} · ${season}`
+  const day = dayOfYear(config, whole),
+    year = yearOf(config, whole)
+  const hazel =
+    harvest && harvest.year === year && day >= windowDays(config, config.nutSeason).start
+      ? ` · ${cropPhrase('hazel', harvest.hazel)}`
+      : ''
+  return `Day ${day + 1} of year ${year + 1} · ${season} · ${foodSeasonOf(config, whole)}${hazel}`
 }
 
 /** Valley centimetres to world metres, with the valley centred on the origin; y becomes z. */
@@ -535,6 +556,8 @@ export const bundleScale = (wood: number, load: number) =>
 
 /** A parcel of food at a forager's hip: none without food, full size from 2,000 kcal. */
 export const parcelScale = (kcal: number) => (kcal <= 0 ? 0 : 0.4 + 0.6 * Math.min(1, Math.sqrt(kcal / 2_000)))
+/** The size of the heap of nuts at a hearth: small for a little, full at about a month's food. */
+export const storeScale = (kcal: number) => (kcal <= 0 ? 0.01 : 0.4 + 0.8 * Math.min(1, Math.sqrt(kcal / 80_000)))
 
 export const aliveCount = (state: ValleyState) => state.foragers.filter((forager) => forager.alive).length
 
@@ -594,6 +617,10 @@ const REASONS: Partial<Record<string, string>> = {
   'waiting for regrowth': 'Waiting for food or wood to grow',
   foraging: 'Picking berries',
   'gathering nuts': 'Gathering hazelnuts',
+  'gathering nuts for the store': 'Gathering nuts for the store',
+  'taking nuts home to store': 'Taking nuts home to store',
+  'eating from the store': 'Eating from the store',
+  'going home to eat from the store': 'Walking home to eat from the store',
   fishing: 'Fishing from the shore',
   gathering: 'Gathering firewood',
   'seeking food': 'Walking to food',
@@ -1115,6 +1142,10 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
         : null,
     hutLogs: hut?.logs ?? null,
     hutWhole: hutWhole(state, forager),
+    /** Its store of nuts at its hearth, the days of food that is at an average day's food, and its target. */
+    storeKcal: storeKcal(forager),
+    storeDays: storeDays(config, forager),
+    storeTarget: forager.alive ? storeTarget(config, forager, state.minute) : 0,
     log: forager.log,
     stone: forager.stone,
     ...forager.axeTotals,
@@ -1185,33 +1216,150 @@ export function tieGraph(state: ValleyState) {
   }
 }
 
+/** The middle value of a list, or 0 for none. */
+function median(values: readonly number[]) {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)]!
+}
+
 /** The day-by-day series the charts plot. */
 export const daySeries = (state: ValleyState, foragerId: number) =>
-  state.days.map((day) => ({
-    day: day.day + 1,
-    alive: day.alive,
-    swappedWood: day.swappedWood,
-    coldHours: day.coldSleepMinutes / 60,
-    reserve: day.endEnergyKcal[foragerId]!,
-    stock: day.bushStockKcal / Math.max(1, state.config.thicketCount),
-    /** Nuts in the hazel thickets and fish in the water, as shares of full, in percent; and food taken by kind. */
-    hazelPercent:
-      (100 * day.hazelStockKcal) / Math.max(1, state.config.hazelThicketCount * state.config.hazelThicketCapacityKcal),
-    fishPercent: (100 * day.fishKcal) / Math.max(1, fishCapacityKcal(state.config)),
-    berriesTaken: day.gatheredBerriesKcal,
-    nutsTaken: day.gatheredNutsKcal,
-    fishTaken: day.gatheredFishKcal,
-    groups: day.groupsStanding,
-    loners: day.loners,
-    axesMade: day.axesMade,
-    flakedMade: day.axesMadeByTechnique[0] ?? 0,
-    tranchetMade: day.axesMadeByTechnique[1] ?? 0,
-    groundMade: day.axesMadeByTechnique[2] ?? 0,
-    attemptsBroken: day.breaksByTechnique.reduce((total, n) => total + n, 0),
-    axesSold: day.axesSold,
-    axesWornOut: day.axesWornOut,
-    hutsWhole: day.hutsWhole,
-  }))
+  state.days.map((day) => {
+    const reserves = day.endEnergyKcal.filter((kcal) => kcal > 0)
+    return {
+      day: day.day + 1,
+      /** Food eaten that day by source, and burned. */
+      eatenBerries: day.eatenBerriesKcal,
+      eatenNuts: day.eatenNutsKcal,
+      eatenStore: day.eatenStoreKcal,
+      eatenFish: day.eatenFishKcal,
+      burned: day.spentKcal,
+      /** Food on the land (thickets and water), in stores, and in the bodies of the living, at the day's end. */
+      onLand: day.bushStockKcal + day.hazelStockKcal + day.fishKcal,
+      inStores: day.storedKcal,
+      inBodies: sum(reserves),
+      /** Energy reserves of the living: median, lowest and highest, and the followed person's while alive. */
+      reserveMedian: median(reserves),
+      reserveLowest: reserves.length ? Math.min(...reserves) : 0,
+      reserveHighest: reserves.length ? Math.max(...reserves) : 0,
+      followedReserve: day.endEnergyKcal[foragerId]! > 0 ? day.endEnergyKcal[foragerId]! : null,
+      alive: day.alive,
+      swappedWood: day.swappedWood,
+      coldHours: day.coldSleepMinutes / 60,
+      reserve: day.endEnergyKcal[foragerId]!,
+      stock: day.bushStockKcal / Math.max(1, state.config.thicketCount),
+      /** Nuts in the hazel thickets and fish in the water, as shares of full, in percent; and food taken by kind. */
+      hazelPercent:
+        (100 * day.hazelStockKcal) / Math.max(1, state.config.hazelThicketCount * thicketCapacity(state.config, 1)),
+      fishPercent: (100 * day.fishKcal) / Math.max(1, fishCapacityKcal(state.config)),
+      berriesTaken: day.gatheredBerriesKcal,
+      nutsTaken: day.gatheredNutsKcal,
+      fishTaken: day.gatheredFishKcal,
+      groups: day.groupsStanding,
+      loners: day.loners,
+      axesMade: day.axesMade,
+      flakedMade: day.axesMadeByTechnique[0] ?? 0,
+      tranchetMade: day.axesMadeByTechnique[1] ?? 0,
+      groundMade: day.axesMadeByTechnique[2] ?? 0,
+      attemptsBroken: day.breaksByTechnique.reduce((total, n) => total + n, 0),
+      axesSold: day.axesSold,
+      axesWornOut: day.axesWornOut,
+      hutsWhole: day.hutsWhole,
+    }
+  })
+
+export const FOOD_SOURCES = [
+  { key: 'berries', name: 'Berries', color: palette.positive },
+  { key: 'nuts', name: 'Fresh nuts', color: palette.accent },
+  { key: 'store', name: 'Nuts from a store', color: palette.warning },
+  { key: 'fish', name: 'Fish', color: palette.firmA },
+] as const
+
+export type FoodPeriod = 'season' | 'year' | 'run'
+
+/**
+ * Kilocalories eaten by source over finished days: in the season now under way (berry season, nut season or the
+ * lean months, back to its first day), this year, or the whole run.
+ */
+export function eatenBySource(state: ValleyState, period: FoodPeriod) {
+  const { config } = state
+  const last = state.days.at(-1)
+  const kcal = { berries: 0, nuts: 0, store: 0, fish: 0 }
+  if (!last) return kcal
+  const at = (day: number) => day * MINUTES_PER_DAY
+  const season = foodSeasonOf(config, at(last.day)),
+    year = yearOf(config, at(last.day))
+  for (let index = state.days.length - 1; index >= 0; index--) {
+    const day = state.days[index]!
+    if (period === 'season' && foodSeasonOf(config, at(day.day)) !== season) break
+    if (period === 'year' && yearOf(config, at(day.day)) !== year) break
+    kcal.berries += day.eatenBerriesKcal
+    kcal.nuts += day.eatenNutsKcal
+    kcal.store += day.eatenStoreKcal
+    kcal.fish += day.eatenFishKcal
+  }
+  return kcal
+}
+
+export const DEATH_COLORS = { starvation: palette.negative, dehydration: palette.firmA } as const
+
+/** Each death so far, on the day it fell (counting from 1), coloured by its first cause. */
+export const deathMarks = (state: ValleyState) =>
+  state.foragers.flatMap((person) =>
+    !person.alive && person.deathMinute !== null
+      ? [
+          {
+            day: Math.floor(person.deathMinute / MINUTES_PER_DAY) + 1,
+            color: DEATH_COLORS[person.deathCauses[0] ?? 'starvation'],
+          },
+        ]
+      : [],
+  )
+
+interface CropRow {
+  label: string
+  grown: number
+  gathered: number
+  lost: number
+  standing: number
+  spoiled: number
+}
+
+/**
+ * Each year's crop by kind over finished days: grown, and what became of it — gathered by people, lost on the land,
+ * and standing at the year's end (or now). For hazel, nuts that spoiled in stores are taken from the gathered part.
+ */
+export function cropByYear(state: ValleyState) {
+  const { config } = state
+  const rows: CropRow[] = []
+  const row = (label: string): CropRow => ({ label, grown: 0, gathered: 0, lost: 0, standing: 0, spoiled: 0 })
+  let current = -1,
+    berries = row(''),
+    hazel = row('')
+  for (const day of state.days) {
+    const year = yearOf(config, day.day * MINUTES_PER_DAY)
+    if (year !== current) {
+      current = year
+      berries = row(`Y${year + 1} berries`)
+      hazel = row(`Y${year + 1} hazel`)
+      rows.push(berries, hazel)
+    }
+    berries.grown += day.cropBerriesKcal
+    berries.gathered += day.gatheredBerriesKcal
+    berries.lost += day.lostBerriesKcal
+    berries.standing = day.bushStockKcal
+    hazel.grown += day.cropNutsKcal
+    hazel.gathered += day.gatheredNutsKcal
+    hazel.lost += day.lostNutsKcal
+    hazel.standing = day.hazelStockKcal
+    hazel.spoiled += day.storeSpoiledKcal
+  }
+  return rows.map((crop) => {
+    const spoiled = Math.min(crop.spoiled, crop.gathered)
+    return { ...crop, gathered: crop.gathered - spoiled, spoiled }
+  })
+}
 
 /**
  * How dark to draw each terrain cell for what a forager knows, row by row from the valley's first row: cells whose

@@ -249,6 +249,28 @@ Life 11 continuous-bank refinement: the 5 m lattice still supplies drainage and 
 
 ## Life 14: adult bodies and personality
 
-The body rules approved in Life 14, kept in the [current specification](LIFE16_SPEC.md), use Mesolithic European adult means: women 154 cm and 52 kg; men 165 cm and 62 kg; within-sex spreads 6 cm and 6 kg (Formicola and Giannecchini 1999; Ruff 2018). Grip means are 24 kg and 38 kg, spread 6 kg, following forager-horticulturalist field magnitudes (Gurven et al. 2006; Apicella 2014). Within-sex height/weight, height/grip and weight/grip correlations are 0.55, 0.35 and 0.40. These are magnitude targets, not calibrated trajectories.
+The body rules approved in Life 14, kept in the [current specification](LIFE18_SPEC.md), use Mesolithic European adult means: women 154 cm and 52 kg; men 165 cm and 62 kg; within-sex spreads 6 cm and 6 kg (Formicola and Giannecchini 1999; Ruff 2018). Grip means are 24 kg and 38 kg, spread 6 kg, following forager-horticulturalist field magnitudes (Gurven et al. 2006; Apicella 2014). Within-sex height/weight, height/grip and weight/grip correlations are 0.55, 0.35 and 0.40. These are magnitude targets, not calibrated trajectories.
 
 The ten Big Five correlations follow van der Linden et al. (2010), in O-C, O-E, O-A, O-N, C-E, C-A, C-N, E-A, E-N, A-N order: 0.20, 0.43, 0.21, -0.17, 0.29, 0.43, -0.43, 0.26, -0.36, -0.36. Trait effects on approach distance, bargaining share, stocks/satiation, dusk margin and novelty are directional estimates. Their strengths remain questions for later experiments. The carrying rule keeps average women's loads closer to men's than grip strength alone would, consistent with forager loads of roughly 15 to 25 kg or more (Lee 1979; Marlowe 2010). Full reference details are in the specification.
+
+## Life 18: seasons and stores
+
+The rules approved in Life 18, kept in the [current specification](LIFE18_SPEC.md), replace the all-year regrowth of berries and hazel above with crops that ripen in a season, are lost to animals and rot, and swing from year to year. The land's food is now day-anchored: a thicket's yearly crop is stated per 365 days, so at the default 90 days a year it grows 90/365 of it. Foragers and subsistence farmers lose a few per cent of body weight in their lean season and regain it at harvest [50]; Life 18 is checked against that pattern.
+
+| Parameter | Value | Basis | Status |
+| --- | --- | --- | --- |
+| `berrySeason` | 330‰ to 450‰ of the year from the spring equinox, about 19 July to 31 August | Bilberry ripens in July and August in northern Europe [4] | Measured |
+| `nutSeason` | 450‰ to 580‰, about 31 August to 20 October | Hazelnuts fall from late August to October [31] | Measured |
+| `arrivalPerMille` | 330‰, the first day of the berry season | Founders arriving in spring would starve before any food grew | Decision |
+| `berryThicketKcalPerYear` | 5,400 kcal (9 kg) a normal year | 200 kg a hectare over a thicket's 452 m²; wild bilberry gives 4 to 65 kg a hectare on forest average and up to 630 in an exceptional field [4] | Measured range, judged |
+| `hazelThicketKcalPerYear` | 150,000 kcal (60 kg in shells) | Kept from Life 9.7: wild woodland hazel about 400 kg a hectare [30] | Measured |
+| Year classes | Poor, normal or good with chances 250‰, 500‰, 250‰; berries 500‰, 1,000‰, 1,400‰ of normal; hazel 300‰, 1,000‰, 1,600‰ | Nut crops swing widely and in step over regions; hazel bears heavy and light years [31] | Estimate |
+| `berryLossPerMille`, `nutLossPerMille` | 48 a day, half gone in 14 days | Fallen hazelnuts removed by rodents with a median of about two weeks [49] | Estimate from a related species |
+| `nutShelfLifeHours` | 8,760, a year | Dry hazelnuts in their shells keep about a year; Mesolithic people roasted them | Estimate |
+| `storeKcalPerDay` | 2,500 for the 60 kg reference body, scaled by weight | A day's food for the reference body, as in the eating rules above | Derived |
+| `storeKcalPerHour` | 6,000 | Cracking and eating stored nuts at home; faster than picking because the walking and searching are done | Estimate |
+
+Sources added for Life 18:
+
+49. Hazel seed fate. The task named a 2024 study of *Corylus mandshurica* seed fate in *Global Ecology and Conservation* (October 2024). **It could not be verified**: PubMed and the publisher could not be read from this session, and no paper with that species, journal and date was found. Candidates found instead: a study of habitat differences in scatter-hoarding reporting a mean removal time of about 14 days (14.24 ± 10.53 d pooled across species; PubMed 37234965, PMC10208085); a 2024 *Global Ecology and Conservation* paper on *Corylus heterophylla* (https://doi.org/10.1016/j.gecco.2024.e03073); and work in *ZooKeys* (2021) on *C. mandshurica* finding 15.83% of seeds eaten in place and 84.17% dispersed by rodents. The 14-day half-life stands as an estimate until the source is confirmed.
+50. Jenike, M. R. (2001). Nutritional ecology: diet, physical activity and body size. In C. Panter-Brick, R. H. Layton and P. Rowley-Conwy (eds.), *Hunter-Gatherers: An Interdisciplinary Perspective* (pp. 205–238). Cambridge University Press.

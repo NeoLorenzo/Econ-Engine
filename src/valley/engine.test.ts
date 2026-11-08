@@ -152,7 +152,13 @@ describe('food, water and wood tasks', () => {
     expect(next.foragers[0]!.task).toMatchObject({ kind: 'walk', reason: 'taking a load home' })
   })
   it('keeps a day of bodies and meals identical at 8 and 365 days per year', () => {
-    const runs = [8, 365].map((daysPerYear) => stepValley(createValley({ founders: 8, daysPerYear }), 1_440))
+    // Thickets bear only in their windows, which fall on different days at each length, so they bear nothing here.
+    const runs = [8, 365].map((daysPerYear) =>
+      stepValley(
+        createValley({ founders: 8, daysPerYear, berryThicketKcalPerYear: 0, hazelThicketKcalPerYear: 0 }),
+        1_440,
+      ),
+    )
     const body = (s: ReturnType<typeof createValley>) =>
       s.foragers.map((p) => ({
         energy: p.energyKcal,

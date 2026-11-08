@@ -66,6 +66,23 @@ export interface FoodLot {
   food: FoodKind
   kcal: number
   harvestTick: number
+  /** Taken out of a store into someone's hand; kept through gifts, and read only by the books of what was eaten. */
+  fromStore?: true
+}
+
+/** A season's window in thousandths of the year, from the spring equinox: `[startPerMille, endPerMille)`. */
+export interface SeasonWindow {
+  startPerMille: number
+  endPerMille: number
+}
+/** A year's crop, poor, normal or good, and the share of a normal crop each gives, per mille. */
+export type CropClass = 'poor' | 'normal' | 'good'
+export type CropFactors = Record<CropClass, number>
+/** The year's crop classes for the whole valley, drawn at the year's start. */
+export interface Harvest {
+  year: number
+  berries: CropClass
+  hazel: CropClass
 }
 
 /** One value for each of foraging, wood and craft. */
@@ -177,12 +194,27 @@ export interface ValleyConfig extends HydrationConfig, NatureConfig {
   moderateSlowdownPerMille: number
   steepDownSlowdownPerMille: number
   climbMinutesPerMetre: number
-  berryThicketCapacityKcal: number
-  berryThicketRegrowthKcalPerYear: number
+  /** The founders arrive this far through the year, counted from the spring equinox; year-anchored. */
+  arrivalPerMille: number
+  /** When bilberries ripen and hazelnuts fall; year-anchored. */
+  berrySeason: SeasonWindow
+  nutSeason: SeasonWindow
+  /** A thicket's crop in a normal year, per 365 days: day-anchored, delivered over its window. */
+  berryThicketKcalPerYear: number
+  hazelThicketKcalPerYear: number
+  /** The chances of a poor and of a good year, and each class's share of a normal crop, per mille. */
+  poorYearPerMille: number
+  goodYearPerMille: number
+  berryYearPerMille: CropFactors
+  hazelYearPerMille: CropFactors
+  /** The share of what lies on a thicket lost to animals and rot each midnight, per mille. */
+  berryLossPerMille: number
+  nutLossPerMille: number
+  /** A day's food for the reference body that a store is planned at, and the rate stored nuts are cracked and eaten. */
+  storeKcalPerDay: number
+  storeKcalPerHour: number
   berryThicketWoodKg: number
   berryThicketWoodRegrowthKgPerYear: number
-  hazelThicketCapacityKcal: number
-  hazelThicketRegrowthKcalPerYear: number
   standWoodKg: number
   standDeadfallKgPerYear: number
   standLogs: number
@@ -582,7 +614,9 @@ export interface SwapTotals {
   kcalPaid: number
 }
 
-export type TaskKind = 'sleep' | 'rest' | 'walk' | 'pick' | 'nuts' | 'fish' | 'drink' | 'gather' | 'cut' | 'make'
+/** `store`: gathering nuts for the store; `eat store`: eating from it at home. */
+export type TaskKind =
+  'sleep' | 'rest' | 'walk' | 'pick' | 'nuts' | 'fish' | 'drink' | 'gather' | 'cut' | 'make' | 'store' | 'eat store'
 export interface TaskRecord {
   startTripWood?: number
   startLoadKg?: number
@@ -612,6 +646,10 @@ export interface TaskRecord {
   /** For making an axe, its technique, and whether this stint is practice. */
   technique?: number
   practice?: boolean
+  /** For a store load: the person's store target and store when it began, and the nuts they could still carry. */
+  storeTarget?: number
+  storeKcal?: number
+  roomKcal?: number
 }
 
 /** A corridor of triangles a person walked between two points, from `a` to `b`; immutable. */
@@ -748,6 +786,10 @@ export interface Forager extends Hydration, PersonNature {
   joinedMinute: number | null
   /** The groups whose flags it has seen and not since found gone. */
   knownFlags: number[]
+  /** The store of food at its hearth, oldest first; only it takes from it. Never changed in place. */
+  store: readonly FoodLot[]
+  /** Out gathering nuts to bring home to the store. */
+  storeTrip: boolean
 }
 
 /** How warm a forager sleeps: by a lit fire in its whole hut, by the fire alone, in its hut alone, or with neither. */
@@ -797,6 +839,10 @@ export type ActionReason =
   | 'practising'
   | 'going home to practise'
   | 'fetching a stone to practise'
+  | 'gathering nuts for the store'
+  | 'taking nuts home to store'
+  | 'eating from the store'
+  | 'going home to eat from the store'
 
 /** A log cut from a tree. */
 export interface CutEvent {
@@ -1070,7 +1116,7 @@ export type WakeEvent =
       rechecked: boolean
       wayId: number
     }
-  | { kind: 'regrowth'; minute: number; placeId: number; kcal: number; wood: number; logs: number }
+  | { kind: 'regrowth'; minute: number; placeId: number; kcal: number; lost: number; wood: number; logs: number }
   | { kind: 'fish-regrowth'; minute: number; bodyId: number; kcal: number; remainder: number }
   | { kind: 'rate-change'; minute: number; foragerId: number; energyPerHour: number }
 /** Two people's time together counted, as added to both their ties. */
@@ -1105,6 +1151,37 @@ export interface RefusalEvent {
   grievance: number
 }
 export type TieEvent = TogetherEvent | GiftEvent | RefusalEvent
+/** The year's crop classes drawn at its start, with their factors per mille. */
+export interface HarvestEvent extends Harvest {
+  kind: 'harvest'
+  minute: number
+  berryFactor: number
+  hazelFactor: number
+}
+/** Carried nut lots put into the person's store at their hearth, and the store's total after. */
+export interface StoredEvent {
+  kind: 'stored'
+  minute: number
+  foragerId: number
+  position: Point
+  lots: FoodLot[]
+  storeKcal: number
+}
+/** Food moved from a person's store into their hand, as they eat from it. */
+export interface FromStoreEvent {
+  kind: 'fromStore'
+  minute: number
+  foragerId: number
+  kcal: number
+}
+/** Food spoiled in a store at midnight. */
+export interface StoreSpoiledEvent {
+  kind: 'storeSpoiled'
+  minute: number
+  foragerId: number
+  kcal: number
+}
+export type StoreEvent = HarvestEvent | StoredEvent | FromStoreEvent | StoreSpoiledEvent
 export type ValleyEvent =
   | WakeEvent
   | (Omit<FoundEvent, 'kind'> & { kind: 'group-founded' })
@@ -1130,6 +1207,7 @@ export type ValleyEvent =
   | AxeEvent
   | HutEvent
   | TieEvent
+  | StoreEvent
 
 /** Seconds spent on each kind of time, summed over the band. */
 export interface ActionSeconds {
@@ -1255,6 +1333,25 @@ export interface DaySummary {
   breaksByTechnique: number[]
   axesMadeByTechnique: number[]
   hutLogsById: number[]
+  /** Every person's store and store target at the end of the day. */
+  storeKcalById: number[]
+  storeTargetById: number[]
+  /** The day's crop added to thickets, lost on them, and turned away above capacity, by kind; fish grown. */
+  cropBerriesKcal: number
+  cropNutsKcal: number
+  lostBerriesKcal: number
+  lostNutsKcal: number
+  overflowBerriesKcal: number
+  overflowNutsKcal: number
+  fishGrownKcal: number
+  /** Food held in stores at the end of the day, and spoiled in them during it. */
+  storedKcal: number
+  storeSpoiledKcal: number
+  /** Kilocalories eaten during the day by source; the day's burned kilocalories are `spentKcal`. */
+  eatenBerriesKcal: number
+  eatenNutsKcal: number
+  eatenStoreKcal: number
+  eatenFishKcal: number
 }
 
 export interface ValleyTotals {
@@ -1263,6 +1360,8 @@ export interface ValleyTotals {
   initialKcal: number
   /** Berries and nuts regrown, and fish grown in the lake. */
   regrownKcal: number
+  /** Berries and nuts lost on thickets to animals and rot. */
+  lostKcal: number
   fishGrownKcal: number
   metabolizedKcal: number
   gatheredKcal: number
@@ -1337,4 +1436,6 @@ export interface ValleyState {
   eventDays: ValleyEvent[][]
   days: DaySummary[]
   today: DaySummary
+  /** This calendar year's crop classes. */
+  harvest: Harvest
 }

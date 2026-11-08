@@ -5,7 +5,7 @@ describe('analytic Life 12 magnitudes', () => {
   const config = resolveValleyConfig(FLAT_LAND),
     t = valleyTheory(config)
   it('counts aggregate food and log offers', () => {
-    expect(t.initialFoodKcal).toBe(32 * 3120 + 32 * 75000 + fishCapacityKcal(config))
+    expect(t.initialFoodKcal).toBe(fishCapacityKcal(config))
     expect(t.logsOnOffer).toBe(12 * 36)
   })
   it('prices making by its extra energy', () => {
@@ -22,11 +22,11 @@ describe('analytic Life 12 magnitudes', () => {
     expect(t.lazyRestDay).toEqual({ kcal: 2160, waterMl: 2000 })
     expect(t.lazyPickingFourHours).toEqual({ kcal: 800, extraWaterMl: 440 })
   })
-  it('anchors growth to years and body costs to days', () => {
+  it('anchors the food the land grows and body costs to days', () => {
     const fast = valleyTheory({ ...config, daysPerYear: 8 }),
       slow = valleyTheory({ ...config, daysPerYear: 365 })
-    expect(fast.yearlyRegrowthKcal).toBe(slow.yearlyRegrowthKcal)
-    expect(fast.dailyRegrowthKcal * 8).toBe(slow.dailyRegrowthKcal * 365)
+    expect(fast.yearlyRegrowthKcal * 365).toBeCloseTo(slow.yearlyRegrowthKcal * 8)
+    expect(fast.dailyRegrowthKcal).toBeCloseTo(slow.dailyRegrowthKcal)
     expect(fast.lazyRestDay).toEqual(slow.lazyRestDay)
   })
 })

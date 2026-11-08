@@ -12,7 +12,7 @@ export function taskRates(config: ValleyConfig, person: Forager, kind: TaskKind,
       ? sleepCostOf(config, warmth)
       : kind === 'walk'
         ? config.walkKcalPerHour
-        : kind === 'pick' || kind === 'nuts' || kind === 'fish'
+        : kind === 'pick' || kind === 'nuts' || kind === 'fish' || kind === 'store'
           ? config.pickKcalPerHour
           : kind === 'gather'
             ? config.gatherKcalPerHour

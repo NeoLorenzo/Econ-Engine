@@ -311,7 +311,7 @@ describe('ported Life 11 axe and shelter rules', () => {
     s.woodStock[64] = 0
     s.woodStock[0] = 0
     s.woodStock[65] = 310
-    regrowPlaces(s, 1440)
+    regrowPlaces(s, 2 * 1440)
     expect(s.woodStock[64]).toBeGreaterThan(0)
     expect(s.woodStock[0]).toBeGreaterThanOrEqual(0)
     expect(s.woodStock[65]).toBe(310)

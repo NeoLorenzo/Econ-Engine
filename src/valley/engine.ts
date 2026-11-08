@@ -16,6 +16,8 @@ import { hutWhole } from './huts'
 import { energyAt, waterAt } from './body'
 import { worldWake } from './world'
 import { carriedKcal } from './food'
+import { harvestEvent, harvestOf, regrowPlaces } from './places'
+import { storeKcal, storeTarget } from './stores'
 import { personWake, arrival } from './wake'
 export { personWake } from './wake'
 import type { DaySummary, Forager, ValleyConfig, ValleyEvent, ValleyState } from './types'
@@ -128,6 +130,21 @@ function emptyDay(
     refusalsMetById: zeros(foragers.length),
     campfireBurnedWood: 0,
     fireLitHours: 0,
+    storeKcalById: foragers.map(storeKcal),
+    storeTargetById: zeros(foragers.length),
+    cropBerriesKcal: 0,
+    cropNutsKcal: 0,
+    lostBerriesKcal: 0,
+    lostNutsKcal: 0,
+    overflowBerriesKcal: 0,
+    overflowNutsKcal: 0,
+    fishGrownKcal: 0,
+    storedKcal: foragers.reduce((total, forager) => total + storeKcal(forager), 0),
+    storeSpoiledKcal: 0,
+    eatenBerriesKcal: 0,
+    eatenNutsKcal: 0,
+    eatenStoreKcal: 0,
+    eatenFishKcal: 0,
     fireDarkHours: 0,
     logsCut: 0,
     axesMade: 0,
@@ -173,11 +190,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const stoneStock = new Int32Array(layout.places.count)
   for (let id = 0; id < layout.places.count; id += 1) {
     const kind = layout.places.kind[id]
-    if (kind === 0) {
-      foodStock[id] = config.berryThicketCapacityKcal
-      woodStock[id] = config.berryThicketWoodKg
-    }
-    if (kind === 1) foodStock[id] = config.hazelThicketCapacityKcal
+    if (kind === 0) woodStock[id] = config.berryThicketWoodKg
     if (kind === 2) {
       woodStock[id] = config.standWoodKg
       logStock[id] = config.standLogs
@@ -228,6 +241,8 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       alive: true,
       deathMinute: null,
       carried: [],
+      store: [],
+      storeTrip: false,
       wood: 0,
       shortOfWood: woodMatters(config),
       tripWood: 0,
@@ -272,6 +287,9 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
   const queue = new WakeQueue()
   for (const person of foragers) queue.schedule({ minute: 0, phase: 1, id: person.id, kind: 'end' })
   queue.schedule({ minute: 60, phase: 0, id: 0, kind: 'world' })
+  // Thickets start bare and receive the arrival day's crop, as at a midnight; wood is already full.
+  const harvest = harvestOf(config, 0)
+  const crop = regrowPlaces({ config, layout, foodStock, woodStock, logStock, logRegrowth: new Map() }, 0)
   const partial = { foragers, foodStock, layout, fishKcal, woodStock, groups, huts: [], config }
   const personChunk = Int32Array.from(
     foragers,
@@ -306,6 +324,7 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
       initialKcal: sum(foodStock) + fishKcal + foragers.reduce((total, forager) => total + forager.energyKcal, 0),
       regrownKcal: 0,
       fishGrownKcal: 0,
+      lostKcal: 0,
       metabolizedKcal: 0,
       gatheredKcal: 0,
       spoiledKcal: 0,
@@ -337,9 +356,16 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     lastFeeds: [],
     lastAxeEvents: [],
     lastHutEvents: [],
-    eventDays: [[]],
+    harvest,
+    eventDays: [[harvestEvent(config, 0, harvest)]],
     days: [],
-    today: emptyDay(0, partial),
+    today: {
+      ...emptyDay(0, partial),
+      cropBerriesKcal: crop.crop[0]!,
+      cropNutsKcal: crop.crop[1]!,
+      overflowBerriesKcal: crop.overflow[0]!,
+      overflowNutsKcal: crop.overflow[1]!,
+    },
   }
 }
 
@@ -442,6 +468,8 @@ const cloneDay = (day: DaySummary): DaySummary => ({
   breaksByTechnique: [...day.breaksByTechnique],
   axesMadeByTechnique: [...day.axesMadeByTechnique],
   hutLogsById: [...day.hutLogsById],
+  storeKcalById: [...day.storeKcalById],
+  storeTargetById: [...day.storeTargetById],
 })
 
 /**
@@ -505,6 +533,9 @@ function finishDay(state: ValleyState, minute: number) {
   day.placesSeenById = [...day.sitesKnownById]
   day.tiesById = state.foragers.map((p) => p.ties.size)
   day.companionsById = state.foragers.map((p) => companionsOn(p, minute))
+  day.storeKcalById = state.foragers.map(storeKcal)
+  day.storeTargetById = state.foragers.map((p) => (p.alive ? storeTarget(state.config, p, minute - 1) : 0))
+  day.storedKcal = day.storeKcalById.reduce((total, kcal) => total + kcal, 0)
   state.days.push(day)
   state.today = emptyDay(dayOf(minute), state)
   state.eventDays.push([])

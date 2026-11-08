@@ -98,9 +98,11 @@ export function valleyTheory(config: ValleyConfig) {
   const night = nightHours(config),
     daylight = 24 - night
   const fixedDailyCostKcal = night * config.sleepKcalPerHour + daylight * config.restKcalPerHour
-  const yearlyBerriesKcal = config.thicketCount * config.berryThicketRegrowthKcalPerYear
-  const yearlyNutsKcal = config.hazelThicketCount * config.hazelThicketRegrowthKcalPerYear
-  const yearlyFishKcal = (fishCapacityKcal(config) * config.fishGrowthPercentPerYear) / 400
+  // The land's food is day-anchored: a year of `daysPerYear` days grows `daysPerYear / 365` of a 365-day year's.
+  const year = config.daysPerYear / 365
+  const yearlyBerriesKcal = config.thicketCount * config.berryThicketKcalPerYear * year
+  const yearlyNutsKcal = config.hazelThicketCount * config.hazelThicketKcalPerYear * year
+  const yearlyFishKcal = ((fishCapacityKcal(config) * config.fishGrowthPercentPerYear) / 400) * year
   const yearlyRegrowthKcal = yearlyBerriesKcal + yearlyNutsKcal + yearlyFishKcal,
     dailyRegrowthKcal = yearlyRegrowthKcal / config.daysPerYear
   const forageHoursPerDay = (rate: number, gatherHours: number, walkHours: number) =>
@@ -117,10 +119,8 @@ export function valleyTheory(config: ValleyConfig) {
     yearlyFishKcal,
     yearlyRegrowthKcal,
     dailyRegrowthKcal,
-    initialFoodKcal:
-      config.thicketCount * config.berryThicketCapacityKcal +
-      config.hazelThicketCount * config.hazelThicketCapacityKcal +
-      fishCapacityKcal(config),
+    // Thickets start bare, before the arrival day's crop.
+    initialFoodKcal: fishCapacityKcal(config),
     forageHoursPerDay,
     dailyNeedKcal: (rate: number, gatherHours: number, walkHours: number) =>
       rate * forageHoursPerDay(rate, gatherHours, walkHours),

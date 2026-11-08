@@ -10,6 +10,7 @@ import { createValley } from './engine'
 import { FLAT_LAND } from './config'
 import { fishCapacity, fishGrowth, fishRate } from './fish'
 import { rateAtStock, spoil, spoilsIn } from './food'
+import { thicketCapacity } from './places'
 describe('the lake', () => {
   const { config } = createValley(FLAT_LAND)
   const capacity = fishCapacity(300_000, 1_000, config.fishKgPerHectare, config.fishKcalPerKg)
@@ -41,7 +42,7 @@ describe('the lake', () => {
 })
 
 describe('carried food', () => {
-  it('spoils by its own shelf life: fish in a day, berries in two, nuts in half a year', () => {
+  it('spoils by its own shelf life: fish in a day, berries in two, nuts in a year', () => {
     const { config } = createValley(FLAT_LAND)
     const lots = [
       { food: 'nuts' as const, kcal: 100, harvestTick: 0 },
@@ -51,15 +52,17 @@ describe('carried food', () => {
     expect(spoilsIn(config, lots, 0)).toBe(24 * 60)
     expect(spoil(config, lots, 24 * 60)).toMatchObject({ spoiledKcal: 50 })
     expect(spoil(config, lots, 48 * 60).spoiledKcal).toBe(80)
-    expect(spoil(config, lots, 4_380 * 60).lots).toEqual([])
+    expect(spoil(config, lots, 8_759 * 60).lots).toHaveLength(1)
+    expect(spoil(config, lots, 8_760 * 60).lots).toEqual([])
   })
 })
 
 it('retains the stock-dependent thicket slowdown', () => {
   const { config } = createValley(FLAT_LAND)
-  expect(rateAtStock(config, 1200, 'berries', 3120)).toBe(1200)
-  expect(rateAtStock(config, 1200, 'berries', 1560)).toBe(600)
-  expect(rateAtStock(config, 3500, 'nuts', 75000)).toBe(3500)
+  const berries = thicketCapacity(config, 0)
+  expect(rateAtStock(config, 1200, 'berries', berries)).toBe(1200)
+  expect(rateAtStock(config, 1200, 'berries', berries / 2)).toBe(600)
+  expect(rateAtStock(config, 3500, 'nuts', thicketCapacity(config, 1))).toBe(3500)
   expect(fishRate(600, 900000, 1800000)).toBe(300)
 })
 
@@ -73,8 +76,9 @@ describe('ported food and load choices', () => {
     p.hungry = true
     p.forageRate = 1200
     s.foodStock.fill(0)
-    s.foodStock[0] = 1560
+    s.foodStock[0] = thicketCapacity(s.config, 0) / 2
     p.placeStock.set(s.foodStock)
+    p.placeCheckedMinute.fill(600)
     observeAt(s, p, 600)
     const n = stepValley(s, 601)
     expect(n.foragers[0]!.task).toMatchObject({ kind: 'pick', productionPerHour: 600 })
@@ -135,17 +139,21 @@ describe('ported food and load choices', () => {
     expect(chooseWork(s.config, p, 600)).toMatchObject({ good: 'food' })
   })
   it('chooses the nearer source at equal hourly returns and leaves sources below work cost', () => {
-    const s = bandAt(),
+    // Late in the berry window, when unseen thickets are expected to bear well.
+    const minute = 9 * 1_440 + 600
+    const s = bandAt(minute),
       p = s.foragers[0]!
     p.knownPlaces.fill(-1)
     p.knownPlaces[0] = 0
     p.knownPlaces[1] = 0
     p.x = s.layout.places.x[0]!
     p.y = s.layout.places.y[0]!
-    expect(foodGoal(s, p, 600)?.placeId).toBe(0)
+    expect(foodGoal(s, p, minute)?.placeId).toBe(0)
     p.placeStock[0] = 1
     p.placeStock[1] = 0
-    expect(foodGoal(s, p, 600)).toBeNull()
+    p.placeCheckedMinute[0] = minute
+    p.placeCheckedMinute[1] = minute
+    expect(foodGoal(s, p, minute)).toBeNull()
   })
 })
 
@@ -155,6 +163,7 @@ it('fishes an observed lake optimistically, withdraws its stock and remembers it
     bank = addTestLake(s)
   p.knownPlaces.fill(-1)
   p.placeStock.fill(0)
+  p.placeCheckedMinute.fill(600)
   p.x = bank.x
   p.y = bank.y
   p.energyKcal = 59000
@@ -171,8 +180,8 @@ it('walks farther for full hazels rather than staying at a thin berry thicket', 
   p.knownPlaces.fill(-1)
   p.knownPlaces[0] = 0
   p.knownPlaces[32] = 0
-  p.placeStock[0] = 1560
-  p.placeStock[32] = 75000
+  p.placeStock[0] = thicketCapacity(s.config, 0) / 2
+  p.placeStock[32] = thicketCapacity(s.config, 1)
   p.x = s.layout.places.x[0]!
   p.y = s.layout.places.y[0]!
   expect(foodGoal(s, p, 600)).toMatchObject({ kind: 'walk', placeId: 32 })
@@ -182,7 +191,14 @@ it('eats the oldest timestamped food up to reserve room without changing the lot
     { food: 'berries' as const, kcal: 100, harvestTick: 10 },
     { food: 'nuts' as const, kcal: 200, harvestTick: 20 },
   ]
-  expect(eatCarried(lots, 150)).toEqual({ takenKcal: 150, rest: [{ food: 'nuts', kcal: 150, harvestTick: 20 }] })
+  expect(eatCarried(lots, 150)).toEqual({
+    takenKcal: 150,
+    rest: [{ food: 'nuts', kcal: 150, harvestTick: 20 }],
+    taken: [
+      { food: 'berries', kcal: 100, harvestTick: 10 },
+      { food: 'nuts', kcal: 50, harvestTick: 20 },
+    ],
+  })
   expect(lots[0]!.kcal).toBe(100)
 })
 it('includes the carried load when judging the departure deadline', () => {

@@ -59,12 +59,21 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   moderateSlowdownPerMille: 1_300,
   steepDownSlowdownPerMille: 1_300,
   climbMinutesPerMetre: 1,
-  berryThicketCapacityKcal: 3_120,
-  berryThicketRegrowthKcalPerYear: 54_000,
+  arrivalPerMille: 330,
+  berrySeason: { startPerMille: 330, endPerMille: 450 },
+  nutSeason: { startPerMille: 450, endPerMille: 580 },
+  berryThicketKcalPerYear: 5_400,
   berryThicketWoodKg: 120,
   berryThicketWoodRegrowthKgPerYear: 12,
-  hazelThicketCapacityKcal: 75_000,
-  hazelThicketRegrowthKcalPerYear: 150_000,
+  hazelThicketKcalPerYear: 150_000,
+  poorYearPerMille: 250,
+  goodYearPerMille: 250,
+  berryYearPerMille: { poor: 500, normal: 1_000, good: 1_400 },
+  hazelYearPerMille: { poor: 300, normal: 1_000, good: 1_600 },
+  berryLossPerMille: 48,
+  nutLossPerMille: 48,
+  storeKcalPerDay: 2_500,
+  storeKcalPerHour: 6_000,
   standWoodKg: 300,
   standDeadfallKgPerYear: 60,
   standLogs: 36,
@@ -147,7 +156,7 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   hazelThicketRadiusCm: 2_000,
   nutKcalPerHour: 3_500,
   nutKcalPerKg: 2_500,
-  nutShelfLifeHours: 4_380,
+  nutShelfLifeHours: 8_760,
   fishKcalPerHour: 600,
   fishKcalPerKg: 600,
   fishShelfLifeHours: 24,
@@ -308,6 +317,79 @@ function computeSpiral(count: number) {
   return points.slice(0, count)
 }
 
+const OBJECT_KEYS = new Set([
+  'traitCorrelationsPerMille',
+  'axeTechniques',
+  'berrySeason',
+  'nutSeason',
+  'berryYearPerMille',
+  'hazelYearPerMille',
+])
+
+/** The rules on seasons, crops, losses and stores. */
+function seasonErrors(config: ValleyConfig): string[] {
+  const errors: string[] = []
+  const integer = (value: unknown) => Number.isSafeInteger(value)
+  if (!integer(config.arrivalPerMille) || config.arrivalPerMille < 0 || config.arrivalPerMille > 999)
+    errors.push('arrivalPerMille must be an integer from 0 to 999')
+  for (const key of ['berrySeason', 'nutSeason'] as const) {
+    const window = config[key]
+    if (
+      !window ||
+      !integer(window.startPerMille) ||
+      !integer(window.endPerMille) ||
+      window.startPerMille < 0 ||
+      window.startPerMille >= window.endPerMille ||
+      window.endPerMille > 1_000
+    )
+      errors.push(`${key} must start at 0 or later, below its end, and end by 1,000`)
+  }
+  for (const key of ['berryYearPerMille', 'hazelYearPerMille'] as const) {
+    const factors = config[key]
+    if (
+      !factors ||
+      ![factors.poor, factors.normal, factors.good].every((value) => integer(value) && value >= 0) ||
+      factors.poor > factors.normal ||
+      factors.normal > factors.good
+    )
+      errors.push(`${key} must be integers from 0, rising from poor to good`)
+  }
+  for (const [key, factor] of [
+    ['berryThicketKcalPerYear', config.berryYearPerMille?.good],
+    ['hazelThicketKcalPerYear', config.hazelYearPerMille?.good],
+  ] as const) {
+    const value = config[key]
+    if (!integer(value) || value < 0) errors.push(`${key} must not be negative`)
+    else if (integer(factor) && !Number.isSafeInteger(value * 365 * factor!))
+      errors.push(`${key} times 365 days and the good factor must be a safe integer`)
+    else if (integer(factor) && Math.floor((value * factor!) / 1_000) > 2_147_483_647)
+      errors.push(`${key} exceeds Int32 stock limits`)
+  }
+  if (
+    config.poorYearPerMille < 0 ||
+    config.goodYearPerMille < 0 ||
+    config.poorYearPerMille + config.goodYearPerMille > 1_000
+  )
+    errors.push('poorYearPerMille and goodYearPerMille must not be negative or sum above 1,000')
+  for (const key of ['berryLossPerMille', 'nutLossPerMille'] as const)
+    if (config[key] < 0 || config[key] > 1_000) errors.push(`${key} must be from 0 to 1,000`)
+  if (config.nutShelfLifeHours < 1) errors.push('nutShelfLifeHours must be at least 1')
+  if (config.storeKcalPerDay < 0) errors.push('storeKcalPerDay must not be negative')
+  else if (
+    !Number.isSafeInteger(
+      config.storeKcalPerDay *
+        365 *
+        (Math.max(config.womanWeightKg, config.manWeightKg) + 3 * config.weightSdKg) *
+        Math.max(1, config.conscientiousnessRule?.high ?? 0),
+    )
+  )
+    errors.push(
+      'storeKcalPerDay times a year, the heaviest body and the highest planning factor must be a safe integer',
+    )
+  if (config.storeKcalPerHour < 1) errors.push('storeKcalPerHour must be at least 1')
+  return errors
+}
+
 /** Returns every rule the configuration breaks, except whether its layout can be drawn, which `createValley` finds. */
 export function valleyConfigErrors(config: ValleyConfig): string[] {
   const calendarErrors =
@@ -316,12 +398,13 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
       : ['daysPerYear must be an integer from 8 to 365']
   const errors: string[] = [...calendarErrors]
   for (const [key, value] of Object.entries(config)) {
-    if (key.endsWith('Rule') || key === 'traitCorrelationsPerMille' || key === 'axeTechniques') continue
+    if (key.endsWith('Rule') || OBJECT_KEYS.has(key)) continue
     if (BOOLEAN_KEYS.has(key)) {
       if (typeof value !== 'boolean') errors.push(`${key} must be true or false`)
     } else if (!Number.isInteger(value)) errors.push(`${key} must be an integer`)
     else if (!Number.isSafeInteger(value)) errors.push(`${key} must be a safe integer`)
   }
+  errors.push(...seasonErrors(config))
   if (errors.length) return errors
   const thresholds = waterThresholds(config, Math.min(config.womanWeightKg, config.manWeightKg) - 3 * config.weightSdKg)
   if (Object.values(thresholds).some((value) => !Number.isSafeInteger(value)))
@@ -361,9 +444,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     'valleySizeCm',
     'thicketCount',
     'thicketRadiusCm',
-    'berryThicketCapacityKcal',
     'hazelThicketRadiusCm',
-    'hazelThicketCapacityKcal',
     'standWoodKg',
     'standLogs',
     'walkKcalPerHour',
@@ -457,12 +538,9 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
   ]
   for (const key of positive) if ((config[key] as number) <= 0) errors.push(`${key} must be positive`)
   const notNegative: (keyof ValleyConfig)[] = [
-    'berryThicketRegrowthKcalPerYear',
     'berryThicketWoodKg',
     'berryThicketWoodRegrowthKgPerYear',
     'hazelThicketCount',
-    'hazelThicketRegrowthKcalPerYear',
-    'nutShelfLifeHours',
     'fishShelfLifeHours',
     'standCount',
     'standDeadfallKgPerYear',
@@ -637,16 +715,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     errors.push('Land coordinates exceed exact squared-distance limits')
   if (config.thicketCount + config.hazelThicketCount + config.standCount + config.outcropCount > 2_000_000)
     errors.push('Place allocations exceed the supported two million records')
-  for (const key of [
-    'berryThicketCapacityKcal',
-    'berryThicketRegrowthKcalPerYear',
-    'hazelThicketCapacityKcal',
-    'hazelThicketRegrowthKcalPerYear',
-    'standWoodKg',
-    'standLogs',
-    'outcropStones',
-    'logsPerTree',
-  ] as const)
+  for (const key of ['standWoodKg', 'standLogs', 'outcropStones', 'logsPerTree'] as const)
     if (config[key] > 2_147_483_647) errors.push(`${key} exceeds Int32 stock limits`)
   const waterActivityBound =
     config.waterExtraMlPerKcal *

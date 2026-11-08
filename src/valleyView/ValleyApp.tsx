@@ -3,9 +3,10 @@ import { LandMap } from './LandMap'
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SkillMap } from './SkillMap'
 import { TieGraph } from './TieGraph'
-import { TimeChart } from '../ui/charts'
+import { PieChart, StackedAreaChart, StackedBarChart, TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
+import { runDayOf } from '../valley/calendar'
 import { isDaylight } from '../valley/forager'
 import type { ValleyState } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
@@ -17,7 +18,15 @@ import {
   clearView,
   calendarLabel,
   clockLabel,
+  cropByYear,
+  cropPhrase,
   daySeries,
+  deathMarks,
+  DEATH_COLORS,
+  eatenBySource,
+  FOOD_SOURCES,
+  foodSeasonOf,
+  type FoodPeriod,
   daysOfFoodLeft,
   DEFAULT_SPEED_INDEX,
   describeActivity,
@@ -366,10 +375,10 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 17</span>
+        <span className="life-title">Life 18</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
-            {calendarLabel(config, minutes)} · {clockLabel(minutes / 60).split(' · ')[1]}
+            {calendarLabel(config, minutes, state.harvest)} · {clockLabel(minutes / 60).split(' · ')[1]}
           </span>
           <span>
             {aliveCount(state)} of {config.founders} alive
@@ -664,6 +673,41 @@ export default function ValleyApp({
               ))}
           </ul>
         </details>
+        <details className="life-details">
+          <summary>Recent harvests, stores and deaths</summary>
+          <ul>
+            {[
+              // The year's crop is drawn at its start, longer ago than the few days of events kept.
+              {
+                ...state.harvest,
+                kind: 'harvest' as const,
+                minute: Math.max(0, runDayOf(config, state.harvest.year, 0) * 1_440),
+              },
+              ...state.eventDays.flat().filter((event) => event.kind === 'stored' && event.foragerId === followed),
+              ...state.foragers.flatMap((person) =>
+                !person.alive && person.deathMinute !== null
+                  ? [{ kind: 'died' as const, minute: person.deathMinute, person }]
+                  : [],
+              ),
+            ]
+              .sort((a, b) => a.minute - b.minute)
+              .slice(-6)
+              .map((event, index) => (
+                <li key={index}>
+                  {event.kind === 'harvest'
+                    ? `Year ${event.year + 1}: ${cropPhrase('berry', event.berries)}, ${cropPhrase('hazel', event.hazel)}`
+                    : event.kind === 'stored'
+                      ? `${foragerName(event.foragerId)} stored ${formatKg(
+                          Math.round(event.lots.reduce((total, lot) => total + lot.kcal, 0) / config.nutKcalPerKg),
+                        )} of nuts`
+                      : event.kind === 'died' &&
+                        `${foragerName(event.person.id)} ${
+                          event.person.deathCauses[0] === 'dehydration' ? 'died of thirst' : 'starved'
+                        } in ${foodSeasonOf(config, event.minute)}`}
+                </li>
+              ))}
+          </ul>
+        </details>
         <SkillRings skills={skillLevels(state, followed)} />
         {standing.length > 0 && (
           <div className="valley-groups" role="group" aria-label="Groups">
@@ -726,6 +770,13 @@ export default function ValleyApp({
               {summary.carriedKcal ? carriedPhrase(summary.carriedByFood) : 'no food'}
               {summary.log > 0 && ', a log'}
               {summary.stone > 0 && `, ${summary.stone} stone`}
+            </dd>
+            <dt>Store</dt>
+            <dd className="num">
+              {summary.storeKcal
+                ? `${formatKcal(summary.storeKcal)} of nuts, about ${summary.storeDays} days`
+                : 'empty'}
+              {summary.storeTarget > 0 && ` (target ${summary.storeTarget.toLocaleString('en-US')})`}
             </dd>
             <dt>Wood</dt>
             <dd className="num">
@@ -1242,10 +1293,128 @@ const PeopleChart = memo(
  */
 const HistoryCharts = memo(
   function HistoryCharts({ state, followed, name }: { state: ValleyState; followed: number; name: string }) {
+    const [period, setPeriod] = useState<FoodPeriod>('season')
     const days = daySeries(state, followed)
     if (days.length <= 1) return <p className="life-note">The charts over time begin after the first day.</p>
+    const eaten = eatenBySource(state, period)
+    const kcal = (value: number) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))
     return (
       <>
+        <h3 className="life-chart-section">Food</h3>
+        <div className="life-tabs" role="tablist" aria-label="Period eaten over">
+          {(
+            [
+              { key: 'season', label: 'This season' },
+              { key: 'year', label: 'This year' },
+              { key: 'run', label: 'Whole run' },
+            ] as const
+          ).map((choice) => (
+            <button
+              key={choice.key}
+              type="button"
+              role="tab"
+              aria-selected={period === choice.key}
+              className={period === choice.key ? 'is-selected' : undefined}
+              onClick={() => setPeriod(choice.key)}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+        <PieChart
+          data={FOOD_SOURCES.map((source) => ({ ...source, value: eaten[source.key] }))}
+          format={(value) => formatKcal(value)}
+          height={150}
+        />
+        <StackedAreaChart
+          data={days}
+          height={120}
+          format={kcal}
+          stacked={FOOD_SOURCES.map((source) => ({
+            key: `eaten${source.key[0]!.toUpperCase()}${source.key.slice(1)}`,
+            name: `${source.name} eaten, kcal`,
+            color: source.color,
+          }))}
+          lines={[{ key: 'burned', name: 'Burned, kcal', color: palette.text, dashed: true, width: 1.5 }]}
+        />
+        <TimeChart
+          data={days}
+          height={110}
+          format={kcal}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'onLand', name: 'Food on the land, kcal', color: palette.positive },
+            { key: 'inStores', name: 'In stores', color: palette.warning },
+            { key: 'inBodies', name: 'In bodies', color: palette.household, dashed: true },
+          ]}
+        />
+        <StackedAreaChart
+          data={days}
+          height={120}
+          format={kcal}
+          band={{
+            low: 'reserveLowest',
+            high: 'reserveHighest',
+            name: 'Reserves, lowest to highest',
+            color: palette.neutral,
+          }}
+          lines={[
+            { key: 'reserveMedian', name: 'Median reserve, kcal', color: palette.accent },
+            { key: 'followedReserve', name: `${name}’s reserve`, color: palette.text2, dashed: true },
+          ]}
+          marks={deathMarks(state)}
+          markLegend={[
+            { key: 'starved', name: 'Starved', color: DEATH_COLORS.starvation },
+            { key: 'thirst', name: 'Died of thirst', color: DEATH_COLORS.dehydration },
+          ]}
+        />
+        <StackedBarChart
+          data={cropByYear(state)}
+          height={130}
+          format={kcal}
+          series={[
+            { key: 'gathered', name: 'Gathered by people', color: palette.accent },
+            { key: 'spoiled', name: 'Spoiled in stores', color: palette.negative },
+            { key: 'lost', name: 'Lost on the land', color: palette.neutral },
+            { key: 'standing', name: 'Standing at year’s end', color: palette.positive },
+          ]}
+        />
+        <h3 className="life-chart-section">People</h3>
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'alive', name: 'Alive', color: palette.household },
+            { key: 'groups', name: 'Groups', color: palette.accent },
+            { key: 'loners', name: 'Without a group', color: palette.firmA, dashed: true },
+          ]}
+        />
+        <h3 className="life-chart-section">Craft</h3>
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'flakedMade', name: 'Flaked axes made each day', color: palette.accent },
+            { key: 'tranchetMade', name: 'Tranchet axes made each day', color: palette.positive },
+            { key: 'groundMade', name: 'Ground axes made each day', color: palette.firmA, dashed: true },
+          ]}
+        />
+        <TimeChart
+          data={days}
+          height={90}
+          format={(value) => String(Math.round(value))}
+          domain={[0, 'auto']}
+          series={[
+            { key: 'axesSold', name: 'Axes sold each day', color: palette.positive },
+            { key: 'hutsWhole', name: 'Huts whole', color: palette.firmA, dashed: true },
+            { key: 'attemptsBroken', name: 'Attempts broken each day', color: palette.negative },
+          ]}
+        />
+        <h3 className="life-chart-section">Exchange</h3>
         <TimeChart
           data={ownTermsByDay(state, followed)}
           height={100}
@@ -1265,81 +1434,6 @@ const HistoryCharts = memo(
           series={[
             { key: 'swappedWood', name: 'Wood swapped each day, kg', color: palette.accent },
             { key: 'coldHours', name: 'Hours slept cold each day', color: palette.firmA, dashed: true },
-            { key: 'alive', name: 'Alive', color: palette.household },
-          ]}
-        />
-        <TimeChart
-          data={days}
-          height={90}
-          format={(value) => String(Math.round(value))}
-          domain={[0, 'auto']}
-          series={[
-            { key: 'groups', name: 'Groups', color: palette.accent },
-            { key: 'loners', name: 'Without a group', color: palette.firmA, dashed: true },
-          ]}
-        />
-        <TimeChart
-          data={days}
-          height={90}
-          format={(value) => String(Math.round(value))}
-          domain={[0, 'auto']}
-          series={[
-            { key: 'axesMade', name: 'Axes made each day', color: palette.accent },
-            { key: 'axesSold', name: 'Axes sold each day', color: palette.positive },
-            { key: 'hutsWhole', name: 'Huts whole', color: palette.firmA, dashed: true },
-          ]}
-        />
-        <TimeChart
-          data={days}
-          height={90}
-          format={(value) => String(Math.round(value))}
-          domain={[0, 'auto']}
-          series={[
-            { key: 'flakedMade', name: 'Flaked axes made each day', color: palette.accent },
-            { key: 'tranchetMade', name: 'Tranchet axes made each day', color: palette.positive },
-            { key: 'groundMade', name: 'Ground axes made each day', color: palette.firmA, dashed: true },
-          ]}
-        />
-        <TimeChart
-          data={days}
-          height={90}
-          format={(value) => String(Math.round(value))}
-          domain={[0, 'auto']}
-          series={[{ key: 'attemptsBroken', name: 'Attempts broken each day', color: palette.negative }]}
-        />
-        <TimeChart
-          data={days}
-          height={110}
-          format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
-          series={[
-            { key: 'reserve', name: `${name}’s reserve at day’s end`, color: palette.accent },
-            { key: 'stock', name: 'Berries per bush, kcal', color: palette.positive, dashed: true },
-          ]}
-        />
-        <TimeChart
-          data={days}
-          height={100}
-          format={(value) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))}
-          domain={[0, 'auto']}
-          series={[
-            { key: 'nutsTaken', name: 'Nuts taken each day, kcal', color: palette.accent },
-            { key: 'berriesTaken', name: 'Berries taken each day, kcal', color: palette.positive },
-            { key: 'fishTaken', name: 'Fish taken each day, kcal', color: palette.household, dashed: true },
-          ]}
-        />
-        <TimeChart
-          data={days}
-          height={90}
-          format={(value) => `${Math.round(value)}%`}
-          domain={[0, 100]}
-          series={[
-            { key: 'hazelPercent', name: 'Nuts on the hazels, % of full', color: palette.accent },
-            {
-              key: 'fishPercent',
-              name: 'Fish in inland water, % of full',
-              color: palette.household,
-              dashed: true,
-            },
           ]}
         />
       </>

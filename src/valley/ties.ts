@@ -1,6 +1,6 @@
 import { energyAt } from './body'
 import { dayOf, MINUTES_PER_DAY } from './calendar'
-import { addLots, carriedKcal, eatCarried, takeOldest } from './food'
+import { addLots, carriedKcal, countEaten, eatCarried, takeOldest } from './food'
 import { nightWood, woodMatters } from './trade'
 import type { Forager, GiftEvent, GiftGood, RefusalEvent, Tie, TieEvent, TogetherEvent, ValleyState } from './types'
 
@@ -137,6 +137,7 @@ export function ask(state: ValleyState, asker: Forager, near: readonly number[],
   const eaten = eatCarried(asker.carried, state.config.reserveMaxKcal - asker.energyKcal)
   asker.carried = eaten.rest
   asker.energyKcal += eaten.takenKcal
+  countEaten(state.today, eaten.taken)
   return { events, ateKcal: eaten.takenKcal }
 }
 

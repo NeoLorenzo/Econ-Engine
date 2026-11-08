@@ -58,6 +58,7 @@ describe('water at wake-ups', () => {
     person.hungry = true
     person.knownPlaces.fill(0)
     person.placeStock.fill(0)
+    person.placeCheckedMinute.fill(600)
     const fish = state.fish.find((f) => f.bodyId === bank.bodyId)!
     fish.stock = 0
     state.fishKcal = 0

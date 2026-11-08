@@ -5,8 +5,9 @@ import { isDaylight, atHearth } from './forager'
 import { tendFire, warmthOf, sleepCostOf } from './work'
 import { hutWhole } from './huts'
 import { firstThresholdMinute } from './body'
-import { MINUTES_PER_DAY } from './calendar'
-import { regrowPlaces } from './places'
+import { dayOfYear, MINUTES_PER_DAY, yearOf } from './calendar'
+import { harvestEvent, harvestOf, regrowPlaces } from './places'
+import { spoilStore } from './stores'
 import { fishGrowth } from './fish'
 import { skillDay } from './skills'
 import { weatherHuts } from './huts'
@@ -14,35 +15,51 @@ import type { ValleyState, ValleyEvent } from './types'
 export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
   const events: ValleyEvent[] = [{ kind: 'world', minute }]
   if (minute % MINUTES_PER_DAY === 0) {
+    // Stored lots spoil first, owners alive or dead, as carried lots do at a wake-up.
+    for (const person of state.foragers) {
+      const kcal = spoilStore(state.config, person, minute)
+      if (!kcal) continue
+      state.totals.spoiledKcal += kcal
+      state.today.storeSpoiledKcal += kcal
+      events.push({ kind: 'storeSpoiled', minute, foragerId: person.id, kcal })
+    }
     for (const person of state.foragers) if (person.alive) events.push(skillDay(state.config, person, minute))
     fadeTies(state)
     events.push(...weatherHuts(state, minute))
-    const beforeFood = state.foodStock.slice(),
-      beforeWood = state.woodStock.slice(),
-      beforeLogs = state.logStock.slice()
-    const grown = regrowPlaces(state, minute)
+    if (dayOfYear(state.config, minute) === 0) {
+      state.harvest = harvestOf(state.config, yearOf(state.config, minute))
+      events.push(harvestEvent(state.config, minute, state.harvest))
+    }
+    const grown = regrowPlaces(state, minute, (placeId, growth) => {
+      if (growth.kcal || growth.lost || growth.wood || growth.logs)
+        events.push({
+          kind: 'regrowth',
+          minute,
+          placeId,
+          kcal: growth.kcal,
+          lost: growth.lost,
+          wood: growth.wood,
+          logs: growth.logs,
+        })
+    })
     state.totals.regrownKcal += grown.kcal
+    state.totals.lostKcal += grown.lost[0]! + grown.lost[1]!
     state.totals.regrownWood += grown.wood
     state.totals.regrownLogs += grown.logs
-    for (let id = 0; id < state.layout.places.count; id += 1) {
-      const kcal = state.foodStock[id]! - beforeFood[id]!,
-        wood = state.woodStock[id]! - beforeWood[id]!,
-        logs = state.logStock[id]! - beforeLogs[id]!
-      if (kcal || wood || logs) events.push({ kind: 'regrowth', minute, placeId: id, kcal, wood, logs })
-    }
+    state.today.cropBerriesKcal += grown.crop[0]!
+    state.today.cropNutsKcal += grown.crop[1]!
+    state.today.lostBerriesKcal += grown.lost[0]!
+    state.today.lostNutsKcal += grown.lost[1]!
+    state.today.overflowBerriesKcal += grown.overflow[0]!
+    state.today.overflowNutsKcal += grown.overflow[1]!
     for (const fish of state.fish) {
-      const growth = fishGrowth(
-        fish.capacity,
-        fish.stock,
-        fish.remainder,
-        state.config.fishGrowthPercentPerYear,
-        state.config.daysPerYear,
-      )
+      const growth = fishGrowth(fish.capacity, fish.stock, fish.remainder, state.config.fishGrowthPercentPerYear, 365)
       fish.stock += growth.grown
       fish.grown += growth.grown
       fish.remainder = growth.remainder
       state.fishKcal += growth.grown
       state.totals.fishGrownKcal += growth.grown
+      state.today.fishGrownKcal += growth.grown
       events.push({
         kind: 'fish-regrowth',
         minute,

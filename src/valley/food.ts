@@ -1,4 +1,5 @@
-import type { FoodKind, FoodLot, Forager, ValleyConfig, ValleyLayout } from './types'
+import { thicketCapacity } from './places'
+import type { DaySummary, FoodKind, FoodLot, Forager, ValleyConfig, ValleyLayout } from './types'
 
 /** Negative source IDs encode encountered bank IDs; nonnegative IDs identify food plants. */
 export const foodOfSource = (layout: ValleyLayout, source: number): FoodKind =>
@@ -7,7 +8,7 @@ export const foodOfSource = (layout: ValleyLayout, source: number): FoodKind =>
 /** The most a source holds. */
 export const capacityOf = (config: ValleyConfig, food: FoodKind) => {
   if (food === 'fish') throw new Error('Fish capacity requires a particular water body')
-  return food === 'berries' ? config.berryThicketCapacityKcal : config.hazelThicketCapacityKcal
+  return thicketCapacity(config, food === 'berries' ? 0 : 1)
 }
 
 /** A forager's hourly rate for a food at a full source, for the day. */
@@ -92,9 +93,8 @@ export function takeOldest(lots: readonly FoodLot[], kcal: number) {
   for (const lot of lots) {
     const part = Math.min(wanted, lot.kcal)
     wanted -= part
-    if (part > 0) taken.push({ food: lot.food, kcal: part, harvestTick: lot.harvestTick })
-    if (lot.kcal > part)
-      rest.push(part > 0 ? { food: lot.food, kcal: lot.kcal - part, harvestTick: lot.harvestTick } : lot)
+    if (part > 0) taken.push({ ...lot, kcal: part })
+    if (lot.kcal > part) rest.push(part > 0 ? { ...lot, kcal: lot.kcal - part } : lot)
   }
   return { taken, rest, takenKcal: carriedKcal(taken) }
 }
@@ -107,5 +107,21 @@ export function addLots(lots: FoodLot[], added: readonly FoodLot[]) {
 
 export const eatCarried = (lots: FoodLot[], room: number) => {
   const eaten = takeOldest(lots, room)
-  return { rest: eaten.rest, takenKcal: eaten.takenKcal }
+  return { rest: eaten.rest, takenKcal: eaten.takenKcal, taken: eaten.taken }
+}
+
+/** Adds lots eaten to the day's kilocalories eaten by source. */
+export function countEaten(day: DaySummary, lots: readonly FoodLot[]) {
+  const kcal = bySource(lots)
+  day.eatenBerriesKcal += kcal.berries
+  day.eatenNutsKcal += kcal.nuts
+  day.eatenStoreKcal += kcal.store
+  day.eatenFishKcal += kcal.fish
+}
+
+/** Kilocalories of lots by where the food came from: berries, fresh nuts, nuts from a store, fish. */
+export function bySource(lots: readonly FoodLot[]) {
+  const kcal = { berries: 0, nuts: 0, store: 0, fish: 0 }
+  for (const lot of lots) kcal[lot.fromStore ? 'store' : lot.food] += lot.kcal
+  return kcal
 }

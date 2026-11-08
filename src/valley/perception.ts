@@ -11,6 +11,7 @@ import {
   type Route,
 } from './routes'
 import { positionAt } from './tasks'
+import { noteKnownBody } from './bankSearch'
 import type { BankMemory, Forager, Point, ValleyState } from './types'
 
 export interface ObservationEvent {
@@ -37,8 +38,11 @@ export function shareBankMemory(banks: Map<number, BankMemory>) {
   return banks
 }
 export function learnBank(person: Forager, memory: BankMemory) {
+  const before = person.knownBanks
   if (sharedBankMemories.has(person.knownBanks)) person.knownBanks = new Map(person.knownBanks)
+  const known = person.knownBanks.has(memory.id)
   person.knownBanks.set(memory.id, memory)
+  if (!known) noteKnownBody(before, person.knownBanks, memory.bodyId)
 }
 /**
  * Triangle knowledge is shared with the previous state in the same way, and copied once before its holder learns a
