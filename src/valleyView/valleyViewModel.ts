@@ -21,7 +21,7 @@ import type { Group, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } fr
 import { palette } from '../ui/theme'
 import { decorPoints, foragerColor, foragerName, formatHours } from './display'
 
-export { clockLabel, daylightAt, foragerName, formatKcal, sunAt, TERMS_COLORS } from './display'
+export { clockLabel, foragerName, formatKcal, TERMS_COLORS } from './display'
 export { foragerColor, formatHours }
 
 /**

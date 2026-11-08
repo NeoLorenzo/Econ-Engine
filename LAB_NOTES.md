@@ -6,6 +6,16 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE17-Sky-077] - (2026-11-08)
+
+The owner asked to see the seasons in the valley: the sun's path and day length changing through the year, and trees turning brown in autumn and losing their leaves in winter, without temperature or snow. This is drawn by the observer alone, from the displayed minute, so no trajectory changes.
+
+**Sun.** The valley is placed at 52° N, the latitude of the North Sea plain and Star Carr in the Mesolithic. The declination is `23.44° · sin(2π · yearFraction)`, with the year fraction 0 at the spring equinox, and the sun's height `sin φ sin δ + cos φ cos δ cos H`. The hour angle is zero at the middle of the simulation's day and ±π at its dawn and dusk hours, so at the equinoxes the drawn sun rises and sets on them. Light eases in while the sun is within about 4° of the horizon.
+
+**Leaves and grass.** Each deciduous plant has key colours and crown sizes through the year, blended smoothly so nothing steps on a season boundary. The engine has no tree species: birch or pine is the observer's choice per tree, from a hash that draws on no simulation stream.
+
+**Left for later.** People still work from `dawnHour` to `duskHour` all year, so in midsummer they sleep in daylight and in midwinter they work after the drawn sunset. Making them follow the sun changes trajectories and needs its own step.
+
 ## [LIFE16-Routes-075] - (2026-10-30)
 
 While measuring Life 17, a one-year run ran out of memory, and `main` grew at the same rate: running the canonical configuration day by day with `advanceValley` and collecting garbage every 25 days, the heap grew about 12 MB a day, to 2.4 GB by day 150. Node's default heap and the page's worker both fail before a year.

@@ -26,24 +26,6 @@ export function clockLabel(hours: number) {
   return `Day ${day + 1} · ${hh}:${mm}`
 }
 
-/**
- * 0 at night, 1 in full daylight, easing over the half hour either side of dawn and dusk. Only the picture fades; the
- * simulation's night still starts exactly at dusk.
- */
-export function daylightAt(hourOfDay: number, dawnHour: number, duskHour: number) {
-  const smooth = (edge: number, t: number) => {
-    const x = Math.min(1, Math.max(0, (t - (edge - 0.5)) / 1))
-    return x * x * (3 - 2 * x)
-  }
-  return Math.min(smooth(dawnHour, hourOfDay), 1 - smooth(duskHour, hourOfDay))
-}
-
-/** The sun's height (−1 to 1) and direction, rising at dawn in the east and setting at dusk in the west. */
-export function sunAt(hourOfDay: number, dawnHour: number, duskHour: number) {
-  const angle = ((hourOfDay - dawnHour) / (duskHour - dawnHour)) * Math.PI
-  return { elevation: Math.sin(angle), azimuth: Math.cos(angle) }
-}
-
 /** Forager IDs count from 0; people count from 1. */
 export const foragerName = (foragerId: number) => `Forager ${foragerId + 1}`
 
