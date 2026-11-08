@@ -6,6 +6,16 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE17-Sky-077] - (2026-11-08)
+
+The owner asked to see the seasons in the valley: the sun's path and day length changing through the year, and trees turning brown in autumn and losing their leaves in winter, without temperature or snow. This is drawn by the observer alone, from the displayed minute, so no trajectory changes.
+
+**Sun.** The valley is placed at 52° N, the latitude of the North Sea plain and Star Carr in the Mesolithic. The declination is `23.44° · sin(2π · yearFraction)`, with the year fraction 0 at the spring equinox, and the sun's height `sin φ sin δ + cos φ cos δ cos H`. The hour angle is zero at the middle of the simulation's day and ±π at its dawn and dusk hours, so at the equinoxes the drawn sun rises and sets on them. Light eases in while the sun is within about 4° of the horizon.
+
+**Leaves and grass.** Each deciduous plant has key colours and crown sizes through the year, blended smoothly so nothing steps on a season boundary. The engine has no tree species: birch or pine is the observer's choice per tree, from a hash that draws on no simulation stream.
+
+**Left for later.** People still work from `dawnHour` to `duskHour` all year, so in midsummer they sleep in daylight and in midwinter they work after the drawn sunset. Making them follow the sun changes trajectories and needs its own step.
+
 ## [LIFE18-Seasons-076] - (2026-11-03)
 
 The owner moved seasons and stores ahead of the chief and generations, after deferring conflict until the valley knows scarcity, and approved the specification on 2026-11-03. Food on the land now ripens in a season, is lost to animals and rot within weeks, and swings from year to year; people keep a store of nuts at their hearth for the lean months.
@@ -30,7 +40,7 @@ A second pass, profiled and counted, found where the time went. Each person know
 
 Every comparison in `consider` is strict with ties to the lower id, and everything passed over scores below the floor or would be refused anyway, so the choice is the same; all 22 fingerprints are unchanged. Days 51 to 60 now take 394 to 541 ms a day, 498 ms on average (timings vary by about a quarter with the machine's load). Food choice is now about a third of the cost; the rest is walking routes, looking around and meetings, as in update 074. That is still almost twice update 074's cost, but inside the browser's second for a day.
 
-**Seasons in the picture.** So the owner can see the year, the observer's sun follows the solar declination at 52° N, Mesolithic northern Europe, and deciduous leaves blend through the year. The hour angle is scaled so the sun rises and sets on `dawnHour` and `duskHour` at the equinoxes; elsewhere the picture's day (16½ hours at midsummer, 7½ at midwinter) differs from the simulation's fixed twelve, so in summer people go to bed in daylight and in winter walk home in the dark. Making the simulation's day follow the sun is an engine change, left for a later step. Trees carry no species in the engine; the observer draws about half as birches by a hash of the tree's number, which take no simulation stream. Leaf colour and crown size are uniforms of three shared materials (bilberry, hazel, the tree crowns, whose instance colour marks a birch), so turning the year costs no mesh rebuild; the shadow depth materials shrink the same way. Checked in the browser on a 12-day year: green crowns in summer, ochre birches beside green pines in autumn, thinned grey birch crowns and bilberry stems under a low noon sun with long shadows in winter.
+**Seasons in the picture.** The sun and foliage of update 077 now count the year from the founders' arrival, as the calendar does, so the run opens in late summer.
 
 **Measured once, canonical forty, seed 20260813, 90-day years, 270 days (three years from arrival) in 12-hour steps.** Calendar years run from the spring equinox: year 1 is the 61 days from arrival, year 4 the 29 lean days before the fourth berry season.
 - *Year classes.* Year 1 normal berries and normal hazel; year 2 good and normal; year 3 normal and poor; year 4 good and normal, not yet ripe.
