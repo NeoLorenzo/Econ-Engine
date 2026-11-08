@@ -2,6 +2,12 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE17-Sky-077] - (2026-11-08)
+
+- The observer draws the year. The sun follows the solar declination for the day of the year at 52° N: about 61° high and 16½ hours of daylight at the summer solstice, 38° and 12 hours at the equinoxes, 15° and 7½ hours at the winter solstice. The run starts at the spring equinox. The day sky is paler in winter and warmer while the sun is low.
+- Leaves follow the season: bilberry, hazel and birch blend from spring green through autumn yellow and brown to bare winter crowns; about half the trees are drawn as birches and half as evergreen pines, by a hash of the tree's number. The grass dulls in late autumn and winter. Colours change through shared shader uniforms, recoloured at most every tenth of a day.
+- Observer only: the simulation's day still runs from `dawnHour` to `duskHour` all year, and trajectories and fingerprints are unchanged. New `seasonLook.ts` with unit tests; the fixed-day `daylightAt` and `sunAt` in `display.ts` are removed.
+
 ## [LIFE16-Routes-075] - (2026-10-30)
 
 - Fixes a memory leak on long runs: the state kept every route ever walked, about 45,000 route segments a day, so the heap grew about 12 MB a day and a year's run ran out of memory, in Node and in the page's worker alike. Each step now frees the routes below the lowest one still being walked; route ids keep counting.

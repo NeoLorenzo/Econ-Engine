@@ -18,6 +18,7 @@ import { livingMembers } from '../valley/social'
 import { TiledInstances } from './tiledInstances'
 import { tiledSurface } from './tiledSurface'
 import { meshSurfaces, surfaceHeightAt } from './meshSurface'
+import { BILBERRY, BIRCH, foliageAt, grassTint, HAZEL, seasonalFoliage, sunAt, yearFraction } from './seasonLook'
 import type { GroundMesh } from '../valley/mesh'
 import { woodTarget } from '../valley/trade'
 import type { ValleyState } from '../valley/types'
@@ -36,7 +37,6 @@ import {
   clampDistance,
   clampTarget,
   currentSwaps,
-  daylightAt,
   displayedHutLogs,
   displayedLoad,
   decorOf,
@@ -58,7 +58,6 @@ import {
   type ClearView,
   plantLook,
   siteRings,
-  sunAt,
   toMetres,
   towardFire,
   treeShape,
@@ -71,6 +70,10 @@ type Three = typeof import('three')
 
 const NIGHT_SKY = 0x070a12
 const DAY_SKY = 0x7fa6b8
+/** The day sky at the winter solstice: paler and greyer than summer's. */
+const WINTER_SKY = 0x9aaab2
+/** The sky's warm tint while the sun is low. */
+const LOW_SUN_GLOW = 0xd99a6a
 const OUTSIDE = 0x2c4a30
 /** The grassland's surface colours: grass, dirt and stone, by ground code. */
 const GROUND_COLOURS = [0x4f7a42, 0x785b3b, 0x85827a]
@@ -369,6 +372,20 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: TRUNK, roughness: 1, flatShading: true })
   const crownGeometry = new THREE.ConeGeometry(1, 1, 8)
   const crownMaterial = new THREE.MeshStandardMaterial({ color: CROWN, roughness: 0.85, flatShading: true })
+  // Leaves follow the season through shared uniforms: bilberry and hazel are deciduous, and so are the birches among
+  // the trees; the pines keep the evergreen crown colour. Bilberry keeps its height, being only thinned to its stems.
+  const foliage = (leaves: { summer: number }) => ({
+    colour: { value: new THREE.Color(leaves.summer) },
+    scale: { value: 1 },
+  })
+  const bushFoliage = foliage(BILBERRY)
+  const hazelFoliage = foliage(HAZEL)
+  const birchFoliage = foliage(BIRCH)
+  const leafDepth = seasonalFoliage(THREE, leafMaterial, bushFoliage, 0)
+  const hazelLeafDepth = seasonalFoliage(THREE, hazelLeafMaterial, hazelFoliage, 0.5)
+  const crownDepth = seasonalFoliage(THREE, crownMaterial, birchFoliage, 0.5, new THREE.Color(CROWN))
+  /** The year fraction the leaves and grass were last coloured for. */
+  let seasonDrawn = -1
   const firewoodMaterial = new THREE.MeshStandardMaterial({ color: FIREWOOD, roughness: 0.95, flatShading: true })
   const deadwoodGeometry = new THREE.CylinderGeometry(0.035, 0.045, 1, 5)
   const stoneGeometry = new THREE.DodecahedronGeometry(0.12, 0)
@@ -445,6 +462,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
 
   let ground: Mesh | null = null
   let outside: Mesh | null = null
+  /** The ground's materials, tinted by the season: their colour multiplies the grass, dirt and stone. */
+  let groundMaterial: MeshStandardMaterial | null = null
+  let outsideMaterial: MeshStandardMaterial | null = null
   let leaves: TiledInstances | null = null
   let berryMesh: TiledInstances | null = null
   let hazelLeaves: TiledInstances | null = null
@@ -1235,20 +1255,15 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const size = state.config.valleySizeCm / 100
     const surfaces = meshGeometries(state)
     const terrainGeometry = surfaces.terrain
-    ground = tiledSurface(
-      THREE,
-      terrainGeometry,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }),
-      SURFACE_TILE_M,
-    )
+    groundMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true })
+    outsideMaterial = new THREE.MeshStandardMaterial({ color: OUTSIDE, roughness: 1 })
+    seasonDrawn = -1
+    ground = tiledSurface(THREE, terrainGeometry, groundMaterial, SURFACE_TILE_M)
     for (const tile of ground.children) {
       tile.receiveShadow = true
       tile.castShadow = true
     }
-    outside = new THREE.Mesh(
-      new THREE.PlaneGeometry(size * 8, size * 8),
-      new THREE.MeshStandardMaterial({ color: OUTSIDE, roughness: 1 }),
-    )
+    outside = new THREE.Mesh(new THREE.PlaneGeometry(size * 8, size * 8), outsideMaterial)
     outside.rotation.x = -Math.PI / 2
     outside.position.y = state.layout.terrain.height.reduce((min, h) => Math.min(min, h), 0) / 100 - 1
     const water = state.layout.terrain.water
@@ -1413,6 +1428,18 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     crowns = new TiledInstances(THREE, crownGeometry, crownMaterial, CROWN_CONES.length, treeX, treeZ, size, 100)
     stumps = new TiledInstances(THREE, trunkGeometry, trunkMaterial, 1, treeX, treeZ, size, 100)
     deadwood = new TiledInstances(THREE, deadwoodGeometry, firewoodMaterial, DEADWOOD_STICKS, treeX, treeZ, size, 100)
+    // About half the trees are birches and half pines, by a hash of the tree's number that draws on no simulation
+    // stream: a birch's crown instances carry red 1, which the crown shader reads as deciduous.
+    const broadleaf = new THREE.Color(1, 1, 1)
+    const needleleaf = new THREE.Color(0, 0, 0)
+    for (let tree = 0; tree < trees.count; tree += 1) {
+      const birch = Math.imul(tree + 1, 0x9e3779b1) >>> 31 === 0
+      for (let cone = 0; cone < CROWN_CONES.length; cone += 1)
+        crowns.setColorAt(tree * CROWN_CONES.length + cone, birch ? broadleaf : needleleaf)
+    }
+    leaves.customDepthMaterial = leafDepth
+    hazelLeaves.customDepthMaterial = hazelLeafDepth
+    crowns.customDepthMaterial = crownDepth
     treeDrawn = Array.from({ length: trees.count }, () => ({ felled: false, trunk: 1, crown: 1, deadwood: 1 }))
     for (let tree = 0; tree < trees.count; tree += 1) placeTree(tree, treeDrawn[tree]!)
     // Stone spots: a heap of grey stones each.
@@ -1566,8 +1593,12 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   }
 
   const night = new THREE.Color(NIGHT_SKY)
-  const day = new THREE.Color(DAY_SKY)
+  const summerDay = new THREE.Color(DAY_SKY)
+  const winterDay = new THREE.Color(WINTER_SKY)
+  const glow = new THREE.Color(LOW_SUN_GLOW)
+  const day = new THREE.Color()
   const sky = new THREE.Color()
+  const tint = new THREE.Color()
   const keys = new Set<string>()
 
   function poseFigure(figure: Figure, pose: ForagerPose, id: number, nowMs: number) {
@@ -1626,14 +1657,35 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     drawn = state
     const minutes = display.minute
     const nowMs = minutes * 60_000
-    const hourOfDay = (minutes / 60) % 24
-    const light = daylightAt(hourOfDay, config.dawnHour, config.duskHour)
-    const { elevation, azimuth } = sunAt(hourOfDay, config.dawnHour, config.duskHour)
+    // The sun follows the day of the year: high and long in summer, low and short in winter.
+    const sunNow = sunAt(config, minutes)
+    const { light } = sunNow
+    const elevation = Math.max(0, sunNow.up)
+    day.copy(winterDay).lerp(summerDay, sunNow.summer)
     sky.copy(night).lerp(day, light)
+    // A warm glow while the sun is low, at either end of the day.
+    sky.lerp(glow, 0.35 * light * (1 - Math.min(1, elevation / 0.3)))
     ;(scene.background as InstanceType<Three['Color']>).copy(sky)
     ;(scene.fog as InstanceType<Three['Fog']>).color.copy(sky)
-    hemisphere.intensity = 0.25 + 0.65 * light
+    hemisphere.intensity = 0.25 + (0.5 + 0.25 * elevation) * light
     moon.intensity = 0.35 * (1 - light)
+    // Leaves and grass change slowly: recoloured when the year has moved on by a tenth of a day or more.
+    const fraction = yearFraction(config, minutes)
+    if (Math.abs(fraction - seasonDrawn) * config.daysPerYear >= 0.1) {
+      seasonDrawn = fraction
+      for (const [uniforms, leafYear] of [
+        [bushFoliage, BILBERRY],
+        [hazelFoliage, HAZEL],
+        [birchFoliage, BIRCH],
+      ] as const) {
+        const look = foliageAt(leafYear, fraction)
+        uniforms.colour.value.setHex(look.colour)
+        uniforms.scale.value = look.scale
+      }
+      const [r, g, b] = grassTint(fraction)
+      groundMaterial?.color.setRGB(r, g, b)
+      outsideMaterial?.color.setHex(OUTSIDE).multiply(tint.setRGB(r, g, b))
+    }
 
     // Keys pan and turn the camera smoothly, at a pace that follows the zoom.
     const step = Math.min(0.1, options.elapsedSeconds) * controls.distance
@@ -1668,10 +1720,16 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
     const span = Math.min(400, Math.max(15, controls.distance * 0.9))
     const { target } = controls
     sun.target.position.set(target.x, 0, target.z)
-    sun.position.set(target.x + azimuth * span * 1.5, Math.max(0.15, elevation) * span * 2 + 10, target.z + span * 0.6)
+    // The scene's +x is east and +z south. Below a low floor the light keeps its height, so shadows stay bounded.
+    sun.position.set(
+      target.x + sunNow.east * span * 2,
+      Math.max(0.15, elevation) * span * 2 + 10,
+      target.z - sunNow.north * span * 2,
+    )
     Object.assign(sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: span * 6 })
     sun.shadow.camera.updateProjectionMatrix()
-    sun.intensity = 3 * light * Math.max(0.25, elevation)
+    // Brighter the higher it stands: about 3.2 at a summer noon, 2.7 at an equinox and 2 at a winter noon.
+    sun.intensity = 3.4 * light * (0.45 + 0.55 * elevation)
     sun.color.setHSL(0.1, 0.6, 0.6 + 0.35 * Math.max(0, elevation))
 
     // Only plants whose drawn fill changed are redrawn, and only those drawn; one out of view is redrawn when it shows.
