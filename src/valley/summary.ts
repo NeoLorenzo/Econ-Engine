@@ -21,9 +21,9 @@ export function measureTask(state: ValleyState, person: Forager, minute: number)
   state.today.drinkingMlById[id]! += wetAfter.drink - wetBefore.drink
   state.today.maxDeficitMlById[id] = Math.max(state.today.maxDeficitMlById[id]!, wetBefore.ml, wetAfter.ml)
   const action =
-    task.kind === 'pick' || task.kind === 'nuts' || task.kind === 'fish'
+    task.kind === 'pick' || task.kind === 'nuts' || task.kind === 'fish' || task.kind === 'store'
       ? 'forage'
-      : task.kind === 'drink'
+      : task.kind === 'drink' || task.kind === 'eat store'
         ? 'rest'
         : task.kind
   state.today.seconds[action] += seconds
@@ -31,7 +31,7 @@ export function measureTask(state: ValleyState, person: Forager, minute: number)
     state.today.walkSecondsById[id]! += seconds
     state.today.walkKcalById[id]! += spent
   }
-  if (task.kind === 'pick' || task.kind === 'nuts' || task.kind === 'fish')
+  if (task.kind === 'pick' || task.kind === 'nuts' || task.kind === 'fish' || task.kind === 'store')
     state.today.forageSecondsById[id]! += seconds
   if (task.kind === 'gather') state.today.gatherSecondsById[id]! += seconds
   if (task.kind === 'cut') state.today.cutSecondsById[id]! += seconds

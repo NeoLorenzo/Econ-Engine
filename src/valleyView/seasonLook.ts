@@ -1,12 +1,12 @@
 import type { Color, MeshStandardMaterial } from 'three'
 
-import { MINUTES_PER_DAY } from '../valley/calendar'
+import { arrivalDay, MINUTES_PER_DAY } from '../valley/calendar'
 import type { ValleyConfig } from '../valley/types'
 
 // How the year looks: the sun's path and the colour of leaves and grass. The observer alone draws this, from the
 // displayed minute; the simulation's day still runs from `dawnHour` to `duskHour` all year.
 
-type SkyConfig = Pick<ValleyConfig, 'daysPerYear' | 'dawnHour' | 'duskHour'>
+type SkyConfig = Pick<ValleyConfig, 'daysPerYear' | 'arrivalPerMille' | 'dawnHour' | 'duskHour'>
 
 /** The valley's latitude for the sun's path: 52° N, Mesolithic northern Europe (the North Sea plain, Star Carr). */
 export const LATITUDE_DEG = 52
@@ -16,11 +16,10 @@ const RADIANS = Math.PI / 180
 
 /**
  * The displayed moment's place in the year, 0 to 1, counted from the spring equinox: ¼ is the summer solstice, ½ the
- * autumn equinox, ¾ the winter solstice. The run starts at the spring equinox, the first day of the calendar's spring.
- * It moves smoothly through each day, so colours blend rather than step.
+ * autumn equinox, ¾ the winter solstice. It moves smoothly through each day, so colours blend rather than step.
  */
-export function yearFraction(config: Pick<ValleyConfig, 'daysPerYear'>, minute: number) {
-  const days = minute / MINUTES_PER_DAY
+export function yearFraction(config: Pick<ValleyConfig, 'daysPerYear' | 'arrivalPerMille'>, minute: number) {
+  const days = minute / MINUTES_PER_DAY + arrivalDay(config)
   return (((days % config.daysPerYear) + config.daysPerYear) % config.daysPerYear) / config.daysPerYear
 }
 

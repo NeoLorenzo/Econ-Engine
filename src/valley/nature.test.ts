@@ -24,6 +24,7 @@ import { meet } from './social'
 import { startTask } from './tasks'
 import { ValleyChecker } from './invariants'
 import { cloneValley, stepValley } from './engine'
+import { thicketCapacity } from './places'
 import { applySkills, skillsOf } from './skills'
 import type { Forager, Personality, PersonNature, ValleyConfig } from './types'
 const neutral: Personality = { openness: 0, conscientiousness: 0, extraversion: 0, agreeableness: 0, neuroticism: 0 }
@@ -212,7 +213,9 @@ describe('Life 14 bodies and personality', () => {
     expect(chooseTask(s, p, 1030).reason).toBe('seeking water')
   })
   it('changes unfamiliar stock expectations with openness and limits idle exploration to home range', () => {
-    const s = bandAt(),
+    // Late in the berry window, when an unseen thicket is expected to hold most of a normal crop.
+    const minute = 9 * 1_440 + 600
+    const s = bandAt(minute),
       p = s.foragers[0]!
     setNature(p, { openness: -2000 })
     const range = p.exploringRangeCm,
@@ -232,12 +235,13 @@ describe('Life 14 bodies and personality', () => {
     places.x[1] = places.x[0]!
     places.y[1] = places.y[0]!
     p.placeStock[0] = -1
-    p.placeStock[1] = Math.floor(s.config.berryThicketCapacityKcal / 2)
-    expect(foodGoal(s, p, 600)?.placeId).toBe(1)
+    p.placeStock[1] = Math.floor(thicketCapacity(s.config, 0) / 2)
+    p.placeCheckedMinute[1] = minute
+    expect(foodGoal(s, p, minute)?.placeId).toBe(1)
     setNature(p, { openness: 1000 })
     expect(p.exploringRangeCm).toBeGreaterThan(100000)
     expect(p.expectedStockPerMille).toBeGreaterThan(share)
-    expect(foodGoal(s, p, 600)?.placeId).toBe(0)
+    expect(foodGoal(s, p, minute)?.placeId).toBe(0)
     places.x[1] = originalX
     places.y[1] = originalY
   })

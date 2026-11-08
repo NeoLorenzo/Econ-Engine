@@ -4,11 +4,15 @@ import { BIRCH, BILBERRY, dayLengthHours, foliageAt, grassTint, sunAt, yearFract
 
 const config = VALLEY_DEFAULT_CONFIG
 /** The run's minute of a given hour on the day at this fraction of the year, from the spring equinox. */
-const minuteAt = (fraction: number, hour: number) => Math.round(fraction * config.daysPerYear) * 1_440 + hour * 60
+const minuteAt = (fraction: number, hour: number) => {
+  const arrival = Math.floor((config.arrivalPerMille * config.daysPerYear) / 1_000)
+  const day = (Math.round(fraction * config.daysPerYear) - arrival + config.daysPerYear) % config.daysPerYear
+  return day * 1_440 + hour * 60
+}
 
 describe('the sun through the year', () => {
-  it('counts the year from the spring equinox, where the run starts', () => {
-    expect(yearFraction(config, 0)).toBe(0)
+  it('counts the year from the spring equinox, with the arrival offset', () => {
+    expect(yearFraction(config, 0)).toBeCloseTo(config.arrivalPerMille / 1_000, 1)
     expect(yearFraction(config, minuteAt(0.75, 0))).toBeCloseTo(
       Math.round(0.75 * config.daysPerYear) / config.daysPerYear,
       9,

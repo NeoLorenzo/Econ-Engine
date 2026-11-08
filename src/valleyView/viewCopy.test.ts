@@ -53,7 +53,10 @@ describe('view copies', () => {
         (key) => p[key] !== earlier.foragers[p.id]![key],
       )
     expect(state.foragers.some((p) => p.id !== 2 && moved(p))).toBe(true)
-    expect(wire.eventDays.flat().every((e) => e.kind === 'exchange' || e.kind === 'walk')).toBe(true)
+    expect(
+      wire.eventDays.flat().every((e) => ['exchange', 'walk', 'harvest', 'stored', 'fromStore'].includes(e.kind)),
+    ).toBe(true)
+    expect(wire.eventDays[0]!.some((e) => e.kind === 'harvest')).toBe(true)
     expect(wire.eventDays.flat().some((e) => e.kind === 'walk')).toBe(true)
     expect(wire.lastInterval.every((e) => e.kind === 'exchange')).toBe(true)
   })

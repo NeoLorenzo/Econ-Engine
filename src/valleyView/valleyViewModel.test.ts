@@ -1,5 +1,6 @@
 import { createSurveyedValley as createValley } from '../valley/ruleFixtures'
 import { FLAT_LAND } from '../valley/config'
+import { thicketCapacity } from '../valley/places'
 import { describe, expect, it } from 'vitest'
 import { cloneValley, stepValley } from '../valley/engine'
 import { learnTriangle } from '../valley/routes'
@@ -38,7 +39,7 @@ describe('plants drawn from place stocks', () => {
     const { bushes } = decorOf(state)
     const first = Array.from({ length: bushes.count }, (_, id) => id).filter((id) => bushes.site[id] === 0)
     expect(first).toHaveLength(BUSHES_PER_THICKET)
-    const capacity = state.foodStock[0]!
+    const capacity = thicketCapacity(state.config, 0)
     state.foodStock[0] = Math.round(capacity / 4)
     const fills = first.map((id) => plantFill(startDisplay(state), 'bush', id)).sort((a, b) => b - a)
     expect(fills.slice(0, 3).every((fill) => fill === 1)).toBe(true)

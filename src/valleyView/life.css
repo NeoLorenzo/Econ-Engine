@@ -545,6 +545,16 @@
   color: var(--text);
 }
 
+/* The Over time pane's sections: Food, People, Craft and Exchange. */
+.life-chart-section {
+  margin: 10px 0 2px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .life-body {
   font-size: 0.8rem;
   color: var(--text-2);

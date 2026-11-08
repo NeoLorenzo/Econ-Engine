@@ -4,12 +4,15 @@ import { positionAlong } from './routes'
 import { attemptOf, axeLife } from './axes'
 import { hasIdea, inventChance, proficiencyOf, thinkable } from './skills'
 import { energyAt, waterAt } from './body'
-import { dailyShare, dayOfYear, MINUTES_PER_DAY } from './calendar'
+import { dailyShare, dayOfYear, MINUTES_PER_DAY, windowDays, yearOf } from './calendar'
 import { fishGrowth } from './fish'
 import { deriveInventSeed } from './layout'
 import { randomInt } from '../sim/rng'
-import { regrowPlaces } from './places'
-import type { ValleyState, TaskEvent, Axe } from './types'
+import { cropOf, harvestEvent, harvestOf, regrowPlaces, thicketCapacity } from './places'
+import { expectedFoodStock } from './forager'
+import { carriedKcal, spoil, takeOldest } from './food'
+import { storeTarget } from './stores'
+import type { ValleyState, TaskEvent, Axe, FoodLot } from './types'
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 /** An interval ledger over independent copies. Production is computed before applying the recorded amount. */
 export function replayInterval(before: ValleyState, after: ValleyState) {
@@ -26,6 +29,8 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     logRegrowth: new Map([...before.logRegrowth].map(([id, list]) => [id, [...list]])),
   }
   const placeMemory = before.foragers.map((p) => p.placeStock.slice()),
+    placeChecked = before.foragers.map((p) => p.placeCheckedMinute.slice()),
+    stores: FoodLot[][] = before.foragers.map((p) => [...p.store]),
     fishMemory = before.foragers.map((p) => new Map(p.fishMemory))
   const access = new Map(after.layout.nav.accessBanks.map((bank) => [bank.id, bank]))
   const rates = before.foragers.map((p) => ({
@@ -90,26 +95,28 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     spoiled = 0
   const growUntil = (minute: number) => {
     while (midnight <= minute) {
-      const oldFood = book.foodStock.slice(),
-        oldWood = book.woodStock.slice(),
-        oldLogs = book.logStock.slice()
-      regrowPlaces(book, midnight)
-      for (let id = 0; id < book.layout.places.count; id++) {
-        const delta = {
-          kcal: book.foodStock[id]! - oldFood[id]!,
-          wood: book.woodStock[id]! - oldWood[id]!,
-          logs: book.logStock[id]! - oldLogs[id]!,
-        }
-        if (delta.kcal || delta.wood || delta.logs) expectedGrowth.set(`${midnight}:place:${id}`, delta)
+      for (const [id, store] of stores.entries()) {
+        const spoilt = spoil(after.config, store, midnight)
+        stores[id] = spoilt.lots
+        if (spoilt.spoiledKcal) expectedGrowth.set(`${midnight}:storeSpoiled:${id}`, spoilt.spoiledKcal)
       }
-      for (const f of fish.values()) {
-        const growth = fishGrowth(
-          f.capacity,
-          f.stock,
-          f.remainder,
-          after.config.fishGrowthPercentPerYear,
-          after.config.daysPerYear,
+      if (dayOfYear(after.config, midnight) === 0)
+        expectedGrowth.set(
+          `${midnight}:harvest`,
+          harvestEvent(after.config, midnight, harvestOf(after.config, yearOf(after.config, midnight))),
         )
+      // Each thicket loses its share, then gains its window's share of the year's crop; nothing grows outside it.
+      regrowPlaces(book, midnight, (id, growth) => {
+        if (growth.kcal || growth.lost || growth.wood || growth.logs)
+          expectedGrowth.set(`${midnight}:place:${id}`, {
+            kcal: growth.kcal,
+            lost: growth.lost,
+            wood: growth.wood,
+            logs: growth.logs,
+          })
+      })
+      for (const f of fish.values()) {
+        const growth = fishGrowth(f.capacity, f.stock, f.remainder, after.config.fishGrowthPercentPerYear, 365)
         f.stock += growth.grown
         f.grown += growth.grown
         f.remainder = growth.remainder
@@ -139,7 +146,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       const rate =
         t.kind === 'walk'
           ? c.walkKcalPerHour
-          : ['pick', 'nuts', 'fish'].includes(t.kind)
+          : ['pick', 'nuts', 'fish', 'store'].includes(t.kind)
             ? c.pickKcalPerHour
             : t.kind === 'gather'
               ? c.gatherKcalPerHour
@@ -157,16 +164,31 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       t.drinkMlPerMinute !== c.drinkMlPerSecond * 60
     )
       fail('Body task carries the wrong hydration parameters')
-    if (t.kind === 'pick' || t.kind === 'nuts') {
-      const cap = t.kind === 'pick' ? c.berryThicketCapacityKcal : c.hazelThicketCapacityKcal,
+    if (t.kind === 'pick' || t.kind === 'nuts' || t.kind === 'store') {
+      // The stock a person expects reads the calendar: what they saw since the window opened, else its openness share.
+      const kind = t.kind === 'pick' ? 0 : 1,
+        cap = thicketCapacity(after.config, kind),
         full = t.kind === 'pick' ? rates[id]!.berries : rates[id]!.nuts
-      const stock =
-        placeMemory[id]![t.placeId]! < 0
-          ? Math.floor((cap * after.foragers[id]!.expectedStockPerMille) / 1000)
-          : placeMemory[id]![t.placeId]!
-      if (t.productionPerHour !== Math.floor((full * stock) / cap))
-        fail('Food task rate does not match remembered stock')
+      const stock = expectedFoodStock(
+        after.config,
+        kind,
+        placeMemory[id]![t.placeId]!,
+        placeChecked[id]![t.placeId]!,
+        after.foragers[id]!.expectedStockPerMille,
+        event.minute,
+      )
+      if (t.productionPerHour !== Math.floor((full * stock) / cap)) fail('Food task rate does not match expected stock')
     }
+    if (
+      t.kind === 'store' &&
+      (t.storeTarget !== storeTarget(after.config, after.foragers[id]!, event.minute) ||
+        t.storeKcal !== carriedKcal(stores[id]!) ||
+        t.storeKcal >= t.storeTarget ||
+        after.layout.places.kind[t.placeId] !== 1)
+    )
+      fail(`person ${id}: a store load does not follow from the store target`)
+    if (t.kind === 'eat store' && t.productionPerHour !== after.config.storeKcalPerHour)
+      fail(`person ${id}: eating from the store at the wrong rate`)
     if (t.kind === 'fish') {
       const bank = banks[id]!.get(t.placeId),
         memory = bank ? fishMemory[id]!.get(bank.bodyId) : undefined
@@ -222,9 +244,9 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     spoiled += event.spoiledKcal ?? 0
     const elapsed = event.minute - t.startMinute,
       produced = { kcal: 0, wood: 0, logs: 0, stones: 0 }
-    if (['pick', 'nuts', 'fish'].includes(t.kind)) {
+    if (['pick', 'nuts', 'fish', 'store'].includes(t.kind)) {
       const owed = pick[id]! + t.productionPerHour * elapsed,
-        wanted = Math.floor(owed / 60)
+        wanted = Math.min(Math.floor(owed / 60), t.kind === 'store' ? (t.roomKcal ?? 0) : Infinity)
       if (t.kind === 'fish') {
         const bank = banks[id]!.get(t.placeId),
           f = bank ? fish.get(bank.bodyId) : undefined
@@ -283,6 +305,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
           id = stock.placeId
         const kind = after.layout.places.kind[id]!
         placeMemory[event.foragerId]![id] = kind < 2 ? stock.food : kind === 2 ? stock.wood : stock.stones
+        placeChecked[event.foragerId]![id] = event.minute
         if (
           stock.food !== book.foodStock[id] ||
           stock.wood !== book.woodStock[id] ||
@@ -336,9 +359,40 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     if (event.kind === 'regrowth')
       actualGrowth.set(`${event.minute}:place:${event.placeId}`, {
         kcal: event.kcal,
+        lost: event.lost,
         wood: event.wood,
         logs: event.logs,
       })
+    if (event.kind === 'harvest') actualGrowth.set(`${event.minute}:harvest`, event)
+    if (event.kind === 'storeSpoiled') {
+      actualGrowth.set(`${event.minute}:storeSpoiled:${event.foragerId}`, event.kcal)
+      spoiled += event.kcal
+    }
+    if (event.kind === 'stored') {
+      const owner = after.foragers[event.foragerId]!
+      if (
+        !same(event.position, owner.hearth) ||
+        !same(event.position, position(event.foragerId, event.minute)) ||
+        event.lots.some((lot) => lot.food !== 'nuts' || lot.fromStore)
+      )
+        fail(`person ${event.foragerId}: food stored away from their hearth, or not nuts`)
+      stores[event.foragerId] = [...stores[event.foragerId]!, ...event.lots].sort(
+        (a, b) => a.harvestTick - b.harvestTick,
+      )
+      if (carriedKcal(stores[event.foragerId]!) !== event.storeKcal) fail('A store total differs from its records')
+    }
+    if (event.kind === 'fromStore') {
+      const t = tasks[event.foragerId]
+      const due =
+        t?.kind === 'eat store'
+          ? Math.min(
+              Math.floor((after.config.storeKcalPerHour * (event.minute - t.startMinute)) / 60),
+              carriedKcal(stores[event.foragerId]!),
+            )
+          : -1
+      if (event.kcal !== due) fail(`person ${event.foragerId}: food left a store other than by its owner eating it`)
+      stores[event.foragerId] = takeOldest(stores[event.foragerId]!, event.kcal).rest
+    }
     if (event.kind === 'fish-regrowth')
       actualGrowth.set(`${event.minute}:fish:${event.bodyId}`, { kcal: event.kcal, remainder: event.remainder })
     if (event.kind === 'learnt') {
@@ -519,6 +573,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     )
       fail(`person ${id}: final body differs from its charged ledger`)
     if (!same(p.task, tasks[id])) fail(`person ${id}: final task differs from its event ledger`)
+    if (!same(p.store, stores[id])) fail(`person ${id}: store differs from its stored, eaten and spoiled records`)
   }
   const actualTools = new Map(
     after.foragers.flatMap((p) =>
@@ -550,14 +605,23 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
 }
 /** The public calendar arithmetic is also checked independently over every configured day. */
 export function annualShares(state: ValleyState) {
-  return [
-    state.config.berryThicketRegrowthKcalPerYear,
-    state.config.hazelThicketRegrowthKcalPerYear,
-    state.config.standDeadfallKgPerYear,
-  ].every((amount) => {
+  const c = state.config
+  const yearly = [c.standDeadfallKgPerYear, c.berryThicketWoodRegrowthKgPerYear].every((amount) => {
     let total = 0
-    for (let day = 0; day < state.config.daysPerYear; day++)
-      total += dailyShare(amount, dayOfYear(state.config, day * MINUTES_PER_DAY), state.config.daysPerYear)
+    for (let day = 0; day < c.daysPerYear; day++)
+      total += dailyShare(amount, dayOfYear(c, day * MINUTES_PER_DAY), c.daysPerYear)
     return total === amount
   })
+  // A year's crop is shared out exactly over its window's days.
+  const crops = ([0, 1] as const).every((kind) => {
+    const { start, end } = windowDays(c, kind === 0 ? c.berrySeason : c.nutSeason),
+      days = end - start
+    return Object.values(kind === 0 ? c.berryYearPerMille : c.hazelYearPerMille).every((factor) => {
+      const crop = cropOf(c, kind, factor)
+      let total = 0
+      for (let i = 0; i < days; i++) total += Math.floor((crop * (i + 1)) / days) - Math.floor((crop * i) / days)
+      return total === crop
+    })
+  })
+  return yearly && crops
 }

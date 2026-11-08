@@ -20,7 +20,9 @@ import {
 } from './routes'
 import { energyAt, waterAt, firstThresholdMinute, waterThresholds } from './body'
 import { loadKg, loadOf, speedForLoad, nextHungry, isDaylight } from './forager'
-import { carriedKcal } from './food'
+import { carriedKcal, spoiledBy } from './food'
+import { lastMidnight } from './stores'
+import { thicketCapacity } from './places'
 import { MINUTES_PER_DAY } from './calendar'
 import { attemptOf, axeLife } from './axes'
 import { experienceDay, skillViolations } from './skills'
@@ -346,8 +348,10 @@ export class ValleyChecker {
     const errors: string[] = [],
       t = state.totals
     const energy =
-      sum(state.foragers.map((p) => p.energyKcal + carriedKcal(p.carried))) + sum(state.foodStock) + state.fishKcal
-    if (energy !== t.initialKcal + t.regrownKcal + t.fishGrownKcal - t.metabolizedKcal - t.spoiledKcal)
+      sum(state.foragers.map((p) => p.energyKcal + carriedKcal(p.carried) + carriedKcal(p.store))) +
+      sum(state.foodStock) +
+      state.fishKcal
+    if (energy !== t.initialKcal + t.regrownKcal + t.fishGrownKcal - t.metabolizedKcal - t.spoiledKcal - t.lostKcal)
       errors.push('Food energy is not conserved')
     const wood =
       sum(state.woodStock) + sum(state.foragers.map((p) => p.wood)) + sum(state.groups.map((g) => g.fireWood))
@@ -394,6 +398,19 @@ export class ValleyChecker {
         !Number.isSafeInteger(loadKg(state.config, loadOf(p)))
       )
         errors.push(`person ${p.id}: invalid carried load`)
+      // A store holds nut lots put in from the hand, each younger than its shelf life at the last midnight.
+      if (
+        p.store.some(
+          (lot) =>
+            lot.food !== 'nuts' ||
+            lot.fromStore ||
+            !Number.isSafeInteger(lot.kcal) ||
+            lot.kcal <= 0 ||
+            spoiledBy(state.config, lot, lastMidnight(state.minute)) ||
+            lot.harvestTick > state.minute,
+        )
+      )
+        errors.push(`person ${p.id}: a store holds a lot that could not be there`)
     }
     return errors
   }
@@ -789,7 +806,7 @@ export class ValleyChecker {
         logs = state.logStock[id]!,
         stones = state.stoneStock[id]!,
         wood = state.woodStock[id]!
-      const capacity = kind === 0 ? c.berryThicketCapacityKcal : kind === 1 ? c.hazelThicketCapacityKcal : 0
+      const capacity = kind === 0 || kind === 1 ? thicketCapacity(c, kind) : 0
       if (
         !Number.isSafeInteger(food) ||
         food < 0 ||

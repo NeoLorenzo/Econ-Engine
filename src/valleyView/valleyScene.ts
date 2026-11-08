@@ -14,6 +14,7 @@ import type {
 import { isDaylight } from '../valley/forager'
 import { corridorRoute } from '../valley/routes'
 import { siteCount } from '../valley/sites'
+import { storeKcal } from '../valley/stores'
 import { livingMembers } from '../valley/social'
 import { TiledInstances } from './tiledInstances'
 import { tiledSurface } from './tiledSurface'
@@ -54,6 +55,7 @@ import {
   holdsAxe,
   knowledgeShades,
   parcelScale,
+  storeScale,
   pinPlacement,
   type ClearView,
   plantLook,
@@ -245,6 +247,8 @@ interface Hearth {
   flame: Mesh
   /** The wood its forager holds beyond what it carries on its back. */
   pile: Group
+  /** A heap of nuts while its forager's store holds food, larger with the store. */
+  store: Mesh
   /** Where it is drawn, in valley centimetres: its forager's hearth moves when it joins a group. */
   x: number
   y: number
@@ -411,6 +415,7 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
   const bundleLogGeometry = new THREE.CylinderGeometry(0.045, 0.045, 0.75, 6)
   const bundleMaterial = new THREE.MeshStandardMaterial({ color: BUNDLE, roughness: 0.9, flatShading: true })
   const parcelGeometry = new THREE.DodecahedronGeometry(0.12, 0)
+  const storeGeometry = new THREE.ConeGeometry(0.32, 0.26, 8)
   const logEndMaterial = new THREE.MeshStandardMaterial({ color: LOG_END, roughness: 0.9, flatShading: true })
   const barkMaterials = HUT_LOG_SHADES.map(
     (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.95, flatShading: true }),
@@ -1003,9 +1008,13 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       pile.add(log)
     }
     ring.add(flame)
-    group.add(ring, pile)
+    const store = new THREE.Mesh(storeGeometry, nutMaterial)
+    store.position.set(-0.9, 0.13, 0.5)
+    store.castShadow = true
+    store.visible = false
+    group.add(ring, pile, store)
     scene.add(group)
-    const hearth = { group, ring, flame, pile, x: hearthX, y: hearthY }
+    const hearth = { group, ring, flame, pile, store, x: hearthX, y: hearthY }
     placeHearth(hearth, hearthX, hearthY, null)
     return hearth
   }
@@ -1996,6 +2005,9 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
         const pile = bundleScale(load.atHearth, woodTarget(config))
         hearth.pile.visible = pile > 0
         hearth.pile.scale.setScalar(Math.max(pile, 0.01))
+        const stored = storeKcal(forager)
+        hearth.store.visible = stored > 0
+        hearth.store.scale.setScalar(storeScale(stored))
         const lit = hearthAt(display, id) === 'lit'
         hearth.flame.visible = lit
         if (lit) hearth.flame.scale.set(0.6, 0.6 * (1 + 0.15 * Math.sin(nowMs / 80 + id * 1.7)), 0.6)

@@ -16,6 +16,7 @@ const AXE_STREAM_SALT = 0x4158_4553
 const TALENT_STREAM_SALT = 0x5441_4c45
 const INVENT_STREAM_SALT = 0x494e_5645
 const ATTEMPT_STREAM_SALT = 0x4154_544d
+const HARVEST_STREAM_SALT = 0x4841_5256
 
 /** A site or plant that has not found a place after this many draws makes the layout impossible. */
 export const PLACEMENT_DRAWS = 10_000
@@ -36,6 +37,10 @@ export const deriveInventSeed = (seed: number, minute: number, foragerId: number
 /** The attempt stream for one forager and minute, which draws whether an axe begun then will work, or when it breaks. */
 export const deriveAttemptSeed = (seed: number, minute: number, foragerId: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ ATTEMPT_STREAM_SALT ^ mixSeed(minute * 1_024 + foragerId)) >>> 0))
+
+/** The harvest stream for one calendar year, which draws the year's berry and hazel crop classes. */
+export const deriveHarvestSeed = (seed: number, year: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ HARVEST_STREAM_SALT ^ mixSeed(year + 1)) >>> 0))
 
 /** The axe stream for one forager and minute, which draws the quality of an axe it finishes then. */
 export const deriveAxeSeed = (seed: number, minute: number, foragerId: number) =>

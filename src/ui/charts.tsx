@@ -1,10 +1,16 @@
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Line,
   LineChart,
+  Pie,
+  PieChart as RechartsPie,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -116,6 +122,190 @@ export function TimeChart<Row extends { day: number }>({
               />
             ))}
           </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
+  )
+}
+
+/** Parts of a whole, each slice labelled with its share. */
+export function PieChart({
+  data,
+  format,
+  height = 180,
+}: {
+  data: { key: string; name: string; color: string; value: number }[]
+  format: (value: number) => string
+  height?: number
+}) {
+  const total = data.reduce((sum, slice) => sum + slice.value, 0)
+  const shown = data.filter((slice) => slice.value > 0)
+  return (
+    <figure className="chart">
+      <ChartLegend series={data} />
+      <div style={{ height }}>
+        {total > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <RechartsPie>
+              <Tooltip {...tooltipStyle} formatter={(value, name) => [format(Number(value)), name]} />
+              <Pie
+                data={shown}
+                dataKey="value"
+                nameKey="name"
+                innerRadius="45%"
+                outerRadius="80%"
+                stroke={palette.surface}
+                label={({ percent }) => `${Math.round(Number(percent) * 100)}%`}
+                labelLine={false}
+                isAnimationActive={false}
+              >
+                {shown.map((slice) => (
+                  <Cell key={slice.key} fill={slice.color} />
+                ))}
+              </Pie>
+            </RechartsPie>
+          </ResponsiveContainer>
+        ) : (
+          <p className="chart-caption">Nothing eaten in this period yet.</p>
+        )}
+      </div>
+    </figure>
+  )
+}
+
+/**
+ * Values over time: `stacked` areas piled on one another, `lines` drawn over them unstacked, an optional shaded
+ * `band` between two keys, and `marks`, short coloured ticks on the time axis.
+ */
+export function StackedAreaChart<Row extends { day: number }>({
+  data,
+  stacked = [],
+  lines = [],
+  band,
+  marks = [],
+  markLegend = [],
+  format,
+  height = 160,
+}: {
+  data: Row[]
+  stacked?: ChartSeries[]
+  lines?: ChartSeries[]
+  band?: { low: string; high: string; name: string; color: string }
+  marks?: { day: number; color: string }[]
+  markLegend?: ChartSeries[]
+  format: (value: number) => string
+  height?: number
+}) {
+  const rows = band
+    ? data.map((row) => ({ ...row, band: [row[band.low as keyof Row], row[band.high as keyof Row]] }))
+    : data
+  const legend = [
+    ...stacked,
+    ...(band ? [{ key: 'band', name: band.name, color: band.color }] : []),
+    ...lines,
+    ...markLegend,
+  ]
+  return (
+    <figure className="chart">
+      <ChartLegend series={legend} />
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke={palette.grid} vertical={false} />
+            <XAxis dataKey="day" type="number" domain={['dataMin', 'dataMax']} {...axis} minTickGap={32} />
+            <YAxis {...axis} width={56} tickFormatter={(value) => format(Number(value))} domain={[0, 'auto']} />
+            <Tooltip
+              {...tooltipStyle}
+              formatter={(value, name) => [
+                Array.isArray(value) ? value.map((v) => format(Number(v))).join(' to ') : format(Number(value)),
+                name,
+              ]}
+              labelFormatter={(value) => `Day ${value}`}
+            />
+            {band && (
+              <Area
+                type="linear"
+                dataKey="band"
+                name={band.name}
+                stroke="none"
+                fill={band.color}
+                fillOpacity={0.25}
+                isAnimationActive={false}
+              />
+            )}
+            {stacked.map((item) => (
+              <Area
+                key={item.key}
+                type="linear"
+                dataKey={item.key}
+                name={item.name}
+                stackId="stack"
+                stroke={item.color}
+                fill={item.color}
+                fillOpacity={0.45}
+                isAnimationActive={false}
+              />
+            ))}
+            {lines.map((item) => (
+              <Line
+                key={item.key}
+                type="linear"
+                dataKey={item.key}
+                name={item.name}
+                stroke={item.color}
+                strokeWidth={item.width ?? 2}
+                strokeDasharray={item.dashed ? '5 4' : undefined}
+                dot={false}
+                isAnimationActive={false}
+              />
+            ))}
+            {marks.map((mark, index) => (
+              <ReferenceDot key={index} x={mark.day} y={0} r={4} fill={mark.color} stroke="none" ifOverflow="visible" />
+            ))}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
+  )
+}
+
+/** Bars of parts stacked on one another, one bar per row, labelled by the row's `label`. */
+export function StackedBarChart<Row extends { label: string }>({
+  data,
+  series,
+  format,
+  height = 160,
+}: {
+  data: Row[]
+  series: ChartSeries[]
+  format: (value: number) => string
+  height?: number
+}) {
+  return (
+    <figure className="chart">
+      <ChartLegend series={series} />
+      <div style={{ height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke={palette.grid} vertical={false} />
+            <XAxis dataKey="label" {...axis} interval={0} />
+            <YAxis {...axis} width={56} tickFormatter={(value) => format(Number(value))} />
+            <Tooltip
+              {...tooltipStyle}
+              cursor={{ fill: palette.grid }}
+              formatter={(value, name) => [format(Number(value)), name]}
+            />
+            {series.map((item) => (
+              <Bar
+                key={item.key}
+                dataKey={item.key}
+                name={item.name}
+                stackId="stack"
+                fill={item.color}
+                isAnimationActive={false}
+              />
+            ))}
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </figure>
