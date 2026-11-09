@@ -6,6 +6,9 @@ import { CLOSE_TIE_MINUTES, formatMinutes, type tieGraph } from './valleyViewMod
 const SIZE = 300
 const CENTRE = SIZE / 2
 const RADIUS = 128
+/** Family lines, in colours of their own beside the familiarity lines' green to red. */
+const PARTNER_COLOR = palette.government
+const PARENT_COLOR = palette.firmA
 
 /** How warm a link is drawn: green with no grievance, through amber, to red as grievance nears the time together. */
 function linkColor(familiarity: number, grievance: number) {
@@ -70,6 +73,30 @@ export function TieGraph({
             </path>
           )
         })}
+        {graph.family.map((link) => {
+          const from = spots.get(link.a)
+          const to = spots.get(link.b)
+          if (!from || !to) return null
+          const partner = link.kind === 'partner'
+          return (
+            <line
+              key={`${link.kind}-${link.a}-${link.b}`}
+              x1={from.x}
+              y1={from.y}
+              x2={to.x}
+              y2={to.y}
+              stroke={partner ? PARTNER_COLOR : PARENT_COLOR}
+              strokeWidth={partner ? 2 : 0.8}
+              strokeOpacity={0.85}
+            >
+              <title>
+                {partner
+                  ? `${foragerName(link.a)} and ${foragerName(link.b)}: partners`
+                  : `${foragerName(link.a)}, parent of ${foragerName(link.b)}`}
+              </title>
+            </line>
+          )
+        })}
         {graph.people.map((person) => {
           const spot = spots.get(person.id)!
           const isFollowed = person.id === followed
@@ -92,8 +119,9 @@ export function TieGraph({
       </svg>
       <figcaption>
         {graph.links.length} pairs know each other, {graph.close} closely (a day together or more), {graph.aggrieved}{' '}
-        with a grievance. Thicker lines: more time together. Green: no grievance; amber, red: growing grievance. Dots
-        are coloured by group (grey: none); click one to follow them.
+        with a grievance. Thicker lines: more time together. Green: no grievance; amber, red: growing grievance.
+        Straight lines are family: purple joins partners, thin blue a parent to a child. Dots are coloured by group
+        (grey: none); click one to follow them.
       </figcaption>
       <label className="life-switch-inline">
         <input type="checkbox" checked={closeOnly} onChange={(change) => setCloseOnly(change.currentTarget.checked)} />

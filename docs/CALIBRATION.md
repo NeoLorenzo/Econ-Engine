@@ -249,13 +249,13 @@ Life 11 continuous-bank refinement: the 5 m lattice still supplies drainage and 
 
 ## Life 14: adult bodies and personality
 
-The body rules approved in Life 14, kept in the [current specification](LIFE18_SPEC.md), use Mesolithic European adult means: women 154 cm and 52 kg; men 165 cm and 62 kg; within-sex spreads 6 cm and 6 kg (Formicola and Giannecchini 1999; Ruff 2018). Grip means are 24 kg and 38 kg, spread 6 kg, following forager-horticulturalist field magnitudes (Gurven et al. 2006; Apicella 2014). Within-sex height/weight, height/grip and weight/grip correlations are 0.55, 0.35 and 0.40. These are magnitude targets, not calibrated trajectories.
+The body rules approved in Life 14, kept in the [current specification](LIFE19_SPEC.md), use Mesolithic European adult means: women 154 cm and 52 kg; men 165 cm and 62 kg; within-sex spreads 6 cm and 6 kg (Formicola and Giannecchini 1999; Ruff 2018). Grip means are 24 kg and 38 kg, spread 6 kg, following forager-horticulturalist field magnitudes (Gurven et al. 2006; Apicella 2014). Within-sex height/weight, height/grip and weight/grip correlations are 0.55, 0.35 and 0.40. These are magnitude targets, not calibrated trajectories.
 
 The ten Big Five correlations follow van der Linden et al. (2010), in O-C, O-E, O-A, O-N, C-E, C-A, C-N, E-A, E-N, A-N order: 0.20, 0.43, 0.21, -0.17, 0.29, 0.43, -0.43, 0.26, -0.36, -0.36. Trait effects on approach distance, bargaining share, stocks/satiation, dusk margin and novelty are directional estimates. Their strengths remain questions for later experiments. The carrying rule keeps average women's loads closer to men's than grip strength alone would, consistent with forager loads of roughly 15 to 25 kg or more (Lee 1979; Marlowe 2010). Full reference details are in the specification.
 
 ## Life 18: seasons and stores
 
-The rules approved in Life 18, kept in the [current specification](LIFE18_SPEC.md), replace the all-year regrowth of berries and hazel above with crops that ripen in a season, are lost to animals and rot, and swing from year to year. The land's food is now day-anchored: a thicket's yearly crop is stated per 365 days, so at the default 90 days a year it grows 90/365 of it. Foragers and subsistence farmers lose a few per cent of body weight in their lean season and regain it at harvest [50]; Life 18 is checked against that pattern.
+The rules approved in Life 18, kept in the [current specification](LIFE19_SPEC.md), replace the all-year regrowth of berries and hazel above with crops that ripen in a season, are lost to animals and rot, and swing from year to year. The land's food is now day-anchored: a thicket's yearly crop is stated per 365 days, so at the default 90 days a year it grows 90/365 of it. Foragers and subsistence farmers lose a few per cent of body weight in their lean season and regain it at harvest [50]; Life 18 is checked against that pattern.
 
 | Parameter | Value | Basis | Status |
 | --- | --- | --- | --- |
@@ -274,3 +274,40 @@ Sources added for Life 18:
 
 49. Hazel seed fate. The task named a 2024 study of *Corylus mandshurica* seed fate in *Global Ecology and Conservation* (October 2024). **It could not be verified**: PubMed and the publisher could not be read from this session, and no paper with that species, journal and date was found. Candidates found instead: a study of habitat differences in scatter-hoarding reporting a mean removal time of about 14 days (14.24 ± 10.53 d pooled across species; PubMed 37234965, PMC10208085); a 2024 *Global Ecology and Conservation* paper on *Corylus heterophylla* (https://doi.org/10.1016/j.gecco.2024.e03073); and work in *ZooKeys* (2021) on *C. mandshurica* finding 15.83% of seeds eaten in place and 84.17% dispersed by rodents. The 14-day half-life stands as an estimate until the source is confirmed.
 50. Jenike, M. R. (2001). Nutritional ecology: diet, physical activity and body size. In C. Panter-Brick, R. H. Layton and P. Rowley-Conwy (eds.), *Hunter-Gatherers: An Interdisciplinary Perspective* (pp. 205–238). Cambridge University Press.
+
+## Life 19: generations
+
+The rules approved in Life 19, kept in the [current specification](LIFE19_SPEC.md), add ages, growing bodies, nursing, pairing, births and deaths of illness, accident or age.
+
+### Mortality by age
+
+Deaths other than of hunger and thirst follow the Siler fit to the !Kung (Gurven and Kaplan 2007, Table 2 [51]): yearly hazard at age `t` is `a1·e^(−b1·t) + a2 + a3·e^(b3·t)` with a1 0.340, b1 0.913, a2 0.010, a3 3.31×10⁻⁴, b3 0.077. The specification as first drafted had b1 0.943; the paper's table gives 0.913, which is used. The fit gives 79% surviving the first year, 66% to 5, 59% to 15, 38% to 45 and 13% to 70, a life expectancy of 32 at birth, 38 more at 15 and 20 more at 45.
+
+`deathPerMillionByAge[a]` is the fit's mean yearly hazard over age `a` to `a+1`, `H(a+1) − H(a)` with `H` the cumulative hazard, times a million and rounded. The daily rule (chance `entry / daysPerYear` per million each midnight) reproduces the fit within 0.04 of a percentage point at 90 days a year. The 111 entries, ages 0 to 110:
+
+```
+233292,99845,46309,24844,16251,12827,11478,10964,10787,10748,10767,10812,10871,10938,11012,11092,11180,11274,11376,11486,11605,11733,11872,12022,12184,12359,12547,12751,12972,13209,13466,13744,14043,14367,14717,15094,15502,15942,16418,16932,17487,18086,18733,19432,20187,21002,21883,22834,23861,24971,26169,27463,28861,30371,32001,33763,35665,37719,39937,42334,44922,47717,50736,53997,57518,61322,65429,69866,74658,79833,85423,91460,97980,105022,112628,120842,129715,139297,149646,160823,172896,185934,200016,215226,231652,249394,268555,289251,311603,335743,361817,389977,420391,453239,488717,527035,568419,613116,661391,713530,769842,830661,896348,967294,1043917,1126674,1216055,1312590,1416852,1529460,1651080
+```
+
+The fit counts all causes, hunger among them, so the valley's deaths are expected to exceed it.
+
+### Children, nursing and births
+
+| Parameter | Value | Basis | Status |
+| --- | --- | --- | --- |
+| `growthByAge` | Weight, height and grip per mille of the adult value at ages 0 to 18; weight 60‰ at birth, 300‰ at five, 490‰ at ten, full at 18 | About 3 kg at birth, 15 at five and 25 at ten for a 52 kg woman (Walker et al. 2006); strength grows late | Measured shape, judged |
+| `metabolismByAge` | Energy per kg, 2,900‰ of the adult rate at birth, falling to 1,000‰ at 18 | An average child's day is about 600 kcal in the first year, 800 at one, 1,300 at five and 2,000 at twelve (FAO/WHO/UNU 2004) | Measured |
+| `walkByAge`, `workByAge` | Walking from one, at an adult's pace by 15; work from three, full at 18 | Children's foraging returns are low and rise through the teens (Blurton Jones et al. 1989; Kaplan et al. 2000) | Judgement |
+| `rangeByAge` | 300 m from the hearth at three to 3 km at 11, unlimited from 12 | Forager children forage near camp, further as they grow (Hawkes et al. 1995) | Judgement |
+| `carryBelowPerMille` | Carried while below 450‰ of adult weight | A child walks on their own from about three | Judgement |
+| `solidFoodMilliYears`, `weaningMilliYears` | Solid food from six months, weaned at three years | Weaning at about 2.5 to 3 years (Marlowe 2005; Konner 2005) | Measured |
+| `feedKcal`, `milkMlPerThousandKcal` | 400 kcal a feed; 1,500 ml of water in 1,000 kcal of milk | Breast milk is about 0.67 kcal a ml | Measured |
+| `amenorrheaMilliYears` | Two years after a birth | Births three to four years apart among foragers (Howell 1979; Konner and Worthman 1980) | Measured |
+| `pairFromYears`, `lastBirthYears` | 15 and 45 | First marriage for forager women at about 17 to 19 (Marlowe 2004) | Measured |
+| `fecundReserveKcal` | 56,000 kcal of reserve | Energy-dependent ovulation (Ellison 2001; Valeggia and Ellison 2009, direction) | Judgement |
+| `fecundPerMillePerCycle` | 200‰ a cycle, a cycle a twelfth of a year | Fecundability about 0.2 a cycle (Wood 1994) | Measured |
+| `pregnancyMilliYears`, `pregnancyKcalPerDay` | Nine months; 300 kcal a day, charged as 12 kcal an hour (288 a day) | About 80,000 kcal over a pregnancy (Butte and King 2005) | Measured |
+
+Sources added for Life 19:
+
+51. Gurven, M. and Kaplan, H. (2007). Longevity among hunter-gatherers: a cross-cultural examination. *Population and Development Review* 33(2): 321–365. Table 2, Siler parameter estimates.

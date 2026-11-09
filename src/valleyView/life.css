@@ -559,6 +559,21 @@
   font-size: 0.8rem;
   color: var(--text-2);
 }
+.life-body + .life-body {
+  margin-top: 2px;
+}
+.life-kin {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+.life-kin.is-dead {
+  color: var(--text-3);
+}
 .life-traits {
   display: grid;
   gap: 5px;

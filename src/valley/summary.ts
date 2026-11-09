@@ -23,7 +23,7 @@ export function measureTask(state: ValleyState, person: Forager, minute: number)
   const action =
     task.kind === 'pick' || task.kind === 'nuts' || task.kind === 'fish' || task.kind === 'store'
       ? 'forage'
-      : task.kind === 'drink' || task.kind === 'eat store'
+      : task.kind === 'drink' || task.kind === 'eat store' || task.kind === 'carried'
         ? 'rest'
         : task.kind
   state.today.seconds[action] += seconds

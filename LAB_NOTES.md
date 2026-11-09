@@ -6,6 +6,26 @@
 
 Every meaningful model, architecture, experimental, or design update should receive a newest-first entry. Use at most one base update number per Git commit. Refinements completed before that commit keep the same base number with a decimal suffix—for example, `003` and `003.1` belong to the same commit family. Allocate the next base number only for a later commit. Preserve the context, observed problem or research question, rationale, important implementation decisions, trade-offs, findings, and unresolved questions. Distinguish verified observations from hypotheses. If the original rationale is unknown, say so rather than inferring intent from the finished code.
 
+## [LIFE19-Generations-078] - (2026-11-09)
+
+The owner approved the generations specification with one rule above the rest: every person is an agent from birth. A baby is not a counter on a parent; it has its own body, wake-ups and choices, and what changes with age is only what its body can do.
+
+**Mortality.** The specification's draft took the !Kung Siler b1 as 0.943; the paper's Table 2 gives 0.913, which is used. A unit fixture checks the stored table against the fit and survival by the daily rule over a million lives to within a percentage point.
+
+**What implementation changed in the specification.**
+- *When a body changes.* With ages read at any minute, a child's body changed in the middle of a task, and the checker could not tell which body a rate came from. A body's age is now its age at the last midnight, or at birth, and the checker rebuilds each person's body for the minute a task began (`natureHistory`), adding the people born in an interval first (`withNewborns`).
+- *Lifecycle order.* Growth ran last at midnight, after people woken at that minute had used the old body. It now runs first.
+- *Feeding.* Moving milk inside the child's wake-up changed the mother's ledger without her wake-up. The child now addresses the mother in the same minute and her wake-up feeds every child of hers who wants it. Hunger flags were then set twice around a feed and, with hysteresis, a restored flag made the mother decline a feed the child kept asking for, looping in one minute; flags are set once after the feed, and whether a child wants a feed reads hunger from their energy.
+- *Conception beside a newborn.* A child born that midnight had not fed yet, so its mother could conceive at once. A child born in the last day now counts as nursing.
+- *Shelter and fire.* A baby asleep away from its hearth counted as sheltered by a parent's hut, and a newborn with no fire of its own asked for wood. Shelter needs the person at their hearth; a child shares a parent's fire at that hearth and asks nobody for wood. The midnight warmth pass skips sleepers whose body changed at that minute, since they set their own warmth when re-addressed.
+- *Smaller corrections.* Water's base scales against the person's own adult body, so adults are unchanged; pregnancy adds 12 kcal an hour (300 a day, rounded down); a carried child's weight does not cut the room in a load begun later; `conceived` is recorded only on success; children do not cut logs, make axes or practise.
+
+*Checker found by a long run.* A checked 120-day run at 8 days a year (about 15 years, 47 births, 38 deaths) found three checker rules that disagreed with the engine and the specification, none in the engine: a child who had died still counted against the mother's conception; the replay sheltered a baby carried to their father's hut, away from their own hearth (pairs keep their own hearths); and a baby who could not reach water slept with severe thirst, which the Life 13 rule forbade. The checker now follows the specification on all three.
+
+**Observed.** In the browser at 8 days a year, seed 20260813, the valley reached year 7 with about fifty people, ten to sixteen of them under 15, births in the history and a clean console. A checked 30-day run at 8 days a year passed. These are single observations, not measurements.
+
+**Open.** Pairings in the person history are recent only; energy bars use the configuration's levels rather than each person's; the whole-land map draws a carried child at their own recorded position.
+
 ## [LIFE17-Sky-077] - (2026-11-08)
 
 The owner asked to see the seasons in the valley: the sun's path and day length changing through the year, and trees turning brown in autumn and losing their leaves in winter, without temperature or snow. This is drawn by the observer alone, from the displayed minute, so no trajectory changes.

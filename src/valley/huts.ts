@@ -10,10 +10,40 @@ export const hutOf = (state: Pick<ValleyState, 'huts'>, forager: Forager): Hut |
   forager.hutId === null ? null : state.huts[forager.hutId]!
 
 /** Whether a forager's hut stands at its hearth with every log. */
-export function hutWhole(state: Pick<ValleyState, 'huts' | 'config'>, forager: Forager) {
+export function hutWhole(
+  state: Pick<ValleyState, 'huts' | 'config'> & Partial<Pick<ValleyState, 'foragers'>>,
+  forager: Forager,
+): boolean {
   const hut = hutOf(state, forager)
-  return hut !== null && hut.logs >= state.config.hutLogs && hut.x === forager.hearth.x && hut.y === forager.hearth.y
+  if (hut !== null && hut.logs >= state.config.hutLogs && hut.x === forager.hearth.x && hut.y === forager.hearth.y)
+    return true
+  // Life 19: a person without a whole hut of their own shelters in a living parent's at the same hearth.
+  if (!state.foragers) return false
+  for (const parentId of [forager.motherId, forager.fatherId]) {
+    if (parentId === null || parentId === undefined) continue
+    const parent = state.foragers[parentId]!
+    if (parent.alive && parent.hearth.x === forager.hearth.x && parent.hearth.y === forager.hearth.y)
+      if (hutWhole({ huts: state.huts, config: state.config }, parent)) return true
+  }
+  return false
 }
+
+/**
+ * The people whose whole hut may shelter a person at a minute (Life 19): themselves, and each parent still living then.
+ * For the checker, which reads deaths from the interval's records.
+ */
+export function shelterers(state: Pick<ValleyState, 'foragers' | 'lastInterval'>, id: number, minute: number) {
+  const person = state.foragers[id]!
+  const living = (other: number) => {
+    const death = state.lastInterval.find((e) => e.kind === 'death' && e.foragerId === other)
+    return death ? death.minute > minute : state.foragers[other]!.alive
+  }
+  return [id, ...[person.motherId, person.fatherId].filter((p): p is number => p !== null && living(p))]
+}
+
+/** Whether a whole hut shelters a sleeper where they lie: at their hearth, under their own or a parent's (Life 19). */
+export const shelteredAt = (state: Pick<ValleyState, 'huts' | 'config' | 'foragers'>, forager: Forager) =>
+  forager.x === forager.hearth.x && forager.y === forager.hearth.y && hutWhole(state, forager)
 
 /** The drive for shelter: a member whose hut is not whole wants logs for it. */
 export const wantsLogs = (state: Pick<ValleyState, 'huts' | 'config'>, forager: Forager) =>

@@ -3,18 +3,27 @@ import { LandMap } from './LandMap'
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SkillMap } from './SkillMap'
 import { TieGraph } from './TieGraph'
+import { BarsChart } from './PeopleCharts'
 import { PieChart, StackedAreaChart, StackedBarChart, TimeChart } from '../ui/charts'
 import { Icon } from '../ui/components'
 import { palette } from '../ui/theme'
 import { runDayOf } from '../valley/calendar'
 import { isDaylight } from '../valley/forager'
+import { ageMilli } from '../valley/growth'
 import type { ValleyState } from '../valley/types'
 import { createValleyScene, type ValleyPick, type ValleyScene, type ValleySelection } from './valleyScene'
 import type { EngineLink } from './engineLink'
 import {
   advancePlayback,
   changeSpeed,
-  aliveCount,
+  ageAtDeath,
+  ageLabel,
+  ageOf,
+  birthsAndDeathsByYear,
+  deathCause,
+  familyOf,
+  lifeOf,
+  peopleCount,
   clearView,
   calendarLabel,
   clockLabel,
@@ -347,6 +356,25 @@ export default function ValleyApp({
   const forager = state.foragers[followed]!
   const name = foragerName(followed)
   const ties = tieSummary(state, followed)
+  const people = peopleCount(state)
+  const family = familyOf(state, followed)
+  const life = lifeOf(state, followed)
+  /** A relative's name as a button that follows them. */
+  const kin = (person: { id: number; alive: boolean } | null, years?: number) =>
+    person === null ? (
+      '—'
+    ) : (
+      <button
+        key={person.id}
+        type="button"
+        className={`life-kin${person.alive ? '' : ' is-dead'}`}
+        title={person.alive ? `Follow ${foragerName(person.id)}` : `${foragerName(person.id)} (dead)`}
+        onClick={() => follow(person.id)}
+      >
+        {foragerName(person.id)}
+        {years !== undefined && ` (${years})`}
+      </button>
+    )
   const plant =
     selected && (selected.kind === 'bush' || selected.kind === 'hazel' || selected.kind === 'tree')
       ? plantInspection(state, selected.kind, selected.id, followed)
@@ -375,13 +403,13 @@ export default function ValleyApp({
           <span className="brand-mark" aria-hidden="true" />
           Econ Engine
         </a>
-        <span className="life-title">Life 18</span>
+        <span className="life-title">Life 19</span>
         <div className="life-status num">
           <span title={`${Math.round(snapshot.minutesPerSecond).toLocaleString('en-US')} min / s`}>
             {calendarLabel(config, minutes, state.harvest)} · {clockLabel(minutes / 60).split(' · ')[1]}
           </span>
           <span>
-            {aliveCount(state)} of {config.founders} alive
+            {people.alive} people · {people.young} under 15
           </span>
         </div>
         <div className="life-controls" role="group" aria-label="Simulation controls">
@@ -468,7 +496,11 @@ export default function ValleyApp({
         )}
         <p className={`life-activity${forager.alive ? '' : ' is-dead'}`} aria-live="polite">
           {describeActivity(pair, followed)}
-          {forager.deathCauses.length > 0 && <span className="life-cause">{forager.deathCauses.join(' and ')}</span>}
+          {!forager.alive && (
+            <span className="life-cause">
+              {deathCause(forager) === 'illness' ? 'illness' : forager.deathCauses.join(' and ')}
+            </span>
+          )}
         </p>
         <div className="life-needs">
           <div className="life-energy">
@@ -548,8 +580,35 @@ export default function ValleyApp({
           </div>
         </div>
         <p className="life-body">
-          {forager.sex === 0 ? 'Woman' : 'Man'} · {forager.heightCm} cm · {forager.weightKg} kg · grip {forager.gripKg}{' '}
-          kg · carries {forager.loadCapacityKg} kg
+          {life.age < 15_000 ? (forager.sex === 0 ? 'Girl' : 'Boy') : forager.sex === 0 ? 'Woman' : 'Man'} ·{' '}
+          {forager.heightCm} cm · {forager.weightKg} kg · grip {forager.gripKg} kg · carries {forager.loadCapacityKg} kg
+          {life.pregnant && ' · pregnant'}
+          {life.nursing && ' · nursing'}
+        </p>
+        <p className="life-body">
+          Age {ageLabel(life.age)}
+          {!forager.alive && ' at death'}
+        </p>
+        {life.growsTo && (
+          <p className="life-body">
+            Grows to {life.growsTo.heightCm} cm · {life.growsTo.weightKg} kg
+          </p>
+        )}
+        <p className="life-body">
+          {family.partner && <>Partner: {kin(family.partner)} · </>}
+          {family.children.length > 0 && (
+            <>
+              Children:{' '}
+              {family.children.map((child, index) => (
+                <span key={child.id}>
+                  {index > 0 && ', '}
+                  {kin(child, child.years)}
+                </span>
+              ))}{' '}
+              ·{' '}
+            </>
+          )}
+          Mother: {kin(family.mother)} · Father: {kin(family.father)}
         </p>
         <div className="life-traits">
           {TRAITS.map((key) => {
@@ -674,7 +733,7 @@ export default function ValleyApp({
           </ul>
         </details>
         <details className="life-details">
-          <summary>Recent harvests, stores and deaths</summary>
+          <summary>Recent harvests, stores, pairings, births and deaths</summary>
           <ul>
             {[
               // The year's crop is drawn at its start, longer ago than the few days of events kept.
@@ -683,27 +742,33 @@ export default function ValleyApp({
                 kind: 'harvest' as const,
                 minute: Math.max(0, runDayOf(config, state.harvest.year, 0) * 1_440),
               },
-              ...state.eventDays.flat().filter((event) => event.kind === 'stored' && event.foragerId === followed),
-              ...state.foragers.flatMap((person) =>
-                !person.alive && person.deathMinute !== null
+              ...state.eventDays
+                .flat()
+                .filter(
+                  (event) => (event.kind === 'stored' && event.foragerId === followed) || event.kind === 'paired',
+                ),
+              ...state.foragers.flatMap((person) => [
+                ...(person.motherId !== null ? [{ kind: 'birth' as const, minute: person.birthMinute, person }] : []),
+                ...(!person.alive && person.deathMinute !== null
                   ? [{ kind: 'died' as const, minute: person.deathMinute, person }]
-                  : [],
-              ),
+                  : []),
+              ]),
             ]
               .sort((a, b) => a.minute - b.minute)
-              .slice(-6)
+              .slice(-8)
               .map((event, index) => (
                 <li key={index}>
-                  {event.kind === 'harvest'
-                    ? `Year ${event.year + 1}: ${cropPhrase('berry', event.berries)}, ${cropPhrase('hazel', event.hazel)}`
-                    : event.kind === 'stored'
-                      ? `${foragerName(event.foragerId)} stored ${formatKg(
-                          Math.round(event.lots.reduce((total, lot) => total + lot.kcal, 0) / config.nutKcalPerKg),
-                        )} of nuts`
-                      : event.kind === 'died' &&
-                        `${foragerName(event.person.id)} ${
-                          event.person.deathCauses[0] === 'dehydration' ? 'died of thirst' : 'starved'
-                        } in ${foodSeasonOf(config, event.minute)}`}
+                  {event.kind === 'paired'
+                    ? `${foragerName(event.foragerId)} and ${foragerName(event.otherId)} paired`
+                    : event.kind === 'birth'
+                      ? `${foragerName(event.person.motherId!)} gave birth to a ${event.person.sex === 0 ? 'girl' : 'boy'}, ${foragerName(event.person.id)}`
+                      : event.kind === 'harvest'
+                        ? `Year ${event.year + 1}: ${cropPhrase('berry', event.berries)}, ${cropPhrase('hazel', event.hazel)}`
+                        : event.kind === 'stored'
+                          ? `${foragerName(event.foragerId)} stored ${formatKg(
+                              Math.round(event.lots.reduce((total, lot) => total + lot.kcal, 0) / config.nutKcalPerKg),
+                            )} of nuts`
+                          : event.kind === 'died' && deathLine(state, event.person)}
                 </li>
               ))}
           </ul>
@@ -752,6 +817,7 @@ export default function ValleyApp({
                 <dd>
                   {task.kind}, {task.reason}
                   {task.way && `, ${task.way}`}
+                  {task.fed && `, fed by ${forager.sex === 0 ? 'her' : 'his'} mother`}
                 </dd>
               </>
             )}
@@ -1298,6 +1364,7 @@ const HistoryCharts = memo(
     if (days.length <= 1) return <p className="life-note">The charts over time begin after the first day.</p>
     const eaten = eatenBySource(state, period)
     const kcal = (value: number) => (value >= 1_000 ? `${Math.round(value / 1000)}k` : String(Math.round(value)))
+    const count = (value: number) => String(Math.round(value))
     return (
       <>
         <h3 className="life-chart-section">Food</h3>
@@ -1366,6 +1433,7 @@ const HistoryCharts = memo(
           markLegend={[
             { key: 'starved', name: 'Starved', color: DEATH_COLORS.starvation },
             { key: 'thirst', name: 'Died of thirst', color: DEATH_COLORS.dehydration },
+            { key: 'illness', name: 'Died of illness', color: DEATH_COLORS.illness },
           ]}
         />
         <StackedBarChart
@@ -1380,6 +1448,33 @@ const HistoryCharts = memo(
           ]}
         />
         <h3 className="life-chart-section">People</h3>
+        <StackedAreaChart
+          data={days}
+          height={110}
+          format={count}
+          stacked={[
+            { key: 'babies', name: 'Babies (under 3)', color: palette.firmB },
+            { key: 'children', name: 'Children (3–14)', color: palette.warning },
+            { key: 'adults', name: 'Adults (15–49)', color: palette.household },
+            { key: 'elders', name: 'Elders (50+)', color: palette.neutral },
+          ]}
+        />
+        <BarsChart
+          data={birthsAndDeathsByYear(state)}
+          format={count}
+          bars={[
+            { key: 'births', name: 'Births', color: palette.positive, stack: 'births' },
+            { key: 'starvation', name: 'Died of hunger', color: DEATH_COLORS.starvation, stack: 'deaths' },
+            { key: 'dehydration', name: 'Died of thirst', color: DEATH_COLORS.dehydration, stack: 'deaths' },
+            { key: 'illness', name: 'Died of illness', color: DEATH_COLORS.illness, stack: 'deaths' },
+          ]}
+        />
+        <BarsChart
+          data={ageAtDeath(state)}
+          format={count}
+          bars={[{ key: 'died', name: 'Ages at death, 5-year bins', color: palette.text2, stack: 'died' }]}
+          lines={[{ key: 'fit', name: '!Kung life table, same number', color: palette.accent, dashed: true }]}
+        />
         <TimeChart
           data={days}
           height={90}
@@ -1445,6 +1540,34 @@ const HistoryCharts = memo(
     before.state.layout === after.state.layout &&
     before.state.days.length === after.state.days.length,
 )
+
+/**
+ * A death as the history reads it, with the cause, the age and the season: "Forager 9 died of illness at 61",
+ * "Forager 47 starved at 1 in the lean months, a year after her mother died".
+ */
+function deathLine(state: ValleyState, person: ValleyState['foragers'][number]) {
+  const { config } = state
+  const minute = person.deathMinute!
+  const cause = deathCause(person)
+  const how = cause === 'illness' ? 'died of illness' : cause === 'dehydration' ? 'died of thirst' : 'starved'
+  const mother = person.motherId === null ? null : state.foragers[person.motherId]!
+  // A child who died after their mother: how long after, in the calendar's years and months.
+  const gap =
+    mother && !mother.alive && mother.deathMinute !== null && ageOf(state, person) < 15_000
+      ? ageMilli(config, mother.deathMinute, minute)
+      : -1
+  const after =
+    gap >= 2_000
+      ? `${Math.floor(gap / 1_000)} years`
+      : gap >= 1_000
+        ? 'a year'
+        : gap >= 167
+          ? `${Math.floor((gap * 12) / 1_000)} months`
+          : 'days'
+  const orphaned = gap >= 0 ? `, ${after} after ${person.sex === 0 ? 'her' : 'his'} mother died` : ''
+  const season = cause === 'illness' ? '' : ` in ${foodSeasonOf(config, minute)}`
+  return `${foragerName(person.id)} ${how} at ${ageLabel(ageOf(state, person))}${season}${orphaned}`
+}
 
 /** Carried food by kind, as a phrase: "1,200 kcal of nuts and 300 of fish". */
 function carriedPhrase(food: { berries: number; nuts: number; fish: number }) {

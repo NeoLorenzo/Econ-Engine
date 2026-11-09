@@ -24,14 +24,19 @@ import { carriedKcal, spoiledBy } from './food'
 import { lastMidnight } from './stores'
 import { thicketCapacity } from './places'
 import { MINUTES_PER_DAY } from './calendar'
+import { bodyAge, conceiveChance, fateDraws, natureHistory, pregnancyDays, withNewborns } from './lifecycle'
+import { areKin, canWalk } from './kin'
+import { dayOf } from './calendar'
+import { ageMilli, deathHazard } from './growth'
 import { attemptOf, axeLife } from './axes'
 import { experienceDay, skillViolations } from './skills'
 import { hearthAround, livingMembers } from './social'
 import { sleepCostOf, warmthOf } from './work'
+import { shelterers } from './huts'
 import { feedAmount } from './fire'
 import { replayInterval, annualShares } from './replay'
 import { replayTies, tieViolations } from './ties'
-import type { Forager, Point, ValleyState, TaskEvent } from './types'
+import type { Forager, Point, ValleyEvent, ValleyState, TaskEvent } from './types'
 const sum = (values: Iterable<number>) => {
   let total = 0
   for (const value of values) total += value
@@ -96,6 +101,8 @@ export function layoutViolations(state: ValleyState): string[] {
 /** Holds the previous immutable state and checks the next interval without advancing anybody. */
 export class ValleyChecker {
   private previous: ValleyState
+  /** Each person's nature at a minute of the interval being checked (Life 19). */
+  private bodyAt: (id: number, minute: number) => Forager = (id) => this.previous.foragers[id]!
   private geography: string[]
   constructor(state: ValleyState) {
     this.previous = state
@@ -114,6 +121,8 @@ export class ValleyChecker {
     const found = [...this.geography]
     this.geography = []
     if (state.minute < this.previous.minute) return ['An interval moved backwards']
+    this.previous = withNewborns(this.previous, state)
+    this.bodyAt = natureHistory(this.previous, state)
     for (const check of [
       this.bodyCharges,
       this.positions,
@@ -224,6 +233,114 @@ export class ValleyChecker {
     }
     return errors
   }
+  /**
+   * The Life 19 records: a feed by the child's own mother within talking distance, under weaning age; a birth only of a
+   * pregnancy come to term; a conception only by a woman who may conceive; a pairing never of kin, of one sex or of
+   * someone too young; no lot eaten or bank drunk by a baby on milk; and a child's work within their range.
+   */
+  private lifeEvent(
+    state: ValleyState,
+    e: ValleyEvent,
+    positions: Point[],
+    hearths: Point[],
+    pregnancies: (Forager['pregnancy'] | undefined)[],
+    alive: boolean[],
+  ): string[] {
+    const errors: string[] = [],
+      { config } = state
+    const near = (a: number, b: number) => {
+      const p = positions[a]!,
+        q = positions[b]!
+      return (p.x - q.x) ** 2 + (p.y - q.y) ** 2 <= config.talkRadiusCm ** 2
+    }
+    if (e.kind === 'fed') {
+      const child = state.foragers[e.foragerId]!
+      if (
+        child.motherId !== e.motherId ||
+        !alive[e.motherId] ||
+        !near(e.foragerId, e.motherId) ||
+        ageMilli(config, child.birthMinute, e.minute) >= config.weaningMilliYears ||
+        e.kcal < 0 ||
+        e.waterMl < 0
+      )
+        errors.push(`person ${e.foragerId}: impossible feed`)
+    }
+    if (e.kind === 'born') {
+      const pregnancy = pregnancies[e.motherId]
+      if (
+        !pregnancy ||
+        pregnancy.fatherId !== e.fatherId ||
+        e.minute % MINUTES_PER_DAY !== 0 ||
+        dayOf(e.minute) < pregnancy.day + pregnancyDays(config)
+      )
+        errors.push(`person ${e.motherId}: birth with no pregnancy come to term`)
+      pregnancies[e.motherId] = null
+      pregnancies[e.foragerId] = null
+    }
+    if (e.kind === 'conceived') {
+      const woman = state.foragers[e.foragerId]!
+      const age = ageMilli(config, woman.birthMinute, e.minute)
+      const nursing = state.foragers.some(
+        (child) =>
+          child.motherId === woman.id &&
+          // A child who died, even at this midnight before conceptions, no longer suppresses ovulation.
+          (child.deathMinute === null || child.deathMinute > e.minute) &&
+          ageMilli(config, child.birthMinute, e.minute) < config.amenorrheaMilliYears &&
+          (child.birthMinute > e.minute - MINUTES_PER_DAY ||
+            state.lastInterval.some(
+              (f) =>
+                f.kind === 'fed' &&
+                f.foragerId === child.id &&
+                f.minute <= e.minute &&
+                f.minute > e.minute - MINUTES_PER_DAY,
+            ) ||
+            (this.previous.foragers[child.id]?.lastFedMinute ?? -1) > e.minute - MINUTES_PER_DAY),
+      )
+      if (
+        woman.sex !== 0 ||
+        pregnancies[e.foragerId] ||
+        nursing ||
+        age < config.pairFromYears * 1_000 ||
+        age >= config.lastBirthYears * 1_000 ||
+        e.minute % MINUTES_PER_DAY !== 0 ||
+        e.draw >= conceiveChance(config)
+      )
+        errors.push(`person ${e.foragerId}: impossible conception`)
+      pregnancies[e.foragerId] = { day: dayOf(e.minute), fatherId: e.fatherId }
+    }
+    if (e.kind === 'death') pregnancies[e.foragerId] = null
+    if (e.kind === 'paired') {
+      const a = state.foragers[e.foragerId]!,
+        b = state.foragers[e.otherId]!
+      if (
+        a.sex === b.sex ||
+        areKin(state.foragers, a, b) ||
+        ageMilli(config, a.birthMinute, e.minute) < config.pairFromYears * 1_000 ||
+        ageMilli(config, b.birthMinute, e.minute) < config.pairFromYears * 1_000
+      )
+        errors.push(`person ${e.foragerId}: impossible pairing`)
+    }
+    if (
+      e.kind === 'task-end' &&
+      (e.ateKcal ?? 0) > 0 &&
+      ageMilli(config, state.foragers[e.foragerId]!.birthMinute, e.minute) < config.solidFoodMilliYears
+    )
+      errors.push(`person ${e.foragerId}: a baby on milk ate or drank`)
+    if (e.kind === 'task-start') {
+      const person = this.bodyAt(e.foragerId, e.minute)
+      const age = ageMilli(config, person.birthMinute, e.minute)
+      if (age < config.solidFoodMilliYears && (e.task.kind === 'eat store' || e.task.kind === 'drink'))
+        errors.push(`person ${e.foragerId}: a baby on milk ate or drank`)
+      if (
+        person.rangeCm >= 0 &&
+        ['pick', 'nuts', 'fish', 'gather', 'cut'].includes(e.task.kind) &&
+        (e.position.x - hearths[e.foragerId]!.x) ** 2 + (e.position.y - hearths[e.foragerId]!.y) ** 2 >
+          person.rangeCm ** 2
+      )
+        errors.push(`person ${e.foragerId}: worked beyond their range`)
+    }
+    return errors
+  }
   private bodyCharges(state: ValleyState) {
     return replayInterval(this.previous, state)
   }
@@ -234,13 +351,19 @@ export class ValleyChecker {
     const dry = (point: Point) =>
       Number.isSafeInteger(point.x) && Number.isSafeInteger(point.y) && onWalkableGround(mesh, point)
     const used = new Set<number>(),
-      owners = new Map<number, number>()
-    for (const p of state.foragers) if (p.task?.kind === 'walk') owners.set(p.task.routeId, p.id)
+      owners = new Map<number, number>(),
+      starts = new Map<number, number>()
+    for (const p of state.foragers)
+      if (p.task?.kind === 'walk') {
+        owners.set(p.task.routeId, p.id)
+        starts.set(p.task.routeId, p.task.startMinute)
+      }
     for (const e of state.lastInterval)
       if ((e.kind === 'task-start' || e.kind === 'task-end') && e.task.kind === 'walk') {
         if (owners.has(e.task.routeId) && owners.get(e.task.routeId) !== e.foragerId)
           errors.push('Route shared between people')
         owners.set(e.task.routeId, e.foragerId)
+        starts.set(e.task.routeId, e.task.startMinute)
       }
     for (let id = this.previous.routes.length; id < state.routes.length; id++) used.add(id)
     for (const p of state.foragers) {
@@ -275,7 +398,7 @@ export class ValleyChecker {
         errors.push(`route ${id}: no recorded walker`)
         continue
       }
-      const personal = personConfig(state.config, state.foragers[owner]!)
+      const personal = personConfig(state.config, this.bodyAt(owner, starts.get(id) ?? state.minute))
       let units = 0,
         energy = 0
       for (let i = 0; i < route.segments.length; i++) {
@@ -319,13 +442,17 @@ export class ValleyChecker {
           if (!pointEqual(event.position, positionAlong(route, event.minute - event.task.startMinute)))
             errors.push('Recorded position lies off its route')
           const speed = speedForLoad(
-            personConfig(state.config, state.foragers[event.foragerId]!),
+            personConfig(state.config, this.bodyAt(event.foragerId, event.task.startMinute)),
             event.task.startLoadKg ?? 0,
           )
           for (const s of route.segments) {
             if (
               s.energyPerHour !==
-              segmentEnergyRate(personConfig(state.config, state.foragers[event.foragerId]!), s.slope, s.uphill)
+              segmentEnergyRate(
+                personConfig(state.config, this.bodyAt(event.foragerId, event.task.startMinute)),
+                s.slope,
+                s.uphill,
+              )
             )
               errors.push('Route energy differs from person')
             let factor = 1000
@@ -385,8 +512,16 @@ export class ValleyChecker {
     for (const p of state.foragers) {
       errors.push(...natureViolations(state.config, p), ...skillViolations(state.config, p))
       errors.push(...this.skillChanges(state, p))
-      for (const key of ['sex', 'heightCm', 'weightKg', 'gripKg', 'traits'] as const)
-        if (!same(p[key], this.previous.foragers[p.id]![key])) errors.push(`Person nature changed: ${key}`)
+      // The drawn nature never changes; the grown body changes only at a midnight that records it (Life 19).
+      const was = this.previous.foragers[p.id]!
+      for (const key of ['sex', 'adultHeightCm', 'adultWeightKg', 'adultGripKg', 'traits', 'birthMinute'] as const)
+        if (!same(p[key], was[key])) errors.push(`Person nature changed: ${key}`)
+      if (p.natureMinute <= this.previous.minute)
+        for (const key of ['heightCm', 'weightKg', 'gripKg', 'pregnant'] as const)
+          if (!same(p[key], was[key])) errors.push(`Person nature changed: ${key}`)
+      if (p.alive && p.pregnant !== (p.pregnancy !== null)) errors.push(`person ${p.id}: pregnancy differs from nature`)
+      if (p.ageMilli !== bodyAge(state.config, p, p.natureMinute))
+        errors.push(`person ${p.id}: grown body differs from their age`)
       if (
         p.wood < 0 ||
         p.tripWood < 0 ||
@@ -603,6 +738,22 @@ export class ValleyChecker {
       active = before.foragers.map((p) => p.task),
       hutLogs = before.huts.map((h) => h.logs)
     const worlds: number[] = []
+    // With no group, a sleeper's own fire or that of a living parent at their hearth (Life 19).
+    const personalFireOf = (id: number) => {
+      const p = state.foragers[id]!
+      return (
+        personalFire[id]! ||
+        [p.motherId, p.fatherId].some(
+          (parent) =>
+            parent !== null &&
+            alive[parent] === true &&
+            members[parent] === null &&
+            pointEqual(hearths[parent]!, hearths[id]!) &&
+            personalFire[parent] === true,
+        )
+      )
+    }
+    const pregnancies = before.foragers.map((p) => p.pregnancy)
     let personPhaseMinute = -1
     for (const e of state.lastInterval) {
       if (e.kind === 'world') {
@@ -619,18 +770,19 @@ export class ValleyChecker {
           g = members[e.foragerId]
         const whole = state.huts.some(
           (h) =>
-            h.builderId === e.foragerId &&
+            shelterers(state, e.foragerId, e.minute).includes(h.builderId) &&
             pointEqual(h, hearths[e.foragerId]!) &&
+            pointEqual(h, positions[e.foragerId]!) &&
             (hutLogs[h.id] ?? 0) >= state.config.hutLogs &&
             (h.abandonedMinute === null || h.abandonedMinute > e.minute),
         )
-        const fire = g === null ? personalFire[e.foragerId]! : (fires[g!]?.lit ?? false)
+        const fire = g === null ? personalFireOf(e.foragerId) : (fires[g!]?.lit ?? false)
         if (
           task?.kind !== 'sleep' ||
           e.energyPerHour !==
-            sleepCostOf(personConfig(state.config, state.foragers[e.foragerId]!), warmthOf(fire, whole))
+            sleepCostOf(personConfig(state.config, this.bodyAt(e.foragerId, e.minute)), warmthOf(fire, whole))
         )
-          errors.push('Warmth boundary differs from fire and hut records')
+          errors.push(`person ${e.foragerId}: warmth boundary differs from fire and hut records`)
       }
       if (e.kind === 'task-end') active[e.foragerId] = null
       if (e.kind === 'task-start') active[e.foragerId] = e.task
@@ -645,26 +797,40 @@ export class ValleyChecker {
         positions[e.foragerId] = { ...e.position }
         if (e.kind === 'task-start') {
           hungry[e.foragerId] = nextHungry(
-            personConfig(state.config, state.foragers[e.foragerId]!),
+            personConfig(state.config, this.bodyAt(e.foragerId, e.task.startMinute)),
             e.task.startEnergyKcal,
             hungry[e.foragerId]!,
           )
-          if (e.task.startWaterMl >= waterThresholds(personConfig(state.config, state.foragers[e.foragerId]!)).thirsty)
+          if (
+            e.task.startWaterMl >=
+            waterThresholds(personConfig(state.config, this.bodyAt(e.foragerId, e.task.startMinute))).thirsty
+          )
             thirsty[e.foragerId] = true
           else if (e.task.startWaterMl <= state.config.drinkStopMl) thirsty[e.foragerId] = false
           const severe =
-            e.task.startWaterMl >= waterThresholds(personConfig(state.config, state.foragers[e.foragerId]!)).urgent
-          if (severe && !['drink', 'walk', 'rest'].includes(e.task.kind))
-            errors.push('Severe thirst did not interrupt work')
+            e.task.startWaterMl >=
+            waterThresholds(personConfig(state.config, this.bodyAt(e.foragerId, e.task.startMinute))).urgent
+          // A person who cannot walk on their own, or a baby on milk, cannot go to water: they sleep at night (Life 19).
+          const body = this.bodyAt(e.foragerId, e.task.startMinute)
+          const helpless =
+            !canWalk(state, body) ||
+            ageMilli(state.config, body.birthMinute, e.task.startMinute) < state.config.solidFoodMilliYears
+          if (
+            severe &&
+            !['drink', 'walk', 'rest', 'carried'].includes(e.task.kind) &&
+            !(helpless && e.task.kind === 'sleep')
+          )
+            errors.push(`person ${e.foragerId}: severe thirst did not interrupt work`)
           if (e.task.kind === 'sleep') {
             const g = members[e.foragerId],
-              fire = g === null ? personalFire[e.foragerId]! : (fires[g!]?.lit ?? false)
+              fire = g === null ? personalFireOf(e.foragerId) : (fires[g!]?.lit ?? false)
             // Hut weathering can change a continuing sleeper at a recorded rate boundary.
             const expected = sleepCostOf(
-              personConfig(state.config, state.foragers[e.foragerId]!),
+              personConfig(state.config, this.bodyAt(e.foragerId, e.task.startMinute)),
               warmthOf(fire, e.task.wholeHut ?? false),
             )
-            if (e.task.energyPerHour !== expected) errors.push('Sleeping warmth does not match hut and fire')
+            if (e.task.energyPerHour !== expected)
+              errors.push(`person ${e.foragerId}: sleeping warmth does not match hut and fire`)
           }
           if (
             e.task.kind === 'walk' &&
@@ -685,15 +851,25 @@ export class ValleyChecker {
         const water = end ? waterAt(end.task, e.minute, state.routes).ml : before.foragers[e.foragerId]!.waterDeficitMl
         const causes = [
           ...(energy <= 0 ? ['starvation'] : []),
-          ...(water >= waterThresholds(personConfig(state.config, state.foragers[e.foragerId]!)).fatal
+          ...(water >=
+          waterThresholds(personConfig(state.config, this.bodyAt(e.foragerId, end ? end.task.startMinute : e.minute)))
+            .fatal
             ? ['dehydration']
             : []),
         ]
-        if (!alive[e.foragerId] || !causes.length || e.cause !== causes.join(' and '))
+        const person = state.foragers[e.foragerId]!
+        const illness =
+          e.cause === 'illness' &&
+          !causes.length &&
+          e.minute % MINUTES_PER_DAY === 0 &&
+          e.draw !== undefined &&
+          fateDraws(state, e.minute).get(e.foragerId) === e.draw &&
+          e.draw < deathHazard(state.config, ageMilli(state.config, person.birthMinute, e.minute))
+        if (!alive[e.foragerId] || (!illness && (!causes.length || e.cause !== causes.join(' and '))))
           errors.push('Wrong death minute or cause')
         if (end) {
           const threshold = firstThresholdMinute(
-            personConfig(state.config, state.foragers[e.foragerId]!),
+            personConfig(state.config, this.bodyAt(e.foragerId, end.task.startMinute)),
             end.task,
             state.routes,
           )
@@ -707,11 +883,26 @@ export class ValleyChecker {
           members[e.founderIds[i]!] = e.groupId
           hearths[e.founderIds[i]!] = e.hearths[i]!
         }
+        // Children at home move with the parent they live with, to that parent's hearth (Life 19).
+        for (const id of e.children ?? []) {
+          const child = state.foragers[id]!
+          const i = e.founderIds.findIndex((p) => p === child.motherId || p === child.fatherId)
+          if (i < 0) errors.push(`person ${id}: moved with no founding parent`)
+          else {
+            members[id] = e.groupId
+            hearths[id] = e.hearths[i]!
+          }
+        }
       }
       if (e.kind === 'group-joined') {
         members[e.foragerId] = e.groupId
         hearths[e.foragerId] = e.hearth
+        for (const id of e.children ?? []) {
+          members[id] = e.groupId
+          hearths[id] = e.hearth
+        }
       }
+      errors.push(...this.lifeEvent(state, e, positions, hearths, pregnancies, alive))
       if (e.kind === 'group-dissolved') {
         if (e.survivorId !== null) members[e.survivorId] = null
         if (fires[e.groupId]) {
@@ -771,7 +962,7 @@ export class ValleyChecker {
     if (!same(worlds, expectedWorlds)) errors.push('Missing or duplicate world phase')
     for (const p of state.foragers) {
       if (p.alive !== alive[p.id] || p.hungry !== hungry[p.id] || p.thirsty !== thirsty[p.id])
-        errors.push('Life or hunger flag differs from its wake-up records')
+        errors.push(`person ${p.id}: life or hunger flag differs from its wake-up records`)
       if (p.fireGiven !== gift[p.id]) errors.push('Gifts do not add up')
       if (!p.alive) {
         const death = state.lastInterval.find((e) => e.kind === 'death' && e.foragerId === p.id)

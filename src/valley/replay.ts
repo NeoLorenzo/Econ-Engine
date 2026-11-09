@@ -12,12 +12,15 @@ import { cropOf, harvestEvent, harvestOf, regrowPlaces, thicketCapacity } from '
 import { expectedFoodStock } from './forager'
 import { carriedKcal, spoil, takeOldest } from './food'
 import { storeTarget } from './stores'
+import { natureHistory } from './lifecycle'
+import { shelterers } from './huts'
 import type { ValleyState, TaskEvent, Axe, FoodLot } from './types'
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 /** An interval ledger over independent copies. Production is computed before applying the recorded amount. */
 export function replayInterval(before: ValleyState, after: ValleyState) {
   const errors: string[] = [],
     fail = (message: string) => errors.push(message)
+  const then = natureHistory(before, after)
   const book = {
     config: after.config,
     layout: after.layout,
@@ -45,10 +48,12 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     p.task ? { ...p.task, rateChanges: p.task.rateChanges?.map((c) => ({ ...c })) } : null,
   )
   const positions = before.foragers.map((p) => ({ x: p.x, y: p.y }))
+  // Each person's hearth through the interval: a whole hut shelters a sleeper only at their own hearth (Life 19).
+  const hearths = before.foragers.map((p) => ({ x: p.hearth.x, y: p.hearth.y }))
   const position = (id: number, minute: number) => {
     const task = tasks[id]
-    return task?.kind === 'walk'
-      ? positionAlong(after.routes[task.routeId]!, minute - task.startMinute)
+    return task?.kind === 'walk' || task?.kind === 'carried'
+      ? positionAlong(after.routes[task.routeId]!, minute - (task.walkStartMinute ?? task.startMinute))
       : positions[id]!
   }
   const energy = before.foragers.map((p) => p.energyKcal),
@@ -129,6 +134,17 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     const id = event.foragerId,
       t = event.task
     if (tasks[id]) fail(`person ${id}: a task started without ending its predecessor`)
+    // A carried person rides on their carrier's walk, from its start to its end (Life 19).
+    if (t.kind === 'carried') {
+      const walk = t.carrierId === undefined ? null : tasks[t.carrierId]
+      if (
+        walk?.kind !== 'walk' ||
+        walk.routeId !== t.routeId ||
+        walk.startMinute !== t.walkStartMinute ||
+        walk.endMinute !== t.endMinute
+      )
+        fail(`person ${id}: carried away from their carrier's walk`)
+    }
     energy[id]! += event.ateKcal ?? 0
     spoiled += event.spoiledKcal ?? 0
     if (
@@ -141,7 +157,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       (t.startWaterTimeRemainder ?? 0) !== waterT[id]
     )
       fail(`person ${id}: task start body differs from its ledger`)
-    const c = personConfig(after.config, after.foragers[id]!)
+    const c = personConfig(after.config, then(id, t.startMinute))
     if (t.kind !== 'sleep') {
       const rate =
         t.kind === 'walk'
@@ -163,7 +179,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       t.restKcalPerHour !== c.restKcalPerHour ||
       t.drinkMlPerMinute !== c.drinkMlPerSecond * 60
     )
-      fail('Body task carries the wrong hydration parameters')
+      fail(`person ${id}: body task carries the wrong hydration parameters`)
     if (t.kind === 'pick' || t.kind === 'nuts' || t.kind === 'store') {
       // The stock a person expects reads the calendar: what they saw since the window opened, else its openness share.
       const kind = t.kind === 'pick' ? 0 : 1,
@@ -181,7 +197,7 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     }
     if (
       t.kind === 'store' &&
-      (t.storeTarget !== storeTarget(after.config, after.foragers[id]!, event.minute) ||
+      (t.storeTarget !== storeTarget(after.config, after.foragers[id]!, event.minute, t.familyKcal ?? 0) ||
         t.storeKcal !== carriedKcal(stores[id]!) ||
         t.storeKcal >= t.storeTarget ||
         after.layout.places.kind[t.placeId] !== 1)
@@ -210,15 +226,18 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
       begun++
     }
     if (t.kind === 'sleep') {
+      const shelter = shelterers(after, id, event.minute)
       const whole = after.huts.some(
         (h) =>
-          h.builderId === id &&
+          shelter.includes(h.builderId) &&
+          h.x === hearths[id]!.x &&
+          h.y === hearths[id]!.y &&
           h.x === event.position.x &&
           h.y === event.position.y &&
           (huts[h.id] ?? 0) >= after.config.hutLogs &&
           (h.abandonedMinute === null || h.abandonedMinute > event.minute),
       )
-      if (whole !== t.wholeHut) fail('Sleeping hut status does not match its delivered logs')
+      if (whole !== t.wholeHut) fail(`person ${id}: sleeping hut status does not match its delivered logs`)
     }
     tasks[id] = { ...t, rateChanges: t.rateChanges?.map((change) => ({ ...change })) }
   }
@@ -226,7 +245,9 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
     const id = event.foragerId,
       t = event.task,
       active = tasks[id]
-    if (!active || !same(active, t)) fail(`person ${id}: task end does not match its recorded task`)
+    if (!active || !same(active, t)) {
+      fail(`person ${id}: task end does not match its recorded task`)
+    }
     const e = energyAt(t, event.minute, after.routes),
       w = waterAt(t, event.minute, after.routes)
     const charge = { kcal: t.startEnergyKcal - Math.max(0, e.kcal), waterLossMl: w.loss, drankMl: w.drink }
@@ -288,6 +309,16 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
   }
   for (const event of after.lastInterval) {
     growUntil(event.minute)
+    if (event.kind === 'group-joined')
+      for (const id of [event.foragerId, ...(event.children ?? [])]) hearths[id] = { ...event.hearth }
+    if (event.kind === 'group-founded') {
+      for (let i = 0; i < 2; i++) hearths[event.founderIds[i]!] = { ...event.hearths[i]! }
+      for (const id of event.children ?? []) {
+        const child = after.foragers[id]!
+        const i = event.founderIds.findIndex((p) => p === child.motherId || p === child.fatherId)
+        if (i >= 0) hearths[id] = { ...event.hearths[i]! }
+      }
+    }
     if (event.kind === 'task-start' || event.kind === 'task-end') positions[event.foragerId] = { ...event.position }
     if (event.kind === 'observe') {
       if (!same(event.origin, position(event.foragerId, event.minute)))
@@ -346,6 +377,20 @@ export function replayInterval(before: ValleyState, after: ValleyState) {
             event.kcal !== event.wood * event.kcalPerWood))
       )
         fail('Exchange differs from agreeableness price')
+    }
+    // Life 19: a feed moves kcal and water from mother to child; a birth takes the newborn's energy from the mother.
+    if (event.kind === 'fed') {
+      if (tasks[event.foragerId] || tasks[event.motherId]) fail(`person ${event.foragerId}: fed during a task`)
+      energy[event.motherId]! -= event.kcal
+      energy[event.foragerId]! += event.kcal
+      water[event.foragerId]! -= event.waterMl
+      water[event.motherId]! += event.waterMl
+      if (event.kcal < 0 || event.waterMl < 0 || energy[event.motherId]! < 0 || water[event.foragerId]! < 0)
+        fail(`person ${event.foragerId}: a feed creates energy or water`)
+    }
+    if (event.kind === 'born') {
+      if (tasks[event.motherId]) fail(`person ${event.motherId}: gave birth during a task`)
+      energy[event.motherId]! -= event.kcal
     }
     if (event.kind === 'task-start') checkStart(event)
     if (event.kind === 'task-end') checkEnd(event)

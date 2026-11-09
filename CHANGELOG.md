@@ -2,6 +2,19 @@
 
 All notable changes to Econ-Engine are documented here. The changelog records what changed in each update. Design rationale, experiments, observations, and lessons are documented separately in [Lab Notes](LAB_NOTES.md).
 
+## [LIFE19-Generations-078] - (2026-11-09)
+
+- Life 19, generations. Every person is an agent from birth, with their own body ledger, memory, ties, tasks and wake-ups; nothing turns on at an age. Each person has a birth minute and an age in thousandths of a year. Founders arrive aged 18 to 35, from a new `age` stream.
+- Bodies grow: height, weight and grip are the adult draws times `growthByAge`, with energy rates times `metabolismByAge`, walking times `walkByAge` and work times `workByAge`, each interpolated within the year. A body's age is its age at the last midnight, so bodies change only at midnight or at birth. Children stay within `rangeByAge` of their hearth, eat only milk under 6 months, do not walk on their own under about 3 and do not cut logs, make axes or practise until fully grown in work.
+- Nursing: a child under 3, hungry or thirsty, within talking distance of their mother wakes her, and she moves up to `feedKcal` (400) and its milk water from her body to theirs (a `fed` event). Carrying: a child who cannot walk is carried by their mother, else father, else closest kin, on the carrier's walk (`carried` task); their weight slows the carrier.
+- Provisioning: a parent carries home food for children at home and adds their day needs, and a pregnancy's, to the store target. Kin give more readily (`kinGoodwillMinutes`, a partner counting as 500‰) and are asked first.
+- Pairing: an unpaired woman and man of 15 or more, not kin, pair when each is the other's most familiar eligible person with at least a week of minutes together (`paired`). Conception at midnight from `conceive:<day>` for a paired woman of 15 to 45 with enough reserve, not nursing a child under 2, who slept near her partner (`conceived`); birth at term at the mother's side (`born`), the newborn's reserve taken from her. A pregnancy adds 12 kcal an hour.
+- Deaths of illness, accident and age at each midnight from `fate:<day>`, against a stored table of the !Kung Siler fit (Gurven and Kaplan 2007, Table 2; b1 0.913 as in the paper, not the draft's 0.943).
+- The midnight lifecycle runs growth, deaths, births and conceptions in that order. A child shares a parent's hut and fire at the same hearth, and asks nobody for wood.
+- The checker rebuilds newborns and every person's body at any minute of an interval, replays feeds and births in the ledgers, checks carried tasks against their carrier's walk, and rejects impossible feeds, births, conceptions and pairings, a baby on milk eating or drinking, work beyond a child's range and a body that does not match its age.
+- The observer is labelled Life 19. The header counts people and those under 15; newborns get figures, and a carried child is drawn on the carrier's back. The person panel adds age, girl or boy, the adult body they grow to, partner, parents and children, pregnant, nursing and carried by; the history lists pairings, births and deaths; the People charts add people by age, births and deaths, and couples; the relationship graph shows partners and parents.
+- Trajectories change: new fingerprints are recorded for all 22 runs. New `growth.ts`, `lifecycle.ts`, `kin.ts`, `nursing.ts`, `PeopleCharts.tsx` and `generations.test.ts`. `docs/LIFE19_SPEC.md` replaces the Life 18 specification; the calibration document gains a Life 19 section.
+
 ## [LIFE17-Sky-077] - (2026-11-08)
 
 - The observer draws the year. The sun follows the solar declination for the day of the year at 52° N: about 61° high and 16½ hours of daylight at the summer solstice, 38° and 12 hours at the equinoxes, 15° and 7½ hours at the winter solstice. The run starts at the spring equinox. The day sky is paler in winter and warmer while the sun is low.

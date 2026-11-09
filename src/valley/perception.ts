@@ -77,7 +77,7 @@ export function locatePeople(state: ValleyState, minute: number): void {
   for (const person of state.foragers)
     state.personChunk[person.id] = !person.alive
       ? -1
-      : person.task?.kind === 'walk'
+      : person.task?.kind === 'walk' || person.task?.kind === 'carried'
         ? chunkOf(state.layout.nav, positionAt(state, person, minute))
         : chunkOf(state.layout.nav, person)
 }
