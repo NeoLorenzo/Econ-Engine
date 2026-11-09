@@ -2,6 +2,9 @@ import { energyAt } from './body'
 import { dayOf, MINUTES_PER_DAY } from './calendar'
 import { addLots, carriedKcal, countEaten, eatCarried, takeOldest } from './food'
 import { nightWood, woodMatters } from './trade'
+import { ageOf } from './lifecycle'
+import { areKin, closeness, livesWithParent, relatedness } from './kin'
+import type { PairedEvent } from './types'
 import type { Forager, GiftEvent, GiftGood, RefusalEvent, Tie, TieEvent, TogetherEvent, ValleyState } from './types'
 
 /** A tie not yet held: nothing together, given or held against. */
@@ -70,9 +73,14 @@ export function countTogether(
   return events
 }
 
-/** Whether `giver`, from its own tie with the asker, has goodwill enough to give. */
-export const goodwillCovers = (state: ValleyState, giver: Forager, tie: Tie) =>
-  tie.familiarity * state.config.trustPerMille * giver.giveGoodwillPerMille >= (tie.credit + tie.grievance) * 1_000_000
+/**
+ * Whether `giver`, from its own tie with the asker and their closeness per mille (Life 19: relatedness, or 500 for a
+ * partner), has goodwill enough to give: kin add `kinGoodwillMinutes` of familiarity for each whole relatedness.
+ */
+export const goodwillCovers = (state: ValleyState, giver: Forager, tie: Tie, kin = 0) =>
+  tie.familiarity * state.config.trustPerMille * giver.giveGoodwillPerMille +
+    state.config.kinGoodwillMinutes * kin * 1_000 >=
+  (tie.credit + tie.grievance) * 1_000_000
 
 /** Minutes of `person`'s own work a gift stands for. */
 export const giftMinutes = (person: Forager, good: GiftGood, amount: number) =>
@@ -94,9 +102,15 @@ export const lackOf = (asker: Forager, good: GiftGood) =>
     : Math.max(0, asker.satiationKcal - asker.energyKcal - carriedKcal(asker.carried))
 
 /** Whether the asker needs to ask for a good: hungry with no food, or holding less than a night's firewood. */
-export function needs(state: ValleyState, asker: Forager, good: GiftGood) {
-  if (good === 'food') return asker.hungry && carriedKcal(asker.carried) === 0
-  return woodMatters(state.config) && asker.wood < nightWood(state.config)
+export function needs(state: ValleyState, asker: Forager, good: GiftGood, minute = 0) {
+  if (good === 'food')
+    return (
+      asker.hungry &&
+      carriedKcal(asker.carried) === 0 &&
+      ageOf(state.config, asker, minute) >= state.config.solidFoodMilliYears
+    )
+  // A child living with a parent sleeps by the parent's fire and asks for no wood (Life 19).
+  return woodMatters(state.config) && asker.wood < nightWood(state.config) && !livesWithParent(state, asker)
 }
 
 /**
@@ -108,33 +122,34 @@ export function ask(state: ValleyState, asker: Forager, near: readonly number[],
   const events: TieEvent[] = []
   const today = dayOf(minute)
   for (const good of ['food', 'wood'] as const) {
-    if (!needs(state, asker, good)) continue
+    if (!needs(state, asker, good, minute)) continue
+    // Kin and a partner are asked first, closest first; then others by tie, as before.
+    const close = (id: number) => closeness(state.foragers, asker, state.foragers[id]!)
     const asked = near
       .filter((id) => {
         const other = state.foragers[id]!,
-          tie = asker.ties.get(id)
+          tie = tieOf(asker, id)
         return (
           other.alive &&
-          tie !== undefined &&
-          tie.familiarity > 0 &&
+          (tie.familiarity > 0 || close(id) > 0) &&
           tie.askedDay !== today &&
           (good === 'food' ? carriedKcal(other.carried) > 0 : other.wood > 0)
         )
       })
       .sort((a, b) => {
-        const x = asker.ties.get(a)!,
-          y = asker.ties.get(b)!
-        return y.familiarity - y.grievance - (x.familiarity - x.grievance) || a - b
+        const x = tieOf(asker, a),
+          y = tieOf(asker, b)
+        return close(b) - close(a) || y.familiarity - y.grievance - (x.familiarity - x.grievance) || a - b
       })
     for (const giverId of asked) {
-      if (!needs(state, asker, good)) break
+      if (!needs(state, asker, good, minute)) break
       const giver = state.foragers[giverId]!
       setTie(state, asker, giverId, { ...tieOf(asker, giverId), askedDay: today })
       events.push(give(state, giver, asker, good, minute))
     }
   }
   if (!events.some((event) => event.kind === 'gift' && event.good === 'food')) return { events, ateKcal: 0 }
-  const eaten = eatCarried(asker.carried, state.config.reserveMaxKcal - asker.energyKcal)
+  const eaten = eatCarried(asker.carried, asker.reserveMaxKcal - asker.energyKcal)
   asker.carried = eaten.rest
   asker.energyKcal += eaten.takenKcal
   countEaten(state.today, eaten.taken)
@@ -150,6 +165,7 @@ export function give(
   minute: number,
 ): GiftEvent | RefusalEvent {
   const tie = tieOf(giver, asker.id)
+  const kinPerMille = closeness(state.foragers, giver, asker)
   const amount = Math.min(spareOf(state, giver, good, minute), lackOf(asker, good))
   const refused = (reason: 'goodwill' | 'spare'): RefusalEvent => {
     const grievance = reason === 'goodwill' ? state.config.refusalGrievanceMinutes : 0
@@ -159,10 +175,10 @@ export function give(
     }
     state.today.refusalsMadeById[giver.id]! += 1
     state.today.refusalsMetById[asker.id]! += 1
-    return { kind: 'refusal', minute, foragerId: giver.id, askerId: asker.id, good, reason, grievance }
+    return { kind: 'refusal', minute, foragerId: giver.id, askerId: asker.id, good, reason, grievance, kinPerMille }
   }
   if (amount < 1) return refused('spare')
-  if (!goodwillCovers(state, giver, tie)) return refused('goodwill')
+  if (!goodwillCovers(state, giver, tie, kinPerMille)) return refused('goodwill')
   if (good === 'food') {
     const { taken, rest } = takeOldest(giver.carried, amount)
     giver.carried = rest
@@ -180,8 +196,72 @@ export function give(
   setTie(state, giver, asker.id, { ...tieOf(giver, asker.id), credit: tie.credit + giverCredit })
   const owed = tieOf(asker, giver.id)
   setTie(state, asker, giver.id, { ...owed, credit: owed.credit + receiverCredit })
-  return { kind: 'gift', minute, giverId: giver.id, receiverId: asker.id, good, amount, giverCredit, receiverCredit }
+  return {
+    kind: 'gift',
+    minute,
+    giverId: giver.id,
+    receiverId: asker.id,
+    good,
+    amount,
+    giverCredit,
+    receiverCredit,
+    kinPerMille,
+  }
 }
+
+/** Whether a person may pair: living, unpaired, and at least `pairFromYears` old. */
+export const mayPair = (state: ValleyState, person: Forager, minute: number) =>
+  person.alive && person.partnerId === null && ageOf(state.config, person, minute) >= state.config.pairFromYears * 1_000
+
+/**
+ * The person's most familiar eligible partner among their ties: of the other sex, free to pair, not kin, with
+ * familiarity at least `pairFamiliarityMinutes`; ties go to the lower id. Null if none.
+ */
+export function mostFamiliarMate(state: ValleyState, person: Forager, minute: number): Forager | null {
+  let best: Forager | null = null,
+    bestFamiliarity = -1
+  for (const [otherId, tie] of person.ties) {
+    const other = state.foragers[otherId]!
+    if (
+      other.sex === person.sex ||
+      tie.familiarity < state.config.pairFamiliarityMinutes ||
+      !mayPair(state, other, minute) ||
+      areKin(state.foragers, person, other)
+    )
+      continue
+    if (tie.familiarity > bestFamiliarity || (tie.familiarity === bestFamiliarity && otherId < best!.id)) {
+      best = other
+      bestFamiliarity = tie.familiarity
+    }
+  }
+  return best
+}
+
+/**
+ * Pairing at a wake-up (Life 19): the waking person and someone within talking distance pair when each is the other's
+ * most familiar eligible person. Changes both in place.
+ */
+export function pairAt(state: ValleyState, person: Forager, near: readonly number[], minute: number): PairedEvent[] {
+  if (!mayPair(state, person, minute)) return []
+  const mate = mostFamiliarMate(state, person, minute)
+  if (!mate || !near.includes(mate.id) || mostFamiliarMate(state, mate, minute)?.id !== person.id) return []
+  person.partnerId = mate.id
+  mate.partnerId = person.id
+  state.today.pairings += 1
+  return [{ kind: 'paired', minute, foragerId: person.id, otherId: mate.id }]
+}
+
+/** Whether a gift or refusal's closeness agrees with the family records: relatedness, or 500 between partners. */
+export const closenessHolds = (state: ValleyState, a: number, b: number, kin: number) => {
+  const x = state.foragers[a]!,
+    y = state.foragers[b]!
+  const r = relatedness(state.foragers, x, y)
+  return kin === r || (kin === 500 && (x.partnerId === b || !x.alive || !y.alive || paired(state, a, b)))
+}
+const paired = (state: ValleyState, a: number, b: number) =>
+  state.lastInterval.some(
+    (e) => e.kind === 'paired' && ((e.foragerId === a && e.otherId === b) || (e.foragerId === b && e.otherId === a)),
+  )
 
 /** A value faded by a day: it loses `tieFadePerMillion` of its size, the rest carried in its remainder. */
 export function fadeValue(value: number, remainder: number, perMillion: number) {
@@ -230,9 +310,13 @@ export const companionsOn = (person: Forager, midnight: number) => {
 export function replayTies(before: ValleyState, after: ValleyState) {
   const errors: string[] = [],
     { config } = after
-  const ties = before.foragers.map((p) => new Map(p.ties))
-  const alive = before.foragers.map((p) => p.alive)
-  const rates = before.foragers.map((p) => ({ forageRate: p.forageRate, woodRate: p.woodRate }))
+  // People born during the interval start with no ties, alive, at the rates they were born with.
+  const ties = after.foragers.map((p) => new Map(before.foragers[p.id]?.ties ?? []))
+  const alive = after.foragers.map((p) => before.foragers[p.id]?.alive ?? true)
+  const rates = after.foragers.map((p) => {
+    const was = before.foragers[p.id]
+    return was ? { forageRate: was.forageRate, woodRate: was.woodRate } : { forageRate: 0, woodRate: 0 }
+  })
   const tie = (id: number, otherId: number) => ties[id]!.get(otherId) ?? NO_TIE
   const put = (id: number, otherId: number, value: Tie) => putTie(ties[id]!, config.tiesRemembered, otherId, value)
   const asks = (giverId: number, askerId: number, minute: number) => {
@@ -240,9 +324,10 @@ export function replayTies(before: ValleyState, after: ValleyState) {
     if (held.askedDay === dayOf(minute)) errors.push(`person ${askerId}: asked person ${giverId} twice in a day`)
     put(askerId, giverId, { ...held, askedDay: dayOf(minute) })
   }
-  const goodwill = (giverId: number, askerId: number) => {
+  const goodwill = (giverId: number, askerId: number, kin = 0) => {
     const held = tie(giverId, askerId)
-    return goodwillCovers(after, after.foragers[giverId]!, held)
+    if (!closenessHolds(after, giverId, askerId, kin)) errors.push(`person ${giverId}: closeness differs from kin`)
+    return goodwillCovers(after, after.foragers[giverId]!, held, kin)
   }
   for (const event of after.lastInterval) {
     if (event.kind === 'world' && event.minute % MINUTES_PER_DAY === 0)
@@ -251,6 +336,10 @@ export function replayTies(before: ValleyState, after: ValleyState) {
       })
     if (event.kind === 'death') alive[event.foragerId] = false
     if (event.kind === 'skills') rates[event.foragerId] = { forageRate: event.forageRate, woodRate: event.woodRate }
+    if (event.kind === 'born') {
+      const child = after.foragers[event.foragerId]!
+      rates[event.foragerId] = { forageRate: child.forageRate, woodRate: child.woodRate }
+    }
     if (event.kind === 'together') {
       const mine = tie(event.foragerId, event.otherId),
         theirs = tie(event.otherId, event.foragerId)
@@ -270,7 +359,7 @@ export function replayTies(before: ValleyState, after: ValleyState) {
     if (event.kind === 'gift') {
       const { giverId, receiverId: askerId } = event
       asks(giverId, askerId, event.minute)
-      if (event.amount < 1 || !goodwill(giverId, askerId))
+      if (event.amount < 1 || !goodwill(giverId, askerId, event.kinPerMille ?? 0))
         errors.push(`person ${giverId}: gave without enough goodwill`)
       const minutes = (id: number) =>
         -Math.floor(
@@ -287,7 +376,10 @@ export function replayTies(before: ValleyState, after: ValleyState) {
       const { foragerId: giverId, askerId } = event
       asks(giverId, askerId, event.minute)
       const expected = event.reason === 'goodwill' ? config.refusalGrievanceMinutes : 0
-      if (event.grievance !== expected || (event.reason === 'goodwill' && goodwill(giverId, askerId)))
+      if (
+        event.grievance !== expected ||
+        (event.reason === 'goodwill' && goodwill(giverId, askerId, event.kinPerMille ?? 0))
+      )
         errors.push(`person ${giverId}: a refusal differs from the giving rule`)
       const held = tie(askerId, giverId)
       if (expected) put(askerId, giverId, { ...held, grievance: held.grievance + expected })

@@ -51,7 +51,7 @@ export function startTask(
     routeId,
     reason,
     ...taskRates(config, person, kind, warmth),
-    waterBaseMlPerDay: config.waterBaseMlPerDay,
+    waterBaseMlPerDay: personConfig(config, person).waterBaseMlPerDay,
     waterExtraMlPerKcal: config.waterExtraMlPerKcal,
     restKcalPerHour: person.rates.restKcalPerHour,
     drinkMlPerMinute: config.drinkMlPerSecond * 60,
@@ -68,9 +68,9 @@ export function startTask(
 
 export function positionAt(state: Pick<ValleyState, 'routes'>, person: Forager, minute: number): Point {
   const task = person.task
-  if (task?.kind === 'walk') {
+  if (task?.kind === 'walk' || task?.kind === 'carried') {
     const route = state.routes[task.routeId]
-    if (route?.segments.length) return positionAlong(route, minute - task.startMinute)
+    if (route?.segments.length) return positionAlong(route, minute - (task.walkStartMinute ?? task.startMinute))
   }
   return { x: person.x, y: person.y }
 }

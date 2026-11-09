@@ -198,6 +198,9 @@ const DEADWOOD_STICKS = 6
 /** How far a sleeper's feet lie from its hut's middle, towards the door. */
 const SLEEPER_FEET = 0.95
 
+/** A carried person is drawn smaller than their grown size, so they sit on the carrier's back. */
+const CARRIED_SCALE = 0.7
+
 interface Figure {
   root: Group
   body: Group
@@ -1941,6 +1944,19 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       knowledgeTexture.needsUpdate = true
     }
 
+    // People born since the last frame each get a figure and a hearth.
+    while (figures.length < state.foragers.length) {
+      const born = state.foragers[figures.length]!
+      hearths.push(makeHearth(born.hearth.x, born.hearth.y))
+      figures.push(makeFigure(born.id))
+    }
+    // A hearth shared by a family is drawn once, for the first living person who sleeps there.
+    const hearthOwner = new Map<string, number>()
+    for (const person of state.foragers) {
+      const spotKey = `${person.hearth.x},${person.hearth.y}`
+      const owner = hearthOwner.get(spotKey)
+      if (owner === undefined || (person.alive && !state.foragers[owner]!.alive)) hearthOwner.set(spotKey, person.id)
+    }
     const poses = figures.map((_, id) => foragerPose(display, id))
     // With a group selected, foragers outside it are drawn see-through.
     const selectedGroup = options.selected?.kind === 'group' ? state.groups[options.selected.id] : undefined
@@ -1995,7 +2011,8 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
       figure.shoulderLog.visible = forager.alive && carriesLog(display, id)
       figure.axe.visible = forager.alive && holdsAxe(display, id) && pose.lying < 0.5
       const hearth = hearths[id]
-      if (hearth) {
+      if (hearth) hearth.group.visible = hearthOwner.get(`${forager.hearth.x},${forager.hearth.y}`) === id
+      if (hearth?.group.visible) {
         placeHearth(
           hearth,
           forager.hearth.x,
@@ -2025,6 +2042,25 @@ export async function createValleyScene(mount: HTMLElement, callbacks: SceneCall
           config.sightRadiusCm < diagonal &&
           isDaylight(config, Math.floor(minutes))
       }
+    }
+    // A carried person rides small on their carrier's back while the walk lasts, facing the way the carrier walks.
+    for (const [id, figure] of figures.entries()) {
+      const person = state.foragers[id]!
+      const task = person.task
+      if (!person.alive || task?.kind !== 'carried' || task.carrierId === undefined) continue
+      const carrier = figures[task.carrierId]
+      if (!carrier) continue
+      const lift = carrier.root.scale.y
+      const back = 0.3 * carrier.root.scale.x
+      figure.heading = carrier.heading
+      figure.root.rotation.y = carrier.heading
+      figure.root.position.set(
+        carrier.root.position.x - Math.sin(carrier.heading) * back,
+        carrier.root.position.y + 0.75 * lift,
+        carrier.root.position.z - Math.cos(carrier.heading) * back,
+      )
+      figure.root.scale.multiplyScalar(CARRIED_SCALE)
+      if (id === followedId) drapeGroundRing(followRing, figure.root.position.x, figure.root.position.z, 0.6)
     }
     followRing.visible = followedId < figures.length
 

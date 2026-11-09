@@ -74,6 +74,44 @@ export const VALLEY_DEFAULT_CONFIG: ValleyConfig = {
   nutLossPerMille: 48,
   storeKcalPerDay: 2_500,
   storeKcalPerHour: 6_000,
+  founderAgeYears: [18, 35],
+  growthByAge: {
+    weight: [60, 170, 210, 240, 270, 300, 330, 370, 410, 450, 490, 540, 600, 670, 740, 810, 880, 940, 1_000],
+    height: [320, 470, 540, 600, 650, 690, 730, 760, 790, 820, 840, 870, 900, 930, 960, 980, 990, 1_000, 1_000],
+    grip: [30, 60, 90, 120, 150, 180, 220, 260, 300, 340, 390, 440, 500, 580, 660, 750, 840, 920, 1_000],
+  },
+  metabolismByAge: [
+    2_900, 2_200, 2_100, 2_050, 2_000, 2_000, 1_950, 1_900, 1_800, 1_750, 1_700, 1_600, 1_550, 1_450, 1_350, 1_250,
+    1_150, 1_050, 1_000,
+  ],
+  walkByAge: [0, 100, 300, 450, 550, 620, 680, 740, 790, 840, 880, 910, 940, 960, 980, 1_000],
+  workByAge: [0, 0, 0, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 700, 800, 870, 940, 1_000],
+  rangeByAge: [30_000, 40_000, 50_000, 70_000, 90_000, 120_000, 150_000, 200_000, 300_000],
+  carryBelowPerMille: 450,
+  solidFoodMilliYears: 500,
+  weaningMilliYears: 3_000,
+  feedKcal: 400,
+  milkMlPerThousandKcal: 1_500,
+  amenorrheaMilliYears: 2_000,
+  pairFromYears: 15,
+  lastBirthYears: 45,
+  fecundReserveKcal: 56_000,
+  fecundPerMillePerCycle: 200,
+  pregnancyMilliYears: 750,
+  pregnancyKcalPerDay: 300,
+  pairFamiliarityMinutes: 10_080,
+  kinGoodwillMinutes: 1_440,
+  deathPerMillionByAge: [
+    233_292, 99_845, 46_309, 24_844, 16_251, 12_827, 11_478, 10_964, 10_787, 10_748, 10_767, 10_812, 10_871, 10_938,
+    11_012, 11_092, 11_180, 11_274, 11_376, 11_486, 11_605, 11_733, 11_872, 12_022, 12_184, 12_359, 12_547, 12_751,
+    12_972, 13_209, 13_466, 13_744, 14_043, 14_367, 14_717, 15_094, 15_502, 15_942, 16_418, 16_932, 17_487, 18_086,
+    18_733, 19_432, 20_187, 21_002, 21_883, 22_834, 23_861, 24_971, 26_169, 27_463, 28_861, 30_371, 32_001, 33_763,
+    35_665, 37_719, 39_937, 42_334, 44_922, 47_717, 50_736, 53_997, 57_518, 61_322, 65_429, 69_866, 74_658, 79_833,
+    85_423, 91_460, 97_980, 105_022, 112_628, 120_842, 129_715, 139_297, 149_646, 160_823, 172_896, 185_934, 200_016,
+    215_226, 231_652, 249_394, 268_555, 289_251, 311_603, 335_743, 361_817, 389_977, 420_391, 453_239, 488_717, 527_035,
+    568_419, 613_116, 661_391, 713_530, 769_842, 830_661, 896_348, 967_294, 1_043_917, 1_126_674, 1_216_055, 1_312_590,
+    1_416_852, 1_529_460, 1_651_080,
+  ],
   standWoodKg: 300,
   standDeadfallKgPerYear: 60,
   standLogs: 36,
@@ -324,6 +362,13 @@ const OBJECT_KEYS = new Set([
   'nutSeason',
   'berryYearPerMille',
   'hazelYearPerMille',
+  'founderAgeYears',
+  'growthByAge',
+  'metabolismByAge',
+  'walkByAge',
+  'workByAge',
+  'rangeByAge',
+  'deathPerMillionByAge',
 ])
 
 /** The rules on seasons, crops, losses and stores. */
@@ -390,6 +435,76 @@ function seasonErrors(config: ValleyConfig): string[] {
   return errors
 }
 
+/** The rules on ages, growth, nursing, pairing, births and deaths drawn (Life 19). */
+function generationErrors(config: ValleyConfig): string[] {
+  const errors: string[] = []
+  const integer = (value: unknown) => Number.isSafeInteger(value)
+  const ages = config.founderAgeYears
+  if (!Array.isArray(ages) || ages.length !== 2 || !ages.every(integer) || ages[0] > ages[1])
+    errors.push('founderAgeYears must be two integers, the first no greater than the second')
+  else if (ages[0] < config.pairFromYears) errors.push('founderAgeYears must start at pairFromYears or later')
+  const table = (key: string, values: unknown, length: number, low: number, high: number, rising: boolean) => {
+    if (
+      !Array.isArray(values) ||
+      values.length !== length ||
+      !values.every((v) => integer(v) && v >= low && v <= high) ||
+      values.at(-1) !== 1_000 ||
+      (rising && values.some((v, i) => i > 0 && v < values[i - 1]))
+    )
+      errors.push(
+        `${key} must hold ${length} integers from ${low} to ${high}, ending at 1,000${rising ? ', never falling' : ''}`,
+      )
+  }
+  const growth = config.growthByAge
+  if (!growth) errors.push('growthByAge must give weight, height and grip')
+  else
+    for (const key of ['weight', 'height', 'grip'] as const)
+      table(`growthByAge.${key}`, growth[key], 19, 1, 1_000, true)
+  table('metabolismByAge', config.metabolismByAge, 19, 1, 5_000, false)
+  table('walkByAge', config.walkByAge, 16, 0, 1_000, true)
+  table('workByAge', config.workByAge, 19, 0, 1_000, true)
+  if (!Array.isArray(config.rangeByAge) || !config.rangeByAge.every((v) => integer(v) && v >= 0))
+    errors.push('rangeByAge must hold integers from 0')
+  if (config.carryBelowPerMille < 0 || config.carryBelowPerMille > 1_000)
+    errors.push('carryBelowPerMille must be from 0 to 1,000')
+  if (config.solidFoodMilliYears < 0 || config.solidFoodMilliYears > config.weaningMilliYears)
+    errors.push('solidFoodMilliYears must be from 0 to weaningMilliYears')
+  if (config.amenorrheaMilliYears < 0) errors.push('amenorrheaMilliYears must not be negative')
+  if (config.pairFromYears < 0 || config.lastBirthYears <= config.pairFromYears)
+    errors.push('lastBirthYears must be above pairFromYears, and pairFromYears not negative')
+  if (config.fecundReserveKcal < 0 || config.fecundReserveKcal > config.reserveMaxKcal)
+    errors.push('fecundReserveKcal must be from 0 to reserveMaxKcal')
+  if (config.fecundPerMillePerCycle < 0 || config.fecundPerMillePerCycle > 1_000)
+    errors.push('fecundPerMillePerCycle must be from 0 to 1,000')
+  if (config.pregnancyMilliYears < 1) errors.push('pregnancyMilliYears must be at least 1')
+  if (config.feedKcal < 1) errors.push('feedKcal must be at least 1')
+  for (const key of [
+    'pregnancyKcalPerDay',
+    'milkMlPerThousandKcal',
+    'pairFamiliarityMinutes',
+    'kinGoodwillMinutes',
+  ] as const)
+    if (config[key] < 0) errors.push(`${key} must not be negative`)
+  const deaths = config.deathPerMillionByAge
+  if (!Array.isArray(deaths) || deaths.length !== 111 || !deaths.every((v) => integer(v) && v >= 0))
+    errors.push('deathPerMillionByAge must hold 111 integers from 0')
+  if (errors.length) return errors
+  const maxWeight = Math.max(config.womanWeightKg, config.manWeightKg) + 3 * config.weightSdKg
+  const maxMetabolism = Math.max(...config.metabolismByAge)
+  const maxRate = Math.max(config.walkKcalPerHour * 2, config.chopKcalPerHour, config.coldSleepKcalPerHour)
+  if (!Number.isSafeInteger((maxRate + config.pregnancyKcalPerDay) * maxWeight * maxMetabolism * 60_000))
+    errors.push('The heaviest body’s rates at the highest metabolism must be safe integers')
+  if (
+    !Number.isSafeInteger(
+      config.storeKcalPerDay * maxWeight * maxMetabolism * 1_000 * (config.lastBirthYears - config.pairFromYears + 1),
+    )
+  )
+    errors.push('A family food target must be a safe integer')
+  if (!Number.isSafeInteger(1_000_000 * 365 * Math.max(1, config.kinGoodwillMinutes)))
+    errors.push('The fate draw and kin goodwill must be safe integers')
+  return errors
+}
+
 /** Returns every rule the configuration breaks, except whether its layout can be drawn, which `createValley` finds. */
 export function valleyConfigErrors(config: ValleyConfig): string[] {
   const calendarErrors =
@@ -405,6 +520,7 @@ export function valleyConfigErrors(config: ValleyConfig): string[] {
     else if (!Number.isSafeInteger(value)) errors.push(`${key} must be a safe integer`)
   }
   errors.push(...seasonErrors(config))
+  errors.push(...generationErrors(config))
   if (errors.length) return errors
   const thresholds = waterThresholds(config, Math.min(config.womanWeightKg, config.manWeightKg) - 3 * config.weightSdKg)
   if (Object.values(thresholds).some((value) => !Number.isSafeInteger(value)))

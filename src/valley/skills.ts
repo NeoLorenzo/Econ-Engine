@@ -1,6 +1,7 @@
 import { randomInt } from '../sim/rng'
 import { deriveInventSeed } from './layout'
 import { traitFactor } from './nature'
+import { ageFactors, ageMilli } from './growth'
 import type { Forager, IdeaEvent, SkillsEvent, Talents, TaskSeconds, ValleyConfig } from './types'
 
 // Life 17's skills: experience built up over a working life and fading slowly, skill following it by the power law of
@@ -40,11 +41,14 @@ export function proficiencyOf(config: ValleyConfig, experience: readonly number[
   return skillOf(config, own + Math.floor((config.transferPerMille * others) / 1_000), config.craftHalfHours)
 }
 
-/** The skills, proficiencies and hourly rates that follow from experience and the techniques a person has the idea of. */
-export function skillsOf(config: ValleyConfig, experience: readonly number[], ideas: number) {
+/**
+ * The skills, proficiencies and hourly rates that follow from experience, the techniques a person has the idea of and
+ * the work factor of their age (Life 19): a child's foraging and wood rates are the adult rates times `work` per mille.
+ */
+export function skillsOf(config: ValleyConfig, experience: readonly number[], ideas: number, work = 1_000) {
   const forageSkill = skillOf(config, experience[FORAGE]!, config.forageHalfHours)
   const woodSkill = skillOf(config, experience[WOOD]!, config.woodHalfHours)
-  const forage = (base: number) => Math.floor((base * forageSkill) / 100)
+  const forage = (base: number) => Math.floor((base * forageSkill * work) / 100_000)
   return {
     forageSkill,
     woodSkill,
@@ -55,7 +59,7 @@ export function skillsOf(config: ValleyConfig, experience: readonly number[], id
     forageRate: forage(config.berryKcalPerHour),
     nutRate: forage(config.nutKcalPerHour),
     fishRate: forage(config.fishKcalPerHour),
-    woodRate: Math.floor((config.woodPerHour * woodSkill) / 100),
+    woodRate: Math.floor((config.woodPerHour * woodSkill * work) / 100_000),
   }
 }
 
@@ -118,7 +122,7 @@ export function founderExperience(config: ValleyConfig, learn: Talents, known: n
 }
 
 /** A founder's talents, experience, techniques and the skills that follow, as at creation. */
-export function founderSkills(config: ValleyConfig, talents: Talents, known: number) {
+export function founderSkills(config: ValleyConfig, talents: Talents, known: number, work = 1_000) {
   const learn = learnOf(config, talents)
   const start = founderExperience(config, learn, known)
   return {
@@ -128,7 +132,7 @@ export function founderSkills(config: ValleyConfig, talents: Talents, known: num
     ideas: known,
     known,
     practicedToday: 0,
-    ...skillsOf(config, start.experience, known),
+    ...skillsOf(config, start.experience, known, work),
     craftToday: config.axeTechniques.map(() => 0),
   }
 }
@@ -160,7 +164,12 @@ export function skillDay(config: ValleyConfig, person: Forager, minute: number):
   const worked = workedToday(person)
   const experienceBefore = person.experience
   const next = experienceDay(config, person, worked, person.learn)
-  const skills = skillsOf(config, next.experience, person.ideas)
+  const skills = skillsOf(
+    config,
+    next.experience,
+    person.ideas,
+    ageFactors(config, ageMilli(config, person.birthMinute, minute)).work,
+  )
   person.experience = next.experience
   person.fadeRemainder = next.fadeRemainder
   person.gainRemainder = next.gainRemainder
@@ -279,7 +288,7 @@ export function skillViolations(config: ValleyConfig, person: Forager): string[]
     person.practicedToday > practiceBudget(config, person)
   )
     errors.push(`person ${person.id}: practised more than their budget`)
-  const expected = skillsOf(config, person.experience, person.ideas)
+  const expected = skillsOf(config, person.experience, person.ideas, person.workPerMille)
   for (const key of Object.keys(expected) as (keyof typeof expected)[])
     if (JSON.stringify(expected[key]) !== JSON.stringify(person[key]))
       errors.push(`person ${person.id}: ${key} differs from experience`)

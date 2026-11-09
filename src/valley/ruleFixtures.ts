@@ -1,4 +1,5 @@
 import { deriveNature } from './nature'
+import { bodyAge } from './lifecycle'
 import { buildBanks } from './banks'
 import { buildNav } from './routes'
 import { reindexPeople } from './perception'
@@ -15,9 +16,11 @@ export function createSurveyedValley(overrides: Partial<ValleyConfig> = {}, with
       person,
       deriveNature(state.config, {
         sex: 1,
-        heightCm: 165,
-        weightKg: state.config.referenceBodyKg,
-        gripKg: state.config.referenceGripKg,
+        adultHeightCm: 165,
+        adultWeightKg: state.config.referenceBodyKg,
+        adultGripKg: state.config.referenceGripKg,
+        ageMilli: bodyAge(state.config, person, person.natureMinute),
+        pregnant: false,
         traits: { openness: 0, conscientiousness: 0, extraversion: 0, agreeableness: 0, neuroticism: 0 },
       }),
     )

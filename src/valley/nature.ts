@@ -1,5 +1,6 @@
 import { randomInt } from '../sim/rng'
 import { isqrt } from './geometry'
+import { ageFactors, rangeAt } from './growth'
 import type { EnergyRateKey, Forager, PersonNature, Personality, TraitRule, ValleyConfig } from './types'
 
 export const TRAITS = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'] as const
@@ -56,11 +57,26 @@ export function correlated(draws: NatureDraws, factor: number[][]) {
   const z = factor.map(() => draws.normal())
   return factor.map((row, i) => clamp(Math.trunc(row.slice(0, i + 1).reduce((n, v, j) => n + v * z[j]!, 0) / 1000)))
 }
-export function deriveNature(
-  c: ValleyConfig,
-  body: Pick<PersonNature, 'sex' | 'heightCm' | 'weightKg' | 'gripKg' | 'traits'>,
-): PersonNature {
-  const { weightKg, gripKg, traits } = body
+export type BodyDraw = Pick<
+  PersonNature,
+  'sex' | 'adultHeightCm' | 'adultWeightKg' | 'adultGripKg' | 'traits' | 'ageMilli' | 'pregnant'
+>
+/**
+ * Everything that follows from a person's adult body, traits, age and pregnancy (Life 19): the grown body, its rates
+ * at its metabolism with a pregnancy's cost added, its reserve levels scaled by the weight grown, its load capacity,
+ * walking speed, base water loss, and the walking, work and range factors of its age. An adult's are Life 18's.
+ */
+export function deriveNature(c: ValleyConfig, body: BodyDraw): PersonNature {
+  const { traits, ageMilli } = body
+  const age = ageFactors(c, ageMilli)
+  const weightKg = Math.max(1, Math.floor((body.adultWeightKg * age.weight) / 1_000))
+  const heightCm = Math.floor((body.adultHeightCm * age.height) / 1_000)
+  const gripKg = Math.max(0, Math.floor((body.adultGripKg * age.grip) / 1_000))
+  const scaled = (value: number) => Math.floor((value * age.weight) / 1_000)
+  const reserveMaxKcal = scaled(c.reserveMaxKcal),
+    hungryBelowKcal = scaled(c.hungryBelowKcal),
+    satiatedAtKcal = scaled(c.satiatedAtKcal)
+  const extra = body.pregnant ? Math.floor(c.pregnancyKcalPerDay / 24) : 0
   const f = traitFactor(c.conscientiousnessRule, traits.conscientiousness)
   const night = (24 - c.duskHour + c.dawnHour) * c.fireWoodPerHour
   const keys = [
@@ -76,16 +92,33 @@ export function deriveNature(
     'coldSleepKcalPerHour',
   ] as const
   const rates = {} as Record<EnergyRateKey, number>
-  for (const key of keys) rates[key] = Math.floor((c[key] * weightKg) / c.referenceBodyKg)
-  rates.moderateWalkKcalPerHour = Math.floor((c.walkKcalPerHour * 3 * weightKg) / (2 * c.referenceBodyKg))
-  rates.steepWalkKcalPerHour = Math.floor((c.walkKcalPerHour * 2 * weightKg) / c.referenceBodyKg)
+  const mass = weightKg * age.metabolism
+  for (const key of keys) rates[key] = Math.floor((c[key] * mass) / (c.referenceBodyKg * 1_000)) + extra
+  rates.moderateWalkKcalPerHour = Math.floor((c.walkKcalPerHour * 3 * mass) / (2 * c.referenceBodyKg * 1_000)) + extra
+  rates.steepWalkKcalPerHour = Math.floor((c.walkKcalPerHour * 2 * mass) / (c.referenceBodyKg * 1_000)) + extra
   return {
     sex: body.sex,
-    heightCm: body.heightCm,
-    weightKg: body.weightKg,
-    gripKg: body.gripKg,
+    adultHeightCm: body.adultHeightCm,
+    adultWeightKg: body.adultWeightKg,
+    adultGripKg: body.adultGripKg,
+    ageMilli,
+    pregnant: body.pregnant,
+    heightCm,
+    weightKg,
+    gripKg,
     traits: body.traits,
-    loadCapacityKg: Math.floor((c.woodLoad * (gripKg + c.referenceGripKg)) / (2 * c.referenceGripKg)),
+    reserveMaxKcal,
+    initialReserveKcal: scaled(c.initialReserveKcal),
+    hungryBelowKcal,
+    fecundReserveKcal: scaled(c.fecundReserveKcal),
+    walkCmPerSecond: Math.max(1, Math.floor((c.walkCmPerSecond * age.walk) / 1_000)),
+    waterBaseMlPerDay: Math.floor((c.waterBaseMlPerDay * mass) / (body.adultWeightKg * 1_000)),
+    walkPerMille: age.walk,
+    workPerMille: age.work,
+    rangeCm: rangeAt(c, ageMilli),
+    loadCapacityKg: Math.floor(
+      (c.woodLoad * (gripKg + c.referenceGripKg) * age.weight) / (2 * c.referenceGripKg * 1_000),
+    ),
     rates,
     thirstThresholds: {
       thirsty: weightKg * c.thirstBodyPerMille,
@@ -100,8 +133,8 @@ export function deriveNature(
     giveGoodwillPerMille: traitFactor(c.agreeablenessGiveRule, traits.agreeableness),
     woodStockTarget: Math.max(night + 1, Math.floor((c.woodStockNights * night * f) / 1000)),
     satiationKcal: Math.min(
-      c.reserveMaxKcal,
-      c.hungryBelowKcal + Math.floor(((c.satiatedAtKcal - c.hungryBelowKcal) * f) / 1000),
+      reserveMaxKcal,
+      hungryBelowKcal + Math.floor(((satiatedAtKcal - hungryBelowKcal) * f) / 1000),
     ),
     duskMarginMinutes: Math.max(
       1,
@@ -119,16 +152,19 @@ export function drawNature(
   traits: NatureDraws,
   bf = bodyFactor(c),
   tf = personalityFactor(c),
+  ageMilli = 18_000,
 ): PersonNature {
   const sex = bodies.int(2) as 0 | 1,
     b = correlated(bodies, bf),
     t = correlated(traits, tf)
   return deriveNature(c, {
     sex,
-    heightCm: (sex ? c.manHeightCm : c.womanHeightCm) + Math.floor((c.heightSdCm * b[0]!) / 1000),
-    weightKg: (sex ? c.manWeightKg : c.womanWeightKg) + Math.floor((c.weightSdKg * b[1]!) / 1000),
-    gripKg: (sex ? c.manGripKg : c.womanGripKg) + Math.floor((c.gripSdKg * b[2]!) / 1000),
+    adultHeightCm: (sex ? c.manHeightCm : c.womanHeightCm) + Math.floor((c.heightSdCm * b[0]!) / 1000),
+    adultWeightKg: (sex ? c.manWeightKg : c.womanWeightKg) + Math.floor((c.weightSdKg * b[1]!) / 1000),
+    adultGripKg: (sex ? c.manGripKg : c.womanGripKg) + Math.floor((c.gripSdKg * b[2]!) / 1000),
     traits: Object.fromEntries(TRAITS.map((key, i) => [key, t[i]!])) as unknown as Personality,
+    ageMilli,
+    pregnant: false,
   })
 }
 /** A cached personal view of configuration for shared task/route helpers. Never stored as run settings. */
@@ -147,6 +183,12 @@ export function personConfig(c: ValleyConfig, p: PersonNature): ValleyConfig {
       referenceBodyKg: p.weightKg,
       woodLoad: p.loadCapacityKg,
       satiatedAtKcal: p.satiationKcal,
+      reserveMaxKcal: p.reserveMaxKcal,
+      initialReserveKcal: p.initialReserveKcal,
+      hungryBelowKcal: p.hungryBelowKcal,
+      fecundReserveKcal: p.fecundReserveKcal,
+      walkCmPerSecond: p.walkCmPerSecond,
+      waterBaseMlPerDay: p.waterBaseMlPerDay,
     }
     people.set(p.rates, result)
   }
@@ -156,9 +198,9 @@ export function natureViolations(c: ValleyConfig, p: Forager) {
   const errors: string[] = []
   if (p.sex !== 0 && p.sex !== 1) errors.push('Invalid sex')
   for (const [key, woman, man, sd] of [
-    ['heightCm', 'womanHeightCm', 'manHeightCm', 'heightSdCm'],
-    ['weightKg', 'womanWeightKg', 'manWeightKg', 'weightSdKg'],
-    ['gripKg', 'womanGripKg', 'manGripKg', 'gripSdKg'],
+    ['adultHeightCm', 'womanHeightCm', 'manHeightCm', 'heightSdCm'],
+    ['adultWeightKg', 'womanWeightKg', 'manWeightKg', 'weightSdKg'],
+    ['adultGripKg', 'womanGripKg', 'manGripKg', 'gripSdKg'],
   ] as const) {
     const mean = c[p.sex ? man : woman]
     if (!Number.isSafeInteger(p[key]) || Math.abs(p[key] - mean) > 3 * c[sd]) errors.push(`Invalid ${key}`)

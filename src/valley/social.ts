@@ -2,6 +2,7 @@ import { ringOffset } from './config'
 import { routeFor } from './forager'
 import { circleWalkable, routeTriangle } from './routes'
 import { distanceSq } from './geometry'
+import { childrenAtHome, livesWithParent } from './kin'
 import type { DissolveEvent, Forager, Group, GroupEvent, Point, ValleyConfig, ValleyLayout, ValleyState } from './types'
 
 export function nearestOther(forager: Forager, foragers: readonly Forager[], radius: number) {
@@ -71,6 +72,14 @@ function availableSlot(state: ValleyState, group: Group, forager: Forager) {
   return null
 }
 
+/** A person joins a group at a slot, with their children at home, who share the slot (Life 19). */
+const joinFamily = (state: ValleyState, group: Group, forager: Forager, minute: number, slot: number) => {
+  const children = childrenAtHome(state, forager).filter((child) => child.groupId === null)
+  join(state.config, group, forager, minute, slot)
+  for (const child of children) join(state.config, group, child, minute, slot)
+  return children.map((child) => child.id)
+}
+
 const join = (config: ValleyConfig, group: Group, forager: Forager, minute: number, slot: number) => {
   forager.groupId = group.id
   forager.joinedMinute = minute
@@ -88,9 +97,13 @@ const join = (config: ValleyConfig, group: Group, forager: Forager, minute: numb
  */
 export function meet(state: ValleyState, forager: Forager, minute: number): Exclude<GroupEvent, DissolveEvent> | null {
   const { config } = state
-  if (forager.groupId !== null) return null
+  // A person who shares a living parent's hearth founds and joins groups only with that parent.
+  if (forager.groupId !== null || livesWithParent(state, forager)) return null
   const seen = state.foragers
-    .filter((person) => forager.metMinute[person.id] === minute)
+    .filter(
+      (person) =>
+        forager.metMinute[person.id] === minute && (person.groupId !== null || !livesWithParent(state, person)),
+    )
     .map((person) => ({ ...person, ...forager.metPosition.get(person.id)! }))
   const nearest = nearestOther(forager, seen, config.talkRadiusCm)
   const other = nearest ? state.foragers[nearest.id]! : null
@@ -99,8 +112,9 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Excl
     const group = state.groups[other.groupId]!
     const slot = availableSlot(state, group, forager)
     if (slot === null) return null
-    join(config, group, forager, minute, slot)
+    const children = joinFamily(state, group, forager, minute, slot)
     return {
+      children,
       kind: 'join',
       minute,
       groupId: other.groupId,
@@ -125,9 +139,12 @@ export function meet(state: ValleyState, forager: Forager, minute: number): Excl
   group.hearthSlots = []
   if (otherSlot === null) return null
   state.groups.push(group)
-  join(config, group, forager, minute, firstSlot)
-  join(config, group, other, minute, otherSlot)
+  const children = [
+    ...joinFamily(state, group, forager, minute, firstSlot),
+    ...joinFamily(state, group, other, minute, otherSlot),
+  ]
   return {
+    children,
     kind: 'found',
     minute,
     groupId: group.id,

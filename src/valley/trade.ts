@@ -33,7 +33,7 @@ export function nextShortOfWood(config: ValleyConfig, wood: number, shortOfWood:
 
 /** Room in a forager's reserve for food, counting what it carries. */
 export const roomKcal = (config: ValleyConfig, forager: Forager) =>
-  Math.max(0, config.reserveMaxKcal - forager.energyKcal - carriedKcal(forager.carried))
+  Math.max(0, forager.reserveMaxKcal - forager.energyKcal - carriedKcal(forager.carried))
 
 /** Negative when `a` is relatively better at gathering wood than `b`. */
 export const compareOwnTerms = (a: Forager, b: Forager) => a.forageRate * b.woodRate - b.forageRate * a.woodRate

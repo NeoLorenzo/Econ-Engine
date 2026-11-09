@@ -9,17 +9,20 @@ import { nearestFrontier, chunkOf, estimateMinutes } from './routes'
 import { observeAt, locatePeople, scheduleArrivals, peopleInChunk } from './perception'
 import { rememberWalk, type WalkFound } from './ways'
 import { carriedKcal, spoil, addLots, eatCarried, countEaten } from './food'
-import { putIntoStore, storeKcal, storeTarget, takeFromStore } from './stores'
+import { familyDayKcal, putIntoStore, storeKcal, storeTarget, takeFromStore } from './stores'
 import { distanceSq } from './geometry'
 import { takeFrom } from './places'
 import { nextShortOfWood, swap } from './trade'
 import { meet, dissolveIfAlone } from './social'
-import { ask, countTogether } from './ties'
-import { layLog, leaveHutIfMoved, hutWhole } from './huts'
+import { ask, countTogether, pairAt } from './ties'
+import { layLog, leaveHutIfMoved, shelteredAt } from './huts'
 import { feedFire } from './fire'
 import { warmthOf, tendFire } from './work'
 import { beginAxe, workAxe, cutAt, logCut, exchangeAxes } from './axes'
 import { inventAfter, practiceBudget } from './skills'
+import { ageOf, birthDue, deliver } from './lifecycle'
+import { feedChildren, milkOnly, wantsFeed } from './nursing'
+import { canWalk, carrierOf, fireWarms } from './kin'
 import type { Forager, ValleyEvent, ValleyState } from './types'
 import type { TaskChoice } from './forager'
 
@@ -83,7 +86,7 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   if (choice.kind === 'rest' && isDaylight(state.config, minute))
     end = Math.min(end, minute - minuteOfDay(minute) + state.config.duskHour * 60)
   if (choice.kind === 'drink') {
-    const net = state.config.drinkMlPerSecond * 60 - state.config.waterBaseMlPerDay / 1_440
+    const net = state.config.drinkMlPerSecond * 60 - person.waterBaseMlPerDay / 1_440
     end = minute + Math.max(1, Math.ceil((person.waterDeficitMl - state.config.drinkStopMl) / net))
   }
   if (
@@ -102,7 +105,7 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
           ? nutRoomKcal(state.config, person)
           : Math.max(
               0,
-              state.config.reserveMaxKcal -
+              person.reserveMaxKcal -
                 person.energyKcal -
                 carriedKcal(person.carried) +
                 (choice.desiredCarriedKcal ?? 0),
@@ -122,7 +125,7 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
   if (choice.kind === 'eat store') {
     // Taking from the store moves food to the hand, eaten at the next wake-up; it ends when the reserve would be full.
     const rate = state.config.storeKcalPerHour,
-      room = Math.max(0, state.config.reserveMaxKcal - person.energyKcal - carriedKcal(person.carried))
+      room = Math.max(0, person.reserveMaxKcal - person.energyKcal - carriedKcal(person.carried))
     end =
       minute +
       Math.max(
@@ -171,8 +174,8 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
       beforeEvents.push({ kind: 'fire', minute, foragerId: person.id, burned, lit: person.warm })
     }
   }
-  const fire = person.groupId === null ? person.warm : state.groups[person.groupId]!.fireLit
-  const warmth = warmthOf(fire, hutWhole(state, person))
+  const fire = fireWarms(state, person)
+  const warmth = warmthOf(fire, shelteredAt(state, person))
   person.task = startTask(
     state.config,
     person,
@@ -185,10 +188,11 @@ function scheduleTask(state: ValleyState, person: Forager, minute: number) {
     warmth,
   )
   person.task.groupId = person.groupId
-  person.task.wholeHut = hutWhole(state, person)
+  person.task.wholeHut = shelteredAt(state, person)
   person.task.productionPerHour = choice.productionPerHour ?? 0
   if (choice.kind === 'store') {
-    person.task.storeTarget = storeTarget(state.config, person, minute)
+    person.task.familyKcal = familyDayKcal(state, person, minute, true, true)
+    person.task.storeTarget = storeTarget(state.config, person, minute, person.task.familyKcal)
     person.task.storeKcal = storeKcal(person)
     person.task.roomKcal = nutRoomKcal(state.config, person)
   }
@@ -383,7 +387,17 @@ function exchange(state: ValleyState, id: number, minute: number, events: Valley
     owner.axeTotals = view.axeTotals
   }
 }
-export function personWake(state: ValleyState, id: number, minute: number, _kind: WakeKind): ValleyEvent[] {
+/**
+ * A person's wake-up. `fate`, given only by the midnight lifecycle, is the `fate:<day>` draw that fell below their
+ * hazard: they die of illness once their body is paid, unless hunger or thirst kills them first.
+ */
+export function personWake(
+  state: ValleyState,
+  id: number,
+  minute: number,
+  _kind: WakeKind,
+  fate?: number,
+): ValleyEvent[] {
   const person = state.foragers[id]!
   if (!person.alive) return []
   state.queue.cancelPerson(id)
@@ -420,32 +434,47 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
       produced,
       paid: { kcal: charge.spent, waterLossMl: charge.loss, drankMl: charge.drink },
     })
+    // The children carried on a walk wake when it ends, at its end or earlier.
+    if (task.kind === 'walk') for (const child of task.carriedIds ?? []) address(state, child, minute)
+    if (task.kind === 'carried') state.today.carriedMinutes += minute - task.startMinute
   }
   person.task = null
   person.lastWakeMinute = minute
   state.totals.wakeUps += 1
   state.today.wakeUpsById[id]! += 1
-  if (person.energyKcal <= 0 || person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).fatal) {
+  if (birthDue(state.config, person, minute)) events.push(deliver(state, person, minute))
+  const starved = person.energyKcal <= 0,
+    parched = person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).fatal
+  if (starved || parched || fate !== undefined) {
+    const illness = !starved && !parched
     state.today.deaths += 1
-    if (person.energyKcal <= 0) state.today.starvationDeaths += 1
-    if (person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).fatal)
-      state.today.dehydrationDeaths += 1
+    if (starved) state.today.starvationDeaths += 1
+    if (parched) state.today.dehydrationDeaths += 1
+    if (illness) state.today.illnessDeaths += 1
     person.alive = false
     person.deathMinute = minute
     person.deathSecond = 0
-    person.deathCauses = [
-      ...(person.energyKcal <= 0 ? ['starvation' as const] : []),
-      ...(person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).fatal
-        ? ['dehydration' as const]
-        : []),
-    ]
+    person.deathCauses = [...(starved ? ['starvation' as const] : []), ...(parched ? ['dehydration' as const] : [])]
     events.push({
       kind: 'death',
       minute,
       foragerId: id,
       second: 0,
-      cause: person.deathCauses.length === 2 ? 'starvation and dehydration' : person.deathCauses[0]!,
+      cause: illness
+        ? 'illness'
+        : person.deathCauses.length === 2
+          ? 'starvation and dehydration'
+          : person.deathCauses[0]!,
+      ...(illness ? { draw: fate } : {}),
+      ageMilli: ageOf(state.config, person, minute),
     })
+    // A death ends a pairing and a pregnancy; children waiting for a feed from the dead choose again.
+    if (person.partnerId !== null) state.foragers[person.partnerId]!.partnerId = null
+    person.partnerId = null
+    person.pregnancy = null
+    for (const child of state.foragers)
+      if (child.motherId === id && child.alive && child.task === null && child.lastWakeMinute === minute)
+        address(state, child.id, minute)
     if (person.groupId !== null) {
       const dissolved = dissolveIfAlone(state, person.groupId, minute)
       if (dissolved) {
@@ -461,7 +490,9 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
   person.carried = spoiled.lots
   state.totals.spoiledKcal += spoiled.spoiledKcal
   state.today.spoiledKcal += spoiled.spoiledKcal
-  const eaten = eatCarried(person.carried, state.config.reserveMaxKcal - person.energyKcal)
+  const eaten = milkOnly(state, person, minute)
+    ? { rest: person.carried, takenKcal: 0, taken: [] }
+    : eatCarried(person.carried, person.reserveMaxKcal - person.energyKcal)
   person.carried = eaten.rest
   person.energyKcal += eaten.takenKcal
   countEaten(state.today, eaten.taken)
@@ -475,11 +506,30 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
     ended.ateKcal = eaten.takenKcal
     ended.spoiledKcal = spoiled.spoiledKcal
   }
-  person.hungry = nextHungry(personConfig(state.config, person), person.energyKcal, person.hungry)
+  // The hunger and thirst flags follow the body a task starts with; a feed changes it, so they are set again after it.
+  const wasHungry = person.hungry,
+    wasThirsty = person.thirsty
+  const setFlags = () => {
+    person.hungry = nextHungry(personConfig(state.config, person), person.energyKcal, wasHungry)
+    person.thirsty = wasThirsty
+    if (person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).thirsty) person.thirsty = true
+    else if (person.waterDeficitMl <= state.config.drinkStopMl) person.thirsty = false
+  }
+  setFlags()
   person.shortOfWood = nextShortOfWood(state.config, person.wood, person.shortOfWood, person.woodStockTarget)
-  if (person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).thirsty) person.thirsty = true
-  else if (person.waterDeficitMl <= state.config.drinkStopMl) person.thirsty = false
   if (atHearth(person)) person.tripWood = 0
+  // A child under weaning age who wants a feed waits for it: their mother is woken, feeds them and wakes them again.
+  if (wantsFeed(state, person, minute)) {
+    address(state, person.motherId!, minute)
+    // No task starts while waiting: the flags are set when one does, after the feed.
+    person.hungry = wasHungry
+    person.thirsty = wasThirsty
+    return events
+  }
+  const feeds = feedChildren(state, person, minute)
+  events.push(...feeds.events)
+  for (const child of feeds.waiting) address(state, child, minute)
+  if (feeds.events.length) setFlags()
   locatePeople(state, minute)
   const observation = observeAt(state, person, minute)
   events.push(observation)
@@ -488,7 +538,7 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
     if (meeting.kind === 'found') state.today.foundings += 1
     else state.today.joinings += 1
     events.push(meeting.kind === 'found' ? { ...meeting, kind: 'group-founded' } : { ...meeting, kind: 'group-joined' })
-    const members = meeting.kind === 'found' ? meeting.founderIds : [meeting.metId]
+    const members = [...(meeting.kind === 'found' ? meeting.founderIds : [meeting.metId]), ...(meeting.children ?? [])]
     for (const otherId of members) if (otherId !== id) address(state, otherId, minute)
   }
   const abandoned = leaveHutIfMoved(state, person, minute)
@@ -502,6 +552,7 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
     if (other.lastWakeMinute !== minute) address(state, otherId, minute)
   }
   events.push(...countTogether(state, person, task, observation.people, minute))
+  events.push(...pairAt(state, person, observation.people, minute))
   // Exchange needs another living member of the trader's group; without one, neither wood nor axes change hands.
   if (
     person.groupId !== null &&
@@ -526,7 +577,8 @@ export function personWake(state: ValleyState, id: number, minute: number, _kind
   }
   person.hungry = nextHungry(personConfig(state.config, person), person.energyKcal, person.hungry)
   person.shortOfWood = nextShortOfWood(state.config, person.wood, person.shortOfWood, person.woodStockTarget)
-  const started = scheduleTask(state, person, minute)
+  const carrier = carrying(state, person, minute)
+  const started = carrier ? carried(state, person, carrier, minute) : carryAndSchedule(state, person, minute)
   if (!ended) {
     const first = started.find((event) => event.kind === 'task-start')
     if (first?.kind === 'task-start') {
@@ -572,6 +624,81 @@ export function arrival(state: ValleyState, entry: WakeEntry): boolean {
     person.task?.kind !== 'sleep' ||
     waterAt(person.task, entry.minute, state.routes).ml >= waterThresholds(personConfig(state.config, person)).urgent
   )
+}
+
+/** The carrier of a person who cannot walk, when that carrier is on a walk that carries them and has not ended. */
+function carrying(state: ValleyState, person: Forager, minute: number): Forager | null {
+  if (canWalk(state, person)) return null
+  const carrier = carrierOf(state, person)
+  const task = carrier?.task
+  if (!carrier || task?.kind !== 'walk' || !task.carriedIds?.includes(person.id) || task.endMinute <= minute)
+    return null
+  return carrier
+}
+
+/** Starts a carried task: the person rides on the carrier's walk at the resting rate until it ends. */
+function carried(state: ValleyState, person: Forager, carrier: Forager, minute: number): ValleyEvent[] {
+  const walk = carrier.task!
+  person.childKg = 0
+  person.task = startTask(state.config, person, 'carried', minute, walk.endMinute, -1, walk.routeId, 'carried')
+  person.task.carrierId = carrier.id
+  person.task.walkStartMinute = walk.startMinute
+  person.task.groupId = person.groupId
+  person.task.wholeHut = shelteredAt(state, person)
+  state.queue.schedule({ minute: walk.endMinute, phase: 1, id: person.id, kind: 'end' })
+  const threshold = firstThresholdMinute(personConfig(state.config, person), person.task, state.routes)
+  if (threshold && threshold.minute < walk.endMinute)
+    state.queue.schedule({ minute: threshold.minute, phase: 1, id: person.id, kind: 'threshold' })
+  return [
+    { kind: 'carried', minute, foragerId: person.id, carrierId: carrier.id, endMinute: walk.endMinute },
+    {
+      kind: 'task-start',
+      minute,
+      foragerId: person.id,
+      task: { ...person.task },
+      position: { x: person.x, y: person.y },
+    },
+  ]
+}
+
+/**
+ * Chooses and starts a person's next task with the children they would carry counted in their load; a walk takes those
+ * children along, and each is woken to ride on it.
+ */
+function carryAndSchedule(state: ValleyState, person: Forager, minute: number): ValleyEvent[] {
+  const children = carriedBy(state, person, minute)
+  person.childKg = children.reduce((total, child) => total + child.weightKg, 0)
+  const started = scheduleTask(state, person, minute)
+  const task = person.task!
+  if (task.kind === 'walk' && children.length) {
+    task.carriedIds = children.map((child) => child.id)
+    task.childKg = person.childKg
+    // The walk's start record carries the children it takes along.
+    for (const e of started)
+      if (e.kind === 'task-start' && e.foragerId === person.id && e.minute === minute)
+        e.task = { ...e.task, carriedIds: task.carriedIds, childKg: task.childKg }
+    for (const child of children) address(state, child.id, minute)
+  }
+  return started
+}
+
+/**
+ * The children a person would carry now: living, unable to walk, within talking distance, whose carrier they are, in id
+ * order while their weights together fit the person's load capacity.
+ */
+function carriedBy(state: ValleyState, person: Forager, minute: number): Forager[] {
+  if (!canWalk(state, person)) return []
+  const children: Forager[] = []
+  let kg = 0
+  for (const child of state.foragers) {
+    if (!child.alive || child.id === person.id || canWalk(state, child)) continue
+    const at = positionAt(state, child, minute)
+    if (distanceSq(at.x, at.y, person.x, person.y) > state.config.talkRadiusCm ** 2) continue
+    if (carrierOf(state, child)?.id !== person.id || kg + child.weightKg > person.loadCapacityKg) continue
+    kg += child.weightKg
+    children.push(child)
+  }
+  return children
 }
 
 function address(state: ValleyState, id: number, minute: number) {
