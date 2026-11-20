@@ -8,6 +8,7 @@ import { triangleAt } from '../valley/mesh'
 import { meet } from '../valley/social'
 import type { ValleyState } from '../valley/types'
 import {
+  ageLabel,
   BUSHES_PER_THICKET,
   CAMERA_LIMITS,
   campfireAt,
@@ -16,6 +17,7 @@ import {
   closeTilt,
   contributionNote,
   daysOfFoodLeft,
+  deathCause,
   decorOf,
   describeActivity,
   foragerSummary,
@@ -24,6 +26,7 @@ import {
   groupInspection,
   groupName,
   knowledgeShades,
+  peopleCount,
   pinPlacement,
   plantFill,
   plantInspection,
@@ -226,5 +229,28 @@ describe('pins over a selected group', () => {
     expect(below.angle).toBeCloseTo(Math.PI / 2, 10)
     // Behind the camera, a point projected to the right lies to the left.
     expect(pinPlacement(900, 400, true, clear, view)).toMatchObject({ x: 300, edge: true })
+  })
+})
+
+describe('generations in the view', () => {
+  it('reads ages in whole years from 3, and in years and months below', () => {
+    expect(ageLabel(24_400)).toBe('24')
+    expect(ageLabel(2_340)).toBe('2 years 4 months')
+    expect(ageLabel(1_000)).toBe('1 year 0 months')
+    expect(ageLabel(90)).toBe('1 month')
+  })
+
+  it('counts the living with those under 15, and names a death with no hunger or thirst as illness', () => {
+    const state = cloneValley(createValley(FLAT_LAND))
+    const [first, second] = state.foragers
+    const counted = peopleCount(state)
+    expect(counted.alive).toBe(state.foragers.length)
+    second!.birthMinute = state.minute
+    expect(peopleCount(state).young).toBe(counted.young + 1)
+    first!.alive = false
+    first!.deathMinute = state.minute
+    first!.deathCauses = []
+    expect(deathCause(first!)).toBe('illness')
+    expect(peopleCount(state).alive).toBe(counted.alive - 1)
   })
 })

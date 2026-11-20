@@ -6,10 +6,11 @@ import { mixSeed, randomDraw } from '../sim/rng'
 import { ringOf, fishCapacityKcal } from '../valley/config'
 import { campfireBurn } from '../valley/fire'
 import { isDaylight, loadKg, loadOf, speedForLoad } from '../valley/forager'
+import { ageMilli, ageYears, growing } from '../valley/growth'
 import { hutOf, hutWhole, weathersOn } from '../valley/huts'
 import { hasIdea, knows as knowsTechnique, practiceBudget } from '../valley/skills'
 import { capacityOf, thicketCapacity } from '../valley/places'
-import { storeDays, storeKcal, storeTarget } from '../valley/stores'
+import { familyStoreTarget, storeDays, storeKcal } from '../valley/stores'
 import { knows, positionAlong } from '../valley/routes'
 import { triangleAt } from '../valley/mesh'
 import { siteKindOf } from '../valley/sites'
@@ -18,7 +19,17 @@ import { positionAt } from '../valley/tasks'
 import { GROUND_NAMES, cellOf, heightAt } from '../valley/terrain'
 import { knownTerms, nightHours, nightWood, woodMatters } from '../valley/trade'
 import { PLACE_KINDS } from '../valley/types'
-import type { CropClass, Group, Harvest, Plants, Point, ValleyConfig, ValleyLayout, ValleyState } from '../valley/types'
+import type {
+  CropClass,
+  Forager,
+  Group,
+  Harvest,
+  Plants,
+  Point,
+  ValleyConfig,
+  ValleyLayout,
+  ValleyState,
+} from '../valley/types'
 import { palette } from '../ui/theme'
 import { decorPoints, foragerColor, foragerName, formatHours } from './display'
 
@@ -653,9 +664,10 @@ const REASONS: Partial<Record<string, string>> = {
 export function describeActivity(display: Display, foragerId: number) {
   const { state } = display
   const person = state.foragers[foragerId]!
-  if (!person.alive) return `Dead of ${person.deathCauses.join(' and ')}`
+  if (!person.alive) return `Dead of ${deathCauseWords(person)}`
   const task = person.task
   if (!task) return 'Waiting to start'
+  if (task.kind === 'carried' && task.carrierId !== undefined) return `Carried by ${foragerName(task.carrierId)}`
   const place =
     task.placeId >= 0 && task.placeId < state.layout.places.count ? siteName(state.config, task.placeId) : null
   const what =
@@ -686,13 +698,16 @@ export function walkWording(state: ValleyState, foragerId: number) {
 }
 /** The followed person's task and next wake-up, for the person panel. */
 export function taskSummary(state: ValleyState, foragerId: number) {
-  const task = state.foragers[foragerId]!.task
+  const person = state.foragers[foragerId]!
+  const task = person.task
   const next = state.queue.entriesOf(foragerId).sort((a, b) => a.minute - b.minute)[0] ?? null
   return task
     ? {
         kind: task.kind,
         reason: task.reason,
         way: walkWording(state, foragerId),
+        /** Fed by its mother at the wake-up that began this task. */
+        fed: person.lastFedMinute >= 0 && person.lastFedMinute >= task.startMinute,
         startMinute: task.startMinute,
         endMinute: task.endMinute,
         nextWake: next && { minute: next.minute, kind: next.kind },
@@ -1145,7 +1160,7 @@ export function foragerSummary(state: ValleyState, foragerId: number) {
     /** Its store of nuts at its hearth, the days of food that is at an average day's food, and its target. */
     storeKcal: storeKcal(forager),
     storeDays: storeDays(config, forager),
-    storeTarget: forager.alive ? storeTarget(config, forager, state.minute) : 0,
+    storeTarget: forager.alive ? familyStoreTarget(state, forager, state.minute) : 0,
     log: forager.log,
     stone: forager.stone,
     ...forager.axeTotals,
@@ -1208,9 +1223,19 @@ export function tieGraph(state: ValleyState) {
       })
     }
   }
+  // Family: partners, and each living parent to each living child.
+  const family: { a: number; b: number; kind: 'partner' | 'parent' }[] = []
+  for (const { id } of people) {
+    const person = state.foragers[id]!
+    if (person.partnerId !== null && person.partnerId > id && state.foragers[person.partnerId]?.alive)
+      family.push({ a: id, b: person.partnerId, kind: 'partner' })
+    for (const parent of [person.motherId, person.fatherId])
+      if (parent !== null && state.foragers[parent]?.alive) family.push({ a: parent, b: id, kind: 'parent' })
+  }
   return {
     people,
     links,
+    family,
     close: links.filter((link) => link.familiarity >= CLOSE_TIE_MINUTES).length,
     aggrieved: links.filter((link) => link.grievance > 0).length,
   }
@@ -1245,6 +1270,11 @@ export const daySeries = (state: ValleyState, foragerId: number) =>
       reserveHighest: reserves.length ? Math.max(...reserves) : 0,
       followedReserve: day.endEnergyKcal[foragerId]! > 0 ? day.endEnergyKcal[foragerId]! : null,
       alive: day.alive,
+      /** The living by age band at the day's end: babies (under 3), children (3–14), adults (15–49), elders (50+). */
+      babies: day.livingByAge?.[0] ?? 0,
+      children: day.livingByAge?.[1] ?? 0,
+      adults: day.livingByAge?.[2] ?? 0,
+      elders: day.livingByAge?.[3] ?? 0,
       swappedWood: day.swappedWood,
       coldHours: day.coldSleepMinutes / 60,
       reserve: day.endEnergyKcal[foragerId]!,
@@ -1302,7 +1332,16 @@ export function eatenBySource(state: ValleyState, period: FoodPeriod) {
   return kcal
 }
 
-export const DEATH_COLORS = { starvation: palette.negative, dehydration: palette.firmA } as const
+export const DEATH_COLORS = {
+  starvation: palette.negative,
+  dehydration: palette.firmA,
+  illness: palette.government,
+} as const
+
+/** Why a dead person died, by their first cause; a death with no cause of hunger or thirst was drawn: illness. */
+export const deathCause = (person: Forager): keyof typeof DEATH_COLORS => person.deathCauses[0] ?? 'illness'
+export const deathCauseWords = (person: Forager) =>
+  person.deathCauses.length ? person.deathCauses.join(' and ') : 'illness'
 
 /** Each death so far, on the day it fell (counting from 1), coloured by its first cause. */
 export const deathMarks = (state: ValleyState) =>
@@ -1311,11 +1350,116 @@ export const deathMarks = (state: ValleyState) =>
       ? [
           {
             day: Math.floor(person.deathMinute / MINUTES_PER_DAY) + 1,
-            color: DEATH_COLORS[person.deathCauses[0] ?? 'starvation'],
+            color: DEATH_COLORS[deathCause(person)],
           },
         ]
       : [],
   )
+
+/** A person's age in thousandths of a year now, or at their death. */
+export const ageOf = (state: ValleyState, person: Forager) =>
+  ageMilli(state.config, person.birthMinute, person.deathMinute ?? state.minute)
+
+/** An age as the panel reads it: whole years, or years and months under 3. */
+export function ageLabel(age: number) {
+  const years = ageYears(age)
+  if (years >= 3) return String(years)
+  const months = Math.floor(((age % 1_000) * 12) / 1_000)
+  const part = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`
+  return years === 0 ? part(months, 'month') : `${part(years, 'year')} ${part(months, 'month')}`
+}
+
+/** Under this age a person counts as a child in the header; an observer's word, not a rule. */
+const CHILD_YEARS = 15
+
+/** The living, and how many of them are under 15. */
+export function peopleCount(state: ValleyState) {
+  let alive = 0,
+    young = 0
+  for (const person of state.foragers)
+    if (person.alive) {
+      alive += 1
+      if (ageYears(ageOf(state, person)) < CHILD_YEARS) young += 1
+    }
+  return { alive, young }
+}
+
+/** A person's family for the panel: partner, children with their ages, mother and father, each with whether alive. */
+export function familyOf(state: ValleyState, id: number) {
+  const person = state.foragers[id]!
+  const entry = (other: number | null) =>
+    other === null ? null : { id: other, alive: state.foragers[other]?.alive ?? false }
+  return {
+    partner: entry(person.partnerId),
+    children: state.foragers
+      .filter((child) => child.motherId === id || child.fatherId === id)
+      .map((child) => ({ id: child.id, alive: child.alive, years: ageYears(ageOf(state, child)) })),
+    mother: entry(person.motherId),
+    father: entry(person.fatherId),
+  }
+}
+
+/**
+ * What the body line adds for a person's life: pregnant, nursing (a living child of hers not yet weaned), and the
+ * adult height and weight they grow to while still growing.
+ */
+export function lifeOf(state: ValleyState, id: number) {
+  const { config } = state
+  const person = state.foragers[id]!
+  const age = ageOf(state, person)
+  const nursing =
+    person.alive &&
+    state.foragers.some(
+      (child) => child.motherId === id && child.alive && ageOf(state, child) < config.weaningMilliYears,
+    )
+  return {
+    age,
+    pregnant: person.alive && person.pregnancy !== null,
+    nursing,
+    growsTo:
+      person.alive && growing(config, age) ? { heightCm: person.adultHeightCm, weightKg: person.adultWeightKg } : null,
+  }
+}
+
+/** Births, and deaths by cause, in each calendar year so far. */
+export function birthsAndDeathsByYear(state: ValleyState) {
+  const { config } = state
+  const years = yearOf(config, state.minute) + 1
+  const rows = Array.from({ length: years }, (_, year) => ({
+    label: `Y${year + 1}`,
+    births: 0,
+    starvation: 0,
+    dehydration: 0,
+    illness: 0,
+  }))
+  for (const person of state.foragers) {
+    if (person.motherId !== null) rows[yearOf(config, person.birthMinute)]!.births += 1
+    if (!person.alive && person.deathMinute !== null) rows[yearOf(config, person.deathMinute)]![deathCause(person)] += 1
+  }
+  return rows
+}
+
+/** Years per bar of the age-at-death histogram. */
+const AGE_BIN = 5
+
+/**
+ * The ages at death of everyone who has died, in five-year bins to the oldest, with the deaths the !Kung life table
+ * (the death-draw hazards by age) would spread the same number over, counted from birth, for comparison.
+ */
+export function ageAtDeath(state: ValleyState) {
+  const hazards = state.config.deathPerMillionByAge
+  const ages = state.foragers.flatMap((person) => (person.alive ? [] : [ageYears(ageOf(state, person))]))
+  const bins = Math.max(Math.ceil(Math.max(70, ...ages) / AGE_BIN) + 1, 1)
+  const rows = Array.from({ length: bins }, (_, bin) => ({ label: String(bin * AGE_BIN), died: 0, fit: 0 }))
+  for (const age of ages) rows[Math.min(bins - 1, Math.floor(age / AGE_BIN))]!.died += 1
+  let surviving = 1
+  for (let age = 0; age < hazards.length && surviving > 0; age += 1) {
+    const dying = (surviving * hazards[age]!) / 1_000_000
+    rows[Math.min(bins - 1, Math.floor(age / AGE_BIN))]!.fit += dying * ages.length
+    surviving -= dying
+  }
+  return rows
+}
 
 interface CropRow {
   label: string

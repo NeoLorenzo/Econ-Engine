@@ -8,8 +8,9 @@ import type { Forager, ValleyEvent, ValleyState } from '../valley/types'
  * reads: the state as the engine left it, less what the page never reads and would cost seconds to copy between
  * threads. Only the routes of tasks under way, each person's next wake-up in place of the wake-up queue, exchanges,
  * walk records, gifts, refusals, axes made and broken, ideas and techniques learnt, harvests and food put into and
- * taken from stores among the events, everyone's ties and the followed person's memory are kept up to
- * date.
+ * taken from stores, pairings, births, feeds, carrying and deaths among the events, everyone's ties and the followed
+ * person's memory are kept up to date. Each person's birth, parents, partner, pregnancy and grown body travel with
+ * the rest of their record.
  *
  * Between threads a copy travels as its changes from the last copy sent, which both sides keep. The worker sends
  * a `Change`; the page applies it to its own last copy. Parts the engine left alone, or recopied unchanged, are not
@@ -84,6 +85,11 @@ const VIEW_EVENTS = new Set<ValleyEvent['kind']>([
   'harvest',
   'stored',
   'fromStore',
+  'paired',
+  'born',
+  'fed',
+  'carried',
+  'death',
 ])
 /** Finished days never change, so each is filtered once. */
 const filteredDays = new WeakMap<ValleyEvent[], ValleyEvent[]>()

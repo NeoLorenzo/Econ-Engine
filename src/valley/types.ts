@@ -150,10 +150,30 @@ export interface Personality {
 }
 export interface PersonNature {
   sex: 0 | 1
+  /** The adult body drawn at birth (Life 19); the grown body follows from it and the age. */
+  adultHeightCm: number
+  adultWeightKg: number
+  adultGripKg: number
+  /** The age, in thousandths of a year, at which the grown body was last set, and whether a pregnancy's cost is added. */
+  ageMilli: number
+  pregnant: boolean
+  /** The grown body. */
   heightCm: number
   weightKg: number
   gripKg: number
   traits: Personality
+  /** The energy reserve's cap, start, hunger and fecund levels for the grown body. */
+  reserveMaxKcal: number
+  initialReserveKcal: number
+  hungryBelowKcal: number
+  fecundReserveKcal: number
+  /** Flat walking speed and the base water loss of the grown body. */
+  walkCmPerSecond: number
+  waterBaseMlPerDay: number
+  /** Walking and work factors by age, per mille, and how far from the hearth a target may lie (-1 for no limit). */
+  walkPerMille: number
+  workPerMille: number
+  rangeCm: number
   loadCapacityKg: number
   rates: Record<EnergyRateKey, number>
   thirstThresholds: { thirsty: number; urgent: number; fatal: number }
@@ -213,6 +233,43 @@ export interface ValleyConfig extends HydrationConfig, NatureConfig {
   /** A day's food for the reference body that a store is planned at, and the rate stored nuts are cracked and eaten. */
   storeKcalPerDay: number
   storeKcalPerHour: number
+  /** Life 19, generations. Founders' ages in whole years, from the first to the last; year-anchored. */
+  founderAgeYears: readonly [number, number]
+  /** Per mille of the adult value by whole year of age: weight, height and grip, ages 0 to 18. */
+  growthByAge: { weight: readonly number[]; height: readonly number[]; grip: readonly number[] }
+  /** Energy per kilogram by age, per mille of the adult rate, ages 0 to 18. */
+  metabolismByAge: readonly number[]
+  /** Walking speed by age, ages 0 to 15, and every work rate by age, ages 0 to 18, per mille. */
+  walkByAge: readonly number[]
+  workByAge: readonly number[]
+  /** How far from the hearth a person may choose a target, in cm, from age 3 (index 0); unlimited past the end. */
+  rangeByAge: readonly number[]
+  /** A person whose walking factor is below this is carried and chooses no walk. */
+  carryBelowPerMille: number
+  /** Ages in thousandths of a year: eating solid food from, and nursing until. */
+  solidFoodMilliYears: number
+  weaningMilliYears: number
+  /** The most a feed moves, and the water in each 1,000 kcal of milk. */
+  feedKcal: number
+  milkMlPerThousandKcal: number
+  /** A child younger than this who fed from their mother in the last day keeps her from conceiving. */
+  amenorrheaMilliYears: number
+  /** Pairing from this age; conceiving until this age; years. */
+  pairFromYears: number
+  lastBirthYears: number
+  /** The adult reserve at or above which a woman can conceive. */
+  fecundReserveKcal: number
+  /** Chance of conceiving per cycle of a twelfth of a year, per mille. */
+  fecundPerMillePerCycle: number
+  /** A pregnancy's length in thousandths of a year, and its extra energy a day. */
+  pregnancyMilliYears: number
+  pregnancyKcalPerDay: number
+  /** Familiarity each of a pair needs with the other. */
+  pairFamiliarityMinutes: number
+  /** The goodwill a relatedness of 1,000 per mille adds when asked to give. */
+  kinGoodwillMinutes: number
+  /** Yearly hazard of death of illness, accident or age per million, ages 0 to 110. */
+  deathPerMillionByAge: readonly number[]
   berryThicketWoodKg: number
   berryThicketWoodRegrowthKgPerYear: number
   standWoodKg: number
@@ -616,8 +673,26 @@ export interface SwapTotals {
 
 /** `store`: gathering nuts for the store; `eat store`: eating from it at home. */
 export type TaskKind =
-  'sleep' | 'rest' | 'walk' | 'pick' | 'nuts' | 'fish' | 'drink' | 'gather' | 'cut' | 'make' | 'store' | 'eat store'
+  | 'sleep'
+  | 'rest'
+  | 'walk'
+  | 'pick'
+  | 'nuts'
+  | 'fish'
+  | 'drink'
+  | 'gather'
+  | 'cut'
+  | 'make'
+  | 'store'
+  | 'eat store'
+  | 'carried'
 export interface TaskRecord {
+  /** Carried (Life 19): the carrier, and when the carrier's walk began, which the route is timed from. */
+  carrierId?: number
+  walkStartMinute?: number
+  /** The grown weight of the children the person carries during this task, and their ids, for a walk. */
+  childKg?: number
+  carriedIds?: number[]
   startTripWood?: number
   startLoadKg?: number
   kind: TaskKind
@@ -648,6 +723,8 @@ export interface TaskRecord {
   practice?: boolean
   /** For a store load: the person's store target and store when it began, and the nuts they could still carry. */
   storeTarget?: number
+  /** The family's day of food in the store target (Life 19). */
+  familyKcal?: number
   storeKcal?: number
   roomKcal?: number
 }
@@ -790,6 +867,19 @@ export interface Forager extends Hydration, PersonNature {
   store: readonly FoodLot[]
   /** Out gathering nuts to bring home to the store. */
   storeTrip: boolean
+  /** Life 19: the minute of birth, the parents recorded at birth (null for founders) and the partner, if any. */
+  birthMinute: number
+  motherId: number | null
+  fatherId: number | null
+  partnerId: number | null
+  /** A pregnancy: the day it began and the father, its partner at conception. */
+  pregnancy: { day: number; fatherId: number } | null
+  /** The minute it last fed from its mother, or -1. */
+  lastFedMinute: number
+  /** The minute its grown body or pregnancy last changed its rates. */
+  natureMinute: number
+  /** The grown weight of the children it carries when it walks from here, by the carrying rule. */
+  childKg: number
 }
 
 /** How warm a forager sleeps: by a lit fire in its whole hut, by the fire alone, in its hut alone, or with neither. */
@@ -843,6 +933,10 @@ export type ActionReason =
   | 'taking nuts home to store'
   | 'eating from the store'
   | 'going home to eat from the store'
+  | 'gathering food for the family'
+  | 'waiting to be carried'
+  | 'carried'
+  | 'waiting to be fed'
 
 /** A log cut from a tree. */
 export interface CutEvent {
@@ -932,9 +1026,61 @@ export interface DeathEvent {
   kind: 'death'
   foragerId: number
   minute: number
-  cause: 'starvation' | 'dehydration' | 'starvation and dehydration'
+  cause: 'starvation' | 'dehydration' | 'starvation and dehydration' | 'illness'
   second: number
+  /** A death drawn at midnight (Life 19): the `fate:<day>` draw that fell below the hazard. */
+  draw?: number
+  /** The person's age at death, in thousandths of a year. */
+  ageMilli?: number
 }
+
+/** Two people paired at a wake-up (Life 19). */
+export interface PairedEvent {
+  kind: 'paired'
+  minute: number
+  foragerId: number
+  otherId: number
+}
+/** A conception at midnight, with the `conceive:<day>` draw that fell below the chance. */
+export interface ConceivedEvent {
+  kind: 'conceived'
+  minute: number
+  foragerId: number
+  fatherId: number
+  draw: number
+}
+/** A birth: the child, their parents and sex, and the kcal of reserve that left the mother for the child. */
+export interface BornEvent {
+  kind: 'born'
+  minute: number
+  foragerId: number
+  motherId: number
+  fatherId: number
+  sex: 0 | 1
+  kcal: number
+  /** Where and at which hearth the child was born, and the mother's group then. */
+  position: Point
+  hearth: Point
+  groupId: number | null
+}
+/** A feed: kcal and the water in it moved from the mother's body to the child's. */
+export interface FedEvent {
+  kind: 'fed'
+  minute: number
+  foragerId: number
+  motherId: number
+  kcal: number
+  waterMl: number
+}
+/** A carried task begun: the child rides on the carrier's walk until its end. */
+export interface CarriedEvent {
+  kind: 'carried'
+  minute: number
+  foragerId: number
+  carrierId: number
+  endMinute: number
+}
+export type LifeEvent = PairedEvent | ConceivedEvent | BornEvent | FedEvent | CarriedEvent
 
 export interface SwapEvent {
   sellerSharePerMille: number
@@ -1038,6 +1184,8 @@ export interface FoundEvent {
   flag: Point
   founderIds: [number, number]
   hearths: [Point, Point]
+  /** Children at home who moved with a founder (Life 19). */
+  children?: number[]
 }
 
 /** A forager without a group met a member and joined its group. */
@@ -1049,6 +1197,8 @@ export interface JoinEvent {
   /** The member it met. */
   metId: number
   hearth: Point
+  /** Children at home who joined with it (Life 19). */
+  children?: number[]
 }
 
 /** A group left with one living member dissolved after a death. */
@@ -1139,6 +1289,8 @@ export interface GiftEvent {
   amount: number
   giverCredit: number
   receiverCredit: number
+  /** The closeness of giver and receiver per mille (Life 19): relatedness, or 500 for partners. */
+  kinPerMille?: number
 }
 /** A refusal: for want of goodwill, which adds grievance, or with nothing to spare, which adds none. */
 export interface RefusalEvent {
@@ -1149,6 +1301,8 @@ export interface RefusalEvent {
   good: GiftGood
   reason: 'goodwill' | 'spare'
   grievance: number
+  /** The closeness of the two per mille (Life 19). */
+  kinPerMille?: number
 }
 export type TieEvent = TogetherEvent | GiftEvent | RefusalEvent
 /** The year's crop classes drawn at its start, with their factors per mille. */
@@ -1208,6 +1362,7 @@ export type ValleyEvent =
   | HutEvent
   | TieEvent
   | StoreEvent
+  | LifeEvent
 
 /** Seconds spent on each kind of time, summed over the band. */
 export interface ActionSeconds {
@@ -1223,6 +1378,19 @@ export interface ActionSeconds {
 
 /** One day of the band. Time is in seconds, summed over every forager that acted. */
 export interface DaySummary {
+  /** Life 19: births, pairings and conceptions during the day; deaths drawn; the kcal moved by nursing and spent on
+   * pregnancies; minutes children spent carried; the living by age band at the end of the day (under 3, 3 to 14, 15 to
+   * 49, 50 and over), the pregnant and the paired. */
+  births: number
+  pairings: number
+  conceptions: number
+  illnessDeaths: number
+  nursedKcal: number
+  pregnancyKcal: number
+  carriedMinutes: number
+  livingByAge: number[]
+  pregnant: number
+  paired: number
   wakeUpsById: number[]
   drinkingMlById: number[]
   waterLossMlById: number[]

@@ -125,9 +125,11 @@ describe('Life 17 skills', () => {
     const nature = (openness: number, conscientiousness: number) =>
       deriveNature(c, {
         sex: 1,
-        heightCm: 165,
-        weightKg: 60,
-        gripKg: 31,
+        adultHeightCm: 165,
+        adultWeightKg: 60,
+        adultGripKg: 31,
+        ageMilli: 18_000,
+        pregnant: false,
         traits: { openness, conscientiousness, extraversion: 0, agreeableness: 0, neuroticism: 0 },
       })
     expect([nature(-1_000, 0).opennessInvent, nature(0, 0).opennessInvent, nature(1_000, 0).opennessInvent]).toEqual([

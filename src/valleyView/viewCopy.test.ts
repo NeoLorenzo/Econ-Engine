@@ -54,7 +54,13 @@ describe('view copies', () => {
       )
     expect(state.foragers.some((p) => p.id !== 2 && moved(p))).toBe(true)
     expect(
-      wire.eventDays.flat().every((e) => ['exchange', 'walk', 'harvest', 'stored', 'fromStore'].includes(e.kind)),
+      wire.eventDays
+        .flat()
+        .every((e) =>
+          ['exchange', 'walk', 'harvest', 'stored', 'fromStore', 'paired', 'born', 'fed', 'carried', 'death'].includes(
+            e.kind,
+          ),
+        ),
     ).toBe(true)
     expect(wire.eventDays[0]!.some((e) => e.kind === 'harvest')).toBe(true)
     expect(wire.eventDays.flat().some((e) => e.kind === 'walk')).toBe(true)

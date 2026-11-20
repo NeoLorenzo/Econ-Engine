@@ -3,7 +3,7 @@ import { personConfig } from './nature'
 import { burnFires } from './fire'
 import { isDaylight, atHearth } from './forager'
 import { tendFire, warmthOf, sleepCostOf } from './work'
-import { hutWhole } from './huts'
+import { shelteredAt } from './huts'
 import { firstThresholdMinute } from './body'
 import { dayOfYear, MINUTES_PER_DAY, yearOf } from './calendar'
 import { harvestEvent, harvestOf, regrowPlaces } from './places'
@@ -11,6 +11,9 @@ import { spoilStore } from './stores'
 import { fishGrowth } from './fish'
 import { skillDay } from './skills'
 import { weatherHuts } from './huts'
+import { lifecycle } from './lifecycle'
+import { fireWarms } from './kin'
+import { personWake } from './wake'
 import type { ValleyState, ValleyEvent } from './types'
 export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
   const events: ValleyEvent[] = [{ kind: 'world', minute }]
@@ -68,6 +71,18 @@ export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
         remainder: growth.remainder,
       })
     }
+    // Life 19: deaths drawn, births due, conceptions and growth, each person woken or addressed as it applies to them.
+    events.push(
+      ...lifecycle(
+        state,
+        minute,
+        (id, fate) => personWake(state, id, minute, 'address', fate),
+        (id) => {
+          state.queue.cancelPerson(id, 'address')
+          state.queue.schedule({ minute, phase: 1, id, kind: 'address' })
+        },
+      ),
+    )
   }
   const fires = burnFires(state, minute)
   events.push(...fires)
@@ -84,8 +99,10 @@ export function worldWake(state: ValleyState, minute: number): ValleyEvent[] {
       state.today.burnedWood += burned
       events.push({ kind: 'fire', minute, foragerId: person.id, burned, lit: person.warm })
     }
-    const fire = person.groupId === null ? person.warm : state.groups[person.groupId]!.fireLit
-    const rate = sleepCostOf(personConfig(state.config, person), warmthOf(fire, hutWhole(state, person)))
+    // Someone whose body changed this minute (Life 19) is woken again in it and starts a new task at the new rates.
+    if (person.natureMinute === minute) continue
+    const fire = fireWarms(state, person)
+    const rate = sleepCostOf(personConfig(state.config, person), warmthOf(fire, shelteredAt(state, person)))
     const previous = task.rateChanges?.at(-1)?.energyPerHour ?? task.energyPerHour
     if (rate !== previous) {
       task.rateChanges = [...(task.rateChanges ?? []), { minute, energyPerHour: rate }]

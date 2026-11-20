@@ -17,6 +17,10 @@ const TALENT_STREAM_SALT = 0x5441_4c45
 const INVENT_STREAM_SALT = 0x494e_5645
 const ATTEMPT_STREAM_SALT = 0x4154_544d
 const HARVEST_STREAM_SALT = 0x4841_5256
+const AGE_STREAM_SALT = 0x4147_4553
+const CONCEIVE_STREAM_SALT = 0x434f_4e43
+const BIRTH_STREAM_SALT = 0x4249_5254
+const FATE_STREAM_SALT = 0x4641_5445
 
 /** A site or plant that has not found a place after this many draws makes the layout impossible. */
 export const PLACEMENT_DRAWS = 10_000
@@ -41,6 +45,35 @@ export const deriveAttemptSeed = (seed: number, minute: number, foragerId: numbe
 /** The harvest stream for one calendar year, which draws the year's berry and hazel crop classes. */
 export const deriveHarvestSeed = (seed: number, year: number) =>
   normalizeSeed(mixSeed((normalizeSeed(seed) ^ HARVEST_STREAM_SALT ^ mixSeed(year + 1)) >>> 0))
+
+/** Life 19: the founders' ages; one stream for the run. */
+export const deriveAgeSeed = (seed: number) => normalizeSeed(mixSeed((normalizeSeed(seed) ^ AGE_STREAM_SALT) >>> 0))
+/** The conception draws at the midnight that begins run day `day`. */
+export const deriveConceiveSeed = (seed: number, day: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ CONCEIVE_STREAM_SALT ^ mixSeed(day + 1)) >>> 0))
+/** The deaths drawn at the midnight that begins run day `day`. */
+export const deriveFateSeed = (seed: number, day: number) =>
+  normalizeSeed(mixSeed((normalizeSeed(seed) ^ FATE_STREAM_SALT ^ mixSeed(day + 1)) >>> 0))
+/** A child's sex, body, traits and talents, for a mother and the day of the birth. */
+export const deriveBirthSeed = (seed: number, mother: number, day: number) =>
+  normalizeSeed(
+    mixSeed((normalizeSeed(seed) ^ BIRTH_STREAM_SALT ^ mixSeed((mixSeed(day + 1) ^ (mother + 1)) >>> 0)) >>> 0),
+  )
+
+/**
+ * Every founder's birth minute, from the age stream: whole years above the first age, then a day within the year, so
+ * that at the run's minute 0 they are that many years and days old.
+ */
+export function drawBirthMinutes(config: ValleyConfig) {
+  let state = deriveAgeSeed(config.seed)
+  const [first, last] = config.founderAgeYears
+  return Array.from({ length: config.founders }, () => {
+    const years = randomInt(state, last - first + 1)
+    const day = randomInt(years.state, config.daysPerYear)
+    state = day.state
+    return -((first + years.value) * config.daysPerYear + day.value) * 1_440
+  })
+}
 
 /** The axe stream for one forager and minute, which draws the quality of an axe it finishes then. */
 export const deriveAxeSeed = (seed: number, minute: number, foragerId: number) =>
@@ -465,10 +498,13 @@ export function forEachRingOutwards(
   }
 }
 
-export function drawNatures(config: ValleyConfig) {
+/** Every founder's nature at their age at minute 0, from the body and trait streams. */
+export function drawNatures(config: ValleyConfig, ages: readonly number[] = []) {
   const bodies = new NatureDraws(normalizeSeed(mixSeed((normalizeSeed(config.seed) ^ BODY_STREAM_SALT) >>> 0)))
   const traits = new NatureDraws(normalizeSeed(mixSeed((normalizeSeed(config.seed) ^ TRAITS_STREAM_SALT) >>> 0)))
   const bf = bodyFactor(config),
     tf = personalityFactor(config)
-  return Array.from({ length: config.founders }, () => drawNature(config, bodies, traits, bf, tf))
+  return Array.from({ length: config.founders }, (_, id) =>
+    drawNature(config, bodies, traits, bf, tf, ages[id] ?? 18_000),
+  )
 }

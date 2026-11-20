@@ -1,3 +1,4 @@
+import { bodyAge } from './lifecycle'
 import { addTestLake, createSurveyedValley } from './ruleFixtures'
 import { learnTriangle, nearestFrontier, walkableTriangle } from './routes'
 import founders from './life13-founders.json'
@@ -43,7 +44,18 @@ function withExperience(config: ValleyConfig, p: Forager, forage: number, wood: 
   applySkills(p, skillsOf(config, p.experience, p.known))
 }
 const setNature = (p: Forager, traits: Partial<Personality> = {}, weightKg = 60, gripKg = 31) =>
-  Object.assign(p, deriveNature(c, { sex: 1, heightCm: 165, weightKg, gripKg, traits: { ...neutral, ...traits } }))
+  Object.assign(
+    p,
+    deriveNature(c, {
+      sex: 1,
+      adultHeightCm: 165,
+      adultWeightKg: weightKg,
+      adultGripKg: gripKg,
+      traits: { ...neutral, ...traits },
+      ageMilli: bodyAge(c, p, p.natureMinute),
+      pregnant: false,
+    }),
+  )
 
 let sampled: { people: PersonNature[]; bySex: [PersonNature[], PersonNature[]] } | undefined
 function samplePeople() {

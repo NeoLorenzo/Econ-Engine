@@ -9,7 +9,9 @@ import { cachedHeight } from './routes'
 import { carriedByFood, foodKg } from './food'
 import { lastWindowStartMinute, MINUTES_PER_DAY, minuteOfDay, windowDayIndex } from './calendar'
 import { cropOf, thicketCapacity } from './places'
-import { storeKcal, storeTarget } from './stores'
+import { familyDayKcal, familyStoreTarget, storeKcal } from './stores'
+import { canWalk } from './kin'
+import { milkOnly } from './nursing'
 import { findWalk, type WalkFound } from './ways'
 import { distance } from './geometry'
 import { practiceBudget } from './skills'
@@ -24,6 +26,8 @@ export interface Load {
   nutsKcal: number
   fishKcal: number
   log: number
+  /** The grown weight of the children carried (Life 19). */
+  childKg?: number
 }
 
 /** What a forager carries: the wood of its trip, of which it can hold no more than it has, its food and its log. */
@@ -35,12 +39,16 @@ export function loadOf(forager: Forager): Load {
     nutsKcal: food.nuts,
     fishKcal: food.fish,
     log: forager.log,
+    childKg: forager.childKg,
   }
 }
 
 /** A load in whole kilograms: its wood, its food rounded down once over the three foods, and its log at `logKg`. */
 export const loadKg = (config: ValleyConfig, load: Load) =>
-  load.wood + foodKg(config, load.berriesKcal, load.nutsKcal, load.fishKcal) + load.log * config.logKg
+  load.wood +
+  foodKg(config, load.berriesKcal, load.nutsKcal, load.fishKcal) +
+  load.log * config.logKg +
+  (load.childKg ?? 0)
 
 /**
  * Walking speed under a load of `kg`, in centimetres a second: it falls by `loadSlowdownPerMille` thousandths for each
@@ -123,7 +131,7 @@ export function expectsNuts(state: ValleyState, person: Forager, minute: number)
 }
 /** A store need: the store holds less than its target, and nuts are expected somewhere remembered. */
 export const hasStoreNeed = (state: ValleyState, person: Forager, minute: number) =>
-  storeKcal(person) < storeTarget(state.config, person, minute) && expectsNuts(state, person, minute)
+  storeKcal(person) < familyStoreTarget(state, person, minute) && expectsNuts(state, person, minute)
 /** The nuts a person could still carry, in kilocalories: their load capacity in nuts less the nuts in hand. */
 export const nutRoomKcal = (config: ValleyConfig, person: Forager) =>
   Math.max(0, person.loadCapacityKg * config.nutKcalPerKg - carriedByFood(person.carried).nuts)
@@ -260,12 +268,16 @@ function estimate(state: ValleyState, person: Forager, point: Point) {
     cachedHeight(state.layout.nav.mesh, point.x, point.y) - cachedHeight(state.layout.nav.mesh, person.x, person.y),
   )
 }
+/** Whether a point lies within the person's range from their hearth (Life 19); -1 is no limit. */
+export const inRange = (person: Forager, point: Point) =>
+  person.rangeCm < 0 || (point.x - person.hearth.x) ** 2 + (point.y - person.hearth.y) ** 2 <= person.rangeCm ** 2
 function canVisit(state: ValleyState, person: Forager, point: Point, minute: number) {
   return (
+    inRange(person, point) &&
     estimate(state, person, point) +
       estimateMinutes(state.config, point, person.hearth, walkSpeed(state.config, person) * 60, 0) +
       1 <
-    state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
+      state.config.duskHour * 60 - person.duskMarginMinutes - minuteOfDay(minute)
   )
 }
 function workAt(
@@ -306,6 +318,7 @@ function waterGoal(state: ValleyState, person: Forager, minute: number, severe: 
   for (const { bank, minutes } of banks) {
     const here = (person.x - bank.x) ** 2 + (person.y - bank.y) ** 2 <= state.config.reachCm ** 2
     if (here) return workAt(state, person, bank.id, 'drink', 'drinking', 0, 0)
+    if (!severe && (!inRange(person, bank) || milkOnly(state, person, minute)) && !here) continue
     if (
       !severe &&
       minutes + estimateMinutes(state.config, bank, person.hearth, walkSpeed(state.config, person) * 60, 0) + 1 >
@@ -359,7 +372,7 @@ export function foodGoal(
     rate: number,
     stock: number,
   ) => {
-    if (rate <= person.rates.pickKcalPerHour || rate < bestScore) return
+    if (rate <= person.rates.pickKcalPerHour || rate < bestScore || !inRange(person, target)) return
     const lowerTravel = estimateMinutes(state.config, person, target, speed, 0)
     if ((3600 * rate) / (lowerTravel * 60 + 3600) < bestScore) return
     const travel = estimateMinutes(
@@ -618,7 +631,7 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
     const target = { x: state.layout.places.x[id]!, y: state.layout.places.y[id]! },
       travel = estimateMinutes(state.config, person, target, speed, heights[id]! - personHeight)
     // Only a nearer place can win, so the costlier tests come after this one.
-    if (travel >= bestMinutes || !reachable(target)) continue
+    if (travel >= bestMinutes || !inRange(person, target) || !reachable(target)) continue
     if (travel + estimateMinutes(state.config, target, person.hearth, speed, 0) + 1 > daylight) continue
     if (travel < bestMinutes) {
       best = id
@@ -638,8 +651,33 @@ function woodGoal(state: ValleyState, person: Forager, minute: number): TaskChoi
         bestStock,
       )
 }
+/**
+ * The choice of someone who cannot walk (Life 19): drink at a bank where they are when thirsty and past solid-food
+ * age, sleep at night, else rest until carried.
+ */
+function nonWalkerTask(state: ValleyState, person: Forager, minute: number, severe: boolean): TaskChoice {
+  if ((severe || person.thirsty) && !milkOnly(state, person, minute))
+    for (const bank of person.knownBanks.values())
+      if ((person.x - bank.x) ** 2 + (person.y - bank.y) ** 2 <= state.config.reachCm ** 2)
+        return workAt(state, person, bank.id, 'drink', 'drinking', 0, 0)
+  if (!isDaylight(state.config, minute)) return { kind: 'sleep', placeId: -1, target: null, reason: 'night' }
+  return restChoice('waiting to be carried')
+}
+
+/**
+ * The family food need (Life 19): the food a parent carries beyond what they would eat themselves falls short of the
+ * day's food of their children at home who eat. The target, in kcal; zero when there is no need.
+ */
+export function familyFoodNeed(state: ValleyState, person: Forager, minute: number) {
+  const target = familyDayKcal(state, person, minute, false, false)
+  if (target <= 0) return 0
+  const spare = carriedKcal(person.carried) - Math.max(0, person.satiationKcal - person.energyKcal)
+  return spare < target ? target : 0
+}
+
 export function chooseTask(state: ValleyState, person: Forager, minute: number): TaskChoice {
   const severe = person.waterDeficitMl >= waterThresholds(personConfig(state.config, person)).urgent
+  if (!canWalk(state, person)) return nonWalkerTask(state, person, minute, severe)
   if (severe) return waterGoal(state, person, minute, true)
   if (mustGoHome(state, person, minute))
     return { kind: 'walk', placeId: -1, target: person.hearth, reason: 'going home' }
@@ -703,7 +741,8 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
         person.axe = person.spareAxe
         person.spareAxe = null
       }
-      const plan = planHut(state, person, minute)
+      // Children do not cut logs, fetch stones or make axes (Life 19); a parent's hut shelters them.
+      const plan = person.workPerMille < 1_000 ? null : planHut(state, person, minute)
       if (plan?.kind === 'make')
         return atHearth(person)
           ? { kind: 'make', placeId: -1, target: null, reason: 'making an axe' }
@@ -729,6 +768,7 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
     const frontier = nearestFrontier(state.layout.nav, person.knowledge, person)
     if (
       frontier &&
+      inRange(person, frontier) &&
       (frontier.x - person.hearth.x) ** 2 + (frontier.y - person.hearth.y) ** 2 <= person.exploringRangeCm ** 2 &&
       estimate(state, person, frontier) +
         estimateMinutes(state.config, frontier, person.hearth, walkSpeed(state.config, person) * 60, 0) +
@@ -758,6 +798,15 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
       return choice
     }
   }
+  const family = familyFoodNeed(state, person, minute)
+  if (family > 0) {
+    const choice = foodGoal(state, person, minute)
+    if (choice) {
+      choice.desiredCarriedKcal = family
+      if (choice.kind !== 'walk' && choice.kind !== 'eat store') choice.reason = 'gathering food for the family'
+      return choice
+    }
+  }
   if (storeChoice) {
     person.storeTrip = true
     return storeChoice
@@ -771,7 +820,8 @@ export function chooseTask(state: ValleyState, person: Forager, minute: number):
  */
 function practiceChoice(state: ValleyState, person: Forager, minute: number): TaskChoice | null {
   const { config, layout } = state
-  if (person.practicedToday >= practiceBudget(config, person)) return null
+  // Children neither practise nor make axes (Life 19): crafts wait for teaching.
+  if (person.workPerMille < 1_000 || person.practicedToday >= practiceBudget(config, person)) return null
   const home = (reason: ActionReason, practice: boolean): TaskChoice =>
     atHearth(person)
       ? { kind: 'make', placeId: -1, target: null, reason, practice }
@@ -817,6 +867,7 @@ function leisureWalk(state: ValleyState, person: Forager, minute: number): TaskC
     .sort((a, b) => a.usedMinute - b.usedMinute || a.id - b.id)
   for (const way of ways) {
     const far = pointEqual(way.a, home) ? way.b : way.a
+    if (!inRange(person, far)) continue
     if (2 * estimateMinutes(state.config, home, far, speed, 0) + 1 >= left) continue
     const walk = routeFor(state, person, far, true)
     return walk ? { kind: 'walk', placeId: -1, target: far, reason: 'out for a walk', walk } : null

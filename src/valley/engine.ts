@@ -1,23 +1,22 @@
 import { companionsOn } from './ties'
 import { founderMetrics } from './nature'
 import { reindexPeople, shareBankMemory, shareKnowledge } from './perception'
-import { knowledgeBytes } from './routes'
 import { measureTask } from './summary'
 import { WakeQueue } from './clock'
 import { MINUTES_PER_DAY, dayOf } from './calendar'
 import { resolveValleyConfig } from './config'
 import { fishCapacity } from './fish'
-import { newHydration } from './body'
-import { drawNatures, drawTalents, generateLayout, LayoutError } from './layout'
-import { founderSkills, noTaskSeconds } from './skills'
+import { drawBirthMinutes, drawNatures, drawTalents, generateLayout, LayoutError } from './layout'
+import { ageMilli, ageYears } from './growth'
+import { newPerson } from './lifecycle'
+import { founderSkills } from './skills'
 import { startingGroups } from './social'
-import { woodMatters } from './trade'
 import { hutWhole } from './huts'
 import { energyAt, waterAt } from './body'
 import { worldWake } from './world'
 import { carriedKcal } from './food'
 import { harvestEvent, harvestOf, regrowPlaces } from './places'
-import { storeKcal, storeTarget } from './stores'
+import { familyStoreTarget, storeKcal } from './stores'
 import { personWake, arrival } from './wake'
 export { personWake } from './wake'
 import type { DaySummary, Forager, ValleyConfig, ValleyEvent, ValleyState } from './types'
@@ -70,6 +69,16 @@ function emptyDay(
   const { foragers } = state
   return {
     day,
+    births: 0,
+    pairings: 0,
+    conceptions: 0,
+    illnessDeaths: 0,
+    nursedKcal: 0,
+    pregnancyKcal: 0,
+    carriedMinutes: 0,
+    livingByAge: [0, 0, 0, 0],
+    pregnant: 0,
+    paired: 0,
     wakeUpsById: zeros(foragers.length),
     drinkingMlById: zeros(foragers.length),
     waterLossMlById: zeros(foragers.length),
@@ -202,87 +211,28 @@ export function createValley(overrides: Partial<ValleyConfig> = {}): ValleyState
     return { bodyId: body.id, capacity, stock: capacity, remainder: 0, grown: 0, caught: 0 }
   })
   const fishKcal = fish.reduce((total, body) => total + body.stock, 0)
-  const natures = drawNatures(config)
+  const births = drawBirthMinutes(config)
+  const natures = drawNatures(
+    config,
+    births.map((birth) => ageMilli(config, birth, 0)),
+  )
   const talents = drawTalents(config)
-  const foragers: Forager[] = layout.hearths.map((hearth, id) => {
-    return {
-      ...newHydration(config),
-      ...natures[id]!,
-      task: null,
-      knownPlaces: new Int32Array(layout.places.count).fill(-1),
-      placeCheckedMinute: new Int32Array(layout.places.count).fill(-1),
-      seenMinute: new Int32Array(config.founders).fill(-1),
-      placeStock: new Int32Array(layout.places.count).fill(-1),
-      placeWood: new Int32Array(layout.places.count).fill(-1),
-      placeLogs: new Int32Array(layout.places.count).fill(-1),
-      metMinute: new Int32Array(config.founders).fill(-1),
-      metPosition: new Map(),
-      ties: new Map(),
-      arrivalFrom: new Int32Array(config.founders).fill(-1),
-      knowledge: { triangles: new Uint8Array(knowledgeBytes(layout.nav.mesh)), revision: 0 },
-      ways: [],
-      nextWayId: 0,
-      leisureMinute: -1,
-      survey: null,
-      energyTimeRemainder: 0,
-      waterTimeRemainder: 0,
-      lastWakeMinute: 0,
-      energyRemainder: 0,
-      knownBanks: new Map(),
-      fishMemory: new Map(),
-      deathSecond: null,
-      deathCauses: [],
+  const foragers: Forager[] = layout.hearths.map((hearth, id) =>
+    newPerson(config, layout, {
       id,
-      x: hearth.x,
-      y: hearth.y,
+      count: config.founders,
+      nature: natures[id]!,
+      skills: founderSkills(config, talents[id]!.talents, talents[id]!.known, natures[id]!.workPerMille),
       hearth,
-      energyKcal: config.initialReserveKcal,
-      hungry: config.initialReserveKcal < config.hungryBelowKcal,
-      alive: true,
-      deathMinute: null,
-      carried: [],
-      store: [],
-      storeTrip: false,
-      wood: 0,
-      shortOfWood: woodMatters(config),
-      tripWood: 0,
-      groupId: null,
-      joinedMinute: null,
-      knownFlags: [],
-      ...founderSkills(config, talents[id]!.talents, talents[id]!.known),
-      log: 0,
-      stone: 0,
-      hutId: null,
-      axe: null,
-      spareAxe: null,
-      making: null,
-      chopRemainder: 0,
-      promised: false,
-      heardAsk: null,
-      axeTotals: {
-        madeOwn: 0,
-        madeForSale: 0,
-        sold: 0,
-        bought: 0,
-        wornOut: 0,
-        kcalReceived: 0,
-        kcalPaid: 0,
-        logsCut: 0,
-      },
-      hutSleepMinutes: 0,
-      secondsToday: noTaskSeconds(),
-      secondsWorked: noTaskSeconds(),
-      heardTerms: null,
-      trip: null,
-      pickRemainder: 0,
-      gatherRemainder: 0,
-      fireHour: -1,
-      warm: false,
-      fireGiven: 0,
-      warmByFireMinutes: 0,
-      swapTotals: { woodSold: 0, woodBought: 0, kcalReceived: 0, kcalPaid: 0 },
-    }
-  })
+      at: hearth,
+      energyKcal: natures[id]!.initialReserveKcal,
+      waterDeficitMl: config.initialWaterDeficitMl,
+      birthMinute: births[id]!,
+      motherId: null,
+      fatherId: null,
+      minute: 0,
+    }),
+  )
   const groups = startingGroups(config, layout, foragers)
   const queue = new WakeQueue()
   for (const person of foragers) queue.schedule({ minute: 0, phase: 1, id: person.id, kind: 'end' })
@@ -534,8 +484,17 @@ function finishDay(state: ValleyState, minute: number) {
   day.tiesById = state.foragers.map((p) => p.ties.size)
   day.companionsById = state.foragers.map((p) => companionsOn(p, minute))
   day.storeKcalById = state.foragers.map(storeKcal)
-  day.storeTargetById = state.foragers.map((p) => (p.alive ? storeTarget(state.config, p, minute - 1) : 0))
+  day.storeTargetById = state.foragers.map((p) => (p.alive ? familyStoreTarget(state, p, minute - 1) : 0))
   day.storedKcal = day.storeKcalById.reduce((total, kcal) => total + kcal, 0)
+  const living = state.foragers.filter((p) => p.alive)
+  day.livingByAge = [0, 0, 0, 0]
+  for (const p of living) {
+    const years = ageYears(ageMilli(state.config, p.birthMinute, minute - 1))
+    day.livingByAge[years < 3 ? 0 : years < 15 ? 1 : years < 50 ? 2 : 3]! += 1
+  }
+  day.pregnant = living.filter((p) => p.pregnancy !== null).length
+  day.paired = living.filter((p) => p.partnerId !== null).length
+  day.pregnancyKcal = day.pregnant * 24 * Math.floor(state.config.pregnancyKcalPerDay / 24)
   state.days.push(day)
   state.today = emptyDay(dayOf(minute), state)
   state.eventDays.push([])
@@ -557,7 +516,8 @@ export function stepValley(previous: ValleyState, toMinute = previous.minute + 1
  */
 export function releaseRoutes(state: ValleyState) {
   let lowest = state.routes.length
-  for (const person of state.foragers) if (person.task?.kind === 'walk') lowest = Math.min(lowest, person.task.routeId)
+  for (const person of state.foragers)
+    if (person.task?.kind === 'walk' || person.task?.kind === 'carried') lowest = Math.min(lowest, person.task.routeId)
   // Routes below an earlier lowest were freed then, and the lowest only rises, so this stops at the last one freed.
   for (let id = lowest - 1; id >= 0 && state.routes[id] !== undefined; id -= 1) delete state.routes[id]
 }
